@@ -28,19 +28,24 @@ typedef unsigned __int32 uintptr_t;
 
 #if LC_ARCH_BITS == 32
 
+typedef uint16_t StgHalfWord;
 typedef uint32_t StgWord;
 typedef int32_t  StgInt;
 #define FMT_WordX  "x"
 #define FMT_Word   "u"
 #define FMT_Int    "d"
+#define LC_ALIGN_LOG2 2
 
 #elif LC_ARCH_BITS == 64
+
+typedef uint32_t StgHalfWord;
 typedef uint64_t StgWord;
 typedef int64_t  StgInt;
 
 #define FMT_WordX  FMT_Word64X
 #define FMT_Word   FMT_Word64
 #define FMT_Int    FMT_Int64
+#define LC_ALIGN_LOG2 3
 
 #endif
 
@@ -53,3 +58,4 @@ typedef StgWord *StgPtr;
 #define cast_byte(i)	cast(uint8_t, (i))
 
 #endif
+

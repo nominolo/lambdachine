@@ -30,7 +30,7 @@ all: test
 	@echo Compiling
 	$(COMP)
 
-test_OBJS = reference-bci.o vm.o bc.o
+test_OBJS = reference-bci.o vm.o bc.o mm.o
 test: $(test_OBJS)
 	@echo Linking
 	$(LINK)
