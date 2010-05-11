@@ -4,6 +4,8 @@ module Lambdachine.Eval where
 
 --import Lambdachine.Core
 import Lambdachine.Utils
+import Lambdachine.Name
+import Lambdachine.Stg
 --import Lambdachine.Utils.Pretty hiding ( (<$>) )
 
 import qualified Data.IntMap as IM
@@ -12,25 +14,6 @@ import Data.Map ( (!) )
 import Control.Applicative
 
 import Data.Supply
-
-data Name = Name Unique String
-  deriving (Eq, Ord, Show)
-
-name :: String -> Name
-name n = Name bogusUnique n
-
-type Var = Name
-
-instance Pretty Name where
-  ppr (Name u n)
-   | u == bogusUnique = text n
-   | otherwise = text n <> char '_' <> ppr u
-
-type Literal = Int
-type DataCon = String
-
-data PrimOp = Add | Sub | Mul | Div
-  deriving (Eq, Show)
 
 newtype Addr = Addr Int
   deriving (Eq, Ord, Show)
@@ -54,39 +37,6 @@ isValue :: HeapObj -> Bool
 isValue (Constr _ _) = True
 isValue (Func (_:_) _ _) = True
 isValue _ = False
-
-data Atom
-  = Var Var
-  | Lit Literal
-  | APtr Addr
-  deriving (Eq, Show)
-           
-data Obj
-  = Fun [Var] [Var] Term -- fvs params body
-  | Con DataCon [Atom]
-  | Thunk [Var] Term
-  deriving (Eq, Show)
-
-data Term
-  = Atom Atom
-  | App Var [Atom]
-  | POp PrimOp [Atom]
-  | Case Term Var [Alt]
-  | LetRec [(Var, Obj)] Term
-  | Pos Int Term
-  deriving (Eq, Show)
-
-type Alt = (AltCon, Term)
-
-data AltCon
-  = DataAlt DataCon [Var]
-  | LitAlt Literal
-  | DEFAULT
-  deriving (Eq, Show)
-
-viewTerm :: Term -> Term
-viewTerm (Pos _ t) = viewTerm t
-viewTerm t = t
 
 data LocalEnv = LocalEnv !(M.Map Var RegVal) !(Supply Unique)
 data Heap = Heap (M.Map Addr HeapObj) (Supply Addr)
@@ -119,7 +69,7 @@ eval lcl hp st term_ = case viewTerm term_ of
              -> apply addr args lcl hp st'
          obj | Upd addr' lcl' <- s ->
            let hp' = store hp addr' obj in
-           Just (lcl', hp', st', term)
+           Just (lcl, hp', st', term)
          obj | Alt v alts lcl' <- s ->
            match_alt obj alts (lcl' // [(v, Ptr addr)]) hp st'
   App fv@(lookupVar lcl -> Ptr f) args
@@ -209,9 +159,9 @@ traceEval term = do
    go lcl hp st (Pos p t) =
      print p >> go lcl hp st t
    go lcl hp st t =
-     --pprint (lcl, hp) >>
+     --pprint (lcl, st, t) >>
      case eval lcl hp st t of
-       Nothing -> putStr "Done: " >> pprint (t, lcl, hp)
+       Nothing -> putStr "Done: " >> pprint (t, st, lcl, hp)
        Just (lcl', hp', st', t') ->
          --pprint t' >>
          go lcl' hp' st' t'
@@ -301,48 +251,6 @@ instance Pretty RegVal where
   ppr (UInt l) = ppr l
   ppr (Ptr p) = ppr p
 
-instance Pretty Atom where
-  ppr (Var v) = ppr v
-  ppr (Lit l) = ppr l
-  
-instance Pretty PrimOp where
-  ppr Add = text "(+)"
-  ppr Sub = text "(-)"
-  ppr Mul = text "(*)"
-  ppr Div = text "(/)"
-
-instance Pretty Term where
-  ppr (Atom a) = ppr a
-  ppr (App v args) = parens $ ppr v <+> align (hsep (map ppr args))
-  ppr (POp op args) = parens $ ppr op <+> sep (map ppr args)
-  ppr (Case e v [(alt, e')]) =
-    keyword "case" <+> ppr e <+> keyword "of" <+> ppr v <+> char '{'
-      <+> ppr alt <+> text "->" <> linebreak <> ppr e' <> char '}'
-  ppr (Case e v alts) =
-    parens $
-    hang 2 (keyword "case" <+> ppr e <+> keyword "of" <+> ppr v <+> char '{' </>
-            vcat (map ppr_alt alts)) <> char '}'
-  ppr (LetRec binds body) =
-    parens $ align $
-    hang 2 (keyword "let" </> align (cat (map ppr_bind binds))) </>
-    keyword "in" </> ppr body
-  ppr (Pos n t) =
-    int n <> char ':' <> ppr t
-    
-instance Pretty Obj where
-  ppr (Fun _ params body) =
-    text "FUN" <> parens (sep (map ppr params) <+> text "->" </>
-                          ppr body)
-  ppr (Con dcon args) =
-    text "CON" <> parens (text dcon <+> sep (map ppr args))
-  ppr (Thunk _ t) =
-    text "THUNK" <> parens (ppr t)
-
-instance Pretty AltCon where
-  ppr (DataAlt dcon vs) = text dcon <+> sep (map ppr vs)
-  ppr (LitAlt lit) = ppr lit
-  ppr DEFAULT = char '_'
-  
 instance Pretty Heap where
   ppr (Heap m _) = char '<' <> text "heap" <+> ppr m <> char '>'
 instance Pretty LocalEnv where
@@ -350,28 +258,22 @@ instance Pretty LocalEnv where
   
 instance Pretty HeapObj where
   ppr (Constr dcon vals) =
-    text "CON" <> parens (text dcon <+> sep (map ppr vals))
-  ppr (Func [] term _) = text "THUNK"
+    text "CON" <> parens (text dcon <+> hsep (map ppr vals))
+  ppr (Func [] term _) = text "THUNK" <> parens (ppr term)
   ppr (Func ps term _) =
-    text "FUN" <> parens (sep (map ppr ps) <+> text "-> ...")
+    text "FUN" <> parens (hsep (map ppr ps) <+> text "-> ...")
   ppr (Pap f vals) =
-    text "PAP" <> parens (ppr f <+> sep (map ppr vals))
+    text "PAP" <> parens (ppr f <+> hsep (map ppr vals))
   ppr Blackhole = text "BLACKHOLE"
-  
+
+instance Pretty EvalContext where
+  ppr (Upd addr env) =
+    text "Upd" <+> ppr addr <+> char '*' <+> ppr env
+  ppr (Alt var alts env) =
+    text "case * of" <+> hsep (map (ppr . fst) alts) <+> ppr env
+  ppr (AppC vals) =
+    text "*" <+> hsep (map ppr vals)
     
-ppr_alt :: Alt -> PDoc
-ppr_alt (alt, term) =
-  ppr alt <+> text "->" </> hang 2 (ppr term)
-  
-ppr_bind :: (Var, Obj) -> PDoc
-ppr_bind (v, obj) =
-  hang 2 $ ppr v <+> char '=' </> ppr obj
-
-lit :: Literal -> Term
-lit = Atom . Lit
-
-var :: Name -> Term
-var = Atom . Var
 
 tst1 = LetRec [(a, Con "I#" [Lit 42])] (var a)
   where
@@ -490,15 +392,32 @@ tst4 =
            [(DataAlt "[]" [], var nilCon)
            ,(DataAlt ":" [x,xs],
              LetRec
-               [(y, Fun [f, x] [] (App f [Var x]))
-               ,(ys, Fun [f, xs] [] (App mymap [Var f, Var xs]))
+               [(y, Thunk [f, x] (App f [Var x]))
+               ,(ys, Thunk [mymap, f, xs] (App mymap [Var f, Var xs]))
                ,(r, Con ":" [Var y, Var ys])] $
-             var r)])] $
-  App mymap [Var f1]
+             var r)])
+    ,(l, Thunk [] $ num_list "list" [1..5])] $
+  App mymap [Var f1, Var l]
  where
-   [f, f1, u, b, b', b'', r, nilCon, mymap, l, x, xs, y, ys]
-     = map name ["f", "f1", "_", "b", "b'", "b''", "r", "nilCon"
+   nilCon = name "nil"
+   [f, f1, u, b, b', b'', r, mymap, l, x, xs, y, ys]
+     = map name ["f", "f1", "_", "b", "b'", "b''", "r"
                 ,"map", "l", "x", "xs", "y", "ys"] :: [Var]
+   num_list :: String -> [Int] -> Term
+   num_list n list = 
+      LetRec (go 0 [] list) $ var (name (n ++ ":0"))
+    where
+      go _ acc [] = acc
+      go c acc (l:ls) =
+        let lit_name = name (n ++ "$" ++ show c)
+            cons_name = name (n ++ ":" ++ show c)
+            next_name
+              | [] <- ls = nilCon
+              | otherwise = name (n ++ ":" ++ show (c+1))
+        in
+        go (c+1) ((lit_name, Con "I#" [Lit l]) :
+                  (cons_name, Con ":" [Var lit_name, Var next_name]) :
+                  acc) ls
    
 
 tr_eval t = do

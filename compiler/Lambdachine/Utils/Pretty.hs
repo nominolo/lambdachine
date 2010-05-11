@@ -239,6 +239,9 @@ instance (Pretty a, Pretty b) => Pretty (a,b) where
 
 instance (Pretty a, Pretty b, Pretty c) => Pretty (a,b,c) where
   ppr (a,b,c) = parens (sep [ppr a <> comma, ppr b <> comma, ppr c])
+instance (Pretty a, Pretty b, Pretty c, Pretty d) => Pretty (a,b,c,d) where
+  ppr (a,b,c,d) =
+    parens (sep [ppr a <> comma, ppr b <> comma, ppr c <> comma, ppr d])
 
 instance Pretty s => Pretty (Set s) where
   ppr s = braces (fillSep (punctuate comma (map ppr (S.toList s))))
