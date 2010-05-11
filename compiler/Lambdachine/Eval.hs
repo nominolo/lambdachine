@@ -125,17 +125,7 @@ eval lcl hp st term_ = case viewTerm term_ of
   App fv@(lookupVar lcl -> Ptr f) args
     | Func params@(_:_) e lcl' <- fetch hp f
     -> apply f (map (lookupAtom lcl) args) lcl hp st
---       let n = length params, let m = length args
---     -> case () of
---         _ | m == n ->
---             Just (substArgs lcl params args lcl', hp, st, e)
---           | m > n ->  -- too many arguments
---             Just (substArgs lcl params (take n args) lcl', hp,
---                   AppC (map (lookupAtom lcl) (drop n args)) : st, e)
---           | n < m ->  -- partial application
---             let (hp', v, a) = allocFresh hp (Pap f (map (lookupAtom lcl) args))
---             in Just (lcl // [(v, Ptr a)], hp', st, var v)
-    | Func [] _ _ <- fetch hp f  
+    | Func [] _ _ <- fetch hp f
     -> -- function is a thunk.  dispatches to thunk case above
        Just (lcl, hp, AppC (map (lookupAtom lcl) args) : st, var fv)
     | Pap f' vals <- fetch hp f
@@ -495,20 +485,21 @@ tst4 =
          LetRec [(r, Con "I#" [Var b''])] $
          var r)])
     ,(nilCon, Con "[]" [])
-    ,(map, Fun [] [f, l] $
+    ,(mymap, Fun [] [f, l] $
            Case (var l) u $
            [(DataAlt "[]" [], var nilCon)
            ,(DataAlt ":" [x,xs],
              LetRec
                [(y, Fun [f, x] [] (App f [Var x]))
-               ,(ys, Fun [f, xs] [] (App map [Var f, Var xs]))
+               ,(ys, Fun [f, xs] [] (App mymap [Var f, Var xs]))
                ,(r, Con ":" [Var y, Var ys])] $
              var r)])] $
-  App map [Var f1]
+  App mymap [Var f1]
  where
-   [f, f1, u, b, b', b'', r, nilCon, map, l, x, xs, y, ys]
+   [f, f1, u, b, b', b'', r, nilCon, mymap, l, x, xs, y, ys]
      = map name ["f", "f1", "_", "b", "b'", "b''", "r", "nilCon"
                 ,"map", "l", "x", "xs", "y", "ys"] :: [Var]
+   
 
 tr_eval t = do
   s <- newNumSupply
