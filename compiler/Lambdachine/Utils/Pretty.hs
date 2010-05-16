@@ -202,6 +202,12 @@ keyword = bold . text
 colour1 :: PDoc -> PDoc
 colour1 = withStyle P.cyan
 
+pale :: PDoc -> PDoc
+pale = withStyle P.dullwhite
+
+varcolour :: PDoc -> PDoc
+varcolour = withStyle P.blue
+
 -- ** Style-specific Combinators
 
 ifDebugStyle :: PDoc -> PDoc

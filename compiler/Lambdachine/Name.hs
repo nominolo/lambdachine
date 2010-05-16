@@ -8,8 +8,11 @@ data Name = Name Unique String
 name :: String -> Name
 name n = Name bogusUnique n
 
+freshName :: Supply Unique -> String -> Name
+freshName u n = Name (supplyValue u) n
+
 instance Pretty Name where
   ppr (Name u n)
-   | u == bogusUnique = text n
-   | otherwise = text n <> char '_' <> ppr u
+   | u == bogusUnique = varcolour (text n)
+   | otherwise = varcolour (text n) <> pale (char '_' <> ppr u)
 
