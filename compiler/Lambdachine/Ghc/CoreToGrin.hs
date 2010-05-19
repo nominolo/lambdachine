@@ -82,7 +82,8 @@ toGrinModule :: Supply Unique -> Ghc.CoreModule -> Grin.Module
 toGrinModule uniques core_mdl =
   Grin.Module
     { moduleId = toGrinModuleId (Ghc.cm_module core_mdl)
-    , moduleFuns = funs }
+    , moduleFuns = funs
+    , moduleCafs = cafs }
  where
    (cafs, funs) =
      runTrans uniques $ toGrinFuns $ Ghc.cm_binds core_mdl
@@ -130,7 +131,7 @@ translateId f nm = do
                 Ghc.extendVarEnv (tsNameMap st) nm grin_var }
         return grin_var
 
-type Caf = ()
+type Caf = (Grin.Var, Grin.Expr)
 
 toGrinFuns :: [CoreBind] -> Trans ([Caf], [FunDef])
 toGrinFuns binds_ = partitionEithers <$> walkBind binds_ []
@@ -173,8 +174,9 @@ toGrinFunOrCaf (toVar N.mkTopLevelId -> f, collectBinders -> (args_, body)) =
     [] -> Left <$> toGrinCaf f body
     _ -> Right <$> toGrinFun f (map (toVar N.mkLocalId) args) body
 -}
-toGrinCaf :: Var -> CoreExpr -> Trans Caf
-toGrinCaf _ _ = return ()
+toGrinCaf :: Grin.Var -> CoreExpr -> Trans Caf
+toGrinCaf f e =
+  (,) f <$> toGrinExpr e
 
 toGrinFun :: Var -> [Var] -> CoreExpr -> Trans FunDef
 toGrinFun f args body =
@@ -276,7 +278,7 @@ buildWhnf e@(Ghc.App _ _) = do
         fun' <- buildWhnf fun
         f <- freshVar (text "f")
         return (fun' :>>= (Var f :-> App f as))
-buildWhnf (Let (NonRec v e1) e2) = do
+buildWhnf (Let (NonRec v e1) e2) = do -- allocation
   v' <- freshVar v
   e1' <- buildThunk e1
   e2' <- buildWhnf e2

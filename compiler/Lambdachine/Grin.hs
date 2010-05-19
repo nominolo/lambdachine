@@ -11,6 +11,7 @@ type DataCon = Var
 data Module = Module
   { moduleId :: ModuleId
   , moduleFuns :: [FunDef]
+  , moduleCafs :: [(Var, Expr)]
   } deriving (Show, Eq)
 
 data ModuleId = ModuleId
@@ -103,7 +104,10 @@ instance Pretty ModuleId where
 instance Pretty Module where
   ppr m =
     keyword "module" <+> ppr (moduleId m) <> linebreak <>
-    vcat (map ppr (moduleFuns m))
+    vcat (map ppr (moduleFuns m)) <> linebreak <>
+    vcat (map (\(f, e) -> ppr f <+> char '=' <> linebreak <>
+                          indent 2 (ppr e))
+              (moduleCafs m))
 instance Pretty FunDef where
   ppr (FunDef f args body) =
     ppr f <+> hsep (map ppr args) <+> char '=' <> linebreak <>
