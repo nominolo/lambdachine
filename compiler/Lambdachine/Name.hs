@@ -13,6 +13,6 @@ freshName u n = Name (supplyValue u) n
 
 instance Pretty Name where
   ppr (Name u n)
-   | u == bogusUnique = varcolour (text n)
-   | otherwise = varcolour (text n) <> pale (char '_' <> ppr u)
+   | u == bogusUnique = text n
+   | otherwise = text n <> pale (char '_' <> ppr u)
 

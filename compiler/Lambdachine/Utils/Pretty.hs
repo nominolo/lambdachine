@@ -206,7 +206,13 @@ pale :: PDoc -> PDoc
 pale = withStyle P.dullwhite
 
 varcolour :: PDoc -> PDoc
-varcolour = withStyle P.blue
+varcolour = id -- withStyle P.magenta
+
+gblcolour :: PDoc -> PDoc
+gblcolour = withStyle P.dullgreen
+
+dconcolour :: PDoc -> PDoc
+dconcolour = withStyle P.blue
 
 -- ** Style-specific Combinators
 

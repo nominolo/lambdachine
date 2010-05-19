@@ -1,10 +1,10 @@
 module Lambdachine.Grin where
 
 import Lambdachine.Utils
-import Lambdachine.Name
+import Lambdachine.Id
 
 -- These should become proper data types
-type Var = Name
+type Var = Id
 type Literal = Integer
 type DataCon = Var
 
@@ -87,7 +87,7 @@ instance Pretty UpdFlag where
 
 instance Pretty Alt where
   ppr (pat :> e) =
-    hang 2 $ ppr pat <+> text "->" <+> ppr e
+    hang 2 $ ppr pat <+> text "->" <> linebreak <> ppr e
 
 instance Pretty Value where
   ppr (Lit n) = text (show n)
@@ -109,6 +109,7 @@ instance Pretty FunDef where
     ppr f <+> hsep (map ppr args) <+> char '=' <> linebreak <>
     indent 2 (ppr body)
 
+{-
 tst1 =
   Eval AlwaysUpdate m :>>= (Node cInt [m'] :-> 
   Eval AlwaysUpdate n :>>= (Node cInt [n'] :-> 
@@ -128,3 +129,4 @@ tst1 =
    [intGT, intAdd] = map name [">#", "+#"]
    [m, m', n, n', b', o', x', p1, p2] = 
      map name ["m", "m'", "n", "n'", "b'", "o'", "x'", "p1", "p2"]
+-}
