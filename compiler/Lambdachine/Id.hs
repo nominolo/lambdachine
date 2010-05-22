@@ -10,7 +10,10 @@ import Lambdachine.Name
 data Id = Id
   { idName :: !Name
   , idDetails :: !IdDetails
-  } deriving (Eq, Ord, Show)
+  } deriving (Eq, Ord)
+
+instance Show Id where
+  show (Id n _) = show n
 
 data IdDetails
   = TopLevelId

@@ -3,11 +3,14 @@ module Lambdachine.Utils.Unique (
   {-uniqueFromInt,-} intFromUnique, newUniqueSupply,
   bogusUnique,
   Supply, split, split2, split3, split4, supplyValue, modifySupply,
+  mkBuiltinUnique
 ) where
 
 import Lambdachine.Utils.Pretty
 
 import Data.Array.Unboxed
+import Data.Bits ( shiftL, (.|.), (.&.) )
+import Data.Char ( ord )
 import Data.Supply
 
 newtype Unique = Unique Int
@@ -15,11 +18,22 @@ newtype Unique = Unique Int
 
 instance Pretty Unique where
   ppr (Unique u) 
-    | u /= 0 = text (toBaseXString u)
+    | u /= 0 = text (toBaseXString (u .&. 0x00ffffff))
     | otherwise = empty
 
-newUniqueSupply :: IO (Supply Unique)
-newUniqueSupply = newSupply (Unique 1) (\(Unique n) -> Unique (n + 1))
+newUniqueSupply :: Char -> IO (Supply Unique)
+newUniqueSupply c | ord c < 256 =
+  newSupply u0 (\(Unique n) -> Unique (n + 1))
+ where
+   u0 = Unique ((ord c `shiftL` 24) .|. 1)
+newUniqueSupply _ = error "newUniqueSupply: char must be 8 bits"
+
+mkBuiltinUnique :: Int -> Unique
+mkBuiltinUnique = mk_unique 'p'
+
+mk_unique :: Char -> Int -> Unique
+mk_unique c n | ord c < 256 = Unique u
+ where u = (ord c `shiftL` 24) .|. (n .&. 0x00ffffff)
 
 bogusUnique :: Unique
 bogusUnique = Unique 0

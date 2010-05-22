@@ -2,6 +2,7 @@ module Main where
 
 import Lambdachine.Utils
 import Lambdachine.Ghc.CoreToGrin
+import Lambdachine.Grin.Eval
 
 import GHC
 import GHC.Paths ( libdir )
@@ -16,6 +17,8 @@ main = runGhc (Just libdir) $ do
   setSessionDynFlags =<< getSessionDynFlags
   core_mdl <- compileToCoreSimplified file
   liftIO $ do
-    s <- newUniqueSupply
+    s <- newUniqueSupply 'g'
     putStrLn $ showPpr core_mdl
-    pprint $ toGrinModule s core_mdl
+    let grin_mdl = toGrinModule s core_mdl
+    pprint $ grin_mdl
+    runTest1 grin_mdl

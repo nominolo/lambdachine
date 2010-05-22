@@ -2,6 +2,19 @@
              GeneralizedNewtypeDeriving #-}
 -- | Translate GHC Core into (high-level) GRIN.
 --
+-- GHC Core is typed, allows arbitrary expressions as function
+-- arguments, and allows local functions.
+--
+-- GRIN is untyped (for now), requires all function arguments to be
+-- variables (or at atoms), and only allows top-level functions.
+--
+-- GHC Core uses @case@ expressions for both evaluation and branching,
+-- whereas GRIN uses @case@ only for branching and uses a special
+-- @eval@ instruction for evaluation.
+-- 
+--
+-- The main workers are 'buildWhnf' and 'buildThunk'.
+--
 -- TODO:
 --
 --   - Lambda-lift all local bindings
@@ -18,6 +31,7 @@ where
 import Lambdachine.Utils
 import Lambdachine.Id as N
 import Lambdachine.Grin as Grin
+import Lambdachine.Builtin
 
 import qualified Var as Ghc
 import qualified VarEnv as Ghc
@@ -28,6 +42,7 @@ import qualified Name as Ghc
 import qualified IdInfo as Ghc
 import qualified DataCon as Ghc
 import qualified CoreSyn as Ghc ( Expr(..) )
+import qualified TysWiredIn as Ghc ( trueDataConId, falseDataConId )
 import CoreSyn ( CoreBind, CoreBndr, CoreExpr,
                  Bind(..), Expr(Lam, Let, Type, Cast, Note),
                  AltCon(..),
@@ -71,8 +86,13 @@ runTrans s (Trans m) = evalState (runReaderT m env0) state0
  where
    env0 = ()
    state0 = TransState { tsUniques = s
-                       , tsNameMap = Ghc.emptyVarEnv
+                       , tsNameMap = initialNameMap
                        , tsCafs = S.empty }
+
+initialNameMap :: Ghc.IdEnv Grin.Var
+initialNameMap =
+  Ghc.mkVarEnv [(Ghc.falseDataConId, falseDataConId)
+               ,(Ghc.trueDataConId, trueDataConId)]
 
 -- | Converts a 'Ghc.CoreModule' to our GRIN IR.
 --
@@ -130,6 +150,11 @@ translateId f nm = do
             , tsNameMap =
                 Ghc.extendVarEnv (tsNameMap st) nm grin_var }
         return grin_var
+
+addAlias :: Ghc.Id -> Grin.Var -> Trans ()
+addAlias var gvar = do
+  modify' $ \st ->
+    st{ tsNameMap = Ghc.extendVarEnv (tsNameMap st) var gvar }
 
 type Caf = (Grin.Var, Grin.Expr)
 
@@ -292,7 +317,7 @@ buildWhnf (Ghc.Case e1 v _ty alts) = do
   case alts' of
     [(pat :> e2')] ->
       -- case with only one alternative = strict let
-      return (e1' :>>= (pat :-> e2'))
+      return (e1' :>>= (Var v' :-> Unit (Var v') :>>= (pat :-> e2')))
     _ ->
       return $ e1' :>>= (Var v' :-> Case v' alts')
 buildWhnf _ = return $ Unit Void
