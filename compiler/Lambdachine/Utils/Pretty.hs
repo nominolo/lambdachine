@@ -242,6 +242,9 @@ instance Pretty Bool where
 instance Pretty Int where
   ppr n = text (show n)
 
+instance Pretty Integer where
+  ppr n = text (show n)
+
 instance Pretty a => Pretty (Maybe a) where
   ppr Nothing = text "(nothing)"
   ppr (Just a) = ppr a
