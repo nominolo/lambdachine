@@ -2,7 +2,7 @@ module Lambdachine.Name where
 
 import Lambdachine.Utils
 
-data Name = Name Unique String
+data Name = Name {-# UNPACK #-} !Unique String
   deriving (Eq, Ord)
 
 name :: String -> Name
