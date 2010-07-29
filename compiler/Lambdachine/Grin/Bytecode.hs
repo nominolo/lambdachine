@@ -95,6 +95,8 @@ instance (Pretty r, Pretty c) => Pretty (BcInstr r c) where
       text "LOADLIT " <> hsep (commaSep [ppr r, ppr c])
     LoadG r g ->
       text "LOADGBL " <> hsep (commaSep [ppr r, ppr g])
+    LoadF r n ->
+      text "LOADENV " <> hsep (commaSep [ppr r, int n])
     Eval t r ->
       text "EVAL    " <> hsep (commaSep [ppr t, ppr r])
     Ret1 r ->
@@ -103,6 +105,8 @@ instance (Pretty r, Pretty c) => Pretty (BcInstr r c) where
       text "LOADFLD " <> hsep (commaSep [ppr dst, ppr src, ppr offs])
     Store dst tag args ->
       text "ALLOC   " <> hsep (commaSep (map ppr (dst:tag:args)))
+    MkAp dst f args ->
+      text "ALLOCAP " <> hsep (commaSep (map ppr (dst:f:args)))
     Call Nothing f args ->
       text "CALLT   " <> hsep (commaSep (map ppr (f:args)))
     Call (Just r) f args ->
