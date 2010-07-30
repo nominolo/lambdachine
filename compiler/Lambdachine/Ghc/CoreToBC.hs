@@ -122,7 +122,7 @@ transTopLevelBind f (viewGhcLam -> (params, body)) = do
       (bcis, _, fvs, Nothing) <- transBody body env0 fvi0 locs0 RetC
       let bco = BcObject { bcoType = bco_type
                          , bcoCode = toList bcis
-                         , bcoGlobalRefs = []
+                         , bcoGlobalRefs = toList (globalVars fvs)
                          , bcoConstants = []
                          , bcoFreeVars = 0
                          }
