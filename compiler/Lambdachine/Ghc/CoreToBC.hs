@@ -72,6 +72,7 @@ import Control.Applicative
 import Control.Monad.State
 --import Control.Monad.Fix
 import Data.Foldable ( toList )
+import Data.List ( foldl' )
 import Data.Monoid
 import Data.Maybe ( fromMaybe )
 
@@ -201,15 +202,103 @@ data ClosureInfo
 -- to a dummy value in order to avoid confusing the garbage collector.
 -- For that reason we currently use Option 1.
 -- 
-transBind :: CoreBind -- ^ The binding group to translate.
+transBinds :: CoreBind -> LocalEnv -> FreeVarsIndex 
+           -> KnownLocs
+           -> Trans (Bcis, KnownLocs, FreeVars, LocalEnv)
+transBinds bind env fvi locs0 = do
+  case bind of
+    NonRec f body -> do
+      ci <- transBind f body env
+      build_bind_code Ghc.emptyVarEnv (extendLocalEnv env f undefined)
+                      fvi [(f, ci)] locs0
+    Rec bndrs -> do
+      let xs = map fst bndrs
+          env' = extendLocalEnvList env xs
+      (cis, fw_env) <- trans_binds_rec (Ghc.mkVarSet xs) bndrs env' Ghc.emptyVarEnv []
+      let locs1 = extendLocs locs0 [ (x, Fwd) | x <- xs ]
+      build_bind_code fw_env env' fvi cis locs1
+ where
+   trans_binds_rec :: Ghc.VarSet -- variables that will be defined later
+                   -> [(CoreBndr, CoreExpr)] -- the bindings
+                   -> LocalEnv  -- the local env
+                   -> Ghc.VarEnv [(Int, Ghc.Id)] -- fixup accumulator
+                   -> [(Ghc.Id, ClosureInfo)] -- closure info accumulator
+                   -> Trans ([(Ghc.Id, ClosureInfo)],
+                             Ghc.VarEnv [(Int, Ghc.Id)])
+   trans_binds_rec _fwds [] _env fix_acc ci_acc =
+     return (reverse ci_acc, fix_acc)
+   trans_binds_rec fwds ((f, body):binds) env fix_acc ci_acc = do
+     closure_info <- transBind f body env
+     let fwd_refs =
+           case closure_info of
+             ConObj dcon fields ->
+               [ (x, offs) | (offs, Right x) <- zip [1..] (map viewGhcArg fields)
+                           , x `Ghc.elemVarSet` fwds ]
+             AppObj doc fields ->
+               [ (x, offs) | (offs, Right x) <- zip [2..] (map viewGhcArg fields)
+                           , x `Ghc.elemVarSet` fwds ]
+             FunObj _ _ frees ->
+               [ (x, offs) | (offs, x) <- zip [1..] frees
+                           , x `Ghc.elemVarSet` fwds ]
+     let fix_acc' = foldl' (\e (x, offs) ->
+                              Ghc.extendVarEnv_C (++) e x [(offs, f)])
+                      fix_acc fwd_refs
+     let fwds' = Ghc.delVarSet fwds f
+     trans_binds_rec fwds' binds env fix_acc'
+                     ((f, closure_info) : ci_acc)
+
+build_bind_code :: Ghc.VarEnv [(Int, Ghc.Id)]
+                -> LocalEnv -> FreeVarsIndex
+                -> [(Ghc.Id, ClosureInfo)] -> KnownLocs
+                -> Trans (Bcis, KnownLocs, FreeVars, LocalEnv)
+build_bind_code fwd_env env fvi closures locs0 = do
+  (bcis, locs, fvs) <- go mempty locs0 mempty closures
+  return (bcis, locs, fvs, env)
+ where
+   -- TODO: Do we need to accumulate the environment?
+   go bcis locs fvs [] = return (bcis, locs, fvs)
+   go bcis locs0 fvs ((x, ConObj dcon fields) : objs) = do
+     (bcis1, locs1, fvs1, Just r)
+       <- transStore dcon fields env fvi locs0 (BindC Nothing)
+     let locs2 = updateLoc locs1 x (InVar r)
+     go (bcis `mappend` bcis1 `mappend` add_fw_refs x r locs2) locs2 (fvs `mappend` fvs1) objs
+   go bcis locs0 fvs ((x, AppObj f args) : objs) = do
+     (bcis1, locs1, fvs1, (freg:regs))
+       <- transArgs (Ghc.Var f : args) env fvi locs0
+     rslt <- mbFreshLocal Nothing
+     let bcis2 = (bcis `mappend` bcis1) `snocBag` MkAp rslt freg regs
+         locs2 = updateLoc locs1 x (InVar rslt)
+         bcis3 = bcis2 `mappend` add_fw_refs x rslt locs2
+     go bcis3 locs2 (fvs `mappend` fvs1) objs
+   go bcis locs0 fvs ((x, FunObj _arity info_tbl args) : objs) = do
+     (bcis1, locs1, fvs1, regs)
+       <- transArgs (map Ghc.Var args) env fvi locs0
+     tag_reg <- mbFreshLocal Nothing
+     rslt <- mbFreshLocal Nothing
+     let bcis2 = 
+           ((bcis `mappend` bcis1) `snocBag` LoadG tag_reg info_tbl)
+             `snocBag` Store rslt tag_reg regs
+         locs2 = updateLoc locs1 x (InVar rslt)
+         bcis3 = bcis2 `mappend` add_fw_refs x rslt locs2
+     go bcis3 locs2 (fvs `mappend` fvs1) objs
+
+   add_fw_refs x r locs =
+     case Ghc.lookupVarEnv fwd_env x of
+       Nothing -> emptyBag
+       Just fixups -> listToBag $
+         [ Update ry n r | (n, y) <- fixups,
+                           let Just (InVar ry) = lookupLoc locs y ]
+
+transBind :: CoreBndr -- ^ The binder name ...
+          -> CoreExpr -- ^ ... and its body.
           -> LocalEnv -- ^ The 'LocalEnv' at the binding site.
-          -> Trans [(Ghc.Id, ClosureInfo)]
-transBind (NonRec x (viewGhcApp -> Just (f, args))) _env0
- | isGhcConWorkId f 
- = return [(x, ConObj f args)] --(transFields id args))]
+          -> Trans ClosureInfo
+transBind x (viewGhcApp -> Just (f, args)) _env0
+ | isGhcConWorkId f
+ = return (ConObj f args)
  | otherwise
- = return [(x, AppObj f args)] -- (Right f : transFields id args))]
-transBind (NonRec x (viewGhcLam -> (bndrs, body))) env0 = do
+ = return (AppObj f args)
+transBind x (viewGhcLam -> (bndrs, body)) env0 = do
   let locs0 = mkLocs [ (b, InReg n) | (b, n) <- zip bndrs [0..] ]
       env = fold2l' extendLocalEnv env0 bndrs (repeat undefined)
 
@@ -228,41 +317,7 @@ transBind (NonRec x (viewGhcLam -> (bndrs, body))) env0 = do
                      , bcoGlobalRefs = toList gbls
                      , bcoFreeVars = length vars }
   addBCO x' bco
-  return [(x, FunObj arity x' vars)]
-
-transBinds :: CoreBind -> LocalEnv -> FreeVarsIndex 
-           -> KnownLocs
-           -> Trans (Bcis, KnownLocs, FreeVars, LocalEnv)
-transBinds bind env fvi locs0 = do
-  obj_binds <- transBind bind env
-  let env' = extendLocalEnvList env (map fst obj_binds)
-  (bcis, locs, fvs) <- go mempty locs0 mempty obj_binds
-  return (bcis, locs, fvs, env')
- where
-   -- TODO: Do we need to accumulate the environment?
-   go bcis locs fvs [] = return (bcis, locs, fvs)
-   go bcis locs0 fvs ((x, ConObj dcon fields) : objs) = do
-     (bcis1, locs1, fvs1, Just r)
-       <- transStore dcon fields env fvi locs0 (BindC Nothing)
-     let locs2 = updateLoc locs1 x (InVar r)
-     go (bcis `mappend` bcis1) locs2 (fvs `mappend` fvs1) objs
-   go bcis locs0 fvs ((x, AppObj f args) : objs) = do
-     (bcis1, locs1, fvs1, (freg:regs))
-       <- transArgs (Ghc.Var f : args) env fvi locs0
-     rslt <- mbFreshLocal Nothing
-     let bcis2 = (bcis `mappend` bcis1) `snocBag` MkAp rslt freg regs
-         locs2 = updateLoc locs1 x (InVar rslt)
-     go bcis2 locs2 (fvs `mappend` fvs1) objs
-   go bcis locs0 fvs ((x, FunObj _arity info_tbl args) : objs) = do
-     (bcis1, locs1, fvs1, regs)
-       <- transArgs (map Ghc.Var args) env fvi locs0
-     tag_reg <- mbFreshLocal Nothing
-     rslt <- mbFreshLocal Nothing
-     let bcis2 = 
-           ((bcis `mappend` bcis1) `snocBag` LoadG tag_reg info_tbl)
-             `snocBag` Store rslt tag_reg regs
-         locs2 = updateLoc locs1 x (InVar rslt)
-     go bcis2 locs2 (fvs `mappend` fvs1) objs
+  return (FunObj arity x' vars)
 
 transFields :: (Ghc.Id -> a) -> [CoreArg] -> [Either BcConst a]
 transFields f args = map to_field args
@@ -324,6 +379,8 @@ data ValueLocation
   | InReg Int
     -- ^ The value is in a specific register.
   | FreeVar Int
+  | Fwd
+    -- ^ A forward reference.
   | Global Id
 
 -- | Maps GHC Ids to their (current) location in bytecode.
@@ -604,6 +661,9 @@ transVar x env fvi locs0 mr =
       r <- mbFreshLocal mr
       return (singletonBag (Fetch r p n),
               r, False, updateLoc locs0 x (InVar r), mempty)
+    Just Fwd -> do
+      r <- mbFreshLocal mr
+      return (singletonBag (LoadBlackhole r), r, True, locs0, mempty)
     Nothing
       | Just x' <- lookupLocalEnv env x -> do
           -- Note: To avoid keeping track of two environments we must
@@ -795,3 +855,15 @@ viewGhcLam expr = go expr []
      | otherwise = go e (x:xs)
    go e xs = (reverse xs, e)
 
+
+-- | Look through noise in arguments.  Ignores things like type
+-- applications, coercions, type abstractions and notes.
+--
+-- Requires the @CorePrep@ invariants to hold.
+viewGhcArg :: CoreArg -> Either Ghc.Literal Ghc.Id
+viewGhcArg (Ghc.Var x)              = Right x
+viewGhcArg (Ghc.Lit l)              = Left l
+viewGhcArg (Ghc.App x (Ghc.Type _)) = viewGhcArg x
+viewGhcArg (Lam a x) | isTyVar a    = viewGhcArg x
+viewGhcArg (Cast x _)               = viewGhcArg x
+viewGhcArg (Note _ x)               = viewGhcArg x

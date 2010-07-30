@@ -73,12 +73,14 @@ data BcInstr r c
   | LoadG r Id  -- ^ Load a global function / CAF
   | LoadC r Id  -- ^ Load a constructor descriptor
   | LoadF r Int -- must be a lazy 'Int'
+  | LoadBlackhole r
   | BinR BinOp OpTy r r r
   | BinC BinOp OpTy r r c
   | Eval r r
   | Case r [(BcTag, [BcInstr r c])]
   | Ret1 r
   | Fetch r r Int
+  | Update r Int r  -- base[n] = r
   | Store r r [r]
     -- ^ @ALLOC rslt, ctor, val1, .., valN@
   | MkAp r r [r]
@@ -106,6 +108,8 @@ instance (Pretty r, Pretty c) => Pretty (BcInstr r c) where
       text "LOADGBL " <> hsep (commaSep [ppr r, ppr g])
     LoadF r n ->
       text "LOADENV " <> hsep (commaSep [ppr r, int n])
+    LoadBlackhole r ->
+      text "LOADBLK " <> ppr r
     Eval t r ->
       text "EVAL    " <> hsep (commaSep [ppr t, ppr r])
     Ret1 r ->
@@ -114,6 +118,8 @@ instance (Pretty r, Pretty c) => Pretty (BcInstr r c) where
       text "LOADFLD " <> hsep (commaSep [ppr dst, ppr src, ppr offs])
     Store dst tag args ->
       text "ALLOC   " <> hsep (commaSep (map ppr (dst:tag:args)))
+    Update base offs arg ->
+      text "STORE   " <> hsep (commaSep [ppr base, ppr offs, ppr arg])
     MkAp dst f args ->
       text "ALLOCAP " <> hsep (commaSep (map ppr (dst:f:args)))
     Call Nothing f args ->

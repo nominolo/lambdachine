@@ -66,3 +66,8 @@ concat xs = foldr append Nil xs
 --concatMap f xs = foldr 
 
 test = (sum (I# 0#) (upto (I# 1#) (I# 10#)))
+
+test2 a b = 
+  let x = Cons a y
+      y = Cons b x
+  in x
