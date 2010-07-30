@@ -10,7 +10,7 @@ module Lambdachine.Utils
   )
 where
 
-import Lambdachine.Utils.Pretty hiding ( (<$>) )
+import Lambdachine.Utils.Pretty
 import Lambdachine.Utils.Unique
 
 import Control.Monad.State.Strict

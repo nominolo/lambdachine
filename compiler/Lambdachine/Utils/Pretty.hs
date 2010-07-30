@@ -73,7 +73,7 @@ int i _ = P.int i
 
 infixr 6 <> 
 infixr 6 <+>
-infixr 5 <$>, <$$>, <//>, </>
+infixr 5 $$, $+$, <//>, </>
 
 (<>) :: PDoc -> PDoc -> PDoc
 (<>) d1 d2 sty = d1 sty P.<> d2 sty
@@ -81,11 +81,11 @@ infixr 5 <$>, <$$>, <//>, </>
 (<+>) :: PDoc -> PDoc -> PDoc
 (<+>) d1 d2 sty = d1 sty P.<+> d2 sty
 
-(<$>) :: PDoc -> PDoc -> PDoc
-(<$>) d1 d2 sty = d1 sty P.<$> d2 sty
+($$) :: PDoc -> PDoc -> PDoc
+($$) d1 d2 sty = d1 sty P.<$> d2 sty
 
-(<$$>) :: PDoc -> PDoc -> PDoc
-(<$$>) d1 d2 sty = d1 sty P.<$$> d2 sty
+($+$) :: PDoc -> PDoc -> PDoc
+($+$) d1 d2 sty = d1 sty P.<$$> d2 sty
 
 (<//>) :: PDoc -> PDoc -> PDoc
 (<//>) d1 d2 sty = d1 sty P.<//> d2 sty
