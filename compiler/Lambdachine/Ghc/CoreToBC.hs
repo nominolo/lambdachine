@@ -452,7 +452,7 @@ globalVar x = FreeVars Ghc.emptyVarSet (S.singleton x)
 freshVar :: String -> (Name -> a) -> Trans a
 freshVar nm f = do
   us <- genUnique
-  return (f (freshName us nm))
+  return (f (freshName us (nm ++ "_" ++ tail (show (supplyValue us)))))
 
 mbFreshLocal :: Maybe BcVar -> Trans BcVar
 mbFreshLocal (Just v) = return v
