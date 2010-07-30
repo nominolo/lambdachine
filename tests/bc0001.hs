@@ -7,7 +7,7 @@ import GHC.Bool
 data Int = I# Int#
 
 data List a = Nil | Cons a (List a)
-
+{-
 f :: Int# -> Int#
 f x = x
 
@@ -28,7 +28,7 @@ c x = I# 3#
 
 d :: a -> ()
 d x = ()
-
+-}
 {-# NOINLINE plusInt #-}
 plusInt :: Int -> Int -> Int
 plusInt (I# m) (I# n) = I# (m +# n)
@@ -37,9 +37,13 @@ gtInt :: Int -> Int -> Bool
 gtInt (I# m) (I# n) = m ># n
 
 z :: Int -> Int
-z x = plusInt x (I# 42#)
+z x = plusInt x (plusInt x x)
 
+--sum :: 
+
+{-
 i42 = I# 42#
 
 l1 = Cons i42 l2
 l2 = Cons (I# 23#) l1
+-}

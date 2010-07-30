@@ -13,33 +13,56 @@ data Int = I# Int#
 
 plusInt :: Int -> Int -> Int
 plusInt (I# m) (I# n) = I# (m +# n)
-{-# NOINLINE plusInt #-}
-
+{-  # NOINLINE plusInt #-}
+{-
 minusInt :: Int -> Int -> Int
 minusInt (I# m) (I# n) = I# (m -# n)
 {-# NOINLINE minusInt #-}
+-}
 
 gtInt :: Int -> Int -> Bool
 gtInt (I# m) (I# n) = m ># n
-{-# NOINLINE gtInt #-}
+{-  # NOINLINE gtInt #-}
 
 data List a = Nil | Cons a (List a)
 
-enumFromTo :: Int -> Int -> List Int
-enumFromTo from to =
+upto :: Int -> Int -> List Int
+upto from to =
   if from `gtInt` to then
     Nil
    else
-    Cons from (enumFromTo (from `plusInt` I# 1#) to)
+    Cons from (upto (from `plusInt` I# 1#) to)
 
-sum :: List Int -> Int
-sum Nil = I# 0#
-sum (Cons x xs) = x `plusInt` sum xs
-
+sum :: Int -> List Int -> Int
+sum acc Nil = acc
+sum acc (Cons x xs) =
+  let acc' = (acc `plusInt` x) in 
+  acc' `seq` sum acc' xs
+{-
 replicate :: Int -> a -> List a
-replicate n a =
+replicate n x =
   case n of 
     I# 0# -> Nil
-    _ -> Cons a (replicate (n `minusInt` I# 1#) a)
+    _ -> Cons x (replicate (n `minusInt` I# 1#) x)
+-}
+{-
+replicate' n x
+  | I# 0# `gtInt` n = Nil
+  | True = Cons x (replicate' (n `minusInt` I# 1#) x)
+-}
+{-
+append :: List a -> List a -> List a
+append Nil xs = xs
+append (Cons y ys) xs = Cons y (append ys xs)
 
-test = (sum (enumFromTo (I# 0#) (I# 10#)))
+foldr :: (a -> r -> r) -> r -> List a -> r
+foldr c n Nil = n
+foldr c n (Cons a r) = c a (foldr c n r)
+
+concat :: List (List a) -> List a
+concat xs = foldr append Nil xs
+-}
+--concatMap :: (a -> List b) -> List a -> List a
+--concatMap f xs = foldr 
+
+test = (sum (I# 0#) (upto (I# 1#) (I# 10#)))
