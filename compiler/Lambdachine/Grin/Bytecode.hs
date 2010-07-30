@@ -27,8 +27,8 @@ data BytecodeObject r c
     , bcoFreeVars  :: Int
     }   
   | BcoCon
-    { bcoType :: BcoType
-    , bcoDataCon :: Id
+    { bcoType :: BcoType -- ^ Always 'Con'.  Only for completeness.
+    , bcoDataCon :: Id   -- ^ The constructor 'Id'.
     , bcoFields :: [Either BcConst Id]
     }
 
@@ -38,8 +38,17 @@ data BcoType
   | CAF
   | Con
 
+instance Pretty BcoType where
+  ppr (BcoFun n) = text "FUN_" <> int n
+  ppr Thunk = text "THUNK"
+  ppr CAF = text "CAF"
+  ppr Con = text "CON"
+
 instance (Pretty r, Pretty c) => Pretty (BytecodeObject r c) where
-  ppr bco@BcObject{} = ppr (bcoCode bco)
+  ppr bco@BcObject{} =
+    align $ text "BCO " <> ppr (bcoType bco) <> char ':' <> int (bcoFreeVars bco) $+$
+            text "gbl: " <> align (ppr (bcoGlobalRefs bco)) $+$
+            (indent 2 $ ppr (bcoCode bco))
   ppr BcoCon{ bcoDataCon = dcon, bcoFields = fields } =
      ppr dcon <+> hsep (map pp_fld fields)
     where pp_fld (Left l) = ppr l
