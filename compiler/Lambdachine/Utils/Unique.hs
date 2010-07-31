@@ -37,7 +37,7 @@ instance Pretty Unique where
 
 instance Show Unique where
   show u0@(Unique u) =
-    uniqueNameSpace u0 : toBaseXString (u .&. 0x00ffffff)
+    uniqueNameSpace u0 : reverse (toBaseXString (u .&. 0x00ffffff))
 
 -- | Create a new 'Unique' supply.  The first argument encodes the
 -- name space (as a character for easier printing).
