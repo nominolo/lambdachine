@@ -65,6 +65,7 @@ import CoreSyn ( CoreBind, CoreBndr, CoreExpr, CoreArg, CoreAlt,
                  collectBinders, flattenBinds, collectArgs )
 import Var ( isTyVar )
 import Unique ( Uniquable(..), getKey )
+import FastString ( unpackFS )
 
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -617,6 +618,10 @@ transLiteral :: Ghc.Literal -> Maybe BcVar
 transLiteral (Ghc.MachInt n) mbvar = do
   rslt <- mbFreshLocal mbvar
   return (singletonBag (LoadK rslt (CInt n)), rslt)
+transLiteral (Ghc.MachStr fs) mb_var = do
+  rslt <- mbFreshLocal mb_var
+  return (singletonBag (LoadK rslt (CStr (unpackFS fs))), rslt)
+transLiteral x _ = unimplemented ("literal: " ++ showPpr x)
 
 -- | Translate a variable reference into bytecode.
 --

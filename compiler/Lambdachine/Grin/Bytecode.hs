@@ -178,12 +178,14 @@ isCommutative _ = False
 
 data BcConst
   = CInt Integer
+  | CStr String
   | CRef Label
   deriving (Eq, Ord, Show)
 
 instance Pretty BcConst where
   ppr (CInt n) = ppr n
   ppr (CRef l) = ppr l
+  ppr (CStr s) = text (show s)
 
 data Bag a
   = Empty
