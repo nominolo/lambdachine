@@ -19,7 +19,8 @@ main = runGhc (Just libdir) $ do
   args0 <- liftIO $ getArgs
   let file | [f] <- args0 = f
            | otherwise = "../tests/bc0001.hs"
-  setSessionDynFlags =<< getSessionDynFlags
+  dflags <- getSessionDynFlags
+  setSessionDynFlags dflags{ ghcLink = NoLink }
   core_mdl <- compileToCore file
   liftIO $ do
     s <- newUniqueSupply 'g'
