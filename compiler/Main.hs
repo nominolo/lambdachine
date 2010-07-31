@@ -3,7 +3,6 @@ module Main where
 
 import Lambdachine.Utils
 import Lambdachine.Ghc.Pipeline
-import Lambdachine.Ghc.CoreToGrin
 import Lambdachine.Ghc.CoreToBC
 import Lambdachine.Grin.Eval
 import Lambdachine.Grin.Bytecode
