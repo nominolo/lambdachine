@@ -699,7 +699,10 @@ transApp f args env fvi locs0 ctxt
          <- transBody (Ghc.Var f) env fvi locs1 (BindC Nothing)
        let is = is0 `mappend` is1
            fvs = fvs0 `mappend` fvs1
-           mb_rslt = contextVar ctxt
+       mb_rslt <- case ctxt of
+                    RetC -> return Nothing
+                    BindC mr ->
+                      Just <$> mbFreshLocal mr
        return (is `snocBag` Call mb_rslt fr regs,
                locs2, fvs, mb_rslt)
 
@@ -853,6 +856,8 @@ viewGhcLam expr = go expr []
    go (Ghc.Lam x e) xs
      | isTyVar x = go e xs
      | otherwise = go e (x:xs)
+   go (Cast e _) xs = go e xs
+   go (Note _ e) xs = go e xs
    go e xs = (reverse xs, e)
 
 
