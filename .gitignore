@@ -1,3 +1,4 @@
 *.o
 asm_offsets.incl
 gen_offs
+*.hi
