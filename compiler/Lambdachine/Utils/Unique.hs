@@ -1,5 +1,5 @@
 module Lambdachine.Utils.Unique (
-  Unique,
+  Unique, Uniquable(..),
   {-uniqueFromInt,-} intFromUnique, newUniqueSupply,
   bogusUnique,
   Supply, split, split2, split3, split4, supplyValue, modifySupply,
@@ -79,8 +79,8 @@ mk_unique c n | ord c < 128 = Unique u
 bogusUnique :: Unique
 bogusUnique = Unique 0
 
-uniqueFromInt :: Int -> Unique
-uniqueFromInt n = Unique n
+unsafeMkUnique :: Int -> Unique
+unsafeMkUnique n = Unique n
 
 intFromUnique :: Unique -> Int
 intFromUnique (Unique n) = n
@@ -101,3 +101,13 @@ toBaseXString n | n < baseX = [baseXDigits ! n]
 toBaseXString n =
   let (n', offs) = n `quotRem` baseX in
   baseXDigits ! offs : toBaseXString n'
+
+-- | Class for objects that have an associated unique id.
+class Uniquable a where
+  getUnique :: a -> Unique
+
+instance Uniquable Int where
+  getUnique n = unsafeMkUnique n
+
+instance Uniquable Unique where
+  getUnique u = u

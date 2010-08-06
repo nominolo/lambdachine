@@ -40,7 +40,7 @@ instructions at the original binding site.
  -}
 module Lambdachine.Ghc.CoreToBC where
 
-import Lambdachine.Utils
+import Lambdachine.Utils hiding ( Uniquable(..) )
 import Lambdachine.Id as N
 import Lambdachine.Grin.Bytecode as Grin
 import Lambdachine.Builtin
