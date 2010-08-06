@@ -92,6 +92,15 @@ data BcInstr r c
   | Nop
   deriving (Eq, Ord, Show)
 
+-- | A bytecode variable.
+data BcVar = BcVar !Id
+           | BcReg Int
+  deriving (Eq, Ord)
+
+instance Pretty BcVar where
+  ppr (BcVar x) = ppr x
+  ppr (BcReg n) = char 'R' <> ppr n
+
 data BcTag
   = DefaultTag
   | Tag Int

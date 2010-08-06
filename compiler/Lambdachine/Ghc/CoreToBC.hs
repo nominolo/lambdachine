@@ -472,15 +472,6 @@ emptyLocalEnv = LocalEnv Ghc.emptyVarEnv
 type FreeVarsIndex = Ghc.IdEnv Int
 
 
--- | A bytecode variable.
-data BcVar = BcVar !Id
-           | BcReg Int
-  deriving (Eq, Ord)
-
-instance Pretty BcVar where
-  ppr (BcVar x) = ppr x
-  ppr (BcReg n) = char 'R' <> ppr n
-
 type Bci = BcInstr BcVar BcConst
 type Bcis = Bag Bci
 
