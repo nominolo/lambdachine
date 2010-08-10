@@ -1,4 +1,4 @@
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE ViewPatterns, GADTs, ScopedTypeVariables #-}
 {-# LANGUAGE PatternGuards, GeneralizedNewtypeDeriving #-}
 {-| Generate bytecode from GHC Core.
 
@@ -42,7 +42,7 @@ module Lambdachine.Ghc.CoreToBC where
 
 import Lambdachine.Utils hiding ( Uniquable(..) )
 import Lambdachine.Id as N
-import Lambdachine.Grin.Bytecode as Grin
+import Lambdachine.Grin.BC2 as Grin
 import Lambdachine.Builtin
 import Lambdachine.Utils.Unique ( mkBuiltinUnique )
 
@@ -69,7 +69,7 @@ import FastString ( unpackFS )
 
 import qualified Data.Map as M
 import qualified Data.Set as S
-import Control.Applicative
+import Control.Applicative hiding ( (<*>) )
 import Control.Monad.State
 --import Control.Monad.Fix
 import Data.Foldable ( toList )
@@ -80,7 +80,7 @@ import Data.Maybe ( fromMaybe )
 import Debug.Trace
 
 ----------------------------------------------------------------------
--- Debug Utils:
+-- * Debug Utils:
 
 unimplemented :: String -> a
 unimplemented str = error $ "UNIMPLEMENTED: " ++ str
@@ -89,7 +89,9 @@ tracePpr :: Outputable a => a -> b -> b
 tracePpr o exp = trace (">>> " ++ showPpr o) exp
 
 -- -------------------------------------------------------------------
--- Top-level Interface
+-- * Top-level Interface
+
+type Bcis x = BcGraph O x
 
 generateBytecode :: Supply Unique -> [CoreBind] -> BCOs
 generateBytecode us bndrs0 = 
@@ -122,8 +124,11 @@ transTopLevelBind f (viewGhcLam -> (params, body)) = do
           locs0 = mkLocs [ (b, InReg n) | (b, n) <- zip params [0..] ]
           fvi0 = Ghc.emptyVarEnv
       (bcis, _, fvs, Nothing) <- transBody body env0 fvi0 locs0 RetC
+      l <- freshLabel
+      g <- finaliseBcGraph bcis l
       let bco = BcObject { bcoType = bco_type
-                         , bcoCode = toList bcis
+                         , bcoEntry = l
+                         , bcoCode = g -- toList bcis
                          , bcoGlobalRefs = toList (globalVars fvs)
                          , bcoConstants = []
                          , bcoFreeVars = 0
@@ -205,7 +210,7 @@ data ClosureInfo
 -- 
 transBinds :: CoreBind -> LocalEnv -> FreeVarsIndex 
            -> KnownLocs
-           -> Trans (Bcis, KnownLocs, FreeVars, LocalEnv)
+           -> Trans (Bcis O, KnownLocs, FreeVars, LocalEnv)
 transBinds bind env fvi locs0 = do
   case bind of
     NonRec f body -> do
@@ -248,12 +253,13 @@ transBinds bind env fvi locs0 = do
      trans_binds_rec fwds' binds env fix_acc'
                      ((f, closure_info) : ci_acc)
 
+-- Creates the actual code sequence (including fixup of forward references).
 build_bind_code :: Ghc.VarEnv [(Int, Ghc.Id)]
                 -> LocalEnv -> FreeVarsIndex
                 -> [(Ghc.Id, ClosureInfo)] -> KnownLocs
-                -> Trans (Bcis, KnownLocs, FreeVars, LocalEnv)
+                -> Trans (Bcis O, KnownLocs, FreeVars, LocalEnv)
 build_bind_code fwd_env env fvi closures locs0 = do
-  (bcis, locs, fvs) <- go mempty locs0 mempty closures
+  (bcis, locs, fvs) <- go emptyGraph locs0 mempty closures
   return (bcis, locs, fvs, env)
  where
    -- TODO: Do we need to accumulate the environment?
@@ -262,33 +268,33 @@ build_bind_code fwd_env env fvi closures locs0 = do
      (bcis1, locs1, fvs1, Just r)
        <- transStore dcon fields env fvi locs0 (BindC Nothing)
      let locs2 = updateLoc locs1 x (InVar r)
-     go (bcis `mappend` bcis1 `mappend` add_fw_refs x r locs2) locs2 (fvs `mappend` fvs1) objs
+     go (bcis <*> bcis1 <*> add_fw_refs x r locs2) locs2 (fvs `mappend` fvs1) objs
    go bcis locs0 fvs ((x, AppObj f args) : objs) = do
      (bcis1, locs1, fvs1, (freg:regs))
        <- transArgs (Ghc.Var f : args) env fvi locs0
      rslt <- mbFreshLocal Nothing
-     let bcis2 = (bcis `mappend` bcis1) `snocBag` MkAp rslt freg regs
+     let bcis2 = (bcis <*> bcis1) <*> insMkAp rslt (freg:regs)
          locs2 = updateLoc locs1 x (InVar rslt)
-         bcis3 = bcis2 `mappend` add_fw_refs x rslt locs2
+         bcis3 = bcis2 <*> add_fw_refs x rslt locs2
      go bcis3 locs2 (fvs `mappend` fvs1) objs
    go bcis locs0 fvs ((x, FunObj _arity info_tbl args) : objs) = do
      (bcis1, locs1, fvs1, regs)
        <- transArgs (map Ghc.Var args) env fvi locs0
      tag_reg <- mbFreshLocal Nothing
      rslt <- mbFreshLocal Nothing
-     let bcis2 = 
-           ((bcis `mappend` bcis1) `snocBag` LoadG tag_reg info_tbl)
-             `snocBag` Store rslt tag_reg regs
+     let bcis2 = bcis <*> bcis1 <*> insLoadGbl tag_reg info_tbl <*>
+                 insAlloc rslt tag_reg regs
          locs2 = updateLoc locs1 x (InVar rslt)
-         bcis3 = bcis2 `mappend` add_fw_refs x rslt locs2
+         bcis3 = bcis2 <*> add_fw_refs x rslt locs2
      go bcis3 locs2 (fvs `mappend` fvs1) objs
 
    add_fw_refs x r locs =
      case Ghc.lookupVarEnv fwd_env x of
-       Nothing -> emptyBag
-       Just fixups -> listToBag $
-         [ Update ry n r | (n, y) <- fixups,
-                           let Just (InVar ry) = lookupLoc locs y ]
+       Nothing -> emptyGraph --emptyBag
+       Just fixups ->
+         catGraphs $   -- listToBag $
+           [ insStore ry n r | (n, y) <- fixups,
+                               let Just (InVar ry) = lookupLoc locs y ]
 
 transBind :: CoreBndr -- ^ The binder name ...
           -> CoreExpr -- ^ ... and its body.
@@ -311,9 +317,12 @@ transBind x (viewGhcLam -> (bndrs, body)) env0 = do
         cv_indices = Ghc.mkVarEnv (zip closure_vars [(1::Int)..])
     return (bcis, closure_vars, globalVars fvs, cv_indices)
   x' <- freshVar "closure" mkTopLevelId
+  l <- freshLabel
+  g <- finaliseBcGraph bcis l
   let arity = length bndrs
   let bco = BcObject { bcoType = if arity > 0 then BcoFun arity else Thunk
-                     , bcoCode = toList bcis
+                     , bcoEntry = l
+                     , bcoCode = g
                      , bcoConstants = []
                      , bcoGlobalRefs = toList gbls
                      , bcoFreeVars = length vars }
@@ -332,8 +341,8 @@ transFields f args = map to_field args
    to_field arg = 
      error $ "transFields: Ill-formed argument: " ++ showPpr arg
 
-type BCOs = M.Map Id (BytecodeObject BcVar BcConst)
-type BCO = BytecodeObject BcVar BcConst
+type BCOs = M.Map Id BytecodeObject
+type BCO = BytecodeObject
 
 -- -------------------------------------------------------------------
 
@@ -360,6 +369,9 @@ genUnique = Trans $ do
     (us, us') -> do
       put $! s{ tsUniques = us }
       return us'
+
+instance UniqueMonad Trans where
+  freshUnique = hooplUniqueFromUniqueSupply `fmap` genUnique
 
 addBCO :: Id -> BCO -> Trans ()
 addBCO f bco = Trans $
@@ -471,13 +483,19 @@ emptyLocalEnv = LocalEnv Ghc.emptyVarEnv
 
 type FreeVarsIndex = Ghc.IdEnv Int
 
+-- | The context describes whether we should bind the result of the
+-- translated expression (and to which variable).
+--
+-- The Type parameter describes the exit shape of the resulting graph.
+--
+-- If the context is @BindC (Just r)@, then the result should be
+-- written into register @r@.  If it is @BindC Nothing@ then the
+-- result should be written into a fresh local variable.
+data Context x where
+  RetC :: Context C
+  BindC :: Maybe BcVar -> Context O
 
-type Bci = BcInstr BcVar BcConst
-type Bcis = Bag Bci
-
-data Context = RetC | BindC (Maybe BcVar)
-
-contextVar :: Context -> Maybe BcVar
+contextVar :: Context x -> Maybe BcVar
 contextVar RetC = Nothing
 contextVar (BindC mx) = mx
 
@@ -501,22 +519,12 @@ globalVar x = FreeVars Ghc.emptyVarSet (S.singleton x)
 freshVar :: String -> (Name -> a) -> Trans a
 freshVar nm f = do
   us <- genUnique
-  return (f (freshName us (nm ++ "_" ++ tail (show (supplyValue us)))))
+  return (f (freshName us (nm ++ "" ++ tail (show (supplyValue us)))))
 
 mbFreshLocal :: Maybe BcVar -> Trans BcVar
 mbFreshLocal (Just v) = return v
-mbFreshLocal Nothing = freshVar "lcl" (BcVar . mkLocalId)
+mbFreshLocal Nothing = freshVar "%" (BcVar . mkLocalId)
 
---transBinder :: CoreExpr -> Trans BCO
-{-
-transRhs :: CoreExpr -> LocalEnv -> Trans Bcis
-transRhs (viewGhcLam -> (bndrs, body)) env0 = do
-  xs <- mapM internCoreBndr bndrs
-  let env = fold2l' extendLocalEnv env0 bndrs xs
-  let locs0 = mkLocs [ (b, InReg n) | (b, n) <- zip bndrs [0..] ]
-  (bcis, _, _, _) <- transBody body env locs0 RetC
-  return bcis
--}
 -- | Create a new local 'Id' from a 'Ghc.Id'.
 internCoreBndr :: CoreBndr -> Trans Id
 internCoreBndr x = freshVar (Ghc.getOccString x) mkLocalId
@@ -525,13 +533,13 @@ internCoreBndr x = freshVar (Ghc.getOccString x) mkLocalId
 --
 -- If the context is 'RetC' will append a return statement or tail
 -- call at the end.  Otherwise, the result is written into a register.
-transBody :: 
+transBody ::
      CoreExpr  -- ^ The expression we're working on.
   -> LocalEnv  -- ^ The locally bound variables.  See 'LocalEnv'.
   -> FreeVarsIndex
   -> KnownLocs -- ^ Known register locations for some vars.
-  -> Context   -- ^ The code generation context.
-  -> Trans (Bcis, KnownLocs, FreeVars, Maybe BcVar)
+  -> Context x  -- ^ The code generation context.
+  -> Trans (Bcis x, KnownLocs, FreeVars, Maybe BcVar)
      -- ^ Returns:
      --
      --  * The instructions corresponding to the expression
@@ -539,23 +547,23 @@ transBody ::
      --  * Free variables (not top-level) of the expression.
      --  * The variable that the result is bound to (if needed).
      --
---transBody e _ _ _ _ | tracePpr e False = undefined
 
+--transBody e _ _ _ _ | tracePpr e False = undefined
 transBody (Ghc.Lit l) env _fvi locs ctxt = do
   (is, r) <- transLiteral l (contextVar ctxt)
   case ctxt of
-    RetC -> return (is `mappend` singletonBag (Ret1 r),
+    RetC -> return (is <*> insRet1 r,
                    locs, mempty, Nothing)
     BindC _ -> return (is, locs, mempty, Just r)
 
 transBody (Ghc.Var x) env fvi locs0 ctxt = do
   (is0, r, eval'd, locs1, fvs) <- transVar x env fvi locs0 (contextVar ctxt)
   let is | eval'd = is0
-         | otherwise = is0 `mappend` singletonBag (Eval r r)
+         | otherwise = is0 <*> insEval r
   case ctxt of
-    RetC -> return (is `mappend` singletonBag (Ret1 r),
+    RetC -> return (is <*> insRet1 r,
                    locs1, fvs, Nothing)
-    _ -> return (is, locs1, fvs, Just r)
+    BindC _ -> return (is, locs1, fvs, Just r)
 
 transBody expr@(Ghc.App _ _) env fvi locs0 ctxt
  | Just (f, args) <- viewGhcApp expr
@@ -565,19 +573,28 @@ transBody (Ghc.Case scrut bndr _ty alts) env0 fvi locs0 ctxt = do
   (bcis, locs1, fvs0, Just r) <- transBody scrut env0 fvi locs0 (BindC Nothing)
   let locs2 = updateLoc locs1 bndr (InVar r)
   let env = extendLocalEnv env0 bndr undefined
-  ctxt' <- case ctxt of
-             BindC Nothing -> BindC . Just <$> mbFreshLocal Nothing
-             _ -> return ctxt
   case alts of
     [(altcon, vars, body)] -> do
       let locs3 = addMatchLocs locs2 r altcon vars
           env' = extendLocalEnvList env vars
       (bcis', locs4, fvs1, mb_r) <- transBody body env' fvi locs3 ctxt
-      return (bcis `mappend` bcis', locs4, fvs0 `mappend` fvs1, mb_r)
+      return (bcis <*> bcis', locs4, fvs0 `mappend` fvs1, mb_r)
     _ -> do
-      (alt_bcis, fvs1) <- transCaseAlts alts r env fvi locs2 ctxt'
-      return (bcis `snocBag` Case r (map (second toList) alt_bcis),
-              locs1, fvs0 `mappend` fvs1, contextVar ctxt')
+      case ctxt of
+        RetC -> do -- inss are closed at exit
+          (alts, inss, fvs1) <- transCaseAlts alts r env fvi locs2 RetC
+          return ((bcis <*> insCase CaseOnTag {- XXX: wrong -} r alts)
+                  `catGraphsC` inss,
+                  locs1, fvs0 `mappend` fvs1, Nothing)
+        BindC mr -> do -- close inss' first
+          r <- mbFreshLocal mr
+          (alts, inss, fvs1) <- transCaseAlts alts r env fvi locs2 (BindC (Just r))
+          let bcis' =
+                withFresh $ \l -> 
+                  let inss' = [ ins <*> insGoto l | ins <- inss ] in
+                  ((bcis <*> insCase CaseOnTag r alts) `catGraphsC` inss')
+                   |*><*| mkLabel l  -- make sure we're open at the end
+          return (bcis', locs1, fvs0 `mappend` fvs1, Just r)
 
 transBody (Ghc.Let (NonRec x (viewGhcApp -> Just (f, args@(_:_)))) body)
           env fvi locs0 ctxt
@@ -587,12 +604,12 @@ transBody (Ghc.Let (NonRec x (viewGhcApp -> Just (f, args@(_:_)))) body)
        let locs2 = updateLoc locs1 x (InVar r)
            env' = extendLocalEnv env x undefined
        (bcis1, locs3, fvs1, mb_r) <- transBody body env' fvi locs2 ctxt
-       return (bcis0 `mappend` bcis1, locs3, fvs0 `mappend` fvs1, mb_r)
+       return (bcis0 <*> bcis1, locs3, fvs0 `mappend` fvs1, mb_r)
 
 transBody (Ghc.Let bind body) env fvi locs0 ctxt = do
   (bcis, locs1, fvs, env') <- transBinds bind env fvi locs0
   (bcis', locs2, fvs', mb_r) <- transBody body env' fvi locs1 ctxt
-  return (bcis `mappend` bcis', locs2, fvs `mappend` fvs', mb_r)
+  return (bcis <*> bcis', locs2, fvs `mappend` fvs', mb_r)
 
 transBody (Ghc.Note _ e) env fvi locs ctxt = transBody e env fvi locs ctxt
 transBody (Ghc.Cast e _) env fvi locs ctxt = transBody e env fvi locs ctxt
@@ -605,13 +622,13 @@ transBody e _ _ _ _ = error $ "transBody: " ++ showPpr e
 -- Usually just amounts to loading a value from the constant pool.
 -- Indices of the constant pool are determined in a separate pass.
 transLiteral :: Ghc.Literal -> Maybe BcVar
-             -> Trans (Bcis, BcVar)
+             -> Trans (Bcis O, BcVar)
 transLiteral (Ghc.MachInt n) mbvar = do
   rslt <- mbFreshLocal mbvar
-  return (singletonBag (LoadK rslt (CInt n)), rslt)
+  return (insLoadLit rslt (CInt n), rslt)
 transLiteral (Ghc.MachStr fs) mb_var = do
   rslt <- mbFreshLocal mb_var
-  return (singletonBag (LoadK rslt (CStr (unpackFS fs))), rslt)
+  return (insLoadLit rslt (CStr (unpackFS fs)), rslt)
 transLiteral x _ = unimplemented ("literal: " ++ showPpr x)
 
 -- | Translate a variable reference into bytecode.
@@ -632,7 +649,7 @@ transVar ::
   -> KnownLocs
   -> Maybe BcVar -- ^ @Just r <=>@ load variable into specified
                  -- register.
-  -> Trans (Bcis, BcVar, Bool, KnownLocs, FreeVars)
+  -> Trans (Bcis O, BcVar, Bool, KnownLocs, FreeVars)
      -- ^ Returns:
      --
      -- * The instructions to load the variable
@@ -655,11 +672,11 @@ transVar x env fvi locs0 mr =
       return (mbMove mr x', fromMaybe x' mr, False, locs0, mempty)
     Just (Field p n) -> do -- trace "inFLD" $ do
       r <- mbFreshLocal mr
-      return (singletonBag (Fetch r p n),
+      return (insFetch r p n,
               r, False, updateLoc locs0 x (InVar r), mempty)
     Just Fwd -> do
       r <- mbFreshLocal mr
-      return (singletonBag (LoadBlackhole r), r, True, locs0, mempty)
+      return (insLoadBlackhole r, r, True, locs0, mempty)
     Nothing
       | Just x' <- lookupLocalEnv env x -> do
           -- Note: To avoid keeping track of two environments we must
@@ -668,24 +685,24 @@ transVar x env fvi locs0 mr =
           r <- mbFreshLocal mr
           -- Do not force @i@ -- must remain a thunk
           let i = expectJust "transVar" (Ghc.lookupVarEnv fvi x)
-          return (singletonBag (LoadF r i), r, False,
+          return (insLoadFV r i, r, False,
                   updateLoc locs0 x (InVar r), closureVar x)
       | otherwise -> do  -- global variable
           let x' = toplevelId x
           r <- mbFreshLocal mr
-          return (singletonBag (LoadG r x'), r, isGhcConWorkId x,  -- TODO: only if CAF
+          return (insLoadGbl r x', r, isGhcConWorkId x,  -- TODO: only if CAF
                   updateLoc locs0 x (InVar r), globalVar x')
 
 transApp :: CoreBndr -> [CoreArg] -> LocalEnv -> FreeVarsIndex
-         -> KnownLocs -> Context
-         -> Trans (Bcis, KnownLocs, FreeVars, Maybe BcVar)
+         -> KnownLocs -> Context x
+         -> Trans (Bcis x, KnownLocs, FreeVars, Maybe BcVar)
 transApp f [] env fvi locs ctxt = transBody (Ghc.Var f) env fvi locs ctxt
 transApp f args env fvi locs0 ctxt
   | Just p <- isGhcPrimOpId f, isLength 2 args 
   = do (is0, locs1, fvs, [r1, r2]) <- transArgs args env fvi locs0
        let Just (op, ty) = primOpToBinOp p   -- XXX: may fail
        rslt <- mbFreshLocal (contextVar ctxt)
-       maybeAddRet ctxt (is0 `snocBag` BinR op ty rslt r1 r2)
+       maybeAddRet ctxt (is0 <*> insBinOp op ty rslt r1 r2)
                    locs1 fvs rslt
   | isGhcConWorkId f  -- allocation
   = transStore f args env fvi locs0 ctxt
@@ -693,27 +710,31 @@ transApp f args env fvi locs0 ctxt
   = do (is0, locs1, fvs0, regs) <- transArgs args env fvi locs0
        (is1, locs2, fvs1, Just fr)
          <- transBody (Ghc.Var f) env fvi locs1 (BindC Nothing)
-       let is = is0 `mappend` is1
+       let is = is0 <*> is1
            fvs = fvs0 `mappend` fvs1
-       mb_rslt <- case ctxt of
-                    RetC -> return Nothing
-                    BindC mr ->
-                      Just <$> mbFreshLocal mr
-       return (is `snocBag` Call mb_rslt fr regs,
-               locs2, fvs, mb_rslt)
-
+       case ctxt of
+         RetC -> -- tailcall, x = C
+           let ins = is <*> insCall Nothing fr regs in
+           return (ins, locs2, fvs, Nothing)
+         BindC mr ->  do
+           -- need to ensure that x = O, so we need to emit
+           -- a fresh label after the call
+           r <- mbFreshLocal mr
+           let ins = withFresh $ \l ->
+                       is <*> insCall (Just (r, l)) fr regs |*><*| mkLabel l
+           return (ins, locs2, fvs, Just r)
 --error $ "transApp: " ++ showPpr f ++ " " ++ showPpr (Ghc.idDetails f)
 
 -- | Generate code for loading the given function arguments into
 -- registers.
 transArgs :: [CoreArg] -> LocalEnv -> FreeVarsIndex -> KnownLocs
-          -> Trans (Bcis, KnownLocs, FreeVars, [BcVar])
-transArgs args0 env fvi locs0 = go args0 mempty locs0 mempty []
+          -> Trans (Bcis O, KnownLocs, FreeVars, [BcVar])
+transArgs args0 env fvi locs0 = go args0 emptyGraph locs0 mempty []
  where
    go [] bcis locs fvs regs = return (bcis, locs, fvs, reverse regs)
    go (arg:args) bcis locs fvs regs = do
      (bcis', locs', fvs', r) <- trans_arg arg locs
-     go args (bcis `mappend` bcis') locs' (fvs `mappend` fvs') (r:regs)
+     go args (bcis <*> bcis') locs' (fvs `mappend` fvs') (r:regs)
 
    trans_arg (Ghc.Lit l) locs = do
      (bcis, r) <- transLiteral l Nothing
@@ -728,28 +749,30 @@ transArgs args0 env fvi locs0 = go args0 mempty locs0 mempty []
    trans_arg (Note _ x) locs               = trans_arg x locs
 
 transStore :: CoreBndr -> [CoreArg] -> LocalEnv -> FreeVarsIndex
-           -> KnownLocs -> Context
-           -> Trans (Bcis, KnownLocs, FreeVars, Maybe BcVar)
+           -> KnownLocs -> Context x
+           -> Trans (Bcis x, KnownLocs, FreeVars, Maybe BcVar)
 transStore dcon args env fvi locs0 ctxt = do
   (bcis0, locs1, fvs, regs) <- transArgs args env fvi locs0
   (bcis1, con_reg, _, locs2, fvs')
     <- transVar dcon env fvi locs1 (contextVar ctxt)  -- XXX: loadDataCon or sth.
   rslt <- mbFreshLocal (contextVar ctxt)
-  let bcis = (bcis0 `mappend` bcis1) `snocBag` Store rslt con_reg regs
+  let bcis = (bcis0 <*> bcis1) <*> insAlloc rslt con_reg regs
   maybeAddRet ctxt bcis locs2 (fvs `mappend` fvs') rslt
 
 transCaseAlts ::
      [CoreAlt] -- ^ The case alternatives
   -> BcVar     -- ^ The variable we're matching on.
-  -> LocalEnv -> FreeVarsIndex -> KnownLocs -> Context
-  -> Trans ([(BcTag, Bcis)], FreeVars)
+  -> LocalEnv -> FreeVarsIndex -> KnownLocs -> Context x
+  -> Trans ([(BcTag, BlockId)], [BcGraph C x], FreeVars)
 transCaseAlts alts match_var env fvi locs0 ctxt = do
-  second mconcat . unzip <$>
+  (targets, bcis, fvss) <- unzip3 <$>
     (forM alts $ \(altcon, vars, body) -> do
       let locs1 = addMatchLocs locs0 match_var altcon vars
           env' = extendLocalEnvList env vars
       (bcis, _locs2, fvs, _mb_var) <- transBody body env' fvi locs1 ctxt
-      return ((dataConTag altcon, bcis), fvs))
+      l <- freshLabel
+      return ((dataConTag altcon, l), mkLabel l <*> bcis, fvs))
+  return (targets, bcis, mconcat fvss)
 
 addMatchLocs :: KnownLocs -> BcVar -> AltCon -> [CoreBndr] -> KnownLocs
 addMatchLocs locs _base_reg DEFAULT [] = locs
@@ -763,21 +786,21 @@ dataConTag (DataAlt dcon) = Tag $ Ghc.dataConTag dcon
 dataConTag (LitAlt (Ghc.MachInt n)) = LitT n
 
 -- | Append a @Ret1@ instruction if needed and return.
-maybeAddRet :: Context -> Bcis -> KnownLocs -> FreeVars -> BcVar
-            -> Trans (Bcis, KnownLocs, FreeVars, Maybe BcVar)
+maybeAddRet :: Context x -> Bcis O -> KnownLocs -> FreeVars -> BcVar
+            -> Trans (Bcis x, KnownLocs, FreeVars, Maybe BcVar)
 maybeAddRet (BindC _) is locs fvs r =
   return (is, locs, fvs, Just r)
 maybeAddRet RetC is locs fvs r =
-  return (is `snocBag` Ret1 r, locs, fvs, Nothing)
+  return (is <*> insRet1 r, locs, fvs, Nothing)
 
 -- | Return a move instruction if target is @Just x@.
 --
 -- Redundant move instructions are eliminated by a later pass.
-mbMove :: Maybe BcVar -> BcVar -> Bcis
-mbMove Nothing _ = mempty
+mbMove :: Maybe BcVar -> BcVar -> Bcis O
+mbMove Nothing _ = emptyGraph
 mbMove (Just r) r'
-  | r == r'   = mempty
-  | otherwise = singletonBag (Move r r')
+  | r == r'   = emptyGraph
+  | otherwise = insMove r r'
 
 isGhcConWorkId :: CoreBndr -> Bool
 isGhcConWorkId x
@@ -794,17 +817,19 @@ isGhcPrimOpId x
 primOpToBinOp :: Ghc.PrimOp -> Maybe (BinOp, OpTy)
 primOpToBinOp primop =
   case primop of
-    Ghc.IntAddOp -> Just (PrAdd, Int32Ty)
-    Ghc.IntSubOp -> Just (PrSub, Int32Ty)
-    Ghc.IntMulOp -> Just (PrMul, Int32Ty)
-    Ghc.IntQuotOp -> Just (PrDiv, Int32Ty)
+    Ghc.IntAddOp -> Just (OpAdd, Int32Ty)
+    Ghc.IntSubOp -> Just (OpSub, Int32Ty)
+    Ghc.IntMulOp -> Just (OpMul, Int32Ty)
+    Ghc.IntQuotOp -> Just (OpDiv, Int32Ty)
+
     -- TODO: treat conditionals specially?
-    Ghc.IntGtOp -> Just (PrGt, Int32Ty)
-    Ghc.IntGeOp -> Just (PrGe, Int32Ty)
-    Ghc.IntEqOp -> Just (PrEq, Int32Ty)
-    Ghc.IntNeOp -> Just (PrNe, Int32Ty)
-    Ghc.IntLtOp -> Just (PrLt, Int32Ty)
-    Ghc.IntLeOp -> Just (PrLe, Int32Ty)
+    Ghc.IntGtOp -> Just (CmpGt, Int32Ty)
+    Ghc.IntGeOp -> Just (CmpGe, Int32Ty)
+    Ghc.IntEqOp -> Just (CmpEq, Int32Ty)
+    Ghc.IntNeOp -> Just (CmpNe, Int32Ty)
+    Ghc.IntLtOp -> Just (CmpLt, Int32Ty)
+    Ghc.IntLeOp -> Just (CmpLe, Int32Ty)
+
     _ -> Nothing
 --primOpToBinOp _ = Nothing
 
