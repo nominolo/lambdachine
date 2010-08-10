@@ -21,5 +21,5 @@ instance Show Name where
 instance Pretty Name where
   ppr (Name u n)
    | u == bogusUnique = text n
-   | otherwise = text n <> pale (char '_' <> ppr u)
+   | otherwise = text n -- <> pale (char '_' <> ppr u)
 
