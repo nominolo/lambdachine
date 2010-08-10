@@ -42,7 +42,7 @@ module Lambdachine.Ghc.CoreToBC where
 
 import Lambdachine.Utils hiding ( Uniquable(..) )
 import Lambdachine.Id as N
-import Lambdachine.Grin.BC2 as Grin
+import Lambdachine.Grin.Bytecode as Grin
 import Lambdachine.Builtin
 import Lambdachine.Utils.Unique ( mkBuiltinUnique )
 
