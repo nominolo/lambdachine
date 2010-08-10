@@ -708,8 +708,8 @@ transApp f args env fvi locs0 ctxt
   = transStore f args env fvi locs0 ctxt
   | otherwise
   = do (is0, locs1, fvs0, regs) <- transArgs args env fvi locs0
-       (is1, locs2, fvs1, Just fr)
-         <- transBody (Ghc.Var f) env fvi locs1 (BindC Nothing)
+       (is1, fr, _, locs2, fvs1)
+          <- transVar f env fvi locs1 Nothing
        let is = is0 <*> is1
            fvs = fvs0 `mappend` fvs1
        case ctxt of
