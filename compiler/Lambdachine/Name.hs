@@ -5,6 +5,9 @@ import Lambdachine.Utils
 data Name = Name {-# UNPACK #-} !Unique String
   deriving (Eq, Ord)
 
+instance Uniquable Name where
+  getUnique (Name u s) = u
+
 name :: String -> Name
 name n = Name bogusUnique n
 

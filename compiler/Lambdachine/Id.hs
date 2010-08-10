@@ -15,6 +15,9 @@ data Id = Id
 instance Show Id where
   show (Id n _) = show n
 
+instance Uniquable Id where
+  getUnique (Id n _) = getUnique n
+
 data IdDetails
   = TopLevelId
   | LocalId
@@ -56,7 +59,7 @@ instance Pretty Id where
   ppr ident =
     let name = idName ident in
     case idDetails ident of
-      TopLevelId -> gblcolour (ppr name)
+      TopLevelId -> gblcolour (ppr name) <> pale (char '_' <> ppr (getUnique name))
       PrimOpId -> ppr name
       LocalId -> varcolour (ppr name)
       DataConId -> dconcolour (ppr name)
