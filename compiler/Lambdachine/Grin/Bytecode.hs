@@ -1,31 +1,293 @@
-{-# LANGUAGE ViewPatterns, PatternGuards,
-             GeneralizedNewtypeDeriving, TypeOperators #-}
-{-# OPTIONS_GHC -Wall #-}
-module Lambdachine.Grin.Bytecode where
+{-# LANGUAGE GeneralizedNewtypeDeriving, BangPatterns #-}
+{-# LANGUAGE GADTs, TypeFamilies, ScopedTypeVariables, RankNTypes #-}
+{-# LANGUAGE TypeSynonymInstances, FlexibleContexts, MultiParamTypeClasses,
+             FlexibleInstances #-}
+module Lambdachine.Grin.Bytecode
+  ( module Lambdachine.Grin.Bytecode,
+    (<*>), (|*><*|), O, C, emptyGraph, catGraphs, MaybeO(..),
+    withFresh, HooplNode(..), freshLabel, UniqueMonad(..),
+  )
+where
 
-import Prelude hiding ( foldr )
-
-import Lambdachine.Utils
 import Lambdachine.Id
-import qualified Lambdachine.Grin as Grin
-import Lambdachine.Grin ( Value(..) ) --, Expr((:>>=), (:>>), (:->), Unit) )
+import Lambdachine.Utils.Pretty
+import qualified Lambdachine.Utils.Unique as U
 
-import qualified Data.Map as M
-import Control.Applicative
-import Control.Monad.State.Strict
-import Data.Foldable
-import Data.Monoid
+import Compiler.Hoopl
+import Control.Monad.State
+import Data.Maybe ( maybeToList, fromMaybe )
+--import qualified Data.Set as S
+import Data.Generics.Uniplate.Direct
+import Data.Bits ( (.&.) )
 
-import Debug.Trace
+type BlockId = Label
 
-data BytecodeObject r c 
+data BcIns e x where
+  Label  :: Label -> BcIns C O
+  -- O/O stuff
+  Assign :: BcVar -> BcRhs        -> BcIns O O
+  Eval   :: BcVar                 -> BcIns O O
+  Store  :: BcVar -> Int -> BcVar -> BcIns O O
+  -- O/C stuff
+  Goto   :: BlockId                -> BcIns O C
+  CondBranch :: BinOp -> OpTy -> BcVar -> BcVar
+             -> BlockId -> BlockId -> BcIns O C
+  Case :: CaseType -> BcVar 
+       -> [(BcTag, BlockId)]       -> BcIns O C
+  Call :: Maybe (BcVar, BlockId)
+       -> BcVar -> [BcVar]         -> BcIns O C
+  Ret1 :: BcVar                    -> BcIns O C
+
+data CaseType
+  = CaseOnTag
+  | CaseOnLiteral
+  deriving (Eq, Ord)
+
+data BcTag
+  = DefaultTag
+  | Tag Int
+  | LitT Integer
+  deriving (Eq, Ord, Show)
+
+data BcRhs
+  = Move BcVar
+  | Load BcLoadOperand
+  | BinOp BinOp OpTy BcVar BcVar
+  | Fetch BcVar Int
+  | Alloc BcVar [BcVar]
+  | AllocAp [BcVar]
+  deriving (Eq, Ord)
+
+data BcLoadOperand
+  = LoadLit BcConst
+  | LoadGlobal Id
+  | LoadClosureVar Int
+  | LoadBlackhole
+  deriving (Eq, Ord)
+{-
+data CompOp
+  = CmpGt | CmpLe | CmpGe | CmpLt | CmpEq | CmpNe
+  deriving (Eq, Ord)
+-}
+data BinOp
+  = OpAdd | OpSub | OpMul | OpDiv
+  | CmpGt | CmpLe | CmpGe | CmpLt | CmpEq | CmpNe
+  deriving (Eq, Ord)
+
+data OpTy = Int32Ty | Float32Ty
+  deriving (Eq, Ord)
+
+data BcVar = BcVar !Id
+           | BcReg {-# UNPACK #-} !Int
+  deriving (Eq, Ord)
+
+
+
+instance NonLocal BcIns where
+  entryLabel (Label l) = l
+  successors (Goto l) = [l]
+  successors (CondBranch _ _ _ _ tl fl) = [fl, tl]
+  successors (Case _ _ targets) = map snd targets
+  successors (Call mb_l _ _) = maybeToList (snd `fmap` mb_l)
+  successors (Ret1 _) = []
+
+instance HooplNode BcIns where
+  mkBranchNode l = Goto l
+  mkLabelNode l = Label l
+
+hooplUniqueFromUniqueSupply :: U.Supply U.Unique -> Unique
+hooplUniqueFromUniqueSupply us =
+  intToUnique ((U.intFromUnique (U.supplyValue us)) .&. 0xffffff)
+
+-- -------------------------------------------------------------------
+
+instance Pretty BcVar where
+  ppr (BcVar v) = ppr v
+  ppr (BcReg n) = char 'r' <> int n
+  
+instance Pretty Label where
+  ppr lbl = text (show lbl)
+
+--instance Pretty CompOp where
+
+instance Pretty BinOp where
+  ppr OpAdd = char '+'
+  ppr OpSub = char '-'
+  ppr OpMul = char '*'
+  ppr OpDiv = char '/'
+  ppr CmpGt = char '>'
+  ppr CmpLe = text "<="
+  ppr CmpGe = text ">="
+  ppr CmpLt = char '<'
+  ppr CmpEq = text "=="
+  ppr CmpNe = text "/="
+
+instance Pretty (BcIns e x) where
+  ppr (Label _) = empty
+  ppr (Assign r rhs) = ppr r <+> char '=' <+> ppr rhs
+  ppr (Eval r) = text "eval" <+> ppr r
+  ppr (Store base offs val) =
+    text "Mem[" <> ppr base <+> char '+' <+> int offs <> text "] = " <> ppr val
+  ppr (Goto bid) = text "goto" <+> ppr bid
+  ppr (CondBranch cmp ty r1 r2 true false) =
+    text "if" <+> ppr r1 <+> ppr cmp <+> ppr r2 <+>
+      char '<' <> ppr ty <> char '>' <+> text "then goto" <+> ppr true <+>
+      brackets (text "else goto" <+> ppr false)
+  ppr (Case _ r targets) =
+    text "case" <+> ppr r $$ indent 2 (vcat (map ppr_target targets))
+   where ppr_target (tag, target) = ppr tag <> colon <+> ppr target
+  ppr (Call rslt f args) =
+    (case rslt of
+       Nothing -> text "return"
+       Just (r,_) -> ppr r <+> char '=') <+>
+    ppr f <> parens (hsep (commaSep (map ppr args)))
+  ppr (Ret1 r) = text "return" <+> ppr r
+
+instance Pretty BcRhs where
+  ppr (Move r) = ppr r
+  ppr (Load op) = ppr op
+  ppr (BinOp op ty src1 src2) =
+    ppr src1 <+> ppr op <+> ppr src2 <+> char '<' <> (ppr ty) <> char '>'
+  ppr (Fetch r offs) =
+    text "Mem[" <> ppr r <+> char '+' <+> int offs <> char ']'
+  ppr (Alloc ctor args) =
+    text "alloc(" <> hsep (commaSep (map ppr (ctor:args))) <> char ')'
+  ppr (AllocAp args) =
+    text "alloc_ap(" <> hsep (commaSep (map ppr args)) <> char ')'
+
+instance Pretty OpTy where
+  ppr Int32Ty = text "i32"
+  ppr Float32Ty = text "f32"
+
+instance Pretty BcLoadOperand where
+  ppr (LoadLit l) = ppr l
+  ppr (LoadGlobal x) = ppr x
+  ppr (LoadClosureVar n) = text "Node[" <> int n <> char ']'
+  ppr LoadBlackhole = text "<blackhole>"
+
+instance Pretty BcTag where
+  ppr DefaultTag = text "_"
+  ppr (Tag n) = int n
+  ppr (LitT n) = char '#' <> text (show n)
+
+tst1 = do
+  pprint (Assign (BcReg 1) (BinOp OpAdd Int32Ty (BcReg 2) (BcReg 3)))
+  pprint (Assign (BcReg 2) (Fetch (BcReg 2) 42))
+
+-- -------------------------------------------------------------------
+
+type NodePpr n = forall e x . n e x -> PDoc
+type LabelPpr = Label -> PDoc
+
+pprGraph :: NodePpr n -> LabelPpr -> Graph n e x -> PDoc
+pprGraph ppN _ GNil = text "{}"
+pprGraph ppN _ (GUnit blk) =
+    char '{' $$ pprBlock ppN blk $$ char '}'
+pprGraph ppN ppL (GMany entry blocks exit) =
+    char '{' $$
+      indent 2 (ppMaybeO (pprBlock ppN) entry $$
+                vcat pp_blocks $$
+                ppMaybeO (pprBlock ppN) exit) $$
+    char '}'
+   where
+     pp_blocks = map pp_block (mapToList blocks)
+     pp_block (l, blk) =
+       ppL l $$ indent 3 (pprBlock ppN blk)
+
+pprBlock :: NodePpr n -> Block n e x -> PDoc
+pprBlock ppN blk =
+  --ppMaybeC ppN entry $$
+  vcat (map ppN middles) $$
+  ppMaybeC ppN exit
+ where (entry, middles, exit) = blockToNodeList blk
+
+ppMaybeO :: (a -> PDoc) -> MaybeO o a -> PDoc
+ppMaybeO pp NothingO = empty
+ppMaybeO pp (JustO a) = pp a
+
+ppMaybeC :: (a -> PDoc) -> MaybeC o a -> PDoc
+ppMaybeC pp NothingC = empty
+ppMaybeC pp (JustC a) = pp a
+
+{-
+pprBlock' :: forall n e x.
+             NodePpr n -> Block n e x -> IndexedCO x PDoc PDoc
+pprBlock' ppN block =
+  foldBlockNodesF f block empty
+ where
+   f :: n e1 x1 -> PDoc -> PDoc
+   f n d = d $$ ppN n
+-}
+
+type BcGraph e x = AGraph BcIns e x
+
+finaliseBcGraph :: UniqueMonad m => BcGraph O C -> BlockId
+                -> m (Graph BcIns C C)
+finaliseBcGraph agr entry =
+  graphOfAGraph (mkFirst (Label entry) <*> agr)
+
+mkLabel :: Label -> BcGraph C O
+mkLabel l = mkFirst $ Label l
+
+insBinOp :: BinOp -> OpTy -> BcVar -> BcVar -> BcVar -> BcGraph O O
+insBinOp op ty rslt src1 src2 =
+  mkMiddle $ Assign rslt (BinOp op ty src1 src2)
+
+insLoadLit :: BcVar -> BcConst -> BcGraph O O
+insLoadLit r lit = mkMiddle $ Assign r (Load (LoadLit lit))
+
+insLoadGbl :: BcVar -> Id -> BcGraph O O
+insLoadGbl r gbl = mkMiddle $ Assign r (Load (LoadGlobal gbl))
+
+insLoadFV :: BcVar -> Int -> BcGraph O O
+insLoadFV r n = mkMiddle $ Assign r (Load (LoadClosureVar n))
+
+insLoadBlackhole :: BcVar -> BcGraph O O
+insLoadBlackhole r = mkMiddle $ Assign r (Load LoadBlackhole)
+
+insMkAp :: BcVar -> [BcVar] -> BcGraph O O
+insMkAp r args = mkMiddle $ Assign r (AllocAp args)
+
+insMove :: BcVar -> BcVar -> BcGraph O O
+insMove dst src = mkMiddle $ Assign dst (Move src)
+
+insAlloc :: BcVar -> BcVar -> [BcVar] -> BcGraph O O
+insAlloc r dcon args = mkMiddle $ Assign r (Alloc dcon args)
+
+insStore :: BcVar -> Int -> BcVar -> BcGraph O O
+insStore base offs val = mkMiddle $ Store base offs val
+
+insFetch :: BcVar -> BcVar -> Int -> BcGraph O O
+insFetch dst base offs = mkMiddle $ Assign dst (Fetch base offs)
+
+insEval :: BcVar -> BcGraph O O
+insEval r = mkMiddle $ Eval r
+
+insRet1 :: BcVar -> BcGraph O C
+insRet1 r = mkLast $ Ret1 r
+
+insCase :: CaseType -> BcVar -> [(BcTag, BlockId)] -> BcGraph O C
+insCase cty r targets = mkLast $ Case cty r targets
+
+insGoto :: BlockId -> BcGraph O C
+insGoto l = mkLast $ Goto l
+
+insCall :: Maybe (BcVar, BlockId) -> BcVar -> [BcVar] -> BcGraph O C
+insCall kont f args = mkLast $ Call kont f args
+
+catGraphsC :: BcGraph e C -> [BcGraph C C] -> BcGraph e C
+catGraphsC g [] = g
+catGraphsC g (h:hs) = catGraphsC (g |*><*| h) hs
+
+data BytecodeObject
   = BcObject
     { bcoType :: BcoType
-    , bcoCode :: [BcInstr r c]
+    , bcoEntry :: BlockId
+    , bcoCode :: Graph BcIns C C
     , bcoGlobalRefs :: [Id]
-    , bcoConstants :: [c]
+    , bcoConstants :: [BcConst]
     , bcoFreeVars  :: Int
-    }   
+    }
   | BcoCon
     { bcoType :: BcoType -- ^ Always 'Con'.  Only for completeness.
     , bcoDataCon :: Id   -- ^ The constructor 'Id'.
@@ -38,153 +300,6 @@ data BcoType
   | CAF
   | Con
 
-instance Pretty BcoType where
-  ppr (BcoFun n) = text "FUN_" <> int n
-  ppr Thunk = text "THUNK"
-  ppr CAF = text "CAF"
-  ppr Con = text "CON"
-
-instance (Pretty r, Pretty c) => Pretty (BytecodeObject r c) where
-  ppr bco@BcObject{} =
-    align $ text "BCO " <> ppr (bcoType bco) <> char ':' <> int (bcoFreeVars bco) $+$
-            text "gbl: " <> align (ppr (bcoGlobalRefs bco)) $+$
-            (indent 2 $ ppr (bcoCode bco))
-  ppr BcoCon{ bcoDataCon = dcon, bcoFields = fields } =
-     ppr dcon <+> hsep (map pp_fld fields)
-    where pp_fld (Left l) = ppr l
-          pp_fld (Right x) = ppr x
-
-data Label
-  = NamedLabel Name
-  | InternalLabel !Int
-  deriving (Eq, Ord, Show)
-
-instance Pretty Label where
-  ppr (NamedLabel n) = ppr n
-  ppr (InternalLabel n) = char '.' <> ppr n
-
-newtype BcBlock r c = BcBlock [BcInstr r c]
-  deriving (Eq, Ord, Show)
-
--- | A bytecode instruction.
-data BcInstr r c
-  = Move r r
-  | LoadK r c   -- ^ Load a literal
-  | LoadG r Id  -- ^ Load a global function / CAF
-  | LoadC r Id  -- ^ Load a constructor descriptor
-  | LoadF r Int -- must be a lazy 'Int'
-  | LoadBlackhole r
-  | BinR BinOp OpTy r r r
-  | BinC BinOp OpTy r r c
-  | Eval r r
-  | Case r [(BcTag, [BcInstr r c])]
-  | Ret1 r
-  | Fetch r r Int
-  | Update r Int r  -- base[n] = r
-  | Store r r [r]
-    -- ^ @ALLOC rslt, ctor, val1, .., valN@
-  | MkAp r r [r]
-    -- ^ @MKAP rslt, f, r1, .., rN == ALLOC rslt, AP, f, r1, .., rN@
-  | Call (Maybe r) r [r]
-    -- ^ @Call Nothing f args@ means tailcall.
-    -- 
-    -- @Call (Just rslt) f args@ means regular call with result in @rslt@.
-  | Nop
-  deriving (Eq, Ord, Show)
-
--- | A bytecode variable.
-data BcVar = BcVar !Id
-           | BcReg Int
-  deriving (Eq, Ord)
-
-instance Pretty BcVar where
-  ppr (BcVar x) = ppr x
-  ppr (BcReg n) = char 'R' <> ppr n
-
-data BcTag
-  = DefaultTag
-  | Tag Int
-  | LitT Integer
-  deriving (Eq, Ord, Show)
-
-instance (Pretty r, Pretty c) => Pretty (BcInstr r c) where
-  ppr instr = case instr of
-    Move tgt src ->
-      text "MOVE    " <> hsep (commaSep [ppr tgt, ppr src])
-    LoadK r c ->
-      text "LOADLIT " <> hsep (commaSep [ppr r, ppr c])
-    LoadG r g ->
-      text "LOADGBL " <> hsep (commaSep [ppr r, ppr g])
-    LoadF r n ->
-      text "LOADENV " <> hsep (commaSep [ppr r, int n])
-    LoadBlackhole r ->
-      text "LOADBLK " <> ppr r
-    Eval t r ->
-      text "EVAL    " <> hsep (commaSep [ppr t, ppr r])
-    Ret1 r ->
-      text "RET1    " <> ppr r
-    Fetch dst src offs ->
-      text "LOADFLD " <> hsep (commaSep [ppr dst, ppr src, ppr offs])
-    Store dst tag args ->
-      text "ALLOC   " <> hsep (commaSep (map ppr (dst:tag:args)))
-    Update base offs arg ->
-      text "STORE   " <> hsep (commaSep [ppr base, ppr offs, ppr arg])
-    MkAp dst f args ->
-      text "ALLOCAP " <> hsep (commaSep (map ppr (dst:f:args)))
-    Call Nothing f args ->
-      text "CALLT   " <> hsep (commaSep (map ppr (f:args)))
-    Call (Just r) f args ->
-      text "CALL    " <> hsep (commaSep (map ppr (r:f:args)))
-    Case r alts ->
-      vcat [ text "CASE    " <> ppr r
-           , indent 1 $ vcat $ map pp_alt alts
-           ]
-     where pp_alt (n, is) = ppr n <> char ':' <+> indent 1 (vcat (map ppr is))
-    Nop ->
-      text "NOP"
-    BinR op ty r1 r2 r3 ->
-      ppr op <> ppr ty <+> hsep (commaSep [ppr r1, ppr r2, ppr r3])
-
-instance (Pretty r, Pretty c) => Pretty (BcBlock r c) where
-  ppr (BcBlock instrs) = align $ vcat (map ppr instrs)
-instance Pretty BcTag where
-  ppr DefaultTag = text "_"
-  ppr (Tag n) = int n
-  ppr (LitT n) = char '#' <> text (show n)
-
-data OpTy = Int32Ty | Float32Ty
-  deriving (Eq, Ord, Show)
-
-data BinOp
-  = PrAdd | PrSub | PrMul | PrDiv
-  | PrGt | PrLe | PrGe | PrLt | PrEq | PrNe
-  deriving (Eq, Ord, Show)
-
-instance Pretty BinOp where
-  ppr PrAdd = text "ADD"
-  ppr PrSub = text "SUB"
-  ppr PrMul = text "MUL"
-  ppr PrDiv = text "DIV"
-  ppr PrGt = text "ISGT"
-  ppr PrLe = text "ISLE"
-  ppr PrGe = text "ISGE"
-  ppr PrLt = text "ISLT"
-  ppr PrEq = text "ISEQ"
-  ppr PrNe = text "ISNE"
-
-instance Pretty OpTy where
-  ppr Int32Ty = char 'I'
-  ppr Float32Ty = char 'D'
-
-isComparison :: BinOp -> Bool
-isComparison op = op >= PrGt && op <= PrNe
-
--- | Can we swap the operands of this operation?
-isCommutative :: BinOp -> Bool
-isCommutative PrAdd = True
-isCommutative PrMul = True
-isCommutative _ = False
-
 data BcConst
   = CInt Integer
   | CStr String
@@ -196,164 +311,128 @@ instance Pretty BcConst where
   ppr (CRef l) = ppr l
   ppr (CStr s) = text (show s)
 
-data Bag a
-  = Empty
-  | One a
-  | List [a]
-  | Cat (Bag a) (Bag a)
-  deriving Show
+instance Pretty BcoType where
+  ppr (BcoFun n) = text "FUN_" <> int n
+  ppr Thunk = text "THUNK"
+  ppr CAF = text "CAF"
+  ppr Con = text "CON"
 
-instance Foldable Bag where
-  foldr _ z Empty = z
-  foldr f z (One a) = f a z
-  foldr f z (List l) = foldr f z l
-  foldr f z (Cat l r) = foldr f (foldr f z r) l
+instance Pretty BytecodeObject where
+  ppr bco@BcObject{} =
+    align $ text "BCO " <> ppr (bcoType bco) <> char ':' <> int (bcoFreeVars bco) $+$
+            text "gbl: " <> align (ppr (bcoGlobalRefs bco)) $+$
+            (indent 2 $ pprGraph ppr (\l -> ppr l <> colon) (bcoCode bco))
+  ppr BcoCon{ bcoDataCon = dcon, bcoFields = fields } =
+     ppr dcon <+> hsep (map pp_fld fields)
+    where pp_fld (Left l) = ppr l
+          pp_fld (Right x) = ppr x
 
-instance Eq a => Eq (Bag a) where
-  l == r = toList l == toList r
 
-instance Monoid (Bag a) where
-  mempty = emptyBag
-  l `mappend` r = catBags l r
 
-emptyBag :: Bag a
-emptyBag = Empty
-
-catBags :: Bag a -> Bag a -> Bag a
-catBags Empty xs = xs
-catBags xs Empty = xs
-catBags xs ys    = Cat xs ys
-
-listToBag :: [a] -> Bag a
-listToBag [] = Empty
-listToBag [x] = One x
-listToBag xs = List xs
-
-singletonBag :: a -> Bag a
-singletonBag = One
-
--- | Add element at the end of the bag.
-snocBag :: Bag a -> a -> Bag a
-snocBag bag a = catBags bag (One a)
-
-newtype BcInstrs r c = Instrs (Bag (BcInstr r c))
-  deriving (Eq, Show, Monoid)
-
-instrToList :: BcInstrs r c -> [BcInstr r c]
-instrToList (Instrs b) = toList b
-
+------------------------------------------------------------------------
+-- * Optimisation Stuff
 {-
-type Instr1 = BcInstr Name BcConst
-type Bytecode1 = BcBlock Name BcConst
+class PrettyNode n where
+  pprNode :: n e x -> PDoc
 
-newtype BcGen a = BcGen { unBcGen :: State BcGenState a }
-  deriving (Functor, Applicative, Monad, MonadState BcGenState)
+newtype BcM a = BcM (State Int a)
+  deriving Monad
 
-data BcOp
-  = BcConst Integer
-  | BcVar Grin.Var
-  | BcFetch Int BcOp
+runBcM :: BcM a -> a
+runBcM (BcM s) = evalState s 0
 
-data BcGenState = BcGenState
-  { bcUniques   :: !(Supply Unique)
-  , bcAliases   :: M.Map Grin.Var BcOp
-  , bcInstrs    :: [BcInstr Name BcConst]
-  , bcCurrLabel :: Label
-  , bcBlocks    :: M.Map Label Bytecode1 }
+instance UniqueMonad BcM where
+  freshUnique = BcM $ do
+    s <- get
+    let !u = intToUnique s
+    put $! s + 1
+    return u
 
-type BytecodeModule = M.Map Label Bytecode1
+instance FuelMonad BcM where
+  getFuel = return infiniteFuel
+  setFuel _ = return ()
 
-runBcGen :: Supply Unique -> BcGen a -> a
-runBcGen uniques (BcGen m) = evalState m s0
- where
-   s0 = BcGenState uniques M.empty [] (error "No current label") M.empty
-
-namedLabel :: Name -> BcGen ()
-namedLabel nm = do
-  finishCurrentLabel (NamedLabel nm)
-  
--- | Add accumulated instructions with the current label and
--- set the new current label.
-finishCurrentLabel :: Label -> BcGen ()
-finishCurrentLabel l = do
-  modify' $ \st ->
-    let instrs = bcInstrs st in
-    st{ bcBlocks = 
-          if not (null instrs) then
-            M.insert (bcCurrLabel st) (BcBlock $ reverse instrs)
-                     (bcBlocks st)
-           else bcBlocks st
-        , bcInstrs = []
-        , bcCurrLabel = l }
-
-toBytecode :: Supply Unique -> Grin.Module -> BytecodeModule
-toBytecode uniques mdl =
-  runBcGen uniques $ bc_module mdl
-
-bc_module :: Grin.Module -> BcGen BytecodeModule
-bc_module mdl = do
-  forM_ (Grin.moduleFuns mdl) $ \fundef -> trace (pretty (Grin.funDefName fundef)) $ do
-    namedLabel (idName (Grin.funDefName fundef))
-    modify' $ \st -> 
-      st{ bcAliases = M.fromList [(v, BcVar v) 
-                                  | v <- Grin.funDefArgs fundef ] }
-    bc_expr (Grin.funDefBody fundef)
-  gets bcBlocks
-
-emit :: Instr1 -> BcGen ()
-emit i = modify' $ \st -> st{ bcInstrs = i : bcInstrs st }
-
-alias :: Grin.Var -> BcOp -> BcGen ()
-alias var op =
-  modify' $ \st -> st{ bcAliases = M.insert var op (bcAliases st) }
-
-getAlias :: Grin.Var -> BcGen BcOp
-getAlias var =
-  expectJust "getAlias" . M.lookup var <$> gets bcAliases
-
-freshVar :: BcGen Name
-freshVar = do
-  st <- get
-  case split2 (bcUniques st) of
-    (us, us') -> do
-       put $! st{ bcUniques = us' }
-       return $ freshName us "bc"
-
-materialiseVar :: Grin.Var -> BcGen Name
-materialiseVar x = do
-  aliases <- gets bcAliases
-  case M.lookup x aliases of
-    Nothing -> error $ "BcGen: Unbound variable \"" ++ pretty x ++ "\""
-    Just (BcVar x')
-      | x == x' -> return (idName x)
-      | otherwise -> materialiseVar x'
-    Just (BcConst c) -> do
-      emit (LoadK (idName x) (CInt c))
-      alias x (BcVar x)
-      return (idName x)
-
-bc_expr :: Grin.Expr -> BcGen ()
-bc_expr expr_ = case expr_ of
-  Grin.Unit (Grin.Lit n) Grin.:>>= (Var x Grin.:-> e1) -> trace "1"$ do
-    alias x (BcConst n)
-    bc_expr e1
-  Grin.Unit (Lit n) -> trace "2"$do
-    v <- freshVar
-    emit (LoadK v (CInt n))
-    emit (Ret1 v)
-  Grin.Unit (Var x) -> trace "3"$do
-    emit . Ret1 =<< materialiseVar x
-  Grin.Unit (Var x) Grin.:>>= (Var x' Grin.:-> e) -> trace "4"$do
-    alias x' (BcVar x)
-  Grin.Unit (Var x) Grin.:>>= (Node c xs Grin.:-> e) -> trace "5"$do
-    x' <- getAlias x
-    sequence_ [ alias y (BcFetch n x') | (n,y) <- zip [0..] (c:xs) ]
-  Grin.Eval upd x Grin.:>>= (Var x' Grin.:-> e) -> trace "6"$do
-    alias x' (BcVar x)
-    tag <- freshVar
-    emit (Eval tag (idName x))
-    bc_expr e
-  _ ->
-    emit Nop
---  Prim 
+instance CheckpointMonad BcM where
+  type Checkpoint BcM = Int
+  checkpoint = BcM $ get
+  restart us = BcM $ put us
+{-
+tst0 = putStrLn $ runBcM $ do
+  l <- freshLabel
+  let g0 = mkFirst (Label l) <*>
+           mkMiddles [Assign (Var 1) (Var 2),
+                      Store (Var 0) 5 (Var 1),
+                      Assign (Var 3) (Var 2)
+                     ] <*>
+           mkLast (Goto l)
+  (g1, lives1, _) <- analyzeAndRewriteBwd
+                      livenessAnalysis1 (JustC l)
+                      g0 noFacts
+  (g2, lives2, _) <- analyzeAndRewriteBwd
+                      livenessAnalysis2 (JustC l)
+                      g0 noFacts
+  return $
+    showGraph showNode g1 ++ "\n" ++ 
+    show (mapToList lives1) ++ "\n---------------\n" ++
+    showGraph showNode g2 ++ "\n" ++ 
+    show (mapToList lives2)
 -}
+tst2 = pprint $ runBcM $ do
+  l <- freshLabel
+  l2 <- freshLabel
+  l3 <- freshLabel
+  let g0 = (mkFirst (Label l) <*>
+            mkMiddles [Assign (BcReg 1) (Move (BcReg 2)),
+                       Assign (BcReg 2) (Load (LoadLit (CInt 1))),
+                      Store (BcReg 0) 5 (BcReg 1),
+                      Assign (BcReg 3) (Move (BcReg 2))
+                     ] <*>
+            mkLast (Goto l2)) |*><*|
+           (mkFirst (Label l2) <*>
+            mkMiddles [Assign (BcReg 1) (BinOp OpAdd Int32Ty (BcReg 1) (BcReg 0)),
+                       Assign (BcReg 0) (BinOp OpSub Int32Ty (BcReg 0) (BcReg 2))] <*>
+            mkLast (CondBranch CmpGt Int32Ty (BcReg 1) (BcReg 0) l2 l3))
+           |*><*|
+           (mkFirst (Label l3) <*> mkLast (Ret1 (BcReg 1)))
+  (g1, lives1, _) <- analyzeAndRewriteBwd livenessAnalysis2 (JustC l)
+                       g0 noFacts
+  return $
+    pprGraph ppr (ppL lives1) g1
+ where
+  ppL lives l = ppr l <> colon <+> text "--- lives=" <> ppr (fromMaybe S.empty (lookupFact l lives))
+
+tst3 :: [BcVar]
+tst3 = universeBi $ Assign (BcReg 1) (BinOp OpAdd Int32Ty (BcReg 1) (BcReg 0))
+
+--newtype BcGraph e x = BcGraph (Graph BcIns e x)
+
+-- -------------------------------------------------------------------
+-}
+instance Uniplate BcVar where uniplate p = plate p
+
+instance Biplate (BcIns e x) BcVar where
+  biplate (Assign r rhs) = plate Assign |* r |+ rhs
+  biplate (Eval r) = plate Eval |* r
+  biplate (Store r n r') = plate Store |* r |- n |* r'
+  biplate (CondBranch c t r1 r2 l1 l2) =
+    plate (CondBranch c t) |* r1 |* r2 |- l1 |- l2
+  biplate (Case ty r targets) =
+    plate (Case ty) |* r |- targets
+  biplate (Call mb_r f args) =
+    plate Call |+ mb_r |* f ||* args
+  biplate (Ret1 r) = plate Ret1 |* r
+  biplate l = plate l
+
+instance Biplate BcRhs BcVar where
+  biplate (Move r) = plate Move |* r
+  biplate (BinOp op ty r1 r2) = plate (BinOp op ty) |* r1 |* r2
+  biplate (Fetch r n) = plate Fetch |* r |- n
+  biplate (Alloc rt rs) = plate Alloc |* rt ||* rs
+  biplate (AllocAp rs) = plate AllocAp ||* rs
+  biplate rhs = plate rhs
+
+instance Biplate (Maybe (BcVar, Label)) BcVar where
+  biplate Nothing = plate Nothing
+  biplate (Just (x,y)) = plate (\x' -> Just (x',y)) |* x
+
+
