@@ -54,6 +54,8 @@ import qualified Module as Ghc
 import qualified Literal as Ghc
 import qualified Name as Ghc
 import qualified IdInfo as Ghc
+import qualified Id as Ghc
+import qualified Type as Ghc
 import qualified DataCon as Ghc
 import qualified CoreSyn as Ghc ( Expr(..) )
 import qualified PrimOp as Ghc
@@ -662,18 +664,18 @@ transVar ::
      -- * Updated 'KnownLocs'
      --
      -- * TODO
---transVar _ _ _ _ _ | trace "transVar" False = undefined
+--transVar x _ _ _ _ | trace ("transVar: " ++ showPpr x ++ " : " ++ showPpr (Ghc.idType x) ++ " / " ++ show (not (Ghc.isUnLiftedType (Ghc.idType x)))) False = undefined
 transVar x env fvi locs0 mr =
   case lookupLoc locs0 x of
     Just (InVar x') -> -- trace "inVAR" $
-      return (mbMove mr x', fromMaybe x' mr, False, locs0, mempty)
+      return (mbMove mr x', fromMaybe x' mr, in_whnf, locs0, mempty)
     Just (InReg r) -> -- trace "inREG" $
       let x' = BcReg r in
-      return (mbMove mr x', fromMaybe x' mr, False, locs0, mempty)
+      return (mbMove mr x', fromMaybe x' mr, in_whnf, locs0, mempty)
     Just (Field p n) -> do -- trace "inFLD" $ do
       r <- mbFreshLocal mr
       return (insFetch r p n,
-              r, False, updateLoc locs0 x (InVar r), mempty)
+              r, in_whnf, updateLoc locs0 x (InVar r), mempty)
     Just Fwd -> do
       r <- mbFreshLocal mr
       return (insLoadBlackhole r, r, True, locs0, mempty)
@@ -685,13 +687,15 @@ transVar x env fvi locs0 mr =
           r <- mbFreshLocal mr
           -- Do not force @i@ -- must remain a thunk
           let i = expectJust "transVar" (Ghc.lookupVarEnv fvi x)
-          return (insLoadFV r i, r, False,
+          return (insLoadFV r i, r, in_whnf,
                   updateLoc locs0 x (InVar r), closureVar x)
       | otherwise -> do  -- global variable
           let x' = toplevelId x
           r <- mbFreshLocal mr
           return (insLoadGbl r x', r, isGhcConWorkId x,  -- TODO: only if CAF
                   updateLoc locs0 x (InVar r), globalVar x')
+ where
+   in_whnf = Ghc.isUnLiftedType (Ghc.idType x)
 
 transApp :: CoreBndr -> [CoreArg] -> LocalEnv -> FreeVarsIndex
          -> KnownLocs -> Context x
