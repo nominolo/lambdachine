@@ -126,11 +126,9 @@ transTopLevelBind f (viewGhcLam -> (params, body)) = do
           locs0 = mkLocs [ (b, InReg n) | (b, n) <- zip params [0..] ]
           fvi0 = Ghc.emptyVarEnv
       (bcis, _, fvs, Nothing) <- transBody body env0 fvi0 locs0 RetC
-      l <- freshLabel
-      g <- finaliseBcGraph bcis l
+      g <- finaliseBcGraph bcis
       let bco = BcObject { bcoType = bco_type
-                         , bcoEntry = l
-                         , bcoCode = g -- toList bcis
+                         , bcoCode = g
                          , bcoGlobalRefs = toList (globalVars fvs)
                          , bcoConstants = []
                          , bcoFreeVars = 0
@@ -319,11 +317,9 @@ transBind x (viewGhcLam -> (bndrs, body)) env0 = do
         cv_indices = Ghc.mkVarEnv (zip closure_vars [(1::Int)..])
     return (bcis, closure_vars, globalVars fvs, cv_indices)
   x' <- freshVar "closure" mkTopLevelId
-  l <- freshLabel
-  g <- finaliseBcGraph bcis l
+  g <- finaliseBcGraph bcis
   let arity = length bndrs
   let bco = BcObject { bcoType = if arity > 0 then BcoFun arity else Thunk
-                     , bcoEntry = l
                      , bcoCode = g
                      , bcoConstants = []
                      , bcoGlobalRefs = toList gbls

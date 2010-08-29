@@ -185,11 +185,13 @@ pprGraph ppN _ (GUnit blk) =
     char '{' $$ pprBlock ppN blk $$ char '}'
 pprGraph ppN ppL (GMany entry blocks exit) =
     char '{' $$
-      indent 2 (ppMaybeO (pprBlock ppN) entry $$
+      indent 2 (ppMaybeO pp_block_oc entry $$
                 vcat pp_blocks $$
                 ppMaybeO (pprBlock ppN) exit) $$
     char '}'
    where
+     pp_block_oc blk =
+       indent 3 (pprBlock ppN blk)
      pp_blocks = map pp_block (mapToList blocks)
      pp_block (l, blk) =
        ppL l $$ indent 3 (pprBlock ppN blk)
@@ -221,10 +223,8 @@ pprBlock' ppN block =
 
 type BcGraph e x = AGraph BcIns e x
 
-finaliseBcGraph :: UniqueMonad m => BcGraph O C -> BlockId
-                -> m (Graph BcIns C C)
-finaliseBcGraph agr entry =
-  graphOfAGraph (mkFirst (Label entry) <*> agr)
+finaliseBcGraph :: UniqueMonad m => BcGraph O C -> m (Graph BcIns O C)
+finaliseBcGraph agr = graphOfAGraph agr
 
 mkLabel :: Label -> BcGraph C O
 mkLabel l = mkFirst $ Label l
@@ -279,11 +279,10 @@ catGraphsC :: BcGraph e C -> [BcGraph C C] -> BcGraph e C
 catGraphsC g [] = g
 catGraphsC g (h:hs) = catGraphsC (g |*><*| h) hs
 
-data BytecodeObject
+data BytecodeObject' g
   = BcObject
     { bcoType :: BcoType
-    , bcoEntry :: BlockId
-    , bcoCode :: Graph BcIns C C
+    , bcoCode :: g
     , bcoGlobalRefs :: [Id]
     , bcoConstants :: [BcConst]
     , bcoFreeVars  :: Int
@@ -293,6 +292,8 @@ data BytecodeObject
     , bcoDataCon :: Id   -- ^ The constructor 'Id'.
     , bcoFields :: [Either BcConst Id]
     }
+
+type BytecodeObject = BytecodeObject' (Graph BcIns O C)
 
 data BcoType
   = BcoFun Int  -- arity
