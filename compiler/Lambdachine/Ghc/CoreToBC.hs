@@ -339,9 +339,6 @@ transFields f args = map to_field args
    to_field arg = 
      error $ "transFields: Ill-formed argument: " ++ showPpr arg
 
-type BCOs = M.Map Id BytecodeObject
-type BCO = BytecodeObject
-
 -- -------------------------------------------------------------------
 
 newtype Trans a = Trans (State TransState a)
@@ -371,7 +368,7 @@ genUnique = Trans $ do
 instance UniqueMonad Trans where
   freshUnique = hooplUniqueFromUniqueSupply `fmap` genUnique
 
-addBCO :: Id -> BCO -> Trans ()
+addBCO :: Id -> BytecodeObject -> Trans ()
 addBCO f bco = Trans $
   modify' $ \s ->
     let !bcos' = M.insert f bco (tsLocalBCOs s) in

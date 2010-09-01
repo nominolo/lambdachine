@@ -6,11 +6,14 @@ import Lambdachine.Ghc.Pipeline
 import Lambdachine.Ghc.CoreToBC
 import Lambdachine.Grin.Eval
 import Lambdachine.Grin.Bytecode
+import Lambdachine.Grin.Analyse
+import Lambdachine.Grin.RegAlloc
 
 import GHC
 import GHC.Paths ( libdir )
 import Outputable
 import MonadUtils ( liftIO )
+import qualified Data.Map as M
 
 import System.Environment ( getArgs )
 
@@ -27,13 +30,7 @@ main = runGhc (Just libdir) $ do
     putStrLn "================================================="
     putStrLn $ showPpr core_mdl
     putStrLn "-------------------------------------------------"
---    putStrLn $ showPpr (head core_mdl)
     let bcos = generateBytecode s core_mdl
     putStrLn $ pretty bcos
---    let bc = runTrans s $ bcBindTopLvl core_mdl
---    putStrLn $ pretty bc
-    --let grin_mdl = toGrinModule s core_mdl
-    --pprint $ grin_mdl
-    --s2 <- newUniqueSupply 'b'
---    putStrLn $ pretty $ toBytecode s2 grin_mdl
-    --runTest1 grin_mdl
+    let bcos' = M.map allocRegs bcos
+    pprint $ bcos'

@@ -17,6 +17,7 @@ import Compiler.Hoopl
 import Control.Monad.State
 import Data.Maybe ( maybeToList, fromMaybe )
 --import qualified Data.Set as S
+import qualified Data.Map as M
 import Data.Generics.Uniplate.Direct
 import Data.Bits ( (.&.) )
 
@@ -28,6 +29,7 @@ data BcIns e x where
   Assign :: BcVar -> BcRhs        -> BcIns O O
   Eval   :: BcVar                 -> BcIns O O
   Store  :: BcVar -> Int -> BcVar -> BcIns O O
+
   -- O/C stuff
   Goto   :: BlockId                -> BcIns O C
   CondBranch :: BinOp -> OpTy -> BcVar -> BcVar
@@ -37,6 +39,21 @@ data BcIns e x where
   Call :: Maybe (BcVar, BlockId)
        -> BcVar -> [BcVar]         -> BcIns O C
   Ret1 :: BcVar                    -> BcIns O C
+
+data LinearIns
+  = Fst (BcIns C O)
+  | Mid (BcIns O O)
+  | Lst (BcIns O C)
+
+instance Biplate LinearIns BcVar where
+  biplate (Fst ins) = plate Fst |+ ins
+  biplate (Mid ins) = plate Mid |+ ins
+  biplate (Lst ins) = plate Lst |+ ins
+
+instance Pretty LinearIns where
+  ppr (Fst (Label l)) = text $ "--- " ++ show l ++ " ---"
+  ppr (Mid i) = ppr i
+  ppr (Lst i) = ppr i
 
 data CaseType
   = CaseOnTag
@@ -81,7 +98,7 @@ data BcVar = BcVar !Id
            | BcReg {-# UNPACK #-} !Int
   deriving (Eq, Ord)
 
-
+instance Show BcVar where show v = pretty v
 
 instance NonLocal BcIns where
   entryLabel (Label l) = l
@@ -161,7 +178,7 @@ instance Pretty OpTy where
 
 instance Pretty BcLoadOperand where
   ppr (LoadLit l) = ppr l
-  ppr (LoadGlobal x) = ppr x
+  ppr (LoadGlobal x) = char '&' <> ppr x
   ppr (LoadClosureVar n) = text "Node[" <> int n <> char ']'
   ppr LoadBlackhole = text "<blackhole>"
 
@@ -295,6 +312,8 @@ data BytecodeObject' g
 
 type BytecodeObject = BytecodeObject' (Graph BcIns O C)
 
+type BCOs = M.Map Id BytecodeObject
+
 data BcoType
   = BcoFun Int  -- arity
   | Thunk
@@ -318,17 +337,19 @@ instance Pretty BcoType where
   ppr CAF = text "CAF"
   ppr Con = text "CON"
 
-instance Pretty BytecodeObject where
+instance Pretty g => Pretty (BytecodeObject' g) where
   ppr bco@BcObject{} =
     align $ text "BCO " <> ppr (bcoType bco) <> char ':' <> int (bcoFreeVars bco) $+$
             text "gbl: " <> align (ppr (bcoGlobalRefs bco)) $+$
-            (indent 2 $ pprGraph ppr (\l -> ppr l <> colon) (bcoCode bco))
+            (indent 2 $ ppr (bcoCode bco))
+             -- pprGraph ppr (\l -> ppr l <> colon) (bcoCode bco))
   ppr BcoCon{ bcoDataCon = dcon, bcoFields = fields } =
      ppr dcon <+> hsep (map pp_fld fields)
     where pp_fld (Left l) = ppr l
           pp_fld (Right x) = ppr x
 
-
+instance Pretty (Graph BcIns O C) where
+  ppr g = pprGraph ppr (\l -> ppr l <> colon) g
 
 ------------------------------------------------------------------------
 -- * Optimisation Stuff

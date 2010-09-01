@@ -23,6 +23,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.ByteString.Lazy      as B
 import qualified Data.ByteString.Lazy.UTF8 as B
+import qualified Data.Vector as V
 
 ------------------------------------------------------------------------
 -- * The @Pretty@ Class
@@ -40,10 +41,11 @@ data PrettyStyle
   | UserStyle
 
 pretty :: Pretty a => a -> String
-pretty x = show (ppr x UserStyle)
+pretty x = P.displayS (P.renderPretty 0.8 100 (ppr x UserStyle)) ""
+--pretty x = show (ppr x UserStyle)a
 
 pprint :: Pretty a => a -> IO ()
-pprint x = B.putStrLn $ B.fromString $ render (ppr x)
+pprint x = B.putStrLn $ B.fromString $ pretty x --render (ppr x)
 
 debugPrint :: Pretty a => a -> IO ()
 debugPrint x = B.putStrLn $ B.fromString $ show $ ppr x DebugStyle
@@ -128,6 +130,8 @@ hang n d sty = P.hang n (d sty)
 
 indent :: Int -> PDoc -> PDoc
 indent n d sty = P.indent n (d sty)
+fillBreak :: Int -> PDoc -> PDoc
+fillBreak n d sty = P.fillBreak n (d sty)
 
 -- | @punctuate p [d1, ... dn] = [d1 \<> p, d2 \<> p, ... dn-1 \<> p, dn]@
 punctuate :: PDoc -> [PDoc] -> [PDoc]
@@ -263,6 +267,9 @@ instance Pretty s => Pretty (Set s) where
 
 instance Pretty IS.IntSet where
   ppr s = braces (fillSep (punctuate comma (map ppr (IS.toList s))))
+
+instance Pretty a => Pretty (V.Vector a) where
+  ppr vec = ppr (V.toList vec)
 
 instance Pretty a => Pretty [a] where
   ppr l = brackets (fillSep (punctuate comma (map ppr l)))
