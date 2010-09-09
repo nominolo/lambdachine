@@ -118,6 +118,9 @@ transTopLevelBind f (viewGhcLam -> (params, body)) = do
   let !f' = toplevelId f
   let bco_type | (_:_) <- params = BcoFun (length params)
                | looksLikeCon body = Con
+               | isGhcConWorkId f =
+                   -- Unary constructors become FUN_0 (and not a CAF)
+                   BcoFun (length params)
                | otherwise = CAF
   case bco_type of
     Con -> buildCon f' body
