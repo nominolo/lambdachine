@@ -11,6 +11,7 @@ where
 
 import Lambdachine.Id
 import Lambdachine.Utils.Pretty
+import Lambdachine.Utils ( second )
 import qualified Lambdachine.Utils.Unique as U
 
 import Compiler.Hoopl
@@ -20,38 +21,42 @@ import Data.Maybe ( maybeToList, fromMaybe )
 import qualified Data.Map as M
 import Data.Generics.Uniplate.Direct
 import Data.Bits ( (.&.) )
+import qualified Data.Vector as V
 
 type BlockId = Label
 
-data BcIns e x where
-  Label  :: Label -> BcIns C O
+data BcIns' b e x where
+  Label  :: b -> BcIns' b C O
   -- O/O stuff
-  Assign :: BcVar -> BcRhs        -> BcIns O O
-  Eval   :: BcVar                 -> BcIns O O
-  Store  :: BcVar -> Int -> BcVar -> BcIns O O
+  Assign :: BcVar -> BcRhs        -> BcIns' b O O
+  Eval   :: BcVar                 -> BcIns' b O O
+  Store  :: BcVar -> Int -> BcVar -> BcIns' b O O
 
   -- O/C stuff
-  Goto   :: BlockId                -> BcIns O C
+  Goto   :: b                -> BcIns' b O C
   CondBranch :: BinOp -> OpTy -> BcVar -> BcVar
-             -> BlockId -> BlockId -> BcIns O C
+             -> b -> b -> BcIns' b O C
   Case :: CaseType -> BcVar 
-       -> [(BcTag, BlockId)]       -> BcIns O C
-  Call :: Maybe (BcVar, BlockId)
-       -> BcVar -> [BcVar]         -> BcIns O C
-  Ret1 :: BcVar                    -> BcIns O C
+       -> [(BcTag, b)]       -> BcIns' b O C
+  Call :: Maybe (BcVar, b)
+       -> BcVar -> [BcVar]         -> BcIns' b O C
+  Ret1 :: BcVar                    -> BcIns' b O C
 
-data LinearIns
-  = Fst (BcIns C O)
-  | Mid (BcIns O O)
-  | Lst (BcIns O C)
+data LinearIns' b
+  = Fst (BcIns' b C O)
+  | Mid (BcIns' b O O)
+  | Lst (BcIns' b O C)
+
+type LinearIns = LinearIns' BlockId
+type BcIns = BcIns' Label
 
 instance Biplate LinearIns BcVar where
   biplate (Fst ins) = plate Fst |+ ins
   biplate (Mid ins) = plate Mid |+ ins
   biplate (Lst ins) = plate Lst |+ ins
 
-instance Pretty LinearIns where
-  ppr (Fst (Label l)) = text $ "--- " ++ show l ++ " ---"
+instance Pretty b => Pretty (LinearIns' b) where
+  ppr (Fst (Label l)) = text "---" <+> ppr l <+> text "---"
   ppr (Mid i) = ppr i
   ppr (Lst i) = ppr i
 
@@ -100,7 +105,7 @@ data BcVar = BcVar !Id
 
 instance Show BcVar where show v = pretty v
 
-instance NonLocal BcIns where
+instance NonLocal (BcIns' Label) where
   entryLabel (Label l) = l
   successors (Goto l) = [l]
   successors (CondBranch _ _ _ _ tl fl) = [fl, tl]
@@ -139,7 +144,7 @@ instance Pretty BinOp where
   ppr CmpEq = text "=="
   ppr CmpNe = text "/="
 
-instance Pretty (BcIns e x) where
+instance Pretty b => Pretty (BcIns' b e x) where
   ppr (Label _) = empty
   ppr (Assign r rhs) = ppr r <+> char '=' <+> ppr rhs
   ppr (Eval r) = text "eval" <+> ppr r
@@ -151,8 +156,10 @@ instance Pretty (BcIns e x) where
       char '<' <> ppr ty <> char '>' <+> text "then goto" <+> ppr true <+>
       brackets (text "else goto" <+> ppr false)
   ppr (Case _ r targets) =
-    text "case" <+> ppr r $$ indent 2 (vcat (map ppr_target targets))
-   where ppr_target (tag, target) = ppr tag <> colon <+> ppr target
+    text "case" <+> ppr r $$
+    indent 2 (vcat (map ppr_target targets))
+   where
+     ppr_target (tag, target) = ppr tag <> colon <+> ppr target
   ppr (Call rslt f args) =
     (case rslt of
        Nothing -> text "return"
@@ -188,10 +195,25 @@ instance Pretty BcTag where
   ppr (LitT n) = char '#' <> text (show n)
 
 tst1 = do
-  pprint (Assign (BcReg 1) (BinOp OpAdd Int32Ty (BcReg 2) (BcReg 3)))
-  pprint (Assign (BcReg 2) (Fetch (BcReg 2) 42))
+  pprint ((Assign (BcReg 1) (BinOp OpAdd Int32Ty (BcReg 2) (BcReg 3))) :: BcIns O O)
+  pprint ((Assign (BcReg 2) (Fetch (BcReg 2) 42)) :: BcIns O O)
 
 -- -------------------------------------------------------------------
+
+mapLabels :: (l1 -> l2) -> BcIns' l1 e x -> BcIns' l2 e x
+mapLabels f ins = case ins of
+  Label l      -> Label (f l)
+  Assign x rhs -> Assign x rhs
+  Eval x       -> Eval x
+  Store x n y  -> Store x n y
+  Ret1 x       -> Ret1 x
+  Goto l       -> Goto (f l)
+  CondBranch op ty x y l1 l2 ->
+    CondBranch op ty x y (f l1) (f l2)
+  Case cty x targets ->
+    Case cty x (map (second f) targets)
+  Call next fn args ->
+    Call (fmap (second f) next) fn args
 
 type NodePpr n = forall e x . n e x -> PDoc
 type LabelPpr = Label -> PDoc
@@ -313,22 +335,35 @@ data BytecodeObject' g
 type BytecodeObject = BytecodeObject' (Graph BcIns O C)
 
 type BCOs = M.Map Id BytecodeObject
+type FinalBCOs = M.Map Id (BytecodeObject' FinalCode)
 
 data BcoType
   = BcoFun Int  -- arity
   | Thunk
   | CAF
   | Con
+  deriving Eq
+
+bcoArity :: BytecodeObject' g -> Int
+bcoArity BcObject{ bcoType = BcoFun n } = n
+bcoArity _ = 0
 
 data BcConst
   = CInt Integer
   | CStr String
-  | CRef Label
   deriving (Eq, Ord, Show)
+
+-- | A linearised and register-allocated version of the byte code.
+-- Jump offsets are relative (@0@ = next instruction) and explicit
+-- labels have been removed.
+data FinalCode = FinalCode
+  { fc_framesize :: {-# UNPACK #-} !Int
+    -- ^ Maximum number of registers used by the bytecode.
+  , fc_code      :: V.Vector (LinearIns' Int)
+  }
 
 instance Pretty BcConst where
   ppr (CInt n) = ppr n
-  ppr (CRef l) = ppr l
   ppr (CStr s) = text (show s)
 
 instance Pretty BcoType where
@@ -350,6 +385,13 @@ instance Pretty g => Pretty (BytecodeObject' g) where
 
 instance Pretty (Graph BcIns O C) where
   ppr g = pprGraph ppr (\l -> ppr l <> colon) g
+
+instance Pretty FinalCode where
+  ppr (FinalCode framesize code) =
+    text "    alloc_frame" <+> ppr framesize $+$
+    vcat (map pp (zip [(0::Int)..] (V.toList code)))
+   where
+     pp (i, ins) = fillBreak 3 (ppr i) <+> ppr ins
 
 ------------------------------------------------------------------------
 -- * Optimisation Stuff
@@ -432,7 +474,7 @@ tst3 = universeBi $ Assign (BcReg 1) (BinOp OpAdd Int32Ty (BcReg 1) (BcReg 0))
 -}
 instance Uniplate BcVar where uniplate p = plate p
 
-instance Biplate (BcIns e x) BcVar where
+instance Biplate (BcIns' b e x) BcVar where
   biplate (Assign r rhs) = plate Assign |* r |+ rhs
   biplate (Eval r) = plate Eval |* r
   biplate (Store r n r') = plate Store |* r |- n |* r'
@@ -440,8 +482,10 @@ instance Biplate (BcIns e x) BcVar where
     plate (CondBranch c t) |* r1 |* r2 |- l1 |- l2
   biplate (Case ty r targets) =
     plate (Case ty) |* r |- targets
-  biplate (Call mb_r f args) =
-    plate Call |+ mb_r |* f ||* args
+  biplate (Call Nothing f args) =
+    plate (Call Nothing) |* f ||* args
+  biplate (Call (Just (x,y)) f args) =
+    plate (\x' -> Call (Just (x', y))) |* x |* f ||* args
   biplate (Ret1 r) = plate Ret1 |* r
   biplate l = plate l
 
@@ -452,9 +496,3 @@ instance Biplate BcRhs BcVar where
   biplate (Alloc rt rs) = plate Alloc |* rt ||* rs
   biplate (AllocAp rs) = plate AllocAp ||* rs
   biplate rhs = plate rhs
-
-instance Biplate (Maybe (BcVar, Label)) BcVar where
-  biplate Nothing = plate Nothing
-  biplate (Just (x,y)) = plate (\x' -> Just (x',y)) |* x
-
-

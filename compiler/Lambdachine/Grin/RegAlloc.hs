@@ -12,14 +12,14 @@ import qualified Data.Set as S
 import qualified Data.Map as M
 import Data.Generics.Uniplate.Direct
 
-allocRegs :: BytecodeObject -> BytecodeObject' LinearCode
+allocRegs :: BytecodeObject -> BytecodeObject' FinalCode
 allocRegs bco@BcoCon{} = -- this is just silly
   BcoCon{ bcoType = bcoType bco
         , bcoDataCon = bcoDataCon bco
         , bcoFields = bcoFields bco }
 allocRegs bco0@BcObject{ bcoCode = code } =
   BcObject{ bcoType = bcoType bco
-          , bcoCode = code'
+          , bcoCode = finaliseCode (bcoArity bco0) code'
           , bcoGlobalRefs = bcoGlobalRefs bco
           , bcoConstants = bcoConstants bco
           , bcoFreeVars = bcoFreeVars bco }
@@ -36,6 +36,51 @@ allocRegsGraph lives g = mkAllocMap (lineariseCode lives g)
 
 --allocRegsBody :: Body BcIns -> [LinearIns]
 --allocRegsBody body = 
+
+-- | Finalise step in generating executable bytecode.  Does the
+-- following:
+--
+--   * Remove some redundant instructions (labels and gotos to adjacent
+--     instructions).
+--
+--   * Turn jump labels into absolute addresses.
+--
+--   * Calculate the frame size (number of registers needed).
+--
+finaliseCode :: Int -> LinearCode -> FinalCode
+finaliseCode arity (LinearCode code0 lives labels) =
+  FinalCode framesize code
+ where
+   framesize = arity `max` Vec.maximum (Vec.map S.size lives)
+   code1 = Vec.imap (\offs ins -> (ins, keep offs ins)) code0
+   code = Vec.imap (adjust_idx new_labels0) 
+        . Vec.map fst
+        . Vec.filter snd
+        $ code1
+   code0_len = Vec.length code0
+
+   keep :: Int -> LinearIns -> Bool
+   keep _ (Fst _) = False
+   keep _ (Mid _) = True
+   keep i (Lst lins) = case lins of
+       Goto l
+         | i + 1 < code0_len, Fst (Label l') <- code0 Vec.! (i + 1)
+         -> l /= l'  -- only keep if jump is not to next instruction
+       _ -> True
+
+   new_labels0 = fst $ Vec.foldl' calc_offs (M.empty, 0) code1
+    where
+      calc_offs :: (M.Map Label Int, Int) -> (LinearIns, Bool)
+                -> (M.Map Label Int, Int) 
+      calc_offs (mp, new_idx) (Fst (Label l), keep) =
+        (M.insert l new_idx mp, new_idx)
+      calc_offs (mp, new_idx) (i, keep) =
+        (mp, if keep then new_idx + 1 else new_idx)
+
+   adjust_idx new_labels i (Mid ins) =
+     Mid $ mapLabels (\l -> (new_labels M.! l)) ins
+   adjust_idx new_labels i (Lst ins) =
+     Lst $ mapLabels (\l -> (new_labels M.! l)) ins
 
 data LinearCode = LinearCode
   { lc_code    :: Vector LinearIns
