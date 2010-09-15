@@ -4,10 +4,11 @@ module Main where
 import Lambdachine.Utils
 import Lambdachine.Ghc.Pipeline
 import Lambdachine.Ghc.CoreToBC
-import Lambdachine.Grin.Eval
+--import Lambdachine.Grin.Eval
 import Lambdachine.Grin.Bytecode
 import Lambdachine.Grin.Analyse
 import Lambdachine.Grin.RegAlloc
+import Lambdachine.Grin.Interp
 
 import GHC
 import GHC.Paths ( libdir )
@@ -28,9 +29,12 @@ main = runGhc (Just libdir) $ do
   liftIO $ do
     s <- newUniqueSupply 'g'
     putStrLn "================================================="
-    putStrLn $ showPpr core_mdl
+    --putStrLn $ showPpr core_mdl
     putStrLn "-------------------------------------------------"
     let bcos = generateBytecode s core_mdl
-    putStrLn $ pretty bcos
+    --putStrLn $ pretty bcos
     let bcos' = M.map allocRegs bcos
     pprint $ bcos'
+    test_insts1
+    --let entry:_ = filter ((=="test") . show) (M.keys bcos')
+    --pprint $ fst $ interp entry bcos'

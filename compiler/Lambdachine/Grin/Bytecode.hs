@@ -33,14 +33,14 @@ data BcIns' b e x where
   Store  :: BcVar -> Int -> BcVar -> BcIns' b O O
 
   -- O/C stuff
-  Goto   :: b                -> BcIns' b O C
+  Goto   :: b                     -> BcIns' b O C
   CondBranch :: BinOp -> OpTy -> BcVar -> BcVar
-             -> b -> b -> BcIns' b O C
+             -> b -> b            -> BcIns' b O C
   Case :: CaseType -> BcVar 
-       -> [(BcTag, b)]       -> BcIns' b O C
+       -> [(BcTag, b)]            -> BcIns' b O C
   Call :: Maybe (BcVar, b)
-       -> BcVar -> [BcVar]         -> BcIns' b O C
-  Ret1 :: BcVar                    -> BcIns' b O C
+       -> BcVar -> [BcVar]        -> BcIns' b O C
+  Ret1 :: BcVar                   -> BcIns' b O C
 
 data LinearIns' b
   = Fst (BcIns' b C O)
@@ -361,6 +361,8 @@ data FinalCode = FinalCode
     -- ^ Maximum number of registers used by the bytecode.
   , fc_code      :: V.Vector (LinearIns' Int)
   }
+
+type FinalIns = LinearIns' Int
 
 instance Pretty BcConst where
   ppr (CInt n) = ppr n
