@@ -60,6 +60,8 @@ import qualified DataCon as Ghc
 import qualified CoreSyn as Ghc ( Expr(..) )
 import qualified PrimOp as Ghc
 import qualified TysWiredIn as Ghc ( trueDataConId, falseDataConId )
+import qualified TyCon as Ghc
+import TyCon ( TyCon )
 import Outputable ( Outputable, showPpr )
 import CoreSyn ( CoreBind, CoreBndr, CoreExpr, CoreArg, CoreAlt,
                  Bind(..), Expr(Lam, Let, Type, Cast, Note),
@@ -73,6 +75,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Control.Applicative hiding ( (<*>) )
 import Control.Monad.State
+import Control.Monad.Reader
 --import Control.Monad.Fix
 import Data.Foldable ( toList )
 import Data.List ( foldl' )
@@ -92,14 +95,15 @@ tracePpr o exp = trace (">>> " ++ showPpr o) exp
 
 -- -------------------------------------------------------------------
 -- * Top-level Interface
-
 type Bcis x = BcGraph O x
 
-generateBytecode :: Supply Unique -> [CoreBind] -> BCOs
-generateBytecode us bndrs0 = 
-  runTrans us $ do toplevel_bcos <- go bndrs0 mempty
-                   local_bcos <- getBCOs
-                   return (M.union toplevel_bcos local_bcos)
+generateBytecode :: Supply Unique -> [CoreBind] -> [TyCon] -> BCOs
+generateBytecode us bndrs0 data_tycons =
+  runTrans us $ do
+    let dcon_bcos = M.unions $ map transTyCon data_tycons
+    toplevel_bcos <- go bndrs0 mempty
+    local_bcos <- getBCOs
+    return (M.unions [dcon_bcos, toplevel_bcos, local_bcos])
  where
 --   go _ _ | trace "genBC-go" False = undefined
    go [] acc = return acc
@@ -112,6 +116,13 @@ generateBytecode us bndrs0 =
            bcos <- transTopLevelBind f body
            go' fs' (M.union bcos acc')
      in go' fs acc
+
+transTyCon :: TyCon -> BCOs
+transTyCon tycon = do
+  collect' M.empty (Ghc.tyConDataCons tycon) $ \bcos dcon ->
+    let dcon_id = dataConInfoTableId dcon
+        bco = BcConInfo { bcoConTag = Ghc.dataConTag dcon }
+    in M.insert dcon_id bco bcos
 
 transTopLevelBind :: CoreBndr -> CoreExpr -> Trans BCOs
 transTopLevelBind f (viewGhcLam -> (params, body)) = do
@@ -517,7 +528,7 @@ globalVar x = FreeVars Ghc.emptyVarSet (S.singleton x)
 freshVar :: String -> (Name -> a) -> Trans a
 freshVar nm f = do
   us <- genUnique
-  return (f (freshName us (nm ++ "" ++ tail (show (supplyValue us)))))
+  return (f (freshName us (nm ++ tail (show (supplyValue us)))))
 
 mbFreshLocal :: Maybe BcVar -> Trans BcVar
 mbFreshLocal (Just v) = return v
@@ -685,8 +696,10 @@ transVar x env fvi locs0 mr =
           let i = expectJust "transVar" (Ghc.lookupVarEnv fvi x)
           return (insLoadFV r i, r, in_whnf,
                   updateLoc locs0 x (InVar r), closureVar x)
+
       | otherwise -> do  -- global variable
-          let x' = toplevelId x
+          let x' | isGhcConWorkId x = dataConInfoTableId (ghcIdDataCon x)
+                 | otherwise        = toplevelId x
           r <- mbFreshLocal mr
           return (insLoadGbl r x', r, isGhcConWorkId x,  -- TODO: only if CAF
                   updateLoc locs0 x (InVar r), globalVar x')
@@ -807,6 +820,11 @@ isGhcConWorkId x
   | Ghc.DataConWorkId _ <- Ghc.idDetails x = True
   | otherwise                              = False
 
+ghcIdDataCon :: CoreBndr -> Ghc.DataCon
+ghcIdDataCon x
+  | Ghc.DataConWorkId dcon <- Ghc.idDetails x = dcon
+  | otherwise = error "ghcIdDataCon: Id is not a DataConWorkId"
+
 -- | Return @Just p@ iff input is a primitive operation.
 isGhcPrimOpId :: CoreBndr -> Maybe Ghc.PrimOp
 isGhcPrimOpId x
@@ -840,6 +858,11 @@ primOpToBinOp primop =
 toplevelId :: Ghc.Id -> Id
 toplevelId x = --  | Ghc.VanillaId <- Ghc.idDetails x =
   mkTopLevelId (N.mkBuiltinName (fromGhcUnique x) (Ghc.getOccString x))
+
+dataConInfoTableId :: Ghc.DataCon -> Id
+dataConInfoTableId dcon =
+  mkDataConInfoTableId $
+   N.mkBuiltinName (fromGhcUnique dcon) (Ghc.getOccString dcon)
 
 -- | Take a GHC 'Unique.Unique' and turn it into a 'Unique'.
 --

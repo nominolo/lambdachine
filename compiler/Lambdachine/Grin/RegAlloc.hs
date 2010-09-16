@@ -17,6 +17,8 @@ allocRegs bco@BcoCon{} = -- this is just silly
   BcoCon{ bcoType = bcoType bco
         , bcoDataCon = bcoDataCon bco
         , bcoFields = bcoFields bco }
+allocRegs bco@BcConInfo{} =
+  BcConInfo{ bcoConTag = bcoConTag bco }
 allocRegs bco0@BcObject{ bcoCode = code } =
   BcObject{ bcoType = bcoType bco
           , bcoCode = finaliseCode (bcoArity bco0) code'

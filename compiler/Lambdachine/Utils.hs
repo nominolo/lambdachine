@@ -6,7 +6,7 @@ module Lambdachine.Utils
   , second
   , modify'
   -- * List Utilities
-  , fold2l', isLength
+  , fold2l', isLength, collect',
   )
 where
 
@@ -15,6 +15,7 @@ import Lambdachine.Utils.Unique
 
 import Control.Monad.State.Strict
 import Data.Maybe
+import Data.List ( foldl' )
 
 -- | Like 'fromJust' but uses the given string as error message.
 expectJust :: String -> Maybe a -> a
@@ -38,6 +39,24 @@ fold2l' f a0 bs0 cs0 = go a0 bs0 cs0
  where go !a [] _ = a
        go !a _ [] = a
        go !a (b:bs) (c:cs) = go (f a b c) bs cs
+
+-- | Variant of 'foldl'' with the function as the last argument.
+--
+-- The different argument order makes the following style more
+-- readable:
+--
+-- > collect initial list $ \acc item ->
+-- >   {- ... body goes here ... -}
+--
+-- As opposed to the less readable:
+--
+-- > foldl' (\acc item ->
+-- >           {- ...  body goes here ...-} ) initial list
+--
+-- Hint: The order of the parameters of the function argument is the
+-- same as the order of the first two parameters.
+collect' :: b -> [a] -> (b -> a -> b) -> b
+collect' z xs f = foldl' f z xs
 
 -- | @isLength n xs@ is a lazy equivalent of @length xs == n@.  It
 -- is lazy in the sense that it evaluates at most @n@ elements of the

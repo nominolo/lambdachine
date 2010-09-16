@@ -25,13 +25,13 @@ main = runGhc (Just libdir) $ do
            | otherwise = "../tests/bc0001.hs"
   dflags <- getSessionDynFlags
   setSessionDynFlags dflags{ ghcLink = NoLink }
-  core_mdl <- compileToCore file
+  (core_binds, data_tycons) <- compileToCore file
   liftIO $ do
     s <- newUniqueSupply 'g'
     putStrLn "================================================="
     --putStrLn $ showPpr core_mdl
     putStrLn "-------------------------------------------------"
-    let bcos = generateBytecode s core_mdl
+    let bcos = generateBytecode s core_binds data_tycons
     --putStrLn $ pretty bcos
     let bcos' = M.map allocRegs bcos
     pprint $ bcos'

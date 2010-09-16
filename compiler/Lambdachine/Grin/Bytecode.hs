@@ -331,6 +331,9 @@ data BytecodeObject' g
     , bcoDataCon :: Id   -- ^ The constructor 'Id'.
     , bcoFields :: [Either BcConst Id]
     }
+  | BcConInfo
+    { bcoConTag :: Int
+    }
 
 type BytecodeObject = BytecodeObject' (Graph BcIns O C)
 
@@ -376,7 +379,7 @@ instance Pretty BcoType where
 
 instance Pretty g => Pretty (BytecodeObject' g) where
   ppr bco@BcObject{} =
-    align $ text "BCO " <> ppr (bcoType bco) <> char ':' <> int (bcoFreeVars bco) $+$
+    align $ ppr (bcoType bco) <> char ':' <> int (bcoFreeVars bco) $+$
             text "gbl: " <> align (ppr (bcoGlobalRefs bco)) $+$
             (indent 2 $ ppr (bcoCode bco))
              -- pprGraph ppr (\l -> ppr l <> colon) (bcoCode bco))
@@ -384,6 +387,8 @@ instance Pretty g => Pretty (BytecodeObject' g) where
      ppr dcon <+> hsep (map pp_fld fields)
     where pp_fld (Left l) = ppr l
           pp_fld (Right x) = ppr x
+  ppr BcConInfo{ bcoConTag = tag } =
+    text "CONSTR" <> parens (text "tag:" <> ppr tag)
 
 instance Pretty (Graph BcIns O C) where
   ppr g = pprGraph ppr (\l -> ppr l <> colon) g
