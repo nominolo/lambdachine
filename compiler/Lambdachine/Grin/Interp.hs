@@ -159,9 +159,14 @@ writeReg (ArgStack base top args) reg val
 writeReg _ reg _ =
   error $ "Register " ++ show reg ++ " not accessible in current frame."
 
+-- | Read a register.  Register number must be in the range
+-- @[(-1) .. framesize - 1]@.
+--
+-- Register @(-1)@ is the special @Node@ pointer which points to the
+-- current closure and is used to access free variables.
 readReg :: ArgStack -> Int -> IO Val
 readReg (ArgStack base top args) reg
-  | let reg_idx = base + reg, reg_idx < top = do
+  | let reg_idx = base + reg, reg_idx < top, reg >= (-1) = do
       readArray args reg_idx
 readReg _ reg =
   error $ "Register " ++ show reg ++ " not accessible in current frame."
@@ -337,6 +342,11 @@ interp1 env heap bco@BcObject{ bcoCode = code } pc args callstack k = do
      k env heap bco (pc + 1) args callstack
    interp_rhs dst (Load LoadBlackhole) = do
      writeReg args dst (SLoc blackholeDataConId)
+     k env heap bco (pc + 1) args callstack
+   interp_rhs dst (Load (LoadClosureVar i)) = do
+     node <- readReg args (-1)
+     let Obj _ free_vars = getObj env heap node
+     writeReg args dst (free_vars V.! i)
      k env heap bco (pc + 1) args callstack
    interp_rhs dst (Alloc (BcReg con_info) vars) = do
      SLoc dcon <- readReg args con_info
