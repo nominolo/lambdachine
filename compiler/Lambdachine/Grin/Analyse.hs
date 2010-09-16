@@ -86,8 +86,8 @@ live :: BcIns e x -> Fact x LiveVars -> LiveVars
 live ins f = case ins of
   Label _     -> f
   Assign x r  -> addLives (S.delete x f) (universeBi r)
-  Eval r      -> S.insert r f
   Store b _ v -> S.insert b (S.insert v f)
+  Eval l r    -> S.insert r (fact f l)
   Goto l      -> fact f l
   Ret1 r      -> S.insert r (fact_bot livenessLattice)
   CondBranch _ _ r1 r2 tl fl ->
@@ -104,7 +104,7 @@ live ins f = case ins of
 
 insUses :: BcIns e x -> [BcVar]
 insUses (Assign _ rhs)   = universeBi rhs
-insUses (Eval x)         = [x]
+insUses (Eval _ x)       = [x]
 insUses (Store _ _ x)    = [x]
 insUses (Ret1 x)         = [x]
 insUses (CondBranch _ _ x y _ _) = [x, y]

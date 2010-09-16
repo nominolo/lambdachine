@@ -323,7 +323,7 @@ interp1 env heap bco@BcObject{ bcoCode = code } pc args callstack k = do
       k env heap bco' pc' args' callstack
     Lst (Goto pc') -> k env heap bco pc' args callstack
     Lst (Case CaseOnTag (BcReg x) alts) -> case_branch x alts
-    Mid (Eval (BcReg reg)) -> eval reg
+    Lst (Eval pc' (BcReg reg)) -> eval pc' reg
  where
    interp_rhs dst (Move (BcReg src)) = do
      pprint =<< ppArgStack args
@@ -424,7 +424,7 @@ interp1 env heap bco@BcObject{ bcoCode = code } pc args callstack k = do
         | tag == tag' = dst
         | otherwise   = find_alt' tag alts' dflt
 
-   eval reg = do
+   eval pc' reg = do
      loc <- readReg args reg
      case loc of
        SLoc x -> undefined

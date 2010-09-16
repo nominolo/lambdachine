@@ -568,7 +568,8 @@ transBody (Ghc.Lit l) env _fvi locs ctxt = do
 transBody (Ghc.Var x) env fvi locs0 ctxt = do
   (is0, r, eval'd, locs1, fvs) <- transVar x env fvi locs0 (contextVar ctxt)
   let is | eval'd = is0
-         | otherwise = is0 <*> insEval r
+         | otherwise = withFresh $ \l ->
+                         is0 <*> insEval l r |*><*| mkLabel l
   case ctxt of
     RetC -> return (is <*> insRet1 r,
                    locs1, fvs, Nothing)

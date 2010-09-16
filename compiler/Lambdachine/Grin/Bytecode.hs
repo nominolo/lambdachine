@@ -29,7 +29,6 @@ data BcIns' b e x where
   Label  :: b -> BcIns' b C O
   -- O/O stuff
   Assign :: BcVar -> BcRhs        -> BcIns' b O O
-  Eval   :: BcVar                 -> BcIns' b O O
   Store  :: BcVar -> Int -> BcVar -> BcIns' b O O
 
   -- O/C stuff
@@ -41,6 +40,7 @@ data BcIns' b e x where
   Call :: Maybe (BcVar, b)
        -> BcVar -> [BcVar]        -> BcIns' b O C
   Ret1 :: BcVar                   -> BcIns' b O C
+  Eval   :: b -> BcVar            -> BcIns' b O C
 
 data LinearIns' b
   = Fst (BcIns' b C O)
@@ -112,6 +112,7 @@ instance NonLocal (BcIns' Label) where
   successors (Case _ _ targets) = map snd targets
   successors (Call mb_l _ _) = maybeToList (snd `fmap` mb_l)
   successors (Ret1 _) = []
+  successors (Eval l _) = [l]
 
 instance HooplNode BcIns where
   mkBranchNode l = Goto l
@@ -147,7 +148,7 @@ instance Pretty BinOp where
 instance Pretty b => Pretty (BcIns' b e x) where
   ppr (Label _) = empty
   ppr (Assign r rhs) = ppr r <+> char '=' <+> ppr rhs
-  ppr (Eval r) = text "eval" <+> ppr r
+  ppr (Eval _ r) = text "eval" <+> ppr r
   ppr (Store base offs val) =
     text "Mem[" <> ppr base <+> char '+' <+> int offs <> text "] = " <> ppr val
   ppr (Goto bid) = text "goto" <+> ppr bid
@@ -204,7 +205,7 @@ mapLabels :: (l1 -> l2) -> BcIns' l1 e x -> BcIns' l2 e x
 mapLabels f ins = case ins of
   Label l      -> Label (f l)
   Assign x rhs -> Assign x rhs
-  Eval x       -> Eval x
+  Eval l x     -> Eval (f l) x
   Store x n y  -> Store x n y
   Ret1 x       -> Ret1 x
   Goto l       -> Goto (f l)
@@ -299,8 +300,8 @@ insStore base offs val = mkMiddle $ Store base offs val
 insFetch :: BcVar -> BcVar -> Int -> BcGraph O O
 insFetch dst base offs = mkMiddle $ Assign dst (Fetch base offs)
 
-insEval :: BcVar -> BcGraph O O
-insEval r = mkMiddle $ Eval r
+insEval :: BlockId -> BcVar -> BcGraph O C
+insEval b r = mkLast $ Eval b r
 
 insRet1 :: BcVar -> BcGraph O C
 insRet1 r = mkLast $ Ret1 r
@@ -483,7 +484,7 @@ instance Uniplate BcVar where uniplate p = plate p
 
 instance Biplate (BcIns' b e x) BcVar where
   biplate (Assign r rhs) = plate Assign |* r |+ rhs
-  biplate (Eval r) = plate Eval |* r
+  biplate (Eval l r) = plate (Eval l) |* r
   biplate (Store r n r') = plate Store |* r |- n |* r'
   biplate (CondBranch c t r1 r2 l1 l2) =
     plate (CondBranch c t) |* r1 |* r2 |- l1 |- l2
