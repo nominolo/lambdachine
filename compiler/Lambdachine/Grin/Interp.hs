@@ -323,6 +323,7 @@ interp1 env heap bco@BcObject{ bcoCode = code } pc args callstack k = do
       k env heap bco' pc' args' callstack
     Lst (Goto pc') -> k env heap bco pc' args callstack
     Lst (Case CaseOnTag (BcReg x) alts) -> case_branch x alts
+    Mid (Eval (BcReg reg)) -> eval reg
  where
    interp_rhs dst (Move (BcReg src)) = do
      pprint =<< ppArgStack args
@@ -408,7 +409,32 @@ interp1 env heap bco@BcObject{ bcoCode = code } pc args callstack k = do
             k env heap bco' 0 args' callstack
 
    case_branch reg alts = do
-     undefined
+     addr <- readReg args reg
+     let Obj ctor _ = getObj env heap addr
+     let Right bco = lookupStaticEnv env ctor
+     case bco of
+       BcConInfo{ bcoConTag = tag } ->
+         let pc' = find_alt tag alts in
+         k env heap bco pc' args callstack
+    where
+      find_alt tag ((DefaultTag, offs) : alts') = find_alt' tag alts' offs
+      find_alt tag alts' = find_alt' tag alts' (error "Unmatched pattern")
+      find_alt' tag [] dflt = dflt
+      find_alt' tag ((Tag tag', dst) : alts') dflt
+        | tag == tag' = dst
+        | otherwise   = find_alt' tag alts' dflt
+
+   eval reg = do
+     loc <- readReg args reg
+     case loc of
+       SLoc x -> undefined
+       Loc l -> do
+         let Obj ctor _ = lookupHeap heap l
+         let Right bco = lookupStaticEnv env ctor
+         case bco of
+           BcConInfo{} -> k env heap bco pc args callstack
+           BcObject{ bcoType = obj_ty, bcoCode = code }
+             | Thunk <- obj_ty -> undefined
 
    if' True  = SLoc trueDataConId
    if' False = SLoc falseDataConId
