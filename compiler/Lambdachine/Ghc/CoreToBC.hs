@@ -156,7 +156,7 @@ looksLikeCon _ = False
 
 buildCon :: Id -> CoreExpr -> Trans BCOs
 buildCon f (viewGhcApp -> Just (dcon, args0)) = do
-  let dcon' = toplevelId dcon
+  let dcon' = dataConInfoTableId (ghcIdDataCon dcon)
       fields = transFields toplevelId args0
   return (M.singleton f (BcoCon Con dcon' fields))
 

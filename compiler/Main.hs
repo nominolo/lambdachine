@@ -29,12 +29,12 @@ main = runGhc (Just libdir) $ do
   liftIO $ do
     s <- newUniqueSupply 'g'
     putStrLn "================================================="
-    --putStrLn $ showPpr core_mdl
+    --putStrLn $ showPpr core_binds
     putStrLn "-------------------------------------------------"
     let bcos = generateBytecode s core_binds data_tycons
     --putStrLn $ pretty bcos
     let bcos' = M.map allocRegs bcos
     pprint $ bcos'
-    test_insts1
+    test_insts2 bcos'
     --let entry:_ = filter ((=="test") . show) (M.keys bcos')
     --pprint $ fst $ interp entry bcos'

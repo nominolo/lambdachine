@@ -5,6 +5,7 @@ module Lambdachine.Utils
   , expectJust
   , second
   , modify'
+  , assert
   -- * List Utilities
   , fold2l', isLength, collect',
   )
@@ -13,6 +14,7 @@ where
 import Lambdachine.Utils.Pretty
 import Lambdachine.Utils.Unique
 
+import Control.Exception ( assert )
 import Control.Monad.State.Strict
 import Data.Maybe
 import Data.List ( foldl' )
@@ -45,7 +47,7 @@ fold2l' f a0 bs0 cs0 = go a0 bs0 cs0
 -- The different argument order makes the following style more
 -- readable:
 --
--- > collect initial list $ \acc item ->
+-- > collect' initial list $ \acc item ->
 -- >   {- ... body goes here ... -}
 --
 -- As opposed to the less readable:

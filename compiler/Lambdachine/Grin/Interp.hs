@@ -4,7 +4,7 @@ module Lambdachine.Grin.Interp where
 import Lambdachine.Grin.Bytecode
 import Lambdachine.Id
 import Lambdachine.Grin.RegAlloc ( LinearCode(..) )
-import Lambdachine.Utils.Pretty
+import Lambdachine.Utils
 import Lambdachine.Builtin
 
 import Control.Monad ( forM_ )
@@ -13,6 +13,7 @@ import Data.Maybe ( fromMaybe )
 import qualified Data.Vector as V
 import qualified Data.IntMap as IM
 import qualified Data.Map    as M
+import qualified Data.IntSet as IS
 
 data Val
   = Loc Int -- ^ Reference to a heap location.
@@ -37,15 +38,45 @@ data ArgStack = ArgStack
   , argVals :: IOArray Int Val
   }
 
-ppArgStack :: ArgStack -> IO PDoc
-ppArgStack (ArgStack base top vals) = do
+ppArgStack :: ArgStack -> Heap -> IO PDoc
+ppArgStack (ArgStack base top vals) heap = do
   elems <- getElems vals
-  return $ text "Stack" <+> ppr base <> char '-' <> ppr top <+>
-             sep (commaSep (map ppr (take (top - base) elems)))
+  let (saved, frame0) = splitAt base elems
+      frame = take (top - base) frame0
+  return $
+    text "Stack" <+> ppr base <> char '-' <> ppr top <+>
+      align (--fillSep (commaSep (map ppr saved)) <+> char '|' <+>
+             fillSep (commaSep (map ppr frame)) $+$
+             ppHeapFromRoots (last saved : frame) heap)
+
+-- | Pretty-print transitive closure of heap values.
+--
+-- Follows all pointers starting from the roots, prints the objects
+-- they point to, and then does the same for all pointers contained
+-- in the printed objects.
+--
+-- Each object is printed only once.
+ppHeapFromRoots :: [Val]  -- ^ Roots.  Non-pointer values are ignored.
+                -> Heap -> PDoc
+ppHeapFromRoots roots heap =
+  fillSep $ commaSep $ go IS.empty [ l | Loc l <- roots ]
+ where
+   go seen [] = []
+   go seen (l:ls)
+     | l `IS.member` seen = go seen ls
+   go seen (l:ls) =
+     let obj@(Obj _ fields) = lookupHeap heap l in
+     (ppr (Loc l) <> char '=' <> ppr obj) :
+        go (IS.insert l seen)
+           ([ l' | Loc l' <- V.toList fields ] ++ ls)
+
+-- TODO: should be stack-frame number of nested stack frames, not words.
+stackDepth :: ArgStack -> Int
+stackDepth (ArgStack base _ _) = base
 
 mkArgStack :: IO ArgStack
 mkArgStack = do
-  argStack <- newArray_ (0, 4096)
+  argStack <- newArray (0, 4096) Undef
   return $ ArgStack 0 0 argStack
 
 addFrame :: Int -> ArgStack -> IO ArgStack
@@ -102,21 +133,31 @@ stackFrameSize = 3  -- prevFrame, savedPC, curNode
 allocFrame :: ArgStack -> Int -> Val -> [Val] -> Int -> IO ArgStack
 allocFrame (ArgStack base top args) pc fun params framesize = do
   (_, max_top) <- getBounds args
-  let !top' = base + stackFrameSize + framesize
+  let !top' = top + stackFrameSize + framesize
   if top' >= max_top then
     error "Stack Overflow"
    else do
+--     pprint $ text "... Setting up stackframe of size"
+--              <+> ppr (stackFrameSize + framesize)
+    let !base' = top + 3
     writeArray args top (ValI (fromIntegral base))  -- prevFrame
     writeArray args (top + 1) (ValI (fromIntegral pc))  -- savedPC
     writeArray args (top + 2) fun  -- curNode
-    forM_ (zip [top + 3 ..] params) $ \(i, v) ->
+    forM_ (zip [base' ..] params) $ \(i, v) ->
       writeArray args i v
-    return $ ArgStack (top + 3) top' args
+    return $ ArgStack base' top' args
+
+initArgStack :: Id -> ArgStack -> IO ArgStack
+initArgStack entry (ArgStack _base _top args) = do
+  writeArray args 0 (SLoc initCodeId)
+  writeArray args 1 (SLoc entry)
+  return (ArgStack 1 2 args)
 
 adjustFramesize :: ArgStack -> Int -> IO ArgStack
 adjustFramesize (ArgStack base top args) new_framesize =
   let !top' = base + new_framesize in
-  if top' <= top then
+  if top' <= top then do
+    --pprint $ text "No stack growing" <+> ppr (top, top', new_framesize)
     return (ArgStack base top' args)
    else do
      (_, max_top) <- getBounds args
@@ -133,11 +174,19 @@ popFrameRet env heap (ArgStack base top args) result = do
   ValI old_pc <- readArray args (prev_top + 1)
   let base' = fromIntegral prev_base
   let pc' = fromIntegral old_pc
-  bco <- getBCO env heap `fmap` readArray args (prev_top + 2)
+  old_node <- readArray args (base' - 1)
+  let bco = getBCO env heap old_node
+--   pprint $ text "Trying to return to:" <+>
+--              align (ppr pc' <+> ppr old_node <+> ppr bco)
   case fc_code (bcoCode bco) V.! (pc' - 1) of
     Lst (Call (Just (BcReg dst, _)) _ _) -> do
       writeArray args (base' + dst) result
       return (ArgStack base' prev_top args, bco, pc')
+    Lst (Eval _ (BcReg dst)) -> do
+      writeArray args (base' + dst) result
+      return (ArgStack base' prev_top args, bco, pc')
+    other ->
+      error $ "Not returning to Call or Eval: " ++ pretty other
 
 getBCO :: StaticEnv -> Heap -> Val -> BCO
 getBCO env hp (SLoc x) =
@@ -196,6 +245,7 @@ initHeap bcos = (Heap 0 IM.empty, M.map convert_bco bcos)
    convert_bco BcoCon{ bcoDataCon = dcon, bcoFields = fields } =
      Left (mkObj dcon fields)
    convert_bco bco@BcObject{} = Right bco
+   convert_bco bco@BcConInfo{} = Right bco
 
 heapAlloc :: Heap -> Obj -> (Val, Heap)
 heapAlloc (Heap next hp) obj =
@@ -221,6 +271,9 @@ lookupStaticEnv :: StaticEnv -> Id -> Either Obj BCO
 lookupStaticEnv env x = fromMaybe err $ M.lookup x env
  where
    err = error $ pretty $ text "lookupStaticEnv: Unknown id:" <+> ppr x
+
+updateStaticEnv :: StaticEnv -> Id -> Either Obj BCO -> StaticEnv
+updateStaticEnv env x thing = M.insert x thing env
 
 iEval :: Val -> Heap -> StaticEnv -> (Val, Heap, StaticEnv)
 iEval val@(SLoc x) hp env =
@@ -265,14 +318,6 @@ constToVal :: BcConst -> Val
 constToVal (CInt n) = ValI n
 constToVal (CStr s) = ValS s
 
-{-
-interp1 :: StaticEnv -> Heap -> BCO -> Int -> Stack
-        -> (StaticEnv, Heap, BCO, Int)
-interp1 env hp pc_bco pc_offs =
-  case pc_bco V.! pc_offs of
-    Mid (Assign (Reg dst)
--}
-
 mkDummyFun :: Int -> [FinalIns] -> BytecodeObject' FinalCode
 mkDummyFun framesize code0 =
   BcObject (BcoFun framesize) code [] [] 0
@@ -300,7 +345,9 @@ pre_post pre code post = do
 interpSteps :: Int
             -> StaticEnv -> Heap -> BCO -> Int -> ArgStack -> [PC]
             -> IO (StaticEnv, Heap, ArgStack)
-interpSteps 0 env hp _ _ args _ = return (env, hp, args)
+interpSteps 0 env hp _ _ args _ = do
+  putStrLn "STOPPING (ran out of steps)"
+  return (env, hp, args)
 interpSteps n env hp bco pc args callstack =
   interp1 env hp bco pc args callstack (interpSteps (n-1))
 
@@ -311,7 +358,10 @@ interp1 :: StaticEnv -> Heap -> BCO -> Int -> ArgStack -> [PC]
         -> IO a
 interp1 env heap bco@BcObject{ bcoCode = code } pc args callstack k = do
   let inst = fc_code code V.! pc
-  pprint $ text ">>>" <+> ppr inst
+  stack <- ppArgStack args heap
+  pprint $ text ">>>" <+> indent (stackDepth args)
+                            (ppr pc <> colon <+> ppr inst $+$
+                             text "..." <+> stack)
   case inst of
     Mid (Assign (BcReg dest) rhs) -> interp_rhs dest rhs
     Mid (Store base offs src) -> write base offs src
@@ -323,10 +373,12 @@ interp1 env heap bco@BcObject{ bcoCode = code } pc args callstack k = do
       k env heap bco' pc' args' callstack
     Lst (Goto pc') -> k env heap bco pc' args callstack
     Lst (Case CaseOnTag (BcReg x) alts) -> case_branch x alts
-    Lst (Eval pc' (BcReg reg)) -> eval pc' reg
+    Lst (Eval pc' (BcReg reg)) -> assert (pc' == pc + 1) $ eval reg
+    Lst Update -> update
+    Lst Stop -> return undefined
  where
    interp_rhs dst (Move (BcReg src)) = do
-     pprint =<< ppArgStack args
+     pprint =<< ppArgStack args heap
      old_src <- readReg args src
      writeReg args dst old_src
      k env heap bco (pc + 1) args callstack
@@ -347,7 +399,7 @@ interp1 env heap bco@BcObject{ bcoCode = code } pc args callstack k = do
    interp_rhs dst (Load (LoadClosureVar i)) = do
      node <- readReg args (-1)
      let Obj _ free_vars = getObj env heap node
-     writeReg args dst (free_vars V.! i)
+     writeReg args dst (free_vars V.! (i - 1))
      k env heap bco (pc + 1) args callstack
    interp_rhs dst (Alloc (BcReg con_info) vars) = do
      SLoc dcon <- readReg args con_info
@@ -393,10 +445,11 @@ interp1 env heap bco@BcObject{ bcoCode = code } pc args callstack k = do
          | arity == num_args -> do
             vals <- mapM (\(BcReg r) -> readReg args r) vars
             args' <- allocFrame args (pc + 1) (SLoc f) vals (fc_framesize (bcoCode bco'))
+            pprint $ text "***" <+> indent (stackDepth args') (text "Entering:" <+> ppr fun)
             k env heap bco' 0 args' callstack
 
    tailcall (BcReg fun) vars = do
-     SLoc f <- readReg args fun
+     node_ptr@(SLoc f) <- readReg args fun
      let Right bco' = lookupStaticEnv env f
      let num_args = length vars
      case bcoType bco' of
@@ -405,16 +458,19 @@ interp1 env heap bco@BcObject{ bcoCode = code } pc args callstack k = do
             -- copy arguments down
             vals <- mapM (\(BcReg r) -> readReg args r) vars
             forM_ (zip [0..] vals) $ \(i, v) -> writeReg args i v
-            args' <- adjustFramesize args (fc_framesize (bcoCode bco))
+            writeReg args (-1) node_ptr
+            args' <- adjustFramesize args (fc_framesize (bcoCode bco'))
+            pprint $ text (replicate (stackDepth args' + 4) '*') <+> (text "Entering:" <+> ppr f)
             k env heap bco' 0 args' callstack
 
    case_branch reg alts = do
      addr <- readReg args reg
      let Obj ctor _ = getObj env heap addr
-     let Right bco = lookupStaticEnv env ctor
-     case bco of
-       BcConInfo{ bcoConTag = tag } ->
-         let pc' = find_alt tag alts in
+     let Right bco' = lookupStaticEnv env ctor
+     case bco' of
+       BcConInfo{ bcoConTag = tag } -> do
+         let pc' = find_alt tag alts
+         --pprint $ text "Found tag:" <+> ppr tag <+> text "->" <+> ppr pc'
          k env heap bco pc' args callstack
     where
       find_alt tag ((DefaultTag, offs) : alts') = find_alt' tag alts' offs
@@ -424,17 +480,55 @@ interp1 env heap bco@BcObject{ bcoCode = code } pc args callstack k = do
         | tag == tag' = dst
         | otherwise   = find_alt' tag alts' dflt
 
-   eval pc' reg = do
-     loc <- readReg args reg
-     case loc of
-       SLoc x -> undefined
-       Loc l -> do
+   eval reg = do
+     node_ptr <- readReg args reg
+     case node_ptr of
+       SLoc x ->
+         case lookupStaticEnv env x of
+           Left obj -> k env heap bco (pc + 1) args callstack
+           Right bco' ->
+             case bco' of
+               BcObject{ bcoType = obj_ty }
+                 | CAF <- obj_ty -> eval_it bco' node_ptr
+                 | BcoFun _ <- obj_ty ->
+                     k env heap bco (pc + 1) args callstack
+       Loc l ->
          let Obj ctor _ = lookupHeap heap l
-         let Right bco = lookupStaticEnv env ctor
-         case bco of
-           BcConInfo{} -> k env heap bco pc args callstack
-           BcObject{ bcoType = obj_ty, bcoCode = code }
-             | Thunk <- obj_ty -> undefined
+             Right bco' = lookupStaticEnv env ctor
+         in case bco' of
+              BcConInfo{} -> k env heap bco (pc + 1) args callstack
+              BcObject{ bcoType = obj_ty }
+                | Thunk <- obj_ty -> eval_it bco' node_ptr
+                | BcoFun _ <- obj_ty ->
+                    k env heap bco (pc + 1) args callstack
+
+   eval_it bco'@BcObject{ bcoCode = code } node_ptr = do
+     (args', pc') <- pushUpdateFrame args (pc+1) node_ptr
+     -- like call
+     args'' <- allocFrame args' pc' node_ptr [] (fc_framesize code)
+     pprint $ text (replicate (stackDepth args'' + 4) '*') <+> (text "Eval-Entering:" <+> ppr node_ptr)
+     k env heap bco' 0 args'' callstack
+
+   update = do
+     -- Semantics: *R(0) = *R(1)  // or create indirection
+     --            return R(1)  -or-  R(0) = R(1); return R(0)
+     old_val <- readReg args 0
+     new_val <- readReg args 1
+     let new_obj = case new_val of
+                     SLoc x -> lookupStaticEnv env x
+                     Loc l -> Left $ lookupHeap heap l
+     let (env', heap') =
+           case old_val of
+             SLoc y ->
+               (updateStaticEnv env y new_obj, heap)
+             Loc l ->
+               case new_obj of
+                 Left o' -> (env, updateHeap heap l o')
+                 Right _ -> error "Cannot currently update a dynamic object with a static object."
+
+     (args', bco', pc') <- popFrameRet env' heap' args new_val
+     k env' heap' bco' pc' args' callstack
+
 
    if' True  = SLoc trueDataConId
    if' False = SLoc falseDataConId
@@ -449,7 +543,109 @@ interp1 env heap bco@BcObject{ bcoCode = code } pc args callstack k = do
    bin_op_int32ty CmpEq v1 v2 = if' (v1 == v2)
    bin_op_int32ty CmpNe v1 v2 = if' (v1 /= v2)
 
+interp1 _ _ bco _ _ _ _ =
+  error $ "Trying to interpret: " ++ pretty bco
 
+-- | Push an update frame.  Currently looks like this:
+--
+-- @
+--                  ^
+--  +-----------+   |
+--  | oldFrame *----'
+--  +-----------+
+--  |  savedPC  | points after the EVAL
+--  +-----------+
+--  |    &f     | <- Node = the magical updateClosure
+--  +-----------+ <- base
+--  | R0        | <- Used to receive the result from evaluation.
+--  +-----------+
+--  | R1        | <- Used to receive the result
+-- @
+--
+pushUpdateFrame :: ArgStack -> Int -> Val -> IO (ArgStack, Int)
+pushUpdateFrame args pc ptr = do
+  args' <- allocFrame args pc (SLoc updateId) [ptr] 2
+  return (args', 1)
+
+-- | Info table and bytecode referenced by the update frame.
+--
+-- If a closure needs an update the code is forced to return to this
+-- \"function\" (by @EVAL@).  The bytecode currently looks as follows:
+--
+-- @
+--   CALL R(1), <dummy>  ; force result to be written into r1
+--   UPDATE              ; magical.  See below.
+-- @
+--
+-- The @UPDATE@ instruction is currently rather complex.  It performs
+-- the following steps:
+--
+--   - Redirect the object pointed to by @R(0)@ to the object pointed
+--     to by @R(1)@.  This can be done by overwriting things in memory
+--     or creating an indirection.
+--
+--   - Copy the value of @R(1)@ into R(0)@.  This is to make sure
+--     that the result of an @EVAL@ never points to an indirection.
+--
+--   - Return with @R(0)@ as result.
+--
+updateBCO :: BCO
+updateBCO =
+  BcObject
+    { bcoType = BcoFun 1
+    , bcoConstants = []
+    , bcoFreeVars = 0
+    , bcoGlobalRefs = []
+    , bcoCode = FinalCode
+                  { fc_framesize = 2
+                  , fc_code = V.fromList $ the_code } }
+ where
+   the_code =
+     [Lst (Call (Just (BcReg 1, 1)) (BcReg 1) [])
+     ,Lst Update]
+
+updateId :: Id
+updateId = updateItblId
+
+builtInEnv :: FinalBCOs
+builtInEnv = M.fromList
+  [(falseItblId, BcConInfo 1)
+  ,(trueItblId, BcConInfo 2)
+  ,(falseDataConId, BcoCon Con falseItblId [])
+  ,(trueDataConId, BcoCon Con trueItblId [])
+  ,(updateId, updateBCO)
+  ,(initCodeId, initCodeBCO)]
+
+initCodeBCO :: BCO
+initCodeBCO =
+  -- eval r0
+  -- stop
+  BcObject
+    { bcoType = BcoFun 1
+    , bcoConstants = []
+    , bcoFreeVars = 0
+    , bcoGlobalRefs = []
+    , bcoCode = FinalCode
+                  { fc_framesize = 1
+                  , fc_code = V.fromList $ the_code } }
+ where
+   the_code =
+     [Lst (Eval 1 (BcReg 0))
+     ,Lst Stop]
+
+test_insts2 :: FinalBCOs -> IO ()
+test_insts2 bcos0 = do
+  let entry:_ = [ f | f <- M.keys bcos0, show f == "test" ]
+  args <- initArgStack entry =<< mkArgStack
+  let bcos = M.union builtInEnv bcos0
+      bco = initCodeBCO
+      pc = 0
+      (heap, env) = initHeap bcos
+      steps = 1000
+  (_, heap', args') <- interpSteps steps env heap bco pc args []
+  --arg_elems <- take frame_sizea `fmap` getElems (argVals args')
+  pprint =<< ppArgStack args' heap'
+  pprint heap'
 
 test_insts1 :: IO ()
 test_insts1 = do

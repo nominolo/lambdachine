@@ -41,6 +41,9 @@ data BcIns' b e x where
        -> BcVar -> [BcVar]        -> BcIns' b O C
   Ret1 :: BcVar                   -> BcIns' b O C
   Eval   :: b -> BcVar            -> BcIns' b O C
+  -- only used by the interpreter / RTS
+  Update ::                          BcIns' b O C
+  Stop   ::                          BcIns' b O C
 
 data LinearIns' b
   = Fst (BcIns' b C O)
@@ -167,6 +170,8 @@ instance Pretty b => Pretty (BcIns' b e x) where
        Just (r,_) -> ppr r <+> char '=') <+>
     ppr f <> parens (hsep (commaSep (map ppr args)))
   ppr (Ret1 r) = text "return" <+> ppr r
+  ppr Update = text "update"
+  ppr Stop = text "stop"
 
 instance Pretty BcRhs where
   ppr (Move r) = ppr r
