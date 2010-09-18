@@ -38,6 +38,9 @@ sum acc Nil = acc
 sum acc (Cons x xs) =
   let acc' = (acc `plusInt` x) in 
   acc' `seq` sum acc' xs
+
+zero = I# 0#
+one = I# 1#
 {-
 replicate :: Int -> a -> List a
 replicate n x =
