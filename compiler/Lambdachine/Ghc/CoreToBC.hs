@@ -129,9 +129,7 @@ transTopLevelBind f (viewGhcLam -> (params, body)) = do
   let !f' = toplevelId f
   let bco_type | (_:_) <- params = BcoFun (length params)
                | looksLikeCon body = Con
-               | isGhcConWorkId f =
-                   -- Unary constructors become FUN_0 (and not a CAF)
-                   BcoFun (length params)
+               | isGhcConWorkId f = Con
                | otherwise = CAF
   case bco_type of
     Con -> buildCon f' body
@@ -699,8 +697,11 @@ transVar x env fvi locs0 mr =
                   updateLoc locs0 x (InVar r), closureVar x)
 
       | otherwise -> do  -- global variable
-          let x' | isGhcConWorkId x = dataConInfoTableId (ghcIdDataCon x)
-                 | otherwise        = toplevelId x
+          let x' | isGhcConWorkId x,
+                   not (Ghc.isNullarySrcDataCon (ghcIdDataCon x))
+                 = dataConInfoTableId (ghcIdDataCon x)
+                 | otherwise
+                 = toplevelId x
           r <- mbFreshLocal mr
           return (insLoadGbl r x', r, isGhcConWorkId x,  -- TODO: only if CAF
                   updateLoc locs0 x (InVar r), globalVar x')

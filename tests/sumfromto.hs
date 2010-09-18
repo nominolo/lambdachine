@@ -68,7 +68,8 @@ concat xs = foldr append Nil xs
 --concatMap :: (a -> List b) -> List a -> List a
 --concatMap f xs = foldr 
 
-test = (sum (I# 0#) (upto (I# 1#) (I# 10#)))
+test :: Int
+test = (sum (I# 0#) (upto (I# 1#) (I# 5#)))
 
 test2 a b = 
   let x = Cons a y
