@@ -8,7 +8,7 @@ import Lambdachine.Ghc.CoreToBC
 import Lambdachine.Grin.Bytecode
 import Lambdachine.Grin.Analyse
 import Lambdachine.Grin.RegAlloc
-import Lambdachine.Grin.Interp
+import Lambdachine.Interp.Exec
 
 import GHC
 import GHC.Paths ( libdir )

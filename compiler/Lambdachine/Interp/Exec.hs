@@ -1,5 +1,5 @@
 {-# LANGUAGE BangPatterns, PatternGuards, GADTs #-}
-module Lambdachine.Grin.Interp where
+module Lambdachine.Interp.Exec where
 
 import Lambdachine.Grin.Bytecode
 import Lambdachine.Id
