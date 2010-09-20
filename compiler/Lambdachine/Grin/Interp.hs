@@ -36,7 +36,10 @@ data ArgStack = ArgStack
 
 type InfoTableId = Id
 
-data Closure = Closure InfoTableId (V.Vector Val)
+data Closure = Closure
+  { cl_itbl   :: InfoTableId
+  , cl_fields :: V.Vector Val
+  }
 
 data InfoTable
   = CodeInfoTable
@@ -503,7 +506,9 @@ interp1 env heap bco@CodeInfoTable{ itblCode = code } pc args k kstop = do
      (args', pc') <- pushUpdateFrame args (pc+1) node_ptr
      -- like call
      args'' <- allocFrame args' pc' node_ptr [] (fc_framesize code)
-     pprint $ text (replicate (stackDepth args'' + 4) '*') <+> (text "Eval-Entering:" <+> ppr node_ptr)
+     pprint $ text (replicate (stackDepth args'' + 4) '*') <+>
+              text "Eval-Entering:" <+>
+              ppr (cl_itbl (lookupClosure heap node_ptr))
      k env heap bco' 0 args''
 
    update = do
