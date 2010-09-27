@@ -53,6 +53,10 @@ isTopLevelId ident = idDetails ident == TopLevelId
 isPrimOpId :: Id -> Bool
 isPrimOpId ident = idDetails ident == PrimOpId
 
+isDataConInfoTableId :: Id -> Bool
+isDataConInfoTableId (Id n DataConInfoTableId) = True
+isDataConInfoTableId _ = False
+
 instance Pretty IdDetails where
   ppr TopLevelId = text "gbl"
   ppr LocalId = text "lcl"

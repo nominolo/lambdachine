@@ -9,6 +9,7 @@ import Lambdachine.Grin.Bytecode
 import Lambdachine.Grin.Analyse
 import Lambdachine.Grin.RegAlloc
 import Lambdachine.Interp.Exec
+import Lambdachine.Interp.Trace
 
 import GHC
 import GHC.Paths ( libdir )
@@ -38,3 +39,4 @@ main = runGhc (Just libdir) $ do
     test_insts2 bcos'
     --let entry:_ = filter ((=="test") . show) (M.keys bcos')
     --pprint $ fst $ interp entry bcos'
+    --test_record1 bcos'

@@ -232,6 +232,13 @@ withDebugStyle d _ = d DebugStyle
 commaSep :: [PDoc] -> [PDoc]
 commaSep = punctuate comma
 
+ppFill :: Int -> Int -> PDoc
+ppFill digits val
+  | digits <= 0 || val >= 10 ^ (digits - 1)
+  = ppr val
+  | otherwise
+  = char '0' <> ppFill (digits - 1) val
+
 ------------------------------------------------------------------------
 -- * Prelude Type Instances
 instance Pretty PDoc where ppr = id

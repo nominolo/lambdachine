@@ -1,0 +1,359 @@
+{-# LANGUAGE PatternGuards #-}
+module Lambdachine.Interp.Types where
+
+import Lambdachine.Id
+import Lambdachine.Grin.Bytecode
+import Lambdachine.Utils
+
+import qualified Data.Vector as V
+import qualified Data.IntMap as IM
+import qualified Data.Map    as M
+import qualified Data.IntSet as IS
+import Data.Array.IO
+import Data.IORef ( IORef )
+import Data.List  ( foldl' )
+import Data.Maybe ( fromMaybe )
+
+-- -------------------------------------------------------------------
+
+-- | A primitive value that can be loaded into a register.
+data Val
+  = Loc Int -- ^ Reference to a heap location.
+  | SLoc Id -- ^ Reference to a static location.
+  | ValI Integer
+  | ValS String
+  | Undef
+  deriving Eq
+
+type BCO = BytecodeObject' FinalCode
+
+-- | The dynamic call stack.
+data ArgStack = ArgStack
+  { argBase :: {-# UNPACK #-} !Int
+  , argTop  :: {-# UNPACK #-} !Int
+  , argVals :: IOArray Int Val
+  }
+
+data PC = PC !InfoTable {-# UNPACK #-} !Int
+
+newtype InfoTableId = ItblId Id
+  deriving (Eq, Ord)
+
+instance Pretty InfoTableId where
+  ppr (ItblId x) = ppr x <> text "_info"
+
+data Closure = Closure
+  { cl_itbl   :: InfoTableId
+  , cl_fields :: V.Vector Val
+  }
+
+data InfoTable
+  = CodeInfoTable
+      { itblId :: InfoTableId  -- See Note "InfoTableId"
+      , itblClosureType :: ClosureType
+      , itblCode :: FinalCode
+      }
+  | ConstrInfoTable
+      { itblId :: InfoTableId  -- See Note "InfoTableId"
+      , itblTag :: Int }
+
+-- Note: "InfoTableId"
+--
+-- In the low-level implementation this is just the address of the
+-- first instruction (or anything like it).
+
+data ClosureType = CtFun Int | CtThunk | CtCAF
+
+instance Pretty InfoTable where
+  ppr (CodeInfoTable _ ct code) =
+    ppr ct $+$ (indent 2 $ ppr code)
+  ppr (ConstrInfoTable _ tag) =
+    text "CONSTR" <> parens (text "tag:" <> ppr tag)
+
+instance Pretty ClosureType where
+  ppr (CtFun n) = text "FUN_" <> int n
+  ppr CtThunk = text "THUNK"
+  ppr CtCAF = text "CAF"
+
+type InfoTables = M.Map InfoTableId InfoTable
+
+lookupInfoTable :: InfoTables -> InfoTableId -> InfoTable
+lookupInfoTable itbls itbl = fromMaybe err $ M.lookup itbl itbls
+ where err = error $ "No info table for: " ++ pretty itbl
+
+-- -------------------------------------------------------------------
+
+data Heap = Heap { heapStaticArea :: M.Map Id Closure
+                 , heapAllocArea  :: IM.IntMap Closure
+                 , heapPtr        :: {-# UNPACK #-} !Int }
+
+data VMState = VMState
+  { vm_env   :: InfoTables
+  , vm_heap  :: Heap
+  , vm_stack :: ArgStack
+  , vm_pc    :: PC
+  , vm_mode  :: VMMode
+  , vm_hotcounts :: M.Map InfoTableId Int
+  , vm_hotfunc :: Int
+  }
+
+data VMMode = Interp | Trace InfoTableId (IORef RecordState)
+
+data RecordState = RecordState
+  { rs_slots :: IM.IntMap TRef 
+    -- ^ Maps register contents to their current 'TRef'.
+  , rs_baseslot :: !Int
+  , rs_trace :: IOArray Int IRIns
+  , rs_next  :: !Int
+  , rs_consts :: M.Map TConst TRef
+  , rs_next_const :: !Int
+  }
+
+-- class PrettyRS a where
+--   pprRS :: RecordState -> a -> PDoc
+
+-- instance PrettyRS TRef where
+--   pprRS ref | isConstTRef ref =
+
+data IRIns
+  = Nop
+  | Loop  -- special marker
+  | SLoad Int
+  | FLoad TRef Int
+  | LoadBase Int  -- ref = &base[n]
+  | SetBase Int  -- baseslot = n
+  | Op BinOp TRef TRef
+  | Guard CmpOp TRef TRef
+  | AllocN Int
+  | FStore TRef Int TRef
+
+--  | ConstI Integer
+
+type CmpOp = BinOp -- for now
+
+data TRef
+  = TNil
+  | TVar Int
+  | TCst Int TConst
+  deriving (Ord, Eq)
+{-
+newtype TRef = TRef Int
+  -- positive: ref
+  -- zero:     nil
+  -- negative: const_ref
+  deriving (Ord, Eq)
+-}
+nilTRef :: TRef
+nilTRef = TNil
+
+isVarTRef :: TRef -> Bool
+isVarTRef (TVar _) = True
+isVarTRef _ = False
+
+isConstTRef :: TRef -> Bool
+isConstTRef (TCst _ _) = True
+isConstTRef _ = False
+
+instance Pretty TRef where
+  ppr (TVar n) = char '%' <> ppFill 4 n
+  ppr TNil = text "-"
+  ppr (TCst _ c) = ppr c
+{-  ppr (TRef n) | n > 0 = char '%' <> ppFill 4 n
+               | n < 0 = text "%C" <> ppFill 3 (-n)
+               | n == 0 = text "-"
+-}
+data TConst
+  = TCInt Integer
+  | TCStr String
+  | TCId Id
+  | TCItbl InfoTableId
+  | TCPC InfoTableId Int
+  deriving (Eq, Ord)
+
+refConst :: TRef -> TConst
+refConst (TCst _ c) = c
+
+instance Pretty IRIns where
+  ppr Nop          = text "NOP     "
+  ppr Loop         = text "LOOP    "
+  ppr (LoadBase n) = text "BASE    " <+> ppr n
+  ppr (SLoad n)    = text "LOADSLOT" <+> ppr n
+  ppr (FLoad p o)  = text "LOADFLD " <+> ppr p <+> ppr o
+  ppr (Op OpAdd l r)    = text "ADD     " <+> ppr l <+> ppr r
+  ppr (Op OpSub l r)    = text "SUB     " <+> ppr l <+> ppr r
+  ppr (Op OpMul l r)    = text "MUL     " <+> ppr l <+> ppr r
+  ppr (Op OpDiv l r)    = text "DIV     " <+> ppr l <+> ppr r
+  ppr (Op cmp l r)      = text "SET" <> ppr cmp <+> ppr l <+> ppr r
+  ppr (Guard CmpEq l r) = text "EQ      " <+> ppr l <+> ppr r
+  ppr (Guard CmpNe l r) = text "NE      " <+> ppr l <+> ppr r
+  ppr (Guard CmpLt l r) = text "LT      " <+> ppr l <+> ppr r
+  ppr (Guard CmpLe l r) = text "LE      " <+> ppr l <+> ppr r
+  ppr (Guard CmpGt l r) = text "GT      " <+> ppr l <+> ppr r
+  ppr (Guard CmpGe l r) = text "GE      " <+> ppr l <+> ppr r
+  ppr (AllocN n)        = text "ALLOC   " <+> ppr n
+  ppr (FStore p n v)    = text "STOREFLD" <+> ppr p <+> ppr n <+> ppr v
+  
+instance Pretty TConst where
+  ppr (TCInt n) | n >= 0 = char '+' <> ppr n
+                | otherwise = ppr n
+  ppr (TCStr s) = text (show s)
+  ppr (TCId x) = ppr x <> text "_clos"
+  ppr (TCItbl x) = ppr x
+  ppr (TCPC itbl_id n) = text "pc<"<> ppr itbl_id <> colon <> ppr n <> char '>'
+
+isRecording :: VMState -> Bool
+isRecording vm = case vm_mode vm of
+                   Interp -> False
+                   Trace _ _ -> True
+
+lookupClosure :: Heap -> Val -> Closure
+lookupClosure heap addr@(SLoc x)
+ | Just cl <- M.lookup x (heapStaticArea heap) = cl
+lookupClosure heap addr@(Loc l)
+ | Just cl <- IM.lookup l (heapAllocArea heap) = cl
+lookupClosure _ addr = invalidHeapAddressError addr
+
+invalidHeapAddressError :: Val -> a
+invalidHeapAddressError addr =
+  error $ "lookupClosure: Invalid address " ++ pretty addr
+
+updateClosure :: Heap -> Val -> Closure -> Heap
+updateClosure heap addr new_cl = case addr of
+  SLoc x -> heap{ heapStaticArea = M.alter f x (heapStaticArea heap) }
+  Loc l -> heap{ heapAllocArea = IM.alter f l (heapAllocArea heap) }
+ where
+   f (Just _) = Just new_cl
+   f Nothing = invalidHeapAddressError addr
+
+allocClosure :: Heap -> Closure -> (Heap, Val)
+allocClosure heap@Heap{ heapPtr = ptr } new_cl =
+  (heap{ heapAllocArea = IM.insert ptr new_cl (heapAllocArea heap)
+       , heapPtr = ptr + 1 }, Loc ptr)
+
+instance Pretty Val where
+  ppr (Loc p) = char '#' <> ppr p
+  ppr (SLoc p) = char '#' <> ppr p
+  ppr (ValI n) = ppr n
+  ppr (ValS s) = text (show s)
+  ppr Undef = text "undef"
+
+
+instance Pretty Closure where
+  ppr (Closure info fields) =
+    parens $ sep (ppr info : map ppr (V.toList fields))
+
+instance Pretty Heap where
+  ppr Heap{ heapStaticArea = s, heapAllocArea = m } =
+    text "Static Closures:" $+$ indent 2 (ppr s) $+$
+    text "Heap:" $+$ indent 2 (ppr m)
+
+getField :: Closure -> Int -> Val
+getField (Closure _ fields) field_id
+  | field_id > 0, field_id <= V.length fields
+  = fields V.! (field_id - 1)
+getField obj field_id = invalidFieldIdError obj field_id
+
+setField :: Closure -> Int -> Val -> Closure
+setField (Closure dcon fields) field_id val
+  | field_id > 0, field_id <= V.length fields
+  = Closure dcon (fields V.// [(field_id, val)])
+setField obj field_id _ = invalidFieldIdError obj field_id
+
+invalidFieldIdError :: Closure -> Int -> a
+invalidFieldIdError obj field_id =
+  error $ pretty $
+    text "Invalid field id:" <+> ppr field_id <+>
+    text "for object" <+> ppr obj
+
+-- | Update contents of specified register in the current frame.
+writeReg :: ArgStack -> Int -> Val -> IO ()
+writeReg (ArgStack base top args) reg val
+  | let reg_idx = base + reg, reg_idx < top = do
+      writeArray args reg_idx val
+writeReg _ reg _ =
+  error $ "Register " ++ show reg ++ " not accessible in current frame."
+
+-- | Read a register.  Register number must be in the range
+-- @[(-1) .. framesize - 1]@.
+--
+-- Register @(-1)@ is the special @Node@ pointer which points to the
+-- current closure and is used to access free variables.
+readReg :: ArgStack -> Int -> IO Val
+readReg (ArgStack base top args) reg
+  | let reg_idx = base + reg, reg_idx < top, reg >= (-1) = do
+      readArray args reg_idx
+readReg _ reg =
+  error $ "Register " ++ show reg ++ " not accessible in current frame."
+
+alloc_static_closure :: Heap -> Id -> Closure -> Heap
+alloc_static_closure heap x cl =
+  heap{ heapStaticArea = M.insert x cl (heapStaticArea heap) }
+
+loadBCOs :: FinalBCOs -> (InfoTables, Heap)
+loadBCOs bcos =
+  foldl' load1 (M.empty, Heap M.empty IM.empty 0) (M.toList bcos)
+ where
+--   load1 :: 
+   load1 (itbls, heap) (x, BcConInfo{ bcoConTag = tag }) =
+     (M.insert (ItblId x) (ConstrInfoTable (ItblId x) tag) itbls, heap)
+   load1 (itbls, heap) (x, bco@BcoCon{}) =
+     (itbls, alloc_static_closure heap x $
+              Closure (ItblId (bcoDataCon bco))
+                      (V.fromList (map (either constToVal SLoc)
+                                       (bcoFields bco))))
+   load1 (itbls, heap) (x, bco@BcObject{}) =
+     (M.insert (ItblId x) (CodeInfoTable (ItblId x)
+                             (closure_type (bcoType bco))
+                             (bcoCode bco))
+                itbls,
+      alloc_static_closure heap x (Closure (ItblId x) V.empty))
+
+   closure_type (BcoFun arity) = CtFun arity
+   closure_type Thunk = CtThunk
+   closure_type CAF = CtCAF
+
+mkArgStack :: IO ArgStack
+mkArgStack = do
+  argStack <- newArray (0, 4096) Undef
+  return $ ArgStack 0 0 argStack
+
+ppArgStack :: ArgStack -> Heap -> IO PDoc
+ppArgStack (ArgStack base top vals) heap = do
+  elems <- getElems vals
+  let (saved, frame0) = splitAt base elems
+      frame = take (top - base) frame0
+  return $
+    text "Stack" <+> ppr base <> char '-' <> ppr top <+>
+      align (--fillSep (commaSep (map ppr saved)) <+> char '|' <+>
+             fillSep (commaSep (map ppr frame)) $+$
+             ppHeapFromRoots (last saved : frame) heap)
+
+-- | Pretty-print transitive closure of heap values.
+--
+-- Follows all pointers starting from the roots, prints the objects
+-- they point to, and then does the same for all pointers contained
+-- in the printed objects.
+--
+-- Each object is printed only once.
+ppHeapFromRoots :: [Val]  -- ^ Roots.  Non-pointer values are ignored.
+                -> Heap -> PDoc
+ppHeapFromRoots roots heap =
+  fillSep $ commaSep $ go IS.empty [ l | Loc l <- roots ]
+ where
+   go seen [] = []
+   go seen (l:ls)
+     | l `IS.member` seen = go seen ls
+   go seen (l:ls) =
+     let obj@(Closure _ fields) = lookupClosure heap (Loc l) in
+     (ppr (Loc l) <> char '=' <> ppr obj) :
+        go (IS.insert l seen)
+           ([ l' | Loc l' <- V.toList fields ] ++ ls)
+
+-- TODO: should be stack-frame number of nested stack frames, not words.
+stackDepth :: ArgStack -> Int
+stackDepth (ArgStack base _ _) = base
+
+constToVal :: BcConst -> Val
+constToVal (CInt n) = ValI n
+constToVal (CStr s) = ValS s
+
