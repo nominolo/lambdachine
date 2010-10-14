@@ -418,7 +418,7 @@ getField obj field_id = invalidFieldIdError obj field_id
 setField :: Closure -> Int -> Val -> Closure
 setField (Closure dcon fields) field_id val
   | field_id > 0, field_id <= V.length fields
-  = Closure dcon (fields V.// [(field_id, val)])
+  = Closure dcon (fields V.// [(field_id - 1, val)])
 setField obj field_id _ = invalidFieldIdError obj field_id
 
 invalidFieldIdError :: Closure -> Int -> a
