@@ -6,6 +6,7 @@ import Lambdachine.Grin.Analyse
 import Lambdachine.Utils
 
 import Compiler.Hoopl
+import Data.Maybe ( fromMaybe )
 import Data.Vector ( Vector )
 import qualified Data.Vector as Vec
 import qualified Data.Set as S
@@ -101,7 +102,7 @@ lineariseCode live_facts g@(GMany (JustO entry) body NothingO) =
    LinearCode lin_code (liveIns live_facts lin_code) labels
  where
    lin_code = Vec.fromList $ concat $ 
-                lineariseBlock entry : map lineariseBlock body_blocks
+                lineariseBlock live_facts entry : map (lineariseBlock live_facts) body_blocks
    body_blocks = postorder_dfs g  -- excludes entry sequence
    labels = Vec.ifoldl' ins_if_label M.empty lin_code
    ins_if_label :: M.Map Label Int -> Int -> LinearIns -> M.Map Label Int
@@ -109,16 +110,28 @@ lineariseCode live_facts g@(GMany (JustO entry) body NothingO) =
    ins_if_label m _ _ = m
 --   lin_block = 
 
-lineariseBlock :: Block BcIns e x -> [LinearIns]
-lineariseBlock blk = entry_ins (map Mid middles ++ tail_ins)
+-- | Turn a block into a linear list of instructions.
+--
+-- Annotates @Case@ expressions with the live variables for each branch.
+--
+lineariseBlock :: FactBase LiveVars -> Block BcIns e x -> [LinearIns]
+lineariseBlock live_facts blk = entry_ins (map Mid middles ++ tail_ins)
  where
    (entry, middles, tail) = blockToNodeList blk
    entry_ins :: [LinearIns] -> [LinearIns]
    entry_ins = case entry of
-                 JustC n -> (Fst n :) 
+                 JustC n -> (Fst n :)
                  NothingC -> id
    tail_ins :: [LinearIns]
    tail_ins = case tail of
+                JustC (Case ct x targets) ->
+                  [Lst (Case ct x $ map (\(tag, _, lbl) -> 
+                                         (tag, fromMaybe S.empty (lookupFact lbl live_facts), lbl))
+                                      targets)]
+                JustC (Eval l _ r) ->
+                  [Lst (Eval l (fromMaybe S.empty (lookupFact l live_facts)) r)]
+                JustC (Call (Just (var, l, _)) fun args) ->
+                  [Lst (Call (Just (var, l, fromMaybe S.empty (lookupFact l live_facts))) fun args)]
                 JustC x -> [Lst x]
                 NothingC -> []
 

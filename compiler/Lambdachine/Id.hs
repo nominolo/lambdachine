@@ -23,11 +23,15 @@ data IdDetails
   | LocalId
   | DataConId
   | PrimOpId
+  | InfoTableId
   | DataConInfoTableId
   deriving (Eq, Ord, Show)
 
 mkTopLevelId :: Name -> Id
 mkTopLevelId n = Id n TopLevelId
+
+mkInfoTableId :: Name -> Id
+mkInfoTableId n = Id n InfoTableId
 
 mkLocalId :: Name -> Id
 mkLocalId n = Id n LocalId
@@ -62,6 +66,7 @@ instance Pretty IdDetails where
   ppr LocalId = text "lcl"
   ppr DataConId = text "dcon"
   ppr PrimOpId = text "prim"
+  ppr InfoTableId = text "info"
   ppr DataConInfoTableId = text "con_info"
 
 instance Pretty Id where
@@ -71,5 +76,6 @@ instance Pretty Id where
       TopLevelId -> gblcolour (ppr name) <> pale (char '_' <> ppr (getUnique name))
       PrimOpId -> ppr name
       LocalId -> varcolour (ppr name)
-      DataConId -> dconcolour (ppr name)
-      DataConInfoTableId -> dconcolour (ppr name) <> text "_con"
+      InfoTableId -> gblcolour (ppr name) <> text "_info"
+      DataConId -> dconcolour (ppr name) <> text "_con"
+      DataConInfoTableId -> dconcolour (ppr name) <> text "_con_info"

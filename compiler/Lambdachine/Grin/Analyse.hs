@@ -14,6 +14,7 @@ where
 
 import Lambdachine.Grin.Bytecode
 import Lambdachine.Utils.Pretty
+import Lambdachine.Utils ( thd3 )
 
 import qualified Data.Set as S
 import qualified Data.Map as M
@@ -56,7 +57,7 @@ analyseAndRewriteBCOBwd bco@BcObject{} pass exitfacts = do
   return (bco{ bcoCode = g' }, f')
 
 livenessAnalysis2 :: FuelMonad m => BwdPass m BcIns LiveVars
-livenessAnalysis2 = debugBwdJoins trace (const True) $
+livenessAnalysis2 = --debugBwdJoins trace (const True) $
   BwdPass { bp_lattice = livenessLattice
           , bp_transfer = liveness
           , bp_rewrite = deadAssignmentElim
@@ -87,15 +88,15 @@ live ins f = case ins of
   Label _     -> f
   Assign x r  -> addLives (S.delete x f) (universeBi r)
   Store b _ v -> S.insert b (S.insert v f)
-  Eval l r    -> S.insert r (fact f l)
+  Eval l _ r  -> S.insert r (fact f l)
   Goto l      -> fact f l
   Ret1 r      -> S.insert r (fact_bot livenessLattice)
   CondBranch _ _ r1 r2 tl fl ->
     addLives (fact f tl `S.union` fact f fl) [r1, r2]
   Case _ r targets ->
-    S.insert r (S.unions (map (fact f . snd) targets))
+    S.insert r (S.unions (map (fact f . thd3) targets))
   Call Nothing fn args -> S.fromList (fn:args)
-  Call (Just (r, l)) fn args ->
+  Call (Just (r, l, _)) fn args ->
     addLives (S.delete r (fromMaybe S.empty (lookupFact l f)))
              (fn:args)
  where
@@ -104,7 +105,7 @@ live ins f = case ins of
 
 insUses :: BcIns e x -> [BcVar]
 insUses (Assign _ rhs)   = universeBi rhs
-insUses (Eval _ x)       = [x]
+insUses (Eval _ _ x)     = [x]
 insUses (Store _ _ x)    = [x]
 insUses (Ret1 x)         = [x]
 insUses (CondBranch _ _ x y _ _) = [x, y]

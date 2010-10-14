@@ -11,7 +11,7 @@ where
 
 import Lambdachine.Id
 import Lambdachine.Utils.Pretty
-import Lambdachine.Utils ( second )
+import Lambdachine.Utils ( second, snd3 )
 import qualified Lambdachine.Utils.Unique as U
 
 import Compiler.Hoopl
@@ -19,6 +19,7 @@ import Control.Monad.State
 import Data.Maybe ( maybeToList, fromMaybe )
 --import qualified Data.Set as S
 import qualified Data.Map as M
+import qualified Data.Set as S
 import Data.Generics.Uniplate.Direct
 import Data.Bits ( (.&.) )
 import qualified Data.Vector as V
@@ -36,11 +37,11 @@ data BcIns' b e x where
   CondBranch :: BinOp -> OpTy -> BcVar -> BcVar
              -> b -> b            -> BcIns' b O C
   Case :: CaseType -> BcVar 
-       -> [(BcTag, b)]            -> BcIns' b O C
-  Call :: Maybe (BcVar, b)
+       -> [(BcTag, S.Set BcVar, b)]            -> BcIns' b O C
+  Call :: Maybe (BcVar, b, S.Set BcVar)
        -> BcVar -> [BcVar]        -> BcIns' b O C
   Ret1 :: BcVar                   -> BcIns' b O C
-  Eval   :: b -> BcVar            -> BcIns' b O C
+  Eval   :: b -> S.Set BcVar -> BcVar            -> BcIns' b O C
   -- only used by the interpreter / RTS
   Update ::                          BcIns' b O C
   Stop   ::                          BcIns' b O C
@@ -112,10 +113,10 @@ instance NonLocal (BcIns' Label) where
   entryLabel (Label l) = l
   successors (Goto l) = [l]
   successors (CondBranch _ _ _ _ tl fl) = [fl, tl]
-  successors (Case _ _ targets) = map snd targets
-  successors (Call mb_l _ _) = maybeToList (snd `fmap` mb_l)
+  successors (Case _ _ targets) = map (\(_,_,t) -> t) targets
+  successors (Call mb_l _ _) = maybeToList (snd3 `fmap` mb_l)
   successors (Ret1 _) = []
-  successors (Eval l _) = [l]
+  successors (Eval l _ _) = [l]
 
 instance HooplNode BcIns where
   mkBranchNode l = Goto l
@@ -151,7 +152,9 @@ instance Pretty BinOp where
 instance Pretty b => Pretty (BcIns' b e x) where
   ppr (Label _) = empty
   ppr (Assign r rhs) = ppr r <+> char '=' <+> ppr rhs
-  ppr (Eval _ r) = text "eval" <+> ppr r
+  ppr (Eval _ lives r) =
+    text "eval" <+> ppr r <+> 
+         braces (hsep (commaSep (map ppr (S.toList lives))))
   ppr (Store base offs val) =
     text "Mem[" <> ppr base <+> char '+' <+> int offs <> text "] = " <> ppr val
   ppr (Goto bid) = text "goto" <+> ppr bid
@@ -163,12 +166,15 @@ instance Pretty b => Pretty (BcIns' b e x) where
     text "case" <+> ppr r $$
     indent 2 (vcat (map ppr_target targets))
    where
-     ppr_target (tag, target) = ppr tag <> colon <+> ppr target
+     ppr_target (tag, lives, target) = 
+       ppr tag <> colon <+> ppr target
+         <+> braces (hsep (commaSep (map ppr (S.toList lives))))
   ppr (Call rslt f args) =
-    (case rslt of
-       Nothing -> text "return"
-       Just (r,_) -> ppr r <+> char '=') <+>
-    ppr f <> parens (hsep (commaSep (map ppr args)))
+    align $
+      (case rslt of
+         Nothing -> text "return"
+         Just (r,_,_) -> ppr r <+> char '=') <+>
+      ppr f <> parens (hsep (commaSep (map ppr args)))
   ppr (Ret1 r) = text "return" <+> ppr r
   ppr Update = text "update"
   ppr Stop = text "stop"
@@ -210,16 +216,16 @@ mapLabels :: (l1 -> l2) -> BcIns' l1 e x -> BcIns' l2 e x
 mapLabels f ins = case ins of
   Label l      -> Label (f l)
   Assign x rhs -> Assign x rhs
-  Eval l x     -> Eval (f l) x
+  Eval l lv x     -> Eval (f l) lv x
   Store x n y  -> Store x n y
   Ret1 x       -> Ret1 x
   Goto l       -> Goto (f l)
   CondBranch op ty x y l1 l2 ->
     CondBranch op ty x y (f l1) (f l2)
   Case cty x targets ->
-    Case cty x (map (second f) targets)
+    Case cty x (map (\(x,y,z) -> (x, y, f z)) targets)
   Call next fn args ->
-    Call (fmap (second f) next) fn args
+    Call (fmap (\(x,y,z) -> (x, f y, z)) next) fn args
 
 type NodePpr n = forall e x . n e x -> PDoc
 type LabelPpr = Label -> PDoc
@@ -306,19 +312,23 @@ insFetch :: BcVar -> BcVar -> Int -> BcGraph O O
 insFetch dst base offs = mkMiddle $ Assign dst (Fetch base offs)
 
 insEval :: BlockId -> BcVar -> BcGraph O C
-insEval b r = mkLast $ Eval b r
+insEval b r = mkLast $ Eval b S.empty r
 
 insRet1 :: BcVar -> BcGraph O C
 insRet1 r = mkLast $ Ret1 r
 
 insCase :: CaseType -> BcVar -> [(BcTag, BlockId)] -> BcGraph O C
-insCase cty r targets = mkLast $ Case cty r targets
+insCase cty r targets =
+  mkLast $ Case cty r (map (\(t, b) -> (t, S.empty, b)) targets)
 
 insGoto :: BlockId -> BcGraph O C
 insGoto l = mkLast $ Goto l
 
 insCall :: Maybe (BcVar, BlockId) -> BcVar -> [BcVar] -> BcGraph O C
-insCall kont f args = mkLast $ Call kont f args
+insCall kont f args = mkLast $ Call kont' f args
+  where kont' = do (x, l) <- kont
+                   return (x, l, S.empty)
+
 
 catGraphsC :: BcGraph e C -> [BcGraph C C] -> BcGraph e C
 catGraphsC g [] = g
@@ -489,18 +499,25 @@ instance Uniplate BcVar where uniplate p = plate p
 
 instance Biplate (BcIns' b e x) BcVar where
   biplate (Assign r rhs) = plate Assign |* r |+ rhs
-  biplate (Eval l r) = plate (Eval l) |* r
+  biplate (Eval l lv r) = plate (Eval l) |+ lv |* r
   biplate (Store r n r') = plate Store |* r |- n |* r'
   biplate (CondBranch c t r1 r2 l1 l2) =
     plate (CondBranch c t) |* r1 |* r2 |- l1 |- l2
   biplate (Case ty r targets) =
-    plate (Case ty) |* r |- targets
+    plate (Case ty) |* r ||+ targets
   biplate (Call Nothing f args) =
     plate (Call Nothing) |* f ||* args
-  biplate (Call (Just (x,y)) f args) =
-    plate (\x' -> Call (Just (x', y))) |* x |* f ||* args
+  biplate (Call (Just (x,y,lives)) f args) =
+    plate (\x' lives' -> Call (Just (x', y, lives'))) |* x |+ lives |* f ||* args
   biplate (Ret1 r) = plate Ret1 |* r
   biplate l = plate l
+
+instance Biplate (S.Set BcVar) BcVar where
+  biplate vars = plate S.fromList ||* S.toList vars
+
+instance Biplate (BcTag, S.Set BcVar, b) BcVar where
+  biplate (t,vars,b) =
+    plate (\vars' -> (t, S.fromList vars', b)) ||* S.toList vars
 
 instance Biplate BcRhs BcVar where
   biplate (Move r) = plate Move |* r

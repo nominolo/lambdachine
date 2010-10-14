@@ -14,11 +14,10 @@ data Int = I# Int#
 plusInt :: Int -> Int -> Int
 plusInt (I# m) (I# n) = I# (m +# n)
 {-  # NOINLINE plusInt #-}
-{-
+
 minusInt :: Int -> Int -> Int
 minusInt (I# m) (I# n) = I# (m -# n)
-{-# NOINLINE minusInt #-}
--}
+{-  # NOINLINE minusInt #-}
 
 gtInt :: Int -> Int -> Bool
 gtInt (I# m) (I# n) = m ># n
@@ -39,8 +38,6 @@ sum acc (Cons x xs) =
   let acc' = (acc `plusInt` x) in 
   acc' `seq` sum acc' xs
 
-zero = I# 0#
-one = I# 1#
 {-
 replicate :: Int -> a -> List a
 replicate n x =
@@ -68,8 +65,28 @@ concat xs = foldr append Nil xs
 --concatMap :: (a -> List b) -> List a -> List a
 --concatMap f xs = foldr 
 
+zero :: Int
+zero = I# 0#
+
+one :: Int
+one = I# 1#
+
 test :: Int
 test = (sum (I# 0#) (upto (I# 1#) (I# 5#)))
+
+test1 = decr (I# 5#) Nil
+
+decr :: Int -> List Int -> List Int
+decr n l =
+  if n `gtInt` zero then
+    let l' = Cons n l
+        n' = n `minusInt` one
+    in n' `seq` decr n' l'
+   else l
+
+foldl :: (a -> b -> a) -> a -> List b -> a
+foldl f z Nil = z
+foldl f z (Cons x xs) = foldl f (z `f` x) xs
 
 test2 a b = 
   let x = Cons a y

@@ -18,6 +18,9 @@ import MonadUtils ( liftIO )
 import qualified Data.Map as M
 
 import System.Environment ( getArgs )
+import System.Directory ( getTemporaryDirectory )
+import System.IO ( openTempFile, hPutStr, hFlush, hClose )
+import System.Cmd ( rawSystem )
 
 main :: IO ()
 main = runGhc (Just libdir) $ do
@@ -30,13 +33,23 @@ main = runGhc (Just libdir) $ do
   liftIO $ do
     s <- newUniqueSupply 'g'
     putStrLn "================================================="
-    --putStrLn $ showPpr core_binds
+    putStrLn $ showPpr core_binds
     putStrLn "-------------------------------------------------"
     let bcos = generateBytecode s core_binds data_tycons
     --putStrLn $ pretty bcos
     let bcos' = M.map allocRegs bcos
     pprint $ bcos'
+
+--     tmp <- getTemporaryDirectory
+--     (file, hdl) <- openTempFile tmp "trace.html"
+--     hPutStr hdl (showHtml (defaultWrapper (toHtml (FLoad (TVar 3) 2))))
+--     hFlush hdl
+--     hClose hdl
+--     _ <- rawSystem "open" [file]
+--     return ()
+
     test_insts2 bcos'
+    
     --let entry:_ = filter ((=="test") . show) (M.keys bcos')
     --pprint $ fst $ interp entry bcos'
     --test_record1 bcos'

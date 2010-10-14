@@ -289,7 +289,8 @@ build_bind_code fwd_env env fvi closures locs0 = do
          locs2 = updateLoc locs1 x (InVar rslt)
          bcis3 = bcis2 <*> add_fw_refs x rslt locs2
      go bcis3 locs2 (fvs `mappend` fvs1) objs
-   go bcis locs0 fvs ((x, FunObj _arity info_tbl args) : objs) = do
+   go bcis locs0 fvs ((x, FunObj _arity info_tbl0 args) : objs) = do
+     let info_tbl = mkInfoTableId (idName info_tbl0)
      (bcis1, locs1, fvs1, regs)
        <- transArgs (map Ghc.Var args) env fvi locs0
      tag_reg <- mbFreshLocal Nothing

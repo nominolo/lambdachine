@@ -16,9 +16,11 @@ import Lambdachine.Builtin
 import Control.Monad ( forM_, when )
 import Data.Array.IO
 import Data.Maybe ( fromMaybe )
+import Data.Monoid
 import qualified Data.Vector as V
 import qualified Data.IntMap as IM
 import qualified Data.Map    as M
+import qualified Data.Set    as S
 
 -- -------------------------------------------------------------------
 
@@ -124,10 +126,10 @@ popFrameRet env heap (ArgStack base top args) result = do
 --   pprint $ text "Trying to return to:" <+>
 --              align (ppr pc' <+> ppr itbl_ptr <+> ppr bco)
   case fc_code (itblCode bco) V.! (pc' - 1) of
-    Lst (Call (Just (BcReg dst, _)) _ _) -> do
+    Lst (Call (Just (BcReg dst, _, _)) _ _) -> do
       writeArray args (base' + dst) result
       return (ArgStack base' prev_top args, bco, pc')
-    Lst (Eval _ (BcReg dst)) -> do
+    Lst (Eval _ _ (BcReg dst)) -> do
       writeArray args (base' + dst) result
       return (ArgStack base' prev_top args, bco, pc')
     other ->
@@ -215,14 +217,17 @@ interp1 vm0@VMState{ vm_env = env } heap
             if keep_going then return vm0
              else do
                -- TODO: Finish trace and replace function.
-               finaliseTrace rs
-               return vm0{ vm_mode = Interp }
+               finaliseTrace rs env heap
+               let vm' = vm0{ vm_mode = Interp }
+               error "FIXME: stopping for now."
+               kstop vm' heap bco pc args
+               return vm'
                error "FIXME: stopping for now."
 
   case inst of
     Mid (Assign (BcReg dest) rhs) -> interp_rhs vm dest rhs
     Mid (Store base offs src) -> store vm base offs src
-    Lst (Call (Just (dst, _)) fun vars) -> call vm dst fun vars
+    Lst (Call (Just (dst, _, _)) fun vars) -> call vm dst fun vars
     Lst (Call Nothing fun vars) -> tailcall vm fun vars
     Lst (Ret1 (BcReg x)) -> do
       rslt <- readReg args x
@@ -230,7 +235,7 @@ interp1 vm0@VMState{ vm_env = env } heap
       k vm heap bco' pc' args'
     Lst (Goto pc') -> k vm heap bco pc' args
     Lst (Case CaseOnTag (BcReg x) alts) -> case_branch vm x alts
-    Lst (Eval pc' (BcReg reg)) -> assert (pc' == pc + 1) $ eval vm reg
+    Lst (Eval pc' _ (BcReg reg)) -> assert (pc' == pc + 1) $ eval vm reg
     Lst Update -> update vm
     Lst Stop -> kstop vm heap bco pc args
  where
@@ -304,7 +309,8 @@ interp1 vm0@VMState{ vm_env = env } heap
             when is_hot $ pprint $ text "HOT:" <+> ppr (itblId bco)
             vm'' <- if not is_hot then return vm'
                      else do
-                       rs <- mkRecordState
+                       let (ArgStack base top _) = args
+                       rs <- mkRecordState (top - base)
                        return vm'{ vm_mode = Trace itbl_id rs }
             k vm'' heap itbl' 0 args'
 
@@ -326,7 +332,8 @@ interp1 vm0@VMState{ vm_env = env } heap
             when is_hot $ pprint $ text "HOT:" <+> ppr (itblId bco)
             vm'' <- if not is_hot then return vm'
                      else do
-                       rs <- mkRecordState
+                       let (ArgStack base top _) = args
+                       rs <- mkRecordState (top - base)
                        return vm'{ vm_mode = Trace itbl_id rs }
             k vm'' heap itbl' 0 args'
 
@@ -340,10 +347,11 @@ interp1 vm0@VMState{ vm_env = env } heap
          --pprint $ text "Found tag:" <+> ppr tag <+> text "->" <+> ppr pc'
          k vm heap bco pc' args
     where
-      find_alt tag ((DefaultTag, offs) : alts') = find_alt' tag alts' offs
+      find_alt tag ((DefaultTag, _, offs) : alts') = find_alt' tag alts' offs
       find_alt tag alts' = find_alt' tag alts' (error "Unmatched pattern")
+
       find_alt' tag [] dflt = dflt
-      find_alt' tag ((Tag tag', dst) : alts') dflt
+      find_alt' tag ((Tag tag', _, dst) : alts') dflt
         | tag == tag' = dst
         | otherwise   = find_alt' tag alts' dflt
 
@@ -447,7 +455,7 @@ updateBCO =
                   , fc_code = V.fromList $ the_code } }
  where
    the_code =
-     [Lst (Call (Just (BcReg 1, 1)) (BcReg 1) [])
+     [Lst (Call (Just (BcReg 1, 1, S.fromList [BcReg 0, BcReg 1])) (BcReg 1) [])
      ,Lst Update]
 
 updateId :: Id
@@ -477,7 +485,7 @@ initCodeBCO =
                   , fc_code = V.fromList $ the_code } }
  where
    the_code =
-     [Lst (Eval 1 (BcReg 0))
+     [Lst (Eval 1 mempty (BcReg 0))
      ,Lst Stop]
 
 initVM :: FinalBCOs -> String -> IO VMState
@@ -487,7 +495,7 @@ initVM bcos0 entry_name = do
   let bcos = M.union builtInEnv bcos0
   let (itbls, heap) = loadBCOs bcos
   let
-      Just itbl = M.lookup (ItblId initCodeId) itbls
+      Just itbl = M.lookup (mkItblId initCodeId) itbls
       pc = 0
   return VMState{ vm_env = itbls
                 , vm_heap = heap

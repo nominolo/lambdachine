@@ -25,6 +25,8 @@ import qualified Data.ByteString.Lazy      as B
 import qualified Data.ByteString.Lazy.UTF8 as B
 import qualified Data.Vector as V
 
+import Debug.Trace
+
 ------------------------------------------------------------------------
 -- * The @Pretty@ Class
 
@@ -234,7 +236,7 @@ commaSep = punctuate comma
 
 ppFill :: Int -> Int -> PDoc
 ppFill digits val
-  | digits <= 0 || val >= 10 ^ (digits - 1)
+  | digits <= 1 || val >= 10 ^ (digits - 1)
   = ppr val
   | otherwise
   = char '0' <> ppFill (digits - 1) val

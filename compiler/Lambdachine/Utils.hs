@@ -7,7 +7,9 @@ module Lambdachine.Utils
   , modify'
   , assert
   -- * List Utilities
-  , fold2l', isLength, collect',
+  , fold2l', isLength, collect'
+  -- * Tuple Utilities
+  , fst3, snd3, thd3,
   )
 where
 
@@ -74,3 +76,15 @@ isLength :: Int -> [a] -> Bool
 isLength n _  | n < 0 = False
 isLength n []         = n == 0
 isLength n (_:xs)     = isLength (n - 1) xs
+
+-- | Return first component of a three-tuple.
+fst3 :: (a, b, c) -> a
+fst3 (x, _, _) = x
+
+-- | Return second component of a three-tuple.
+snd3 :: (a, b, c) -> b
+snd3 (_, y, _) = y
+
+-- | Return third component of a three-tuple.
+thd3 :: (a, b, c) -> c
+thd3 (_, _, z) = z

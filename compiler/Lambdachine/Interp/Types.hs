@@ -1,4 +1,4 @@
-{-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE PatternGuards, MultiParamTypeClasses, FlexibleInstances #-}
 module Lambdachine.Interp.Types where
 
 import Lambdachine.Id
@@ -9,12 +9,16 @@ import qualified Data.Vector as V
 import qualified Data.IntMap as IM
 import qualified Data.Map    as M
 import qualified Data.IntSet as IS
+import qualified Data.Set    as S
 import Data.Array.IO
 import Data.IORef ( IORef )
 import Data.List  ( foldl' )
 import Data.Maybe ( fromMaybe )
+import Data.Generics.Uniplate.Direct
 
 -- -------------------------------------------------------------------
+
+-- * Interpreter Types
 
 -- | A primitive value that can be loaded into a register.
 data Val
@@ -35,12 +39,20 @@ data ArgStack = ArgStack
   }
 
 data PC = PC !InfoTable {-# UNPACK #-} !Int
+  deriving Eq
 
 newtype InfoTableId = ItblId Id
   deriving (Eq, Ord)
 
+mkItblId :: Id -> InfoTableId
+mkItblId x =
+  case idDetails x of
+    DataConInfoTableId -> ItblId x
+    InfoTableId -> ItblId x
+    TopLevelId -> ItblId (mkInfoTableId (idName x))
+
 instance Pretty InfoTableId where
-  ppr (ItblId x) = ppr x <> text "_info"
+  ppr (ItblId x) = ppr x
 
 data Closure = Closure
   { cl_itbl   :: InfoTableId
@@ -61,6 +73,9 @@ data InfoTable
 --
 -- In the low-level implementation this is just the address of the
 -- first instruction (or anything like it).
+
+instance Eq InfoTable where
+  i1 == i2 = itblId i1 == itblId i2
 
 data ClosureType = CtFun Int | CtThunk | CtCAF
 
@@ -100,14 +115,29 @@ data VMState = VMState
 data VMMode = Interp | Trace InfoTableId (IORef RecordState)
 
 data RecordState = RecordState
-  { rs_slots :: IM.IntMap TRef 
+  { rs_slots :: IM.IntMap TRef
+  , rs_modified_slots :: IM.IntMap TRef
     -- ^ Maps register contents to their current 'TRef'.
   , rs_baseslot :: !Int
+  , rs_topslot :: !Int
   , rs_trace :: IOArray Int IRIns
   , rs_next  :: !Int
   , rs_consts :: M.Map TConst TRef
   , rs_next_const :: !Int
+  , rs_virtual_objects :: M.Map TRef (Int, IM.IntMap TRef)
+  , rs_next_virt_obj :: !Int
+--  , rs_
+  , rs_stackframes :: StackFrame
   }
+
+data Snapshot = Snapshot
+  { snap_slots :: !(IM.IntMap TRef)
+  , snap_base :: !Int
+  , snap_heap :: M.Map TRef (Int, IM.IntMap TRef)
+  , snap_esc :: S.Set BcVar
+  } 
+ | ProtoSnapshot { snap_esc :: S.Set BcVar }
+ deriving Eq
 
 -- class PrettyRS a where
 --   pprRS :: RecordState -> a -> PDoc
@@ -115,17 +145,66 @@ data RecordState = RecordState
 -- instance PrettyRS TRef where
 --   pprRS ref | isConstTRef ref =
 
+-- | The intermediate representation used by the trace compiler.
 data IRIns
   = Nop
-  | Loop  -- special marker
+    -- ^ No operation.  Replaces redundant instructions.
+  | Loop
+    -- ^ Placed after the loop header (the first loop iteration).  If
+    -- present, the last trace instruction implicitly jumps back to
+    -- this marker.
   | SLoad Int
+    -- ^ Load a slot from the entry frame of the trace.
   | FLoad TRef Int
+    -- ^ Load a field with specified field id.
   | LoadBase Int  -- ref = &base[n]
   | SetBase Int  -- baseslot = n
   | Op BinOp TRef TRef
-  | Guard CmpOp TRef TRef
+  | Guard CmpOp TRef TRef Snapshot
   | AllocN Int
   | FStore TRef Int TRef
+  | UpdateR TRef TRef
+  | Phi TRef TRef
+  | PushFrame TRef TRef Int [Int]
+    -- return address, node ptr, frame size, live-outs of current frame
+  | PopFrame
+  deriving (Eq)
+
+data StackFrame
+  = EntryFrame
+  | UpdateFrame TRef StackFrame -- ret addr
+  | ArgFrame TRef TRef Int (IM.IntMap TRef) StackFrame
+    -- ret addr, node, framesize, live-outs
+
+instance Uniplate TRef where uniplate = plate
+
+instance Biplate IRIns TRef where
+  biplate (FLoad r n) = plate FLoad |* r |- n
+  biplate (Op op l r) = plate (Op op) |* l |* r
+  biplate (Guard cmp l r s) = plate (Guard cmp) |* l |* r |+ s
+  biplate (FStore p n v) = plate FStore |* p |- n |* v
+  biplate x = plate x
+
+instance Biplate Snapshot TRef where
+  biplate s =
+    plate (\slots' heap' -> 
+             s{ snap_slots = slots'
+              , snap_heap = M.fromList heap' })
+      |+ snap_slots s ||+ M.toAscList (snap_heap s)
+  biplate x = plate x
+
+instance Biplate (IM.IntMap TRef) TRef where
+  biplate m =
+    plate IM.fromDistinctAscList ||+ IM.toAscList m
+
+instance Biplate (TRef, (Int, IM.IntMap TRef)) TRef where
+  biplate (r, rs) = plate (,) |* r |+ rs
+
+instance Biplate (Int, IM.IntMap TRef) TRef where
+  biplate (n, m) = plate ((,) n) |+ m
+
+instance Biplate (Int, TRef) TRef where
+  biplate (n, r) = plate ((,) n) |* r
 
 --  | ConstI Integer
 
@@ -135,7 +214,34 @@ data TRef
   = TNil
   | TVar Int
   | TCst Int TConst
-  deriving (Ord, Eq)
+  | THp Int
+  | TBase Int
+--  deriving (Ord, Eq)
+
+instance Eq TRef where
+  TNil == TNil = True
+  TCst n _ == TCst m _ = m == n
+  TBase n == TBase m = n == m
+  TVar n == TVar m = m == n
+  TVar n == THp m  = m == n
+  THp n  == TVar m = m == n
+  THp n  == THp m  = m == n
+  x == y = False
+
+instance Ord TRef where
+  TNil `compare` x = LT
+  x `compare` TNil = GT
+  TCst n _ `compare` TCst m _ = n `compare` m
+  TCst _ _ `compare` x = LT
+  x `compare` TCst _ _ = GT
+  THp n  `compare` THp m  = n `compare` m
+  THp n  `compare` TVar m = n `compare` m
+  TVar n `compare` THp m  = n `compare` m
+  TVar n `compare` TVar m = n `compare` m
+  TBase m `compare` TBase n = m `compare` n
+  TBase _ `compare` _ = GT
+  _ `compare` TBase _ = LT
+
 {-
 newtype TRef = TRef Int
   -- positive: ref
@@ -154,10 +260,16 @@ isConstTRef :: TRef -> Bool
 isConstTRef (TCst _ _) = True
 isConstTRef _ = False
 
+isHeapRef :: TRef -> Bool
+isHeapRef (THp _) = True
+isHeapRef _ = False
+
 instance Pretty TRef where
   ppr (TVar n) = char '%' <> ppFill 4 n
   ppr TNil = text "-"
   ppr (TCst _ c) = ppr c
+  ppr (THp n) = text "%*" <> ppFill 3 n
+  ppr (TBase b) = text "%B" <> ppFill 3 b
 {-  ppr (TRef n) | n > 0 = char '%' <> ppFill 4 n
                | n < 0 = text "%C" <> ppFill 3 (-n)
                | n == 0 = text "-"
@@ -175,7 +287,7 @@ refConst (TCst _ c) = c
 
 instance Pretty IRIns where
   ppr Nop          = text "NOP     "
-  ppr Loop         = text "LOOP    "
+  ppr Loop         = text "--- LOOP ----------------------"
   ppr (LoadBase n) = text "BASE    " <+> ppr n
   ppr (SLoad n)    = text "LOADSLOT" <+> ppr n
   ppr (FLoad p o)  = text "LOADFLD " <+> ppr p <+> ppr o
@@ -184,14 +296,64 @@ instance Pretty IRIns where
   ppr (Op OpMul l r)    = text "MUL     " <+> ppr l <+> ppr r
   ppr (Op OpDiv l r)    = text "DIV     " <+> ppr l <+> ppr r
   ppr (Op cmp l r)      = text "SET" <> ppr cmp <+> ppr l <+> ppr r
-  ppr (Guard CmpEq l r) = text "EQ      " <+> ppr l <+> ppr r
-  ppr (Guard CmpNe l r) = text "NE      " <+> ppr l <+> ppr r
-  ppr (Guard CmpLt l r) = text "LT      " <+> ppr l <+> ppr r
-  ppr (Guard CmpLe l r) = text "LE      " <+> ppr l <+> ppr r
-  ppr (Guard CmpGt l r) = text "GT      " <+> ppr l <+> ppr r
-  ppr (Guard CmpGe l r) = text "GE      " <+> ppr l <+> ppr r
-  ppr (AllocN n)        = text "ALLOC   " <+> ppr n
-  ppr (FStore p n v)    = text "STOREFLD" <+> ppr p <+> ppr n <+> ppr v
+  ppr (Guard cmp l r s) = align (ppr s $+$ pp_cmp cmp <+> ppr l <+> ppr r)
+   where 
+     pp_cmp CmpEq = text "EQ      "
+     pp_cmp CmpNe = text "NE      "
+     pp_cmp CmpLt = text "LT      "
+     pp_cmp CmpLe = text "LE      "
+     pp_cmp CmpGt = text "GT      "
+     pp_cmp CmpGe = text "GE      "
+  ppr (AllocN n)        = text "(alloc) " <+> ppr n
+  ppr (FStore p n v)    = text "(stfld) " <+> ppr p <+> ppr n <+> ppr v
+--  ppr (FStore p n v)    = text "STOREFLD" <+> ppr p <+> ppr n <+> ppr v
+  ppr (UpdateR dst src)  = text "UPDATE  " <+> ppr dst <+> ppr src
+  ppr (Phi x y)          = text "PHI     " <+> ppr x <+> ppr y
+  ppr (PushFrame ret node sz lvs) =
+    text "(frame) " <+> ppr ret <+> ppr node <+> ppr sz <+> 
+         brackets (hsep (commaSep (map ppr lvs)))
+  ppr PopFrame = text "(popfrm)"
+
+opName :: BinOp -> String
+opName OpAdd = "ADD"
+opName OpSub = "SUB"
+opName OpMul = "MUL"
+opName OpDiv = "DIV"
+opName CmpEq = "EQ"
+opName CmpNe = "NE"
+opName CmpLt = "LT"
+opName CmpLe = "LE"
+opName CmpGt = "GT"
+opName CmpGe = "GE"
+
+instance Pretty Snapshot where
+  ppr (ProtoSnapshot esc) =
+    text "<proto-snap>, Esc=" <> braces (hsep (commaSep (map ppr (S.toList esc))))
+  ppr snap = 
+    indent 4 (pp_slots (snap_slots snap) <> char '}' $+$
+                        pp_heap (snap_heap snap)) $+$
+      text "Esc=" <> braces (hsep (commaSep (map ppr (S.toList (snap_esc snap)))))
+   where
+    pp_slots slots | IM.null slots = text "{"
+    pp_slots slots =
+     let slot_keys = IM.keysSet slots
+         base = snap_base snap
+         slot_low = IS.findMin slot_keys
+         slot_hi  = IS.findMax slot_keys
+     in collect' (text "Slots: {" <> ppr slot_low <> char ':')
+                 [slot_low..slot_hi] $ \doc s ->
+          doc <>
+          (if s == base then char '|' else 
+             if s `mod` 5 == 0 then char '.' else char ' ') <>
+          (maybe (text "-----") ppr (IM.lookup s slots))
+
+pp_heap objs =
+     collect' (text "Heap") (M.toList objs) $ \doc (ptr, (sz, fields)) ->
+       doc <+>
+       ppr ptr <> (collect' (text "={") [0..sz-1] $ \d i ->
+                     d <+> maybe (text "----") ppr (IM.lookup i fields))
+               <+> char '}'
+
   
 instance Pretty TConst where
   ppr (TCInt n) | n >= 0 = char '+' <> ppr n
@@ -302,11 +464,12 @@ loadBCOs bcos =
                       (V.fromList (map (either constToVal SLoc)
                                        (bcoFields bco))))
    load1 (itbls, heap) (x, bco@BcObject{}) =
-     (M.insert (ItblId x) (CodeInfoTable (ItblId x)
+     let x' = ItblId (mkInfoTableId (idName x)) in
+     (M.insert x' (CodeInfoTable x'
                              (closure_type (bcoType bco))
                              (bcoCode bco))
                 itbls,
-      alloc_static_closure heap x (Closure (ItblId x) V.empty))
+      alloc_static_closure heap x (Closure x' V.empty))
 
    closure_type (BcoFun arity) = CtFun arity
    closure_type Thunk = CtThunk
