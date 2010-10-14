@@ -261,6 +261,9 @@ interp1 vm0@VMState{ vm_env = env } heap
    interp_rhs vm dst (Load LoadBlackhole) = do
      writeReg args dst (SLoc blackholeDataConId)
      k vm heap bco (pc + 1) args
+   interp_rhs vm dst (Load LoadSelf) = do
+     writeReg args dst =<< readReg args (-1)
+     k vm heap bco (pc + 1) args
    interp_rhs vm dst (Load (LoadClosureVar i)) = do
      node_ptr <- readReg args (-1)
      let Closure _ free_vars = lookupClosure heap node_ptr

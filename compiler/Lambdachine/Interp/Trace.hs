@@ -293,6 +293,10 @@ record1 root env heap args itbl pc ins rs = do
                _ -> loadConst rs (TCId x)
      setSlot rs dst tref
      return True
+   record_rhs dst (Load LoadSelf) = do
+     node_ptr <- getSlot rs (-1)
+     setSlot rs dst node_ptr
+     return True
    record_rhs dst (Load (LoadClosureVar offs)) = do
      node_ptr <- getSlot rs (-1)
      tref <- emit rs env heap (FLoad node_ptr offs)

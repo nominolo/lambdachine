@@ -319,7 +319,7 @@ transBind x (viewGhcApp -> Just (f, args)) _env0
  | otherwise
  = return (AppObj f args)
 transBind x (viewGhcLam -> (bndrs, body)) env0 = do
-  let locs0 = mkLocs [ (b, InReg n) | (b, n) <- zip bndrs [0..] ]
+  let locs0 = mkLocs $ (x, Self) : [ (b, InReg n) | (b, n) <- zip bndrs [0..] ]
       env = fold2l' extendLocalEnv env0 bndrs (repeat undefined)
 
   -- Here comes the magic:
@@ -402,6 +402,8 @@ data ValueLocation
   | FreeVar Int
   | Fwd
     -- ^ A forward reference.
+  | Self
+    -- ^ The value is the contents of the @Node@ pointer.
   | Global Id
 
 -- | Maps GHC Ids to their (current) location in bytecode.
@@ -686,6 +688,9 @@ transVar x env fvi locs0 mr =
     Just Fwd -> do
       r <- mbFreshLocal mr
       return (insLoadBlackhole r, r, True, locs0, mempty)
+    Just Self -> do
+      r <- mbFreshLocal mr
+      return (insLoadSelf r, r, True, locs0, mempty)
     Nothing
       | Just x' <- lookupLocalEnv env x -> do
           -- Note: To avoid keeping track of two environments we must

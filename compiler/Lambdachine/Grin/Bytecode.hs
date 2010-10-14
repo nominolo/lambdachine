@@ -88,6 +88,7 @@ data BcLoadOperand
   = LoadLit BcConst
   | LoadGlobal Id
   | LoadClosureVar Int
+  | LoadSelf
   | LoadBlackhole
   deriving (Eq, Ord)
 {-
@@ -199,6 +200,7 @@ instance Pretty BcLoadOperand where
   ppr (LoadLit l) = ppr l
   ppr (LoadGlobal x) = char '&' <> ppr x
   ppr (LoadClosureVar n) = text "Node[" <> int n <> char ']'
+  ppr LoadSelf = text "Node"
   ppr LoadBlackhole = text "<blackhole>"
 
 instance Pretty BcTag where
@@ -292,6 +294,9 @@ insLoadGbl r gbl = mkMiddle $ Assign r (Load (LoadGlobal gbl))
 
 insLoadFV :: BcVar -> Int -> BcGraph O O
 insLoadFV r n = mkMiddle $ Assign r (Load (LoadClosureVar n))
+
+insLoadSelf :: BcVar -> BcGraph O O
+insLoadSelf r = mkMiddle $ Assign r (Load LoadSelf)
 
 insLoadBlackhole :: BcVar -> BcGraph O O
 insLoadBlackhole r = mkMiddle $ Assign r (Load LoadBlackhole)
