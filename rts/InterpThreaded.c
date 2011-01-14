@@ -599,7 +599,7 @@ static ThunkInfoTable silly1_info = {
 
 static Closure silly1 = 
   DEF_CLOSURE(&silly1_info, { 0 });
-
+/*
 int main(int argc, char* argv[])
 {
   initVM();
@@ -614,7 +614,7 @@ int main(int argc, char* argv[])
   //printf("%0" FMT_WordLen FMT_WordX "\n", T0->stack[1]);
   return 0;
 }
-
+*/
 int
 stackOverflow(Thread* thread, Word* top, u4 increment)
 {

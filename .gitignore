@@ -2,6 +2,7 @@
 asm_offsets.incl
 gen_offs
 *.hi
+.deps
 *~
 # Util executables
 utils/genopcodes
