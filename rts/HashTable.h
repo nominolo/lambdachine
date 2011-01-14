@@ -22,7 +22,7 @@ typedef void (*HashValuePrinter)(void *value);
 
 HashTable *HashTable_create();
 void      *HashTable_insert(HashTable *, char *key, void *value);
-void      *HashTable_lookup(HashTable *, char *key);
+void      *HashTable_lookup(HashTable *, const char *key);
 void      *HashTable_update(HashTable *, char *key, void *value);
 void       HashTable_print(HashTable *, HashValuePrinter);
 void       HashTable_destroy(HashTable *, HashFreeFunc);

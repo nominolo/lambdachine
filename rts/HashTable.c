@@ -4,7 +4,7 @@
 #include <string.h>
 #include <stdio.h>
 
-u4 hashString(char *str);
+u4 hashString(const char *str);
 void HashTable_rebuild(HashTable *);
 
 HashTable *
@@ -69,7 +69,7 @@ HashTable_rebuild(HashTable *ht)
 }
 
 void *
-HashTable_lookup(HashTable *ht, char *key)
+HashTable_lookup(HashTable *ht, const char *key)
 {
   u4 size = ht->size;
   u4 mask = size - 1;
@@ -147,7 +147,7 @@ HashTable_print(HashTable *ht, HashValuePrinter printValue)
 
 // FNV
 u4
-hashString(char *str)
+hashString(const char *str)
 {
   u1 *bp = (u1*) str;
   u4 hval = 0x811c9dc5;
