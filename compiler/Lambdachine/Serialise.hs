@@ -244,7 +244,6 @@ encodeInstructions lits code = do
            forM_ inss $ \(ins_id, ins) -> do
              putLinearIns lits addrs ins_id ins
   let bs = toLazyByteString bldr
-  trace ("newAddrs: " ++ show addrs) $ do
   if L.length bs /= fromIntegral (len * 4) then
     error $ "Size mismatch. expected: " ++ show (len * 4) ++ " got: "
             ++ show (L.length bs) ++ "\n" 

@@ -11,6 +11,7 @@ import Lambdachine.Grin.RegAlloc
 import Lambdachine.Interp.Exec
 import Lambdachine.Interp.Trace
 import Lambdachine.Serialise
+import qualified Lambdachine.Options as Cli
 
 import GHC
 import GHC.Paths ( libdir )
@@ -18,30 +19,37 @@ import Outputable
 import MonadUtils ( liftIO )
 import qualified Data.Map as M
 
+import Control.Monad ( when )
 import System.Environment ( getArgs )
 import System.Directory ( getTemporaryDirectory )
 import System.IO ( openTempFile, hPutStr, hFlush, hClose )
 import System.Cmd ( rawSystem )
+import System.FilePath ( replaceExtension )
 
 main :: IO ()
-main = runGhc (Just libdir) $ do
-  args <- liftIO $ getArgs
-  let file | [f] <- args = f
-           | otherwise = "../tests/bc0001.hs"
-  dflags <- getSessionDynFlags
-  setSessionDynFlags dflags{ ghcLink = NoLink }
-  (core_binds, data_tycons) <- compileToCore file
-  liftIO $ do
-    s <- newUniqueSupply 'g'
-    putStrLn "================================================="
-    putStrLn $ showPpr core_binds
---    putStrLn "-------------------------------------------------"
+main = do
+  opts <- Cli.getOptions
+  runGhc (Just libdir) $ do
+    dflags <- getSessionDynFlags
+    setSessionDynFlags dflags{ ghcLink = NoLink }
+    let file = Cli.inputFile opts
+    (core_binds, data_tycons) <- compileToCore file
+    liftIO $ do
+      s <- newUniqueSupply 'g'
+      when (Cli.dumpCoreBinds opts) $ do
+        putStrLn "================================================="
+        putStrLn $ showPpr core_binds
 
-    let bcos = generateBytecode s core_binds data_tycons
-    --putStrLn $ pretty bcos
-    let bcos' = M.map allocRegs bcos
-    pprint $ bcos'
-    writeModule "testmdl2.foo" bcos'
+      let bcos = generateBytecode s core_binds data_tycons
+      --putStrLn $ pretty bcos
+      let bcos' = M.map allocRegs bcos
+
+      when (Cli.dumpBytecode opts) $ do
+        pprint $ bcos'
+
+      let ofile = file `replaceExtension` ".lcbc"
+--      putStrLn $ "Writing output to: " ++ show ofile
+      writeModule ofile bcos'
 {-
 --     tmp <- getTemporaryDirectory
 --     (file, hdl) <- openTempFile tmp "trace.html"

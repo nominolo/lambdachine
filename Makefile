@@ -30,8 +30,11 @@ $(DEPDIR):
 $(DEPDIR)/rts:
 	mkdir $@
 
-# Building a C file automatically generates dependencies as a side effect
+# Building a C file automatically generates dependencies as a side
+# effect.  This only works with `gcc'.
+#
 # The dependency file for `rts/Foo.c' lives at `.deps/rts/Foo.c'.
+#
 %.o: %.c
 	@echo "CC $(CFLAGS) $< => $@"
 	@gcc -c $(INCLUDES) -MD -MF $(patsubst %.c,$(DEPDIR)/%.d,$<) $(CFLAGS) -o $@ $<
@@ -52,9 +55,27 @@ utils/print_config: utils/print_config.o
 compiler/Opcodes.h: utils/genopcodes
 	./$< > $@
 
+HSDEPFILE = compiler/.depend
+
+HSFLAGS = -package ghc -icompiler -hide-package mtl
+
+$(HSDEPFILE):
+	ghc -M $(HSFLAGS) compiler/Main.hs -dep-makefile $(HSDEPFILE)
+
+include $(HSDEPFILE)
+
+%.hi: %.o
+	@:
+
+%.o: %.hs
+	ghc -c $< $(HSFLAGS)
+
+compiler/lc: compiler/Main.o
+	ghc --make $(HSFLAGS)  compiler/Main.hs -o $@
 
 .PHONY: clean
 clean:
-	rm -f $(SRCS:%.c=%.o) utils/*.o
+	rm -f $(SRCS:%.c=%.o) utils/*.o interp
 
 -include $(SRCS:%.c=$(DEPDIR)/%.P)
+
