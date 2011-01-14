@@ -30,6 +30,12 @@ typedef struct _StringTabEntry {
   char *str;
 } StringTabEntry;
 
+typedef struct _GlobalLoaderState {
+  HashTable      *loadedModules;
+  HashTable      *closures;
+  HashTable      *infoTables;
+} GlobalLoaderState;
+
 typedef struct _Module {
   char        *name;
   u4           numInfoTables;

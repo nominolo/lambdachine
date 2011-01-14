@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include <assert.h>
 
+GlobalLoaderState *G_loader = NULL;
 HashTable *G_modules;
 char *G_basepath = NULL;
 
@@ -40,8 +41,8 @@ initBasepath()
   char buf[BUFSIZE];
   int res;
 
-  res = snprintf(buf, BUFSIZE, "%s/Dropbox/code/lambdachine/", home);
-  if (res >= BUFSIZE) bufferOverflow(res, BUFSIZE); 
+  res = snprintf(buf, BUFSIZE, "%s/Dropbox/code/lambdachine/tests/", home);
+  if (res >= BUFSIZE) bufferOverflow(res, BUFSIZE);
 
   G_basepath = strdup(buf);
 }
@@ -49,8 +50,18 @@ initBasepath()
 void
 initLoader()
 {
-  G_modules = HashTable_create();
+  G_loader = malloc(sizeof(*G_loader));
+  G_loader->loadedModules = HashTable_create();
+  G_loader->infoTables = HashTable_create();
+  G_loader->closures = HashTable_create();
+
   initBasepath();
+}
+
+int
+isModuleLoaded(const char *moduleName)
+{
+  return HashTable_lookup(G_loader->loadedModules, moduleName) != NULL;
 }
 
 /* Turn "Foo.Bar.Baz" into "Foo/Bar/Baz". Copies input string. */
@@ -151,6 +162,197 @@ loadClosure(FILE *, const StringTabEntry *strings,
 #define allocInfoTable(size)     (malloc(size))
 #define allocStaticClosure(size) (malloc(size))
 
+char *
+moduleNameToFile(const char *basepath, const char *name)
+{
+  size_t   baselen  = strlen(basepath);
+  size_t   len      = strlen(name);
+  size_t   rsltlen;
+  char    *filename, *p;
+  size_t   i;
+
+  if (baselen == 0) {
+    baselen = 1;
+    basepath = ".";
+  }
+
+  rsltlen = baselen + 1 + len + 5;
+  filename = malloc(rsltlen + 1);
+
+  strcpy(filename, basepath);
+  filename[baselen] = '/';
+
+  p = &filename[baselen + 1];
+
+  for (i = 0; i < len; i++) {
+    if (name[i] == '.')
+      *p = '/';
+    else
+      *p = name[i];
+    ++p;
+  }
+  strcpy(p, ".lcbc");
+
+  // assert(rsltlen == strlen(filename));
+
+  return filename;
+}
+
+void loadModuleRec1(const char *moduleName, HashTable *q, u4 level);
+Module *loadModuleHeader(FILE *f, const char *filename);
+void loadModuleBody(FILE *f, Module *mdl);
+
+void freeTodoEntry(char *key, void *value)
+{
+  free(key);
+}
+
+// Load the given module and all its dependencies.
+void
+loadModuleRec(const char *moduleName)
+{
+  HashTable *q;
+
+  q = HashTable_create();
+
+  loadModuleRec1(moduleName, q, 0);
+
+  HashTable_destroy(q, freeTodoEntry);
+}
+
+// Postorder traversal
+void
+loadModuleRec1(const char *moduleName, HashTable* q, u4 level)
+{
+  char     *filename;
+  Module   *mdl;
+  FILE     *f;
+  int       i;
+  Word      todo;
+
+  for (i = 0; i < level; i++) putchar(' ');
+  printf("> Loading %s ...\n", moduleName);
+
+  filename = moduleNameToFile(G_basepath, moduleName);
+
+  todo = (Word)HashTable_lookup(q, filename);
+
+  // Do nothing if this isn't the first time we're loading this
+  // module.
+  if (todo != 0) {
+      free(filename);
+      return;
+  }
+
+  if (!fileExists(filename)) {
+    fprintf(stderr, "ERROR: File does not exist: %s\n",
+            filename);
+    exit(13);
+  }
+
+  f = fopen(filename, "rb");
+
+  mdl = loadModuleHeader(f, filename);
+
+  HashTable_insert(q, filename, (void*)~0);
+
+  for (i = 0; i < mdl->numImports; i++)
+    loadModuleRec1(mdl->imports[i], q, level + 1);
+
+  loadModuleBody(f, mdl);
+
+  fclose(f);
+
+  HashTable_insert(G_loader->loadedModules, mdl->name, mdl);
+
+  for (i = 0; i < level; i++) putchar(' ');
+  printf("< DONE   (%s)\n", moduleName);
+}
+
+// Load the module and
+Module *
+loadModuleHeader(FILE *f, const char *filename)
+{
+  Module *mdl;
+  char magic[5];
+  u2 major, minor;
+  u4 flags;
+  u4 secmagic;
+  u4 i;
+
+  LC_ASSERT(f != NULL);
+
+  fread(magic, 4, 1, f);
+  magic[4] = '\0';
+  if (strcmp(magic, "KHCB") != 0) {
+    fprintf(stderr, "ERROR: Module '%s' is not a bytecode file. %s\n",
+            filename, magic);
+    exit(1);
+  }
+
+  mdl = malloc(sizeof(Module));
+
+  major = fget_u2(f);
+  minor = fget_u2(f);
+
+  if (major != VERSION_MAJOR || minor != VERSION_MINOR) {
+    fprintf(stderr, "ERROR: Module '%s' version mismatch.  Version: %d.%d, Expected: %d.%d\n",
+            filename, major, minor, VERSION_MAJOR, VERSION_MINOR);
+    exit(1);
+  }
+
+  flags = fget_u4(f);
+  mdl->numStrings    = fget_u4(f);
+  mdl->numInfoTables = fget_u4(f);
+  mdl->numClosures   = fget_u4(f);
+  mdl->numImports    = fget_u4(f);
+
+  //printf("strings = %d, itbls = %d, closures = %d\n",
+  //       mdl->numStrings, mdl->numInfoTables, mdl->numClosures);
+
+  // String table starts with a 4 byte magic.
+  secmagic = fget_u4(f);
+  assert(secmagic == STR_SEC_HDR_MAGIC);
+
+  mdl->strings = malloc(sizeof(StringTabEntry) * mdl->numStrings);
+  for (i = 0; i < mdl->numStrings; i++) {
+    loadStringTabEntry(f, &mdl->strings[i]);
+  }
+
+  //printStringTable(mdl->strings, mdl->numStrings);
+
+  mdl->name = loadId(f, mdl->strings, ".");
+  // printf("mdl name = %s\n", mdl->name);
+
+  mdl->imports = malloc(sizeof(*mdl->imports) * mdl->numImports);
+  for (i = 0; i < mdl->numImports; i++) {
+    mdl->imports[i] = loadId(f, mdl->strings, ".");
+    // printf("import: %s\n", mdl->imports[i]);
+  }
+
+  return mdl;
+}
+
+void
+loadModuleBody(FILE *f, Module *mdl)
+{
+  u4 i;
+  u4 secmagic;
+  // Load closures
+  secmagic = fget_u4(f);
+  assert(secmagic == CLOS_SEC_HDR_MAGIC);
+
+  for (i = 0; i < mdl->numInfoTables; ++i) {
+    loadInfoTable2(f, mdl->strings,
+                   G_loader->infoTables, G_loader->closures);
+  }
+
+  for (i = 0; i < mdl->numClosures; i++) {
+    loadClosure(f, mdl->strings,
+                G_loader->infoTables, G_loader->closures);
+  }
+}
+
 Module *
 loadModule(FILE *f, char *moduleName)
 {
@@ -201,16 +403,16 @@ loadModule(FILE *f, char *moduleName)
   }
 
   printStringTable(mdl->strings, mdl->numStrings);
-  
+
   mdl->name = loadId(f, mdl->strings, ".");
   printf("mdl name = %s\n", mdl->name);
 
   mdl->imports = malloc(sizeof(*mdl->imports) * mdl->numImports);
   for (i = 0; i < mdl->numImports; i++) {
-    mdl->imports[i] = loadId(f, mdl->strings, "/");
+    mdl->imports[i] = loadId(f, mdl->strings, ".");
     printf("import: %s\n", mdl->imports[i]);
   }
-  
+
   // Load closures
   secmagic = fget_u4(f);
   assert(secmagic == CLOS_SEC_HDR_MAGIC);
@@ -308,9 +510,18 @@ printModule(Module* mdl)
   printf("  info tables: %d\n", mdl->numInfoTables);
   printf("  closures:    %d\n", mdl->numClosures);
   printf("--- Info Tables ----------------\n");
-  HashTable_print(mdl->infoTables, (HashValuePrinter)printInfoTable);
+  HashTable_print(G_loader->infoTables, (HashValuePrinter)printInfoTable);
   printf("--- Closures -------------------\n");
-  HashTable_print(mdl->closures, (HashValuePrinter)printClosure);
+  HashTable_print(G_loader->closures, (HashValuePrinter)printClosure);
+}
+
+void
+printLoaderState()
+{
+  printf("--- Info Tables ----------------\n");
+  HashTable_print(G_loader->infoTables, (HashValuePrinter)printInfoTable);
+  printf("--- Closures -------------------\n");
+  HashTable_print(G_loader->closures, (HashValuePrinter)printClosure);
 }
 
 /*
@@ -470,12 +681,12 @@ loadInfoTable2(FILE *f, const StringTabEntry *strings,
   InfoTable *new_itbl = NULL;
   FwdRefInfoTable *old_itbl = HashTable_lookup(itbls, itbl_name);
 
-  printf("Loading info table: %s\n", itbl_name);
+  //printf("Loading info table: %s\n", itbl_name);
   if (old_itbl != NULL) {
     printf("Old itbl: ");
     printInfoTable((InfoTable*)old_itbl);
   }
-  
+
   switch (cl_type) {
   case CONSTR:
     // A statically allocated constructor
@@ -739,17 +950,23 @@ main(int argc, char *argv[])
   const char *input_file;
 
   if (argc <= 1)
-    input_file = "tests/Bc0005.lcbc";
+    input_file = "Bc0005";
   else
     input_file = argv[1];
 
   initLoader();
 
-  FILE *f = fopen(input_file, "rb");
+  //  printf("%s\n\n", moduleNameToFile("test","Foo.Bar.Baz"));
 
-  Module *m = loadModule(f, "MyModule");
-  printf("Name: %s\n", m->name);
-  printModule(m);
-  
+  //  FILE *f = fopen(input_file, "rb");
+
+  //  Module *m = loadModule(f, "MyModule");
+
+  loadModuleRec(input_file);
+
+  //  printf("Name: %s\n", m->name);
+  //  printModule(m);
+  printLoaderState();
+
   return 0;
 }
