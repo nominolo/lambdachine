@@ -25,7 +25,7 @@ void printInfoTable(InfoTable* info0);
 void
 bufferOverflow(int sz, int bufsize)
 {
-  fprintf(stderr, "FATAL: buffer overflow (%d, max: %d)\n", 
+  fprintf(stderr, "FATAL: buffer overflow (%d, max: %d)\n",
           sz, bufsize - 1);
   exit(1);
 }
@@ -102,11 +102,11 @@ openModuleFile(const char *packageName, const char *moduleName)
   res = snprintf(path, BUFSIZE, "%s/lib/khc/packages/%s/%s.kbc",
                  base, packageName, modulePath(moduleName));
   if (res >= BUFSIZE) bufferOverflow(res, BUFSIZE);
-  
+
   if (fileExists(path)) {
     return fopen(path, "rb");
   }
-  
+
   fprintf(stderr, "ERROR: Could not find module `%s' in package `%s'.\n",
           moduleName, packageName);
   fprintf(stderr, "  tried: %s\n", path);
@@ -121,7 +121,7 @@ fget_string(FILE *f)
   fread(str, 1, len, f);
   str[len] = '\0';
   return str;
-} 
+}
 */
 
 void
@@ -362,7 +362,7 @@ loadModule(FILE *f, char *moduleName)
   u4 flags;
   u4 secmagic;
   u4 i;
-  
+
   LC_ASSERT(f != NULL);
 
   fread(magic, 4, 1, f);
@@ -377,7 +377,7 @@ loadModule(FILE *f, char *moduleName)
 
   major = fget_u2(f);
   minor = fget_u2(f);
-  
+
   if (major != VERSION_MAJOR || minor != VERSION_MINOR) {
     fprintf(stderr, "ERROR: Module '%s' version mismatch.  Version: %d.%d, Expected: %d.%d\n",
             moduleName, major, minor, VERSION_MAJOR, VERSION_MINOR);
@@ -535,14 +535,14 @@ printLoaderState()
   for (i = 0; i < mdl->numClosures; i++) fwd_refs[i] = NULL;
 
   InfoTable **itbls = malloc(sizeof(InfoTable*) * mdl->numInfoTables);
-  
+
   for (i = 0; i < mdl->numInfoTables; ++i) {
     itbls[i] = loadInfoTable(f, mdl->strings, fwd_refs);
   }
 
   // TODO: literals may reference closures from other modules --
   // we need a way to deal with this.  (Including circular dependencies.)
-  
+
   Closure **closures = malloc(sizeof(Closure*) * mdl->numClosures);
   // Load closures.
   mdl->closures = HashTable_create();
@@ -550,7 +550,7 @@ printLoaderState()
     char *clos_name = fget_string(f);
     u4 payloadsize = fget_varuint(f);
     u4 itbl = fget_varuint(f);
-    Closure *cl = allocStaticClosure(sizeof(ClosureHeader) + 
+    Closure *cl = allocStaticClosure(sizeof(ClosureHeader) +
                                      payloadsize * sizeof(Word));
     setInfo(cl, itbls[itbl]);
     for (j = 0; j < payloadsize; j++) {
@@ -578,7 +578,7 @@ printLoaderState()
 #define MAX_PARTS  255
 
 // Load an identifier from the file.  It is encoded as a non-empty
-// sequence of references to the string table. 
+// sequence of references to the string table.
 //
 // The separator is put between each string name.
 char *
@@ -599,7 +599,7 @@ loadId(FILE *f, const StringTabEntry *strings, const char* sep)
     parts[i] = idx;
   }
   len -= seplen;
-  
+
   ident = malloc(sizeof(char) * len + 1);
   p = ident;
   for (i = 0; i < numparts; i++) {
@@ -734,7 +734,7 @@ loadInfoTable2(FILE *f, const StringTabEntry *strings,
     printf("Forward reference for: %s\n", itbl_name);
     void **p, *next;
     LC_ASSERT(old_itbl->i.type == INVALID_OBJECT);
-    
+
     for (p = old_itbl->next; p != NULL; p = next) {
       next = *p;
       *p = (void*)new_itbl;
@@ -747,7 +747,7 @@ loadInfoTable2(FILE *f, const StringTabEntry *strings,
   } else {
     HashTable_insert(itbls, itbl_name, new_itbl);
   }
-    
+
   return new_itbl;
 }
 
@@ -834,7 +834,7 @@ loadLiteral2(FILE *f, u1 *littype /*out*/, Word *literal /*out*/,
 	*literal = (Word)info;
 	free(infoname);
       }
-    } 
+    }
     break;
   default:
     fprintf(stderr, "ERROR: Unknown literal type (%d).", *littype);
@@ -853,9 +853,9 @@ loadClosure(FILE *f, const StringTabEntry *strings,
   u4 payloadsize = fget_varuint(f);
   char *itbl_name = loadId(f, strings, ".");
 
-  Closure *cl = allocStaticClosure(sizeof(ClosureHeader) + 
+  Closure *cl = allocStaticClosure(sizeof(ClosureHeader) +
                                    payloadsize * sizeof(Word));
-  Closure *fwd_ref; 
+  Closure *fwd_ref;
   InfoTable* info = HashTable_lookup(itbls, itbl_name);
   LC_ASSERT(info != NULL && info->type != INVALID_OBJECT);
 
@@ -867,7 +867,7 @@ loadClosure(FILE *f, const StringTabEntry *strings,
     u1 dummy;
     loadLiteral2(f, &dummy, &cl->payload[i], strings, itbls, closures);
   }
-  
+
   fwd_ref = HashTable_lookup(closures, clos_name);
   if (fwd_ref != NULL) {
 
@@ -923,7 +923,7 @@ loadCode(FILE *f, LcCode *code,
   code->arity = fget_varuint(f);
   code->sizelits = fget_varuint(f);
   code->sizecode = fget_varuint(f);
-  
+
   code->lits = malloc(sizeof(*code->lits) * code->sizelits);
   code->littypes = malloc(sizeof(u1) * code->sizelits);
   for (i = 0; i < code->sizelits; ++i) {
