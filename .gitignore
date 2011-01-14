@@ -4,6 +4,7 @@ gen_offs
 *.hi
 .deps
 *~
+tests/*.lcbc
 # Util executables
 utils/genopcodes
 utils/print_config
