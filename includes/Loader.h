@@ -35,8 +35,10 @@ typedef struct _Module {
   u4           numInfoTables;
   u4           numClosures;
   u4           numStrings;
+  u4           numImports;
 
   StringTabEntry *strings;
+  const char    **imports;
   HashTable      *closures;
   HashTable      *infoTables;
 } Module;

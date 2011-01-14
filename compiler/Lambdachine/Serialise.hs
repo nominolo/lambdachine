@@ -87,12 +87,15 @@ test1 = (tbl, L.unpack $ toLazyByteString b, L.unpack $ toLazyByteString o)
       putIns 42
       return o0
 -}
-writeModule :: FilePath -> FinalBCOs -> IO ()
+writeModule :: FilePath -> BytecodeModule -> IO ()
 writeModule path bcos = L.writeFile path (encodeModule bcos)
 
-encodeModule :: FinalBCOs -> L.ByteString
-encodeModule bcos = toLazyByteString builder
+encodeModule :: BytecodeModule -> L.ByteString
+encodeModule mdl = toLazyByteString builder
  where
+   bcos = bcm_bcos mdl
+   imports = bcm_imports mdl
+
    builder = mconcat
      [ fromString "KHCB" -- magic
      , fromWrite (writeWord16be 0 `mappend` writeWord16be 1) -- version
@@ -100,6 +103,7 @@ encodeModule bcos = toLazyByteString builder
      , fromWrite (writeWord32be (fromIntegral (M.size strings)))
      , fromWrite (writeWord32be (fromIntegral numItbls))
      , fromWrite (writeWord32be (fromIntegral numClosures))
+     , fromWrite (writeWord32be (fromIntegral (length imports)))
      , fromString "BCST" -- string table section magic
      , encodeStringTable strings
      , mdl_outp
@@ -110,12 +114,15 @@ encodeModule bcos = toLazyByteString builder
    ((mdl_outp, numItbls, numClosures), strings, output) = 
      runBuildM buildit
    buildit = do
-     (_, mdl_name) <- captureOutput (encodeId' [ U.fromString "test-module" ])
+     (_, name_and_imports)
+       <- captureOutput $ do
+               encodeIdString (bcm_name mdl)
+               mapM_ encodeIdString imports
      itbls <- sum <$> (forM (M.toList bcos) $ \(name, bco) ->
                          encodeInfoTable name bco)
      closures <- sum <$> (forM (M.toList bcos) $ \(name, bco) ->
                             encodeClosure name bco)
-     return (mdl_name, itbls, closures)
+     return (name_and_imports, itbls, closures)
    encodeInfoTable :: Id -> BytecodeObject' FinalCode
                 -> BuildM Word
    encodeInfoTable name bco =
@@ -196,15 +203,20 @@ encodeModule bcos = toLazyByteString builder
      forM_ (M.keys lit_ids) encodeField
    
 encodeId :: Id -> BuildM ()
-encodeId the_id = encodeId' (B.split (fromIntegral $ ord '.') str)
-  where
-    str = U.fromString (show the_id ++ type_suffix the_id) 
+encodeId the_id =
+  encodeIdString (show the_id ++ type_suffix the_id)
+ where
     type_suffix anId = case idDetails anId of
       TopLevelId -> "!closure"
       InfoTableId -> "!info"
       DataConId -> "!con"
       DataConInfoTableId -> "!con_info"
       _ -> "!other"
+
+encodeIdString :: String -> BuildM ()
+encodeIdString str = encodeId' (B.split dot (U.fromString str))
+ where
+   dot = fromIntegral (ord '.') :: Word8
 
 encodeId' :: [B.ByteString] -> BuildM ()
 encodeId' parts = do

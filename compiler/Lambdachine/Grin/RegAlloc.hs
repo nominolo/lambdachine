@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs, MultiParamTypeClasses, PatternGuards #-}
+{-# LANGUAGE GADTs, MultiParamTypeClasses, PatternGuards, BangPatterns #-}
 module Lambdachine.Grin.RegAlloc where
 
 import Lambdachine.Grin.Bytecode
@@ -13,14 +13,23 @@ import qualified Data.Set as S
 import qualified Data.Map as M
 import Data.Generics.Uniplate.Direct
 
-allocRegs :: BytecodeObject -> BytecodeObject' FinalCode
-allocRegs bco@BcoCon{} = -- this is just silly
+allocRegs :: String -> [String] -> BCOs
+          -> BytecodeModule
+allocRegs mdl_name mdl_imports bcos0 =
+  let !bcos = M.map allocRegsBco bcos0 in
+  BytecodeModule
+    { bcm_name = mdl_name
+    , bcm_imports = mdl_imports
+    , bcm_bcos = bcos }
+
+allocRegsBco :: BytecodeObject -> BytecodeObject' FinalCode
+allocRegsBco bco@BcoCon{} = -- this is just silly
   BcoCon{ bcoType = bcoType bco
         , bcoDataCon = bcoDataCon bco
         , bcoFields = bcoFields bco }
-allocRegs bco@BcConInfo{} =
+allocRegsBco bco@BcConInfo{} =
   BcConInfo{ bcoConTag = bcoConTag bco }
-allocRegs bco0@BcObject{ bcoCode = code } =
+allocRegsBco bco0@BcObject{ bcoCode = code } =
   BcObject{ bcoType = bcoType bco
           , bcoCode = finaliseCode (bcoArity bco0) code'
           , bcoGlobalRefs = bcoGlobalRefs bco

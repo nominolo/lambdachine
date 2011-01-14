@@ -362,7 +362,18 @@ type BytecodeObject = BytecodeObject' (Graph BcIns O C)
 type BCOs = M.Map Id BytecodeObject
 type FinalBCOs = M.Map Id (BytecodeObject' FinalCode)
 
+data BytecodeModule = BytecodeModule
+  { bcm_name    :: String   -- TODO: use better type
+  , bcm_imports :: [String] -- TODO: use better type
+  , bcm_bcos :: FinalBCOs
+  }
 
+instance Pretty BytecodeModule where
+  ppr mdl =
+    angleBrackets $
+    sep [text (bcm_name mdl),
+         brackets (fillSep (commaSep (map text (bcm_imports mdl)))),
+         ppr (bcm_bcos mdl)]
 
 data BcoType
   = BcoFun Int  -- arity

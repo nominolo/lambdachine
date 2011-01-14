@@ -33,8 +33,11 @@ main = do
     dflags <- getSessionDynFlags
     setSessionDynFlags dflags{ ghcLink = NoLink }
     let file = Cli.inputFile opts
-    (core_binds, data_tycons) <- compileToCore file
+    (this_mod, core_binds, data_tycons, imports)
+      <- compileToCore file
     liftIO $ do
+      print (moduleNameString this_mod,
+            map moduleNameString imports)
       s <- newUniqueSupply 'g'
       when (Cli.dumpCoreBinds opts) $ do
         putStrLn "================================================="
@@ -42,14 +45,17 @@ main = do
 
       let bcos = generateBytecode s core_binds data_tycons
       --putStrLn $ pretty bcos
-      let bcos' = M.map allocRegs bcos
+      let !bco_mdl =
+            allocRegs (moduleNameString this_mod)
+                      (map moduleNameString imports)
+                      bcos
 
       when (Cli.dumpBytecode opts) $ do
-        pprint $ bcos'
+        pprint $ bco_mdl
 
       let ofile = file `replaceExtension` ".lcbc"
 --      putStrLn $ "Writing output to: " ++ show ofile
-      writeModule ofile bcos'
+      writeModule ofile bco_mdl
 {-
 --     tmp <- getTemporaryDirectory
 --     (file, hdl) <- openTempFile tmp "trace.html"

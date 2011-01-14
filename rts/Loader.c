@@ -186,6 +186,7 @@ loadModule(FILE *f, char *moduleName)
   mdl->numStrings    = fget_u4(f);
   mdl->numInfoTables = fget_u4(f);
   mdl->numClosures   = fget_u4(f);
+  mdl->numImports    = fget_u4(f);
 
   printf("strings = %d, itbls = %d, closures = %d\n",
          mdl->numStrings, mdl->numInfoTables, mdl->numClosures);
@@ -203,6 +204,12 @@ loadModule(FILE *f, char *moduleName)
   
   mdl->name = loadId(f, mdl->strings, ".");
   printf("mdl name = %s\n", mdl->name);
+
+  mdl->imports = malloc(sizeof(*mdl->imports) * mdl->numImports);
+  for (i = 0; i < mdl->numImports; i++) {
+    mdl->imports[i] = loadId(f, mdl->strings, "/");
+    printf("import: %s\n", mdl->imports[i]);
+  }
   
   // Load closures
   secmagic = fget_u4(f);
@@ -729,8 +736,16 @@ printStringTable(StringTabEntry *tbl, u4 len)
 int
 main(int argc, char *argv[])
 {
+  const char *input_file;
+
+  if (argc <= 1)
+    input_file = "tests/Bc0005.lcbc";
+  else
+    input_file = argv[1];
+
   initLoader();
-  FILE *f = fopen("compiler/testmdl2.foo", "rb");
+
+  FILE *f = fopen(input_file, "rb");
 
   Module *m = loadModule(f, "MyModule");
   printf("Name: %s\n", m->name);

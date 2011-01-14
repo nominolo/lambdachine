@@ -13,7 +13,8 @@ import Data.List ( find )
 io :: MonadIO m => IO a -> m a
 io = liftIO
 
-compileToCore :: GhcMonad m => FilePath -> m ([CoreBind], [TyCon])
+compileToCore :: GhcMonad m => FilePath
+              -> m (ModuleName, [CoreBind], [TyCon], [ModuleName])
 compileToCore file = do
   addTarget =<< guessTarget file Nothing
   _ <- load LoadAllTargets
@@ -31,8 +32,12 @@ compileToCore file = do
 
 -- | Run simplifier and put Core into A-normal form.
 prepareCore :: GhcMonad m => ModSummary -> ModGuts
-            -> m ([CoreBind], [TyCon])
+            -> m (ModuleName, [CoreBind], [TyCon], [ModuleName])
 prepareCore mod_summary mod_guts0 = do
+  let this_mod = ms_mod_name mod_summary
+  let imports =
+        [ unLoc (ideclName imp)
+        | L _ imp <- ms_imps mod_summary ++ ms_srcimps mod_summary ]
   simpl_guts <- hscSimplify mod_guts0
   hsc_env <- getSession
   (cg_guts, _details) <- io $ tidyProgram hsc_env simpl_guts
@@ -40,5 +45,5 @@ prepareCore mod_summary mod_guts0 = do
       core_binds = cg_binds cg_guts
       data_tycons = filter isDataTyCon (cg_tycons cg_guts)
   binds <- io $ corePrepPgm dflags core_binds data_tycons
-  return (binds, data_tycons)
+  return (this_mod, binds, data_tycons, imports)
 
