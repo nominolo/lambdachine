@@ -1,6 +1,5 @@
 {-# LANGUAGE PatternGuards, BangPatterns #-}
 {-# LANGUAGE GADTs #-}
-{-# OPTIONS_GHC -Wall #-}
 module Lambdachine.Interp.Trace
   ( IRIns_(..), TRef, mkRecordState, record1, finaliseTrace,
     test_record1, unrollLoop )
