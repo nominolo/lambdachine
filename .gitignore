@@ -3,4 +3,8 @@ asm_offsets.incl
 gen_offs
 *.hi
 *~
+# Util executables
 utils/genopcodes
+utils/print_config
+# Auto-generated files
+compiler/Opcodes.h

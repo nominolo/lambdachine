@@ -1,11 +1,11 @@
-all: print_config
+all: testloader
 
 INCLUDES = -Iincludes -Irts
 CFLAGS = $(INCLUDES) -O3 -g
 
 DIST = $(HOME)/tmp/dist-devel/lambdachine
 
-print_config: print_config.o
+utils/print_config: utils/print_config.o
 	@echo "LINK $^ => $@"
 	@$(CC) -o $@ $^
 
