@@ -11,9 +11,12 @@ import qualified Data.Map    as M
 import qualified Data.IntSet as IS
 import qualified Data.Set    as S
 import Data.Array.IO
+import Data.Array ( Array )
+import Data.Bits  ( (.|.) )
 import Data.IORef ( IORef )
 import Data.List  ( foldl' )
 import Data.Maybe ( fromMaybe )
+import Data.Ord   ( comparing )
 import Data.Generics.Uniplate.Direct
 
 -- -------------------------------------------------------------------
@@ -24,6 +27,7 @@ import Data.Generics.Uniplate.Direct
 data Val
   = Loc Int -- ^ Reference to a heap location.
   | SLoc Id -- ^ Reference to a static location.
+  | ILoc InfoTableId
   | ValI Integer
   | ValS String
   | Undef
@@ -110,12 +114,14 @@ data VMState = VMState
   , vm_mode  :: VMMode
   , vm_hotcounts :: M.Map InfoTableId Int
   , vm_hotfunc :: Int
+  , vm_traces :: M.Map InfoTableId Trace
   }
 
-data VMMode = Interp | Trace InfoTableId (IORef RecordState)
+data VMMode = InterpMode | TraceMode InfoTableId (IORef RecordState)
 
 data RecordState = RecordState
-  { rs_slots :: IM.IntMap TRef
+  { rs_trace_root :: InfoTableId
+  , rs_slots :: IM.IntMap TRef
   , rs_modified_slots :: IM.IntMap TRef
     -- ^ Maps register contents to their current 'TRef'.
   , rs_baseslot :: !Int
@@ -124,20 +130,34 @@ data RecordState = RecordState
   , rs_next  :: !Int
   , rs_consts :: M.Map TConst TRef
   , rs_next_const :: !Int
-  , rs_virtual_objects :: M.Map TRef (Int, IM.IntMap TRef)
+  , rs_virtual_objects :: IM.IntMap (Int, IM.IntMap TRef)
   , rs_next_virt_obj :: !Int
+  , rs_loop_ins :: !Int
+  , rs_ins_to_ref :: IM.IntMap TRef
 --  , rs_
   , rs_stackframes :: StackFrame
+  , rs_escapees :: S.Set TRef
+  , rs_equi_escape :: M.Map TRef TRef
+  , rs_phis :: !(IM.IntMap TRef, IM.IntMap TRef)
   }
 
 data Snapshot = Snapshot
   { snap_slots :: !(IM.IntMap TRef)
   , snap_base :: !Int
+  , snap_top  :: !Int
+  , snap_allocs :: S.Set TRef
   , snap_heap :: M.Map TRef (Int, IM.IntMap TRef)
   , snap_esc :: S.Set BcVar
+  , snap_loc :: (InfoTable, Int)
   } 
- | ProtoSnapshot { snap_esc :: S.Set BcVar }
+ | ProtoSnapshot { snap_esc :: S.Set BcVar, snap_loc :: (InfoTable, Int) }
  deriving Eq
+ -- TODO: rename snap_esc into snap_lives or snap_liveOuts
+
+data Trace = Trace
+  { tr_code :: V.Vector IRIns
+  , tr_exits :: IM.IntMap Int  -- instruction |-> exit id
+  }
 
 -- class PrettyRS a where
 --   pprRS :: RecordState -> a -> PDoc
@@ -146,7 +166,7 @@ data Snapshot = Snapshot
 --   pprRS ref | isConstTRef ref =
 
 -- | The intermediate representation used by the trace compiler.
-data IRIns
+data IRIns_ ref
   = Nop
     -- ^ No operation.  Replaces redundant instructions.
   | Loop
@@ -155,20 +175,22 @@ data IRIns
     -- this marker.
   | SLoad Int
     -- ^ Load a slot from the entry frame of the trace.
-  | FLoad TRef Int
+  | FLoad ref Int
     -- ^ Load a field with specified field id.
   | LoadBase Int  -- ref = &base[n]
   | SetBase Int  -- baseslot = n
-  | Op BinOp TRef TRef
-  | Guard CmpOp TRef TRef Snapshot
-  | AllocN Int
-  | FStore TRef Int TRef
-  | UpdateR TRef TRef
-  | Phi TRef TRef
-  | PushFrame TRef TRef Int [Int]
+  | Op BinOp ref ref
+  | Guard CmpOp ref ref Snapshot
+  | AllocN ref Int
+  | FStore ref Int ref
+  | UpdateR ref ref
+  | Phi ref ref
+  | PushFrame ref ref Int [Int]
     -- return address, node ptr, frame size, live-outs of current frame
   | PopFrame
   deriving (Eq)
+
+type IRIns = IRIns_ TRef
 
 data StackFrame
   = EntryFrame
@@ -178,11 +200,15 @@ data StackFrame
 
 instance Uniplate TRef where uniplate = plate
 
-instance Biplate IRIns TRef where
+instance Biplate (IRIns_ TRef) TRef where
   biplate (FLoad r n) = plate FLoad |* r |- n
   biplate (Op op l r) = plate (Op op) |* l |* r
   biplate (Guard cmp l r s) = plate (Guard cmp) |* l |* r |+ s
   biplate (FStore p n v) = plate FStore |* p |- n |* v
+  biplate (AllocN i n) = plate AllocN |* i |- n
+  biplate (UpdateR p q) = plate UpdateR |* p |* q
+  biplate (PushFrame r p n ls) = plate PushFrame |* r |* p |- n |- ls
+  biplate (Phi p q) = plate Phi |* p |* q
   biplate x = plate x
 
 instance Biplate Snapshot TRef where
@@ -191,7 +217,7 @@ instance Biplate Snapshot TRef where
              s{ snap_slots = slots'
               , snap_heap = M.fromList heap' })
       |+ snap_slots s ||+ M.toAscList (snap_heap s)
-  biplate x = plate x
+--  biplate x = plate x
 
 instance Biplate (IM.IntMap TRef) TRef where
   biplate m =
@@ -219,6 +245,8 @@ data TRef
 --  deriving (Ord, Eq)
 
 instance Eq TRef where
+  x == y = refToInt x == refToInt y
+{-
   TNil == TNil = True
   TCst n _ == TCst m _ = m == n
   TBase n == TBase m = n == m
@@ -227,8 +255,10 @@ instance Eq TRef where
   THp n  == TVar m = m == n
   THp n  == THp m  = m == n
   x == y = False
-
+-}
 instance Ord TRef where
+  compare x y = comparing refToInt x y
+{-
   TNil `compare` x = LT
   x `compare` TNil = GT
   TCst n _ `compare` TCst m _ = n `compare` m
@@ -241,6 +271,13 @@ instance Ord TRef where
   TBase m `compare` TBase n = m `compare` n
   TBase _ `compare` _ = GT
   _ `compare` TBase _ = LT
+-}
+refToInt :: TRef -> Int
+refToInt TNil = minBound
+refToInt (TCst n _) = (-n)
+refToInt (THp n) = n
+refToInt (TVar n) = n
+refToInt (TBase n) = 0x1000000 .|. n
 
 {-
 newtype TRef = TRef Int
@@ -285,7 +322,7 @@ data TConst
 refConst :: TRef -> TConst
 refConst (TCst _ c) = c
 
-instance Pretty IRIns where
+instance Pretty ref => Pretty (IRIns_ ref) where
   ppr Nop          = text "NOP     "
   ppr Loop         = text "--- LOOP ----------------------"
   ppr (LoadBase n) = text "BASE    " <+> ppr n
@@ -296,7 +333,7 @@ instance Pretty IRIns where
   ppr (Op OpMul l r)    = text "MUL     " <+> ppr l <+> ppr r
   ppr (Op OpDiv l r)    = text "DIV     " <+> ppr l <+> ppr r
   ppr (Op cmp l r)      = text "SET" <> ppr cmp <+> ppr l <+> ppr r
-  ppr (Guard cmp l r s) = align (ppr s $+$ pp_cmp cmp <+> ppr l <+> ppr r)
+  ppr (Guard cmp l r s) = align ({-ppr s $+$-} pp_cmp cmp <+> ppr l <+> ppr r)
    where 
      pp_cmp CmpEq = text "EQ      "
      pp_cmp CmpNe = text "NE      "
@@ -304,7 +341,7 @@ instance Pretty IRIns where
      pp_cmp CmpLe = text "LE      "
      pp_cmp CmpGt = text "GT      "
      pp_cmp CmpGe = text "GE      "
-  ppr (AllocN n)        = text "(alloc) " <+> ppr n
+  ppr (AllocN r n)      = text "(alloc) " <+> ppr r <+> ppr n
   ppr (FStore p n v)    = text "(stfld) " <+> ppr p <+> ppr n <+> ppr v
 --  ppr (FStore p n v)    = text "STOREFLD" <+> ppr p <+> ppr n <+> ppr v
   ppr (UpdateR dst src)  = text "UPDATE  " <+> ppr dst <+> ppr src
@@ -327,12 +364,13 @@ opName CmpGt = "GT"
 opName CmpGe = "GE"
 
 instance Pretty Snapshot where
-  ppr (ProtoSnapshot esc) =
+  ppr (ProtoSnapshot esc _) =
     text "<proto-snap>, Esc=" <> braces (hsep (commaSep (map ppr (S.toList esc))))
   ppr snap = 
     indent 4 (pp_slots (snap_slots snap) <> char '}' $+$
-                        pp_heap (snap_heap snap)) $+$
-      text "Esc=" <> braces (hsep (commaSep (map ppr (S.toList (snap_esc snap)))))
+                        pp_heap (M.toList $ snap_heap snap)) $+$
+      text "Live=" <> braces (hsep (commaSep (map ppr (S.toList (snap_esc snap))))) $+$
+      text "Sink=" <> braces (hsep (commaSep (map ppr (S.toList (snap_allocs snap)))))
    where
     pp_slots slots | IM.null slots = text "{"
     pp_slots slots =
@@ -347,8 +385,16 @@ instance Pretty Snapshot where
              if s `mod` 5 == 0 then char '.' else char ' ') <>
           (maybe (text "-----") ppr (IM.lookup s slots))
 
+instance Pretty Trace where
+  ppr (Trace irs_ _) =
+    let inss = zip [1..] (V.toList irs_) in
+    text "Trace {" 
+    $+$ vcat (map (\(i, ins) -> ppFill 4 i <+> ppr ins) inss)
+    $+$ text "}"
+
+pp_heap :: Pretty a => [(a, (Int, IM.IntMap TRef))] -> PDoc
 pp_heap objs =
-     collect' (text "Heap") (M.toList objs) $ \doc (ptr, (sz, fields)) ->
+     collect' (text "Heap") objs $ \doc (ptr, (sz, fields)) ->
        doc <+>
        ppr ptr <> (collect' (text "={") [0..sz-1] $ \d i ->
                      d <+> maybe (text "----") ppr (IM.lookup i fields))
@@ -365,8 +411,8 @@ instance Pretty TConst where
 
 isRecording :: VMState -> Bool
 isRecording vm = case vm_mode vm of
-                   Interp -> False
-                   Trace _ _ -> True
+                   InterpMode -> False
+                   TraceMode _ _ -> True
 
 lookupClosure :: Heap -> Val -> Closure
 lookupClosure heap addr@(SLoc x)
@@ -392,9 +438,11 @@ allocClosure heap@Heap{ heapPtr = ptr } new_cl =
   (heap{ heapAllocArea = IM.insert ptr new_cl (heapAllocArea heap)
        , heapPtr = ptr + 1 }, Loc ptr)
 
+
 instance Pretty Val where
   ppr (Loc p) = char '#' <> ppr p
   ppr (SLoc p) = char '#' <> ppr p
+  ppr (ILoc i) = ppr i
   ppr (ValI n) = ppr n
   ppr (ValS s) = text (show s)
   ppr Undef = text "undef"

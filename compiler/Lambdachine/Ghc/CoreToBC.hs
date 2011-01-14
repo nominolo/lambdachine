@@ -61,8 +61,9 @@ import qualified CoreSyn as Ghc ( Expr(..) )
 import qualified PrimOp as Ghc
 import qualified TysWiredIn as Ghc ( trueDataConId, falseDataConId )
 import qualified TyCon as Ghc
+import qualified Outputable as Ghc
 import TyCon ( TyCon )
-import Outputable ( Outputable, showPpr )
+import Outputable ( Outputable, showPpr, alwaysQualify, showSDocForUser )
 import CoreSyn ( CoreBind, CoreBndr, CoreExpr, CoreArg, CoreAlt,
                  Bind(..), Expr(Lam, Let, Type, Cast, Note),
                  AltCon(..),
@@ -329,7 +330,8 @@ transBind x (viewGhcLam -> (bndrs, body)) env0 = do
         -- maps from closure variable to its index
         cv_indices = Ghc.mkVarEnv (zip closure_vars [(1::Int)..])
     return (bcis, closure_vars, globalVars fvs, cv_indices)
-  x' <- freshVar "closure" mkTopLevelId
+  x' <- freshVar ("cl_" ++ Ghc.getOccString x) mkTopLevelId
+--  x' <- freshVar "closure" mkTopLevelId
   g <- finaliseBcGraph bcis
   let arity = length bndrs
   let bco = BcObject { bcoType = if arity > 0 then BcoFun arity else Thunk
@@ -865,7 +867,10 @@ primOpToBinOp primop =
 -- Reuses the 'Unique' from GHC.
 toplevelId :: Ghc.Id -> Id
 toplevelId x = --  | Ghc.VanillaId <- Ghc.idDetails x =
-  mkTopLevelId (N.mkBuiltinName (fromGhcUnique x) (Ghc.getOccString x))
+  mkTopLevelId $
+    N.mkBuiltinName (fromGhcUnique x)
+      (showSDocForUser alwaysQualify (Ghc.ppr x))
+  --mkTopLevelId (N.mkBuiltinName (fromGhcUnique x) (Ghc.getOccString x))
 
 dataConInfoTableId :: Ghc.DataCon -> Id
 dataConInfoTableId dcon =

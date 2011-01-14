@@ -1,12 +1,24 @@
-{-# LANGUAGE NoImplicitPrelude, MagicHash #-}
+{-# LANGUAGE NoImplicitPrelude, MagicHash, BangPatterns #-}
 module Test1 where
 
 --import Prelude (Int, print)
 --import GHC.Base (plusInt, gtInt)
 import GHC.Prim
 import GHC.Bool
+import GHC.Integer.GMP.Internals (Integer(..))
+--import Prelude
 
 data Int = I# Int#
+
+--data Integer = S# Int#
+
+smallInteger :: Int# -> Integer
+smallInteger x = S# x
+{-# INLINE smallInteger #-}
+
+fromInteger :: Integer -> Int
+fromInteger (S# n) = I# n
+{-# INLINE fromInteger #-}
 
 -- The NOINLINE stuff is to simulate these things coming from another
 -- module (or package even).
@@ -22,6 +34,9 @@ minusInt (I# m) (I# n) = I# (m -# n)
 gtInt :: Int -> Int -> Bool
 gtInt (I# m) (I# n) = m ># n
 {-  # NOINLINE gtInt #-}
+
+eqInt :: Int -> Int -> Bool
+eqInt (I# m) (I# n) = m ==# n
 
 data List a = Nil | Cons a (List a)
 
@@ -72,9 +87,66 @@ one :: Int
 one = I# 1#
 
 test :: Int
-test = (sum (I# 0#) (upto (I# 1#) (I# 5#)))
+test = (sum 1234567890 (upto (I# 1#) (I# 15#)))
+--test = sum' (I# 4#)
 
-test1 = decr (I# 5#) Nil
+test1 :: Int
+test1 = sum zero (decr (I# 15#) Nil)
+
+--test = f (I# 5#) A0
+
+--data A = A1 A | A2 A
+-- data B = B1 A 
+{-
+f :: Int -> A -> A
+f x a =
+  if x `gtInt` zero then 
+    let a' = A1 x a
+        x' = x `minusInt` one
+    in x' `seq` f x' a'
+   else a
+
+--lenA :: A -> Int -> Int
+--lenA 
+
+f :: Int -> A -> A -> A
+f !x !a !b =
+  if x `gtInt` zero then
+    g (x `minusInt` one) (A1 b) (A2 a)
+   else a
+
+g :: Int -> A -> A -> A
+g !x !a !b =
+  if x `gtInt` zero then
+    g (x `minusInt` one) (A1 b) (A2 a)
+   else b
+-}
+
+sum' :: Int -> Int
+sum' i = go i (I# 0#)
+ where
+   go :: Int -> Int -> Int
+   go !y !res =
+     if y `gtInt` zero then
+       go (y `minusInt` one) ((res `plusInt` y) `minusInt` I# 100#)
+     else
+       res
+
+sum'' :: Int -> Int
+sum'' (I# y) = go3 y 0#
+
+go3 :: Int# -> Int# -> Int
+go3 y res =
+  case y ># 0# of
+    False -> I# y
+    True ->
+      go3 (y -# 1#) ((res +# y) -# 100#)
+
+--    go1 y res =
+--      if y `gtInt` zero then
+--        go (y `minusInt` one) ((res `plusInt` y) `minusInt` I# 100#)
+--       else
+--         res
 
 decr :: Int -> List Int -> List Int
 decr n l =

@@ -10,6 +10,7 @@ import Lambdachine.Grin.Analyse
 import Lambdachine.Grin.RegAlloc
 import Lambdachine.Interp.Exec
 import Lambdachine.Interp.Trace
+import Lambdachine.Serialise
 
 import GHC
 import GHC.Paths ( libdir )
@@ -24,8 +25,8 @@ import System.Cmd ( rawSystem )
 
 main :: IO ()
 main = runGhc (Just libdir) $ do
-  args0 <- liftIO $ getArgs
-  let file | [f] <- args0 = f
+  args <- liftIO $ getArgs
+  let file | [f] <- args = f
            | otherwise = "../tests/bc0001.hs"
   dflags <- getSessionDynFlags
   setSessionDynFlags dflags{ ghcLink = NoLink }
@@ -34,12 +35,14 @@ main = runGhc (Just libdir) $ do
     s <- newUniqueSupply 'g'
     putStrLn "================================================="
     putStrLn $ showPpr core_binds
-    putStrLn "-------------------------------------------------"
+--    putStrLn "-------------------------------------------------"
+
     let bcos = generateBytecode s core_binds data_tycons
     --putStrLn $ pretty bcos
     let bcos' = M.map allocRegs bcos
     pprint $ bcos'
-
+    writeModule "testmdl2.foo" bcos'
+{-
 --     tmp <- getTemporaryDirectory
 --     (file, hdl) <- openTempFile tmp "trace.html"
 --     hPutStr hdl (showHtml (defaultWrapper (toHtml (FLoad (TVar 3) 2))))
@@ -47,9 +50,9 @@ main = runGhc (Just libdir) $ do
 --     hClose hdl
 --     _ <- rawSystem "open" [file]
 --     return ()
-
-    test_insts2 bcos'
-    
+-}
+--    test_insts2 bcos'
+   
     --let entry:_ = filter ((=="test") . show) (M.keys bcos')
     --pprint $ fst $ interp entry bcos'
     --test_record1 bcos'

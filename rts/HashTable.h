@@ -1,0 +1,37 @@
+#ifndef _LAMBDACHINE_HASH_TABLE_H
+#define _LAMBDACHINE_HASH_TABLE_H
+
+#include "Common.h"
+
+typedef struct _HashEntry {
+  char              *key;
+  void              *value;
+  struct _HashEntry *next;
+} HashEntry;
+
+typedef struct _HashTable {
+  u4          size;		/* Must be power of 2 */
+  u4          threshold;
+  u4          entries;
+  HashEntry **table;
+} HashTable;
+
+typedef void (*HashFreeFunc)(char *key, void *value);
+typedef void (*ValueFreeFunc)(void *value);
+typedef void (*HashValuePrinter)(void *value);
+
+HashTable *HashTable_create();
+void      *HashTable_insert(HashTable *, char *key, void *value);
+void      *HashTable_lookup(HashTable *, char *key);
+void      *HashTable_update(HashTable *, char *key, void *value);
+void       HashTable_print(HashTable *, HashValuePrinter);
+void       HashTable_destroy(HashTable *, HashFreeFunc);
+
+/* Default hash table size.  Must be power of 2 */
+#define HASHTABLE_DEFAULT_SIZE          16
+
+/* Hash table resize threshold in percent.  This number divided by 100
+   gives the expected average list length of hash table entries.  */
+#define HASHTABLE_DEFAULT_THRESHOLD     200
+
+#endif

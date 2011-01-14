@@ -23,6 +23,7 @@ import qualified Data.Set as S
 import Data.Generics.Uniplate.Direct
 import Data.Bits ( (.&.) )
 import qualified Data.Vector as V
+import Data.Binary
 
 type BlockId = Label
 
@@ -99,7 +100,7 @@ data CompOp
 data BinOp
   = OpAdd | OpSub | OpMul | OpDiv
   | CmpGt | CmpLe | CmpGe | CmpLt | CmpEq | CmpNe
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Show)
 
 data OpTy = Int32Ty | Float32Ty
   deriving (Eq, Ord)
@@ -361,6 +362,8 @@ type BytecodeObject = BytecodeObject' (Graph BcIns O C)
 type BCOs = M.Map Id BytecodeObject
 type FinalBCOs = M.Map Id (BytecodeObject' FinalCode)
 
+
+
 data BcoType
   = BcoFun Int  -- arity
   | Thunk
@@ -371,6 +374,19 @@ data BcoType
 bcoArity :: BytecodeObject' g -> Int
 bcoArity BcObject{ bcoType = BcoFun n } = n
 bcoArity _ = 0
+
+
+collectLiterals :: FinalCode -> S.Set (Either BcConst Id)
+collectLiterals code = V.foldl' comb S.empty (fc_code code)
+ where
+   comb :: S.Set (Either BcConst Id) -> FinalIns
+        -> S.Set (Either BcConst Id)
+   comb s (Fst _) = s
+   comb s (Mid ins_) = case ins_ of
+     Assign _ (Load (LoadLit c)) -> S.insert (Left c) s 
+     Assign _ (Load (LoadGlobal x)) -> S.insert (Right x) s
+     _ -> s
+   comb s (Lst _) = s
 
 data BcConst
   = CInt Integer

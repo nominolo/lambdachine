@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns, PatternGuards, GADTs #-}
+{-# LANGUAGE BangPatterns, PatternGuards, GADTs, ScopedTypeVariables #-}
 module Lambdachine.Interp.Exec
   ( module Lambdachine.Interp.Exec,
     module Lambdachine.Interp.Types
@@ -13,11 +13,14 @@ import Lambdachine.Grin.RegAlloc ( LinearCode(..) )
 import Lambdachine.Utils
 import Lambdachine.Builtin
 
-import Control.Monad ( forM_, when )
+import Control.Monad ( forM_, when, mapM_, mapM )
+import Control.Monad.State
 import Data.Array.IO
 import Data.Maybe ( fromMaybe )
 import Data.Monoid
 import qualified Data.Vector as V
+import qualified Data.Vector.Mutable as V ( write, read, IOVector )
+import qualified Data.Vector.Mutable as MV ( replicate )
 import qualified Data.IntMap as IM
 import qualified Data.Map    as M
 import qualified Data.Set    as S
@@ -175,6 +178,7 @@ interpSteps steps vm0 = do
      interp1 vm heap itbl pc stack (go (n - 1)) stop
    stop vm heap itbl pc stack = do
      putStrLn "FINISHED"
+     --error "I said FINISHED!"
      return (vm{ vm_heap = heap,
                  vm_stack = stack,
                  vm_pc = PC itbl pc })
@@ -210,20 +214,26 @@ interp1 vm0@VMState{ vm_env = env } heap
                              text "..." <+> stack -})
   
   vm <- case vm_mode vm0 of
-          Interp -> return vm0
-          Trace root rs -> do
-            --               pprint $ text "Recording"
+          InterpMode -> return vm0
+          TraceMode root rs -> do
+            -- In recording mode:  First record, then invoke interpreter
+            -- to actually execute the instruction.
             keep_going <- record1 root env heap args bco pc inst rs
             if keep_going then return vm0
              else do
                -- TODO: Finish trace and replace function.
-               finaliseTrace rs env heap
-               let vm' = vm0{ vm_mode = Interp }
-               error "FIXME: stopping for now."
+               (_root, trace) <- finaliseTrace rs env heap
+               let vm' = vm0{ vm_mode = InterpMode
+                            , vm_traces = M.insert root trace (vm_traces vm0)
+                            }
+               pprint $ text "STOP_RECORD" <+> ppr root $+$ ppr trace
+               return vm'
+{-               
+               --error "FIXME: stopping for now."
                kstop vm' heap bco pc args
                return vm'
                error "FIXME: stopping for now."
-
+-}
   case inst of
     Mid (Assign (BcReg dest) rhs) -> interp_rhs vm dest rhs
     Mid (Store base offs src) -> store vm base offs src
@@ -301,44 +311,64 @@ interp1 vm0@VMState{ vm_env = env } heap
      let num_args = length vars
      let Closure itbl_id _ = lookupClosure heap fn
          itbl' = lookupInfoTable env itbl_id
-     case itblClosureType itbl' of
-       CtFun arity
-         | arity == num_args -> do
-            vals <- mapM (\(BcReg r) -> readReg args r) vars
-            args' <- allocFrame args (pc + 1) fn vals (fc_framesize (itblCode itbl'))
-            pprint $ text "***" <+> indent (stackDepth args') (text "Entering:" <+> ppr fun)
-            let (is_hot, vm') | isRecording vm = (False, vm)
-                              | otherwise = decr_hot vm itbl_id
-            when is_hot $ pprint $ text "HOT:" <+> ppr (itblId bco)
-            vm'' <- if not is_hot then return vm'
-                     else do
-                       let (ArgStack base top _) = args
-                       rs <- mkRecordState (top - base)
-                       return vm'{ vm_mode = Trace itbl_id rs }
-            k vm'' heap itbl' 0 args'
+     case M.lookup itbl_id (vm_traces vm) of
+       Just trace -> do
+         -- Setup stack frame.  Arity should match automatically.
+         vals <- mapM (\(BcReg r) -> readReg args r) vars
+         args' <- allocFrame args (pc + 1) fn vals (fc_framesize (itblCode itbl'))
+         evalTrace vm heap args' trace k
+
+       Nothing ->
+         case itblClosureType itbl' of
+           CtFun arity
+             | arity == num_args -> do
+                vals <- mapM (\(BcReg r) -> readReg args r) vars
+                args' <- allocFrame args (pc + 1) fn vals (fc_framesize (itblCode itbl'))
+                pprint $ text "***" <+> indent (stackDepth args') (text "Entering:" <+> ppr fun)
+                let (is_hot, vm') | isRecording vm = (False, vm)
+                                  | otherwise = decr_hot vm itbl_id
+                when is_hot $ pprint $ text "HOT:" <+> ppr (itblId bco)
+                vm'' <- if not is_hot then return vm'
+                         else do
+                           pprint $ text "RECORD" <+> ppr itbl_id
+                           let (ArgStack base top _) = args
+                           rs <- mkRecordState itbl_id (top - base)
+                           return vm'{ vm_mode = TraceMode itbl_id rs }
+                k vm'' heap itbl' 0 args'
 
    tailcall vm (BcReg fun) vars = do
      fn <- readReg args fun
      let num_args = length vars
      let Closure itbl_id _ = lookupClosure heap fn
          itbl' = lookupInfoTable env itbl_id
-     case itblClosureType itbl' of
-       CtFun arity
-         | arity == num_args -> do
-            vals <- mapM (\(BcReg r) -> readReg args r) vars
-            forM_ (zip [0..] vals) $ \(i, v) -> writeReg args i v
-            writeReg args (-1) fn
-            args' <- adjustFramesize args (fc_framesize (itblCode itbl'))
-            pprint $ text (replicate (stackDepth args' + 4) '*') <+> (text "Entering:" <+> ppr fn)
-            let (is_hot, vm') | isRecording vm = (False, vm)
-                              | otherwise = decr_hot vm itbl_id
-            when is_hot $ pprint $ text "HOT:" <+> ppr (itblId bco)
-            vm'' <- if not is_hot then return vm'
-                     else do
-                       let (ArgStack base top _) = args
-                       rs <- mkRecordState (top - base)
-                       return vm'{ vm_mode = Trace itbl_id rs }
-            k vm'' heap itbl' 0 args'
+     case M.lookup itbl_id (vm_traces vm) of
+       Just trace -> do
+         vals <- mapM (\(BcReg r) -> readReg args r) vars
+         forM_ (zip [0..] vals) $ \(i, v) -> writeReg args i v
+         writeReg args (-1) fn
+         args' <- adjustFramesize args (fc_framesize (itblCode itbl'))
+         pprint $ text "ENTER TRACE:" <+> ppr itbl_id
+         evalTrace vm heap args' trace k
+
+       Nothing ->
+         case itblClosureType itbl' of
+           CtFun arity
+             | arity == num_args -> do
+                vals <- mapM (\(BcReg r) -> readReg args r) vars
+                forM_ (zip [0..] vals) $ \(i, v) -> writeReg args i v
+                writeReg args (-1) fn
+                args' <- adjustFramesize args (fc_framesize (itblCode itbl'))
+                pprint $ text (replicate (stackDepth args' + 4) '*') <+> (text "Entering:" <+> ppr fn)
+                let (is_hot, vm') | isRecording vm = (False, vm)
+                                  | otherwise = decr_hot vm itbl_id
+                when is_hot $ pprint $ text "HOT:" <+> ppr (itblId bco)
+                vm'' <- if not is_hot then return vm'
+                         else do
+                           pprint $ text "RECORD" <+> ppr itbl_id
+                           let (ArgStack base top _) = args
+                           rs <- mkRecordState itbl_id (top - base)
+                           return vm'{ vm_mode = TraceMode itbl_id rs }
+                k vm'' heap itbl' 0 args'
 
    case_branch vm reg alts = do
      addr <- readReg args reg
@@ -386,22 +416,162 @@ interp1 vm0@VMState{ vm_env = env } heap
      (args', bco', pc') <- popFrameRet env heap' args new_ptr
      k vm heap' bco' pc' args'
 
-
-   if' True  = SLoc trueDataConId
-   if' False = SLoc falseDataConId
-   bin_op_int32ty OpAdd v1 v2 = ValI $ v1 + v2
-   bin_op_int32ty OpSub v1 v2 = ValI $ v1 - v2
-   bin_op_int32ty OpMul v1 v2 = ValI $ v1 * v2
-   bin_op_int32ty OpDiv v1 v2 = ValI $ v1 `div` v2
-   bin_op_int32ty CmpGt v1 v2 = if' (v1 > v2)
-   bin_op_int32ty CmpLe v1 v2 = if' (v1 <= v2)
-   bin_op_int32ty CmpGe v1 v2 = if' (v1 >= v2)
-   bin_op_int32ty CmpLt v1 v2 = if' (v1 < v2)
-   bin_op_int32ty CmpEq v1 v2 = if' (v1 == v2)
-   bin_op_int32ty CmpNe v1 v2 = if' (v1 /= v2)
-
 interp1 _ _ bco _ _ _ _ =
   error $ "Trying to interpret: " ++ pretty bco
+  
+if' :: Bool -> Val
+if' True  = SLoc trueDataConId
+if' False = SLoc falseDataConId
+
+bin_op_int32ty OpAdd v1 v2 = ValI $ v1 + v2
+bin_op_int32ty OpSub v1 v2 = ValI $ v1 - v2
+bin_op_int32ty OpMul v1 v2 = ValI $ v1 * v2
+bin_op_int32ty OpDiv v1 v2 = ValI $ v1 `div` v2
+bin_op_int32ty CmpGt v1 v2 = if' (v1 > v2)
+bin_op_int32ty CmpLe v1 v2 = if' (v1 <= v2)
+bin_op_int32ty CmpGe v1 v2 = if' (v1 >= v2)
+bin_op_int32ty CmpLt v1 v2 = if' (v1 < v2)
+bin_op_int32ty CmpEq v1 v2 = if' (v1 == v2)
+bin_op_int32ty CmpNe v1 v2 = if' (v1 /= v2)
+
+evalTrace :: forall a. 
+             VMState -> Heap -> ArgStack -> Trace 
+          -> (VMState -> Heap -> InfoTable -> Int -> ArgStack -> IO a)
+          -> IO a
+evalTrace vm heap args Trace{ tr_code = irs } k = do
+  st0 <- MV.replicate (V.length irs) Undef
+  eval1 st0 heap 1 1
+ where
+   fall_off = V.length irs
+   eval1 :: V.IOVector Val -> Heap -> Int -> Int -> IO a
+   eval1 st hp pc lp | pc > fall_off = 
+     eval1 st hp lp lp  -- loop (cost: 1 predictable jump)
+   eval1 st !hp !pc lp = do
+     let !ins = irs V.! (pc - 1)
+     case ins of
+       Nop ->
+         eval1 st hp (pc + 1) lp   -- deleted (cost: 0)
+       PushFrame _ _ _ _ ->
+         eval1 st hp (pc + 1) lp
+       PopFrame ->
+         eval1 st hp (pc + 1) lp
+       Loop -> 
+         eval1 st hp (pc + 1) pc  -- just a label (cost: 0)
+       SLoad n -> do  -- cost: 1 mem read
+         pprint $ text "TR:" <> ppFill 2 pc <> char ':' <> ppr ins
+         v <- readReg args n  -- cost: 1 mem read
+         V.write st pc v
+         --pprint $ text " =>" <+> ppr pc <> char ':' <> ppr v
+         eval1 st hp (pc + 1) lp
+       FLoad r n -> do  -- cost: 1 mem read
+         p <- get_val st r
+         --pprint $ text "@" <+> ppr p
+         let Closure itbl_id fields = lookupClosure hp p
+             val = case n of
+                     0 -> ILoc itbl_id
+                     _ -> fields V.! (n - 1)
+         V.write st pc val
+         pprint $ text "TR:" <> ppFill 2 pc <> char ':' <> ppr ins
+                   <> text " =>" <+> ppr val
+         eval1 st hp (pc + 1) lp
+       Guard cmp r1 r2 snap -> do -- cost: 1 test + 1 unlikely branch
+         pprint $ text "TR:" <> ppFill 2 pc <> char ':' <> ppr ins
+         guard st hp cmp r1 r2 snap (eval1 st hp (pc + 1) lp)
+       Op op r1 r2 -> do  -- cost: 1 op (mul more expensive?)
+         pprint $ text "TR:" <> ppFill 2 pc <> char ':' <> ppr ins
+         ValI v1 <- get_val st r1
+         ValI v2 <- get_val st r2
+         V.write st pc (bin_op_int32ty op v1 v2)
+         eval1 st hp (pc + 1) lp
+       UpdateR dst srt -> do
+         -- ignored for now
+         eval1 st hp (pc + 1) lp
+       AllocN itbl n -> do  -- cost: 1 alloc (no init), 1 ptr bump + mem write
+         pprint $ text "TR:" <> ppFill 2 pc <> char ':' <> ppr ins
+         ILoc i <- get_val st itbl
+         let cl = Closure i (V.replicate n Undef)
+             (!hp', ptr) = allocClosure hp cl
+         V.write st pc ptr
+         eval1 st hp' (pc + 1) lp
+       FStore pref offs ref -> do -- 1 mem write
+         pprint $ text "TR:" <> ppFill 2 pc <> char ':' <> ppr ins
+         ptr <- get_val st pref
+         val <- get_val st ref
+         let cl = lookupClosure hp ptr 
+             !cl' = setField cl offs val
+             !hp' = updateClosure hp ptr cl'
+         eval1 st hp' (pc + 1) lp
+       Phi r1 r2 -> do -- cost: 0 or 1 reg move
+         v1 <- get_val st r2
+         pprint $ text "TR:" <> ppFill 2 pc <> char ':' <> ppr ins
+                <+> text " =>" <+> ppr r1 <+> char '=' <+> ppr v1
+         V.write st (refToInt r1) v1
+         eval1 st hp (pc + 1) lp
+   
+   --guard :: V.IOVector Val -> Heap -> CmpOp -> TRef -> TRef -> Snapshot -> IO a
+   guard st hp cmp r1 r2 snap k2 = do
+     v1 <- get_val st r1
+     v2 <- get_val st r2
+     let ok = case cmp of
+                CmpEq -> v1 == v2
+                CmpNe -> v1 /= v2
+                _ -> error $ "evalTrace.guard: CmpOp not implemented" ++ show cmp
+     if ok then k2
+      else do
+        pprint $ text "GUARD_FAILED:" <+> ppr (Guard cmp r1 r2 snap)
+        (args', hp') <- applySnapshot hp  args st snap
+        pprint =<< ppArgStack args' hp'
+        let (itbl, pc) = snap_loc snap
+        pprint $ text "PC:" <+> ppr (itblId itbl, pc)
+        k vm hp' itbl pc args'
+     
+   get_val st ref 
+     | ref == nilTRef = return Undef
+     | isConstTRef ref = return (tConstToVal (refConst ref))
+     | otherwise = V.read st (refToInt ref)
+
+applySnapshot :: Heap -> ArgStack -> V.IOVector Val -> Snapshot 
+              -> IO (ArgStack, Heap)
+applySnapshot heap (ArgStack base top stack) vals snap = do
+  pprint $ text "APPLY_SNAP:" <+> ppr snap <+> ppr snapsize
+  heap' <- execStateT (mapM_ restore_ref (IM.toList (snap_slots snap))) heap
+  return (args'', heap')
+ where
+   snapsize = snap_top snap + 1
+   args' = ArgStack base (base + snapsize) stack
+   args'' = ArgStack (base + snap_base snap)
+                     (base + snap_top snap + 1)
+                     stack
+   
+   get_val :: TRef -> StateT Heap IO Val
+   get_val TNil = error "applySnapshot: No NILs in snapshots"
+   get_val (TBase n) = 
+     return $ ValI (fromIntegral $ base + n)
+   get_val ref@(TCst _ tc) =
+     return $ tConstToVal (refConst ref)
+   get_val ref@(THp _) | ref `S.member` snap_allocs snap = do
+     let (sz, fields) = snap_heap snap M.! ref
+     vals_ <- mapM get_val (map (fields IM.!) [0..sz])
+     lift $ pprint $ text "Vals:" <+> ppr vals_ <+> ppr ref
+     let (ILoc itbl:vals) = vals_
+     hp <- get
+     let cl = Closure itbl (V.fromList vals)
+         (hp', ptr) = allocClosure hp cl
+     put $! hp'
+     return ptr
+   get_val ref = lift $ V.read vals (refToInt ref)
+   
+   restore_ref :: (Int, TRef) -> StateT Heap IO ()
+   restore_ref (i, ref) = lift . writeReg args' i =<< get_val ref
+                   
+tConstToVal :: TConst -> Val
+tConstToVal cst = case cst of
+  TCInt n -> ValI n
+  TCStr s -> ValS s
+  TCItbl i -> ILoc i
+  TCId x -> SLoc x
+  TCPC _ n -> ValI (fromIntegral n)
+--error "tConstToVal: can't handle TCPC" -- TODO:
 
 -- | Push an update frame.  Currently looks like this:
 --
@@ -504,9 +674,12 @@ initVM bcos0 entry_name = do
                 , vm_heap = heap
                 , vm_stack = args
                 , vm_pc = PC itbl pc
-                , vm_mode = Interp
+                , vm_mode = InterpMode
                 , vm_hotcounts = M.empty
-                , vm_hotfunc = 3 }
+                , vm_hotfunc = 3 
+                , vm_traces = mempty 
+                }
+
 
 ppVM :: VMState -> IO PDoc
 ppVM vm = ppArgStack (vm_stack vm) (vm_heap vm)

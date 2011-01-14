@@ -87,7 +87,7 @@ int flip(MMState* state)
 int evac(MMState* state, StgPtr object)
 {
   unsigned i;
-  unsigned size = OBJ_SIZE(object);
+  unsigned size = 1; //OBJ_SIZE(object);
   StgPtr new_object = state->Hp;
 
   // allocate memory
@@ -98,10 +98,10 @@ int evac(MMState* state, StgPtr object)
 
   // Overwrite the old info table with a forwarding pointer.
   // This 
-  object[0] = new_object | 1;
+  object[0] = (StgPtr)((StgWord)new_object | 1);
   
   // copy object
-  for (i = 0; i <= size; ++i) {
+  for (i = 1; i <= size; ++i) {
     new_object[i] = object[i];
   }
 
