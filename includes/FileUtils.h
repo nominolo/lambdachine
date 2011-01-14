@@ -5,6 +5,9 @@
 
 #include <stdio.h>
 
+// Return non-zero if argument is a file.
+int fileExists(const char *path);
+
 INLINE_HEADER u1 fget_u1(FILE *f)
 {
   return (u1)fgetc(f);
@@ -23,6 +26,7 @@ u4 fget_u4(FILE *f);
 char *fget_string(FILE *f);
 
 Word fget_varuint_slow(FILE *f, Word first);
+
 /* Decode an unsigned variable length integer. */
 INLINE_HEADER Word fget_varuint(FILE *f)
 {

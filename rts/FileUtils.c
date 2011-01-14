@@ -1,6 +1,8 @@
 #include "Common.h"
 #include "FileUtils.h"
+
 #include <stdlib.h>
+#include <sys/stat.h>
 
 u4
 fget_u4(FILE *f)
@@ -35,4 +37,13 @@ fget_string(FILE *f)
   fread(str, 1, len, f);
   str[len] = '\0';
   return str;
+}
+
+/* TODO: make Windows compatible */
+int
+fileExists(const char *path)
+{
+  struct stat st;
+  if (stat(path, &st) != 0) return 0;
+  return S_ISREG(st.st_mode);
 }

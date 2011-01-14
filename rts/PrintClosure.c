@@ -126,3 +126,75 @@ printInstruction(BCIns *ins /*in*/)
 
   return (u4)(ins - ins0);
 }
+
+void
+printInfoTable(InfoTable* info0)
+{
+  switch (info0->type) {
+  case CONSTR:
+    {
+      ConInfoTable* info = (ConInfoTable*)info0;
+      printf("Constructor: %s, (%p)\n", info->name, info);
+      printf("  tag: %d\n", info->i.tagOrBitmap);
+      printf("  ptrs/nptrs: %d/%d\n",
+             info->i.layout.payload.ptrs, info->i.layout.payload.nptrs);
+    }
+    break;
+  case FUN:
+    {
+      FuncInfoTable *info = (FuncInfoTable*)info0;
+      printf("Function: %s (%p)\n", info->name, info);
+      printf("  ptrs/nptrs: %d/%d\n",
+             info->i.layout.payload.ptrs, info->i.layout.payload.nptrs);
+      printCode(&info->code);
+    }
+    break;
+  case THUNK:
+    {
+      ThunkInfoTable *info = (ThunkInfoTable*)info0;
+      printf("Thunk: %s (%p)\n", info->name, info);
+      printf("  ptrs/nptrs: %d/%d\n",
+             info->i.layout.payload.ptrs, info->i.layout.payload.nptrs);
+      printCode(&info->code);
+    }
+    break;
+  default:
+    printf("Unknown info table\n");
+  }
+  printf("\n");
+}
+
+void
+printCode(LcCode *code)
+{
+  u4 i; u4 nc = 0; BCIns *c = code->code;
+  printf("  arity: %d\n", code->arity);
+  printf("  frame: %d\n", code->framesize);
+  printf("  literals:\n");
+  for (i = 0; i < code->sizelits; i++) {
+    printf("   %3d: ", i);
+    switch (code->littypes[i]) {
+    case LIT_INT:
+      printf("%" FMT_Int, (WordInt)code->lits[i]);
+      break;
+    case LIT_STRING:
+      printf("\"%s\"", (char*)code->lits[i]);
+      break;
+    case LIT_CLOSURE:
+      printf("closure %" FMT_WordX, code->lits[i]);
+      break;
+    case LIT_INFO:
+      printf("info %" FMT_WordX, code->lits[i]);
+      break;
+    default:
+      printf("???");
+    }
+    printf("\n");
+  }
+  printf("  code:\n");
+  while (nc < code->sizecode) {
+    i = printInstruction(c);
+    c += i;
+    nc += i;
+  }
+}
