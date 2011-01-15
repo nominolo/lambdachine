@@ -2,9 +2,11 @@
 asm_offsets.incl
 gen_offs
 *.hi
+*.hi-boot
+*.o-boot
 .deps
 *~
-tests/*.lcbc
+*.lcbc
 # Util executables
 utils/genopcodes
 utils/print_config
