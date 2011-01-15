@@ -81,7 +81,13 @@ initLoader()
 int
 isModuleLoaded(const char *moduleName)
 {
-  return HashTable_lookup(G_loader->loadedModules, moduleName) != NULL;
+  Module *mdl;
+  mdl = HashTable_lookup(G_loader->loadedModules, moduleName);
+
+  // If the module is currently being loaded, then its string table
+  // will be non-empty.
+
+  return (mdl != NULL) && (mdl->strings == NULL);
 }
 
 /* Turn "Foo.Bar.Baz" into "Foo/Bar/Baz". Copies input string. */
@@ -172,14 +178,10 @@ moduleNameToFile(const char *basepath, const char *name)
   return filename;
 }
 
-void loadModule_aux(const char *moduleName, HashTable *q, u4 level);
+void loadModule_aux(const char *moduleName, u4 level);
 Module *loadModuleHeader(FILE *f, const char *filename);
 void loadModuleBody(FILE *f, Module *mdl);
-
-void freeTodoEntry(char *key, void *value)
-{
-  free(key);
-}
+void ensureNoForwardRefs();
 
 // Load the given module and all its dependencies.
 void
@@ -187,16 +189,14 @@ loadModule(const char *moduleName)
 {
   HashTable *q;
 
-  q = HashTable_create();
+  loadModule_aux(moduleName, 0);
 
-  loadModule_aux(moduleName, q, 0);
-
-  HashTable_destroy(q, freeTodoEntry);
+  ensureNoForwardRefs();
 }
 
 // Postorder traversal
 void
-loadModule_aux(const char *moduleName, HashTable* q, u4 level)
+loadModule_aux(const char *moduleName, u4 level)
 {
   char     *filename;
   Module   *mdl;
@@ -209,11 +209,11 @@ loadModule_aux(const char *moduleName, HashTable* q, u4 level)
 
   filename = moduleNameToFile(G_basepath, moduleName);
 
-  todo = (Word)HashTable_lookup(q, filename);
+  mdl = (Module*)HashTable_lookup(G_loader->loadedModules, filename);
 
-  // Do nothing if this isn't the first time we're loading this
-  // module.
-  if (todo != 0) {
+  if (mdl != NULL) {
+    // Module is either already loaded, or currently in process of
+    // being loaded.
       free(filename);
       return;
   }
@@ -225,19 +225,29 @@ loadModule_aux(const char *moduleName, HashTable* q, u4 level)
   }
 
   f = fopen(filename, "rb");
+  if (f == NULL) {
+    fprintf(stderr, "ERROR: Could not open file: %s\n",
+            filename);
+    exit(14);
+  }
 
   mdl = loadModuleHeader(f, filename);
 
-  HashTable_insert(q, filename, (void*)~0);
+  HashTable_insert(G_loader->loadedModules, filename, mdl);
 
+  // Load dependencies first.  This avoids creating many forward
+  // references.  The downside is that we keep more file descriptors
+  // open.
   for (i = 0; i < mdl->numImports; i++)
-    loadModule_aux(mdl->imports[i], q, level + 1);
+    loadModule_aux(mdl->imports[i], level + 1);
 
   loadModuleBody(f, mdl);
 
   fclose(f);
 
-  HashTable_insert(G_loader->loadedModules, mdl->name, mdl);
+  // We now don't need the string table anymore.
+  free(mdl->strings);
+  mdl->strings = NULL;
 
   for (i = 0; i < level; i++) putchar(' ');
   printf("< DONE   (%s)\n", moduleName);
@@ -591,6 +601,42 @@ loadClosure(FILE *f, const StringTabEntry *strings,
 
   }
   return cl;
+}
+
+void
+ensureNoForwardRefInfo(int *i, const char *const name, InfoTable *info)
+{
+  if (info->type == INVALID_OBJECT) {
+    fprintf(stderr, "Unresolved info table: %s\n", name);
+    (*i)++;
+  }
+}
+
+void
+ensureNoForwardRefClosure(int *i, const char *const name, Closure *cl)
+{
+  if (getInfo(cl) == NULL) {
+    fprintf(stderr, "Unresolved closure: %s\n", name);
+    (*i)++;
+  }
+}
+
+void ensureNoForwardRefs()
+{
+  int i = 0;
+
+  HashTable_foreach(G_loader->infoTables,
+                    (HashValueCallback)ensureNoForwardRefInfo,
+                    &i);
+
+  HashTable_foreach(G_loader->closures,
+                    (HashValueCallback)ensureNoForwardRefClosure,
+                    &i);
+
+  if (i > 0) {
+    fprintf(stderr, "ERROR: There %d were unresolved references.\n", i);
+    exit(15);
+  }
 }
 
 void

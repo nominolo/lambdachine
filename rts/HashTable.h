@@ -19,6 +19,7 @@ typedef struct _HashTable {
 typedef void (*HashFreeFunc)(char *key, void *value);
 typedef void (*ValueFreeFunc)(void *value);
 typedef void (*HashValuePrinter)(void *value);
+typedef void (*HashValueCallback)(void *env, const char *const key, void *value);
 
 HashTable *HashTable_create();
 void      *HashTable_insert(HashTable *, char *key, void *value);
@@ -26,6 +27,7 @@ void      *HashTable_lookup(HashTable *, const char *key);
 void      *HashTable_update(HashTable *, char *key, void *value);
 void       HashTable_print(HashTable *, HashValuePrinter);
 void       HashTable_destroy(HashTable *, HashFreeFunc);
+void       HashTable_foreach(HashTable *ht, HashValueCallback f, void *env);
 
 /* Default hash table size.  Must be power of 2 */
 #define HASHTABLE_DEFAULT_SIZE          16

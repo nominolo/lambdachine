@@ -119,6 +119,25 @@ HashTable_destroy(HashTable *ht, HashFreeFunc func)
 }
 
 void
+HashTable_foreach(HashTable *ht, HashValueCallback f, void *env)
+{
+  u4 size = ht->size;
+  u4 i;
+
+  if (f == NULL)
+    return;
+
+  for (i = 0; i < size; ++i) {
+    HashEntry *p = ht->table[i];
+    if (!p)
+      continue;
+    for ( ; p != NULL; p = p->next) {
+      f(env, p->key, p->value);
+    }
+  }
+}
+
+void
 HashTable_print(HashTable *ht, HashValuePrinter printValue)
 {
   u4 size = ht->size;
