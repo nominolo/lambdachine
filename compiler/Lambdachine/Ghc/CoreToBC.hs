@@ -40,10 +40,11 @@ instructions at the original binding site.
  -}
 module Lambdachine.Ghc.CoreToBC where
 
-import Lambdachine.Utils hiding ( Uniquable(..) )
-import Lambdachine.Id as N
-import Lambdachine.Grin.Bytecode as Grin
 import Lambdachine.Builtin
+import Lambdachine.Ghc.Utils
+import Lambdachine.Grin.Bytecode as Grin
+import Lambdachine.Id as N
+import Lambdachine.Utils hiding ( Uniquable(..) )
 import Lambdachine.Utils.Unique ( mkBuiltinUnique )
 
 import qualified Var as Ghc
@@ -59,7 +60,8 @@ import qualified Type as Ghc
 import qualified DataCon as Ghc
 import qualified CoreSyn as Ghc ( Expr(..) )
 import qualified PrimOp as Ghc
-import qualified TysWiredIn as Ghc ( trueDataConId, falseDataConId )
+import qualified TysWiredIn as Ghc ( trueDataConId, falseDataConId,
+                                     trueDataCon, falseDataCon)
 import qualified TyCon as Ghc
 import qualified Outputable as Ghc
 import TyCon ( TyCon )
@@ -451,8 +453,8 @@ instance Monoid KnownLocs where
 -- >                        ...
 --
 -- Assume that @<body>@ mentions @y@ and @x@; these have to become
--- closure variables.  The bytecode for @g@ will look something like
--- this.
+-- closure variables.  The bytecode for @let g ...@ will look
+-- something like this.
 --
 -- > loadinfo tmp, info-table-for-<body>
 -- > alloc tmp, <x>, <y>
@@ -581,7 +583,14 @@ transBody (Ghc.Var x) env fvi locs0 ctxt = do
 transBody expr@(Ghc.App _ _) env fvi locs0 ctxt
  | Just (f, args) <- viewGhcApp expr
  = transApp f args env fvi locs0 ctxt
-   
+
+-- Special case for (case x #< y of ...) and such.
+transBody (Ghc.Case scrut@(Ghc.App _ _) bndr _ty alts) env0 fvi locs0 ctxt
+  | Just (f, args) <- viewGhcApp scrut,
+    Just (cond, ty) <- isCondPrimOp =<< isGhcPrimOpId f,
+    isLength 2 args
+  = transBinaryCase cond ty args bndr alts env0 fvi locs0 ctxt
+ 
 transBody (Ghc.Case scrut bndr _ty alts) env0 fvi locs0 ctxt = do
   (bcis, locs1, fvs0, Just r) <- transBody scrut env0 fvi locs0 (BindC Nothing)
   let locs2 = updateLoc locs1 bndr (InVar r)
@@ -723,10 +732,34 @@ transApp f [] env fvi locs ctxt = transBody (Ghc.Var f) env fvi locs ctxt
 transApp f args env fvi locs0 ctxt
   | Just p <- isGhcPrimOpId f, isLength 2 args 
   = do (is0, locs1, fvs, [r1, r2]) <- transArgs args env fvi locs0
-       let Just (op, ty) = primOpToBinOp p   -- XXX: may fail
-       rslt <- mbFreshLocal (contextVar ctxt)
-       maybeAddRet ctxt (is0 <*> insBinOp op ty rslt r1 r2)
-                   locs1 fvs rslt
+       case () of
+         _ | Just (op, ty) <- primOpToBinOp p
+           -> do
+             rslt <- mbFreshLocal (contextVar ctxt)
+             maybeAddRet ctxt (is0 <*> insBinOp op ty rslt r1 r2)
+                         locs1 fvs rslt
+         _ | Just (cond, ty) <- isCondPrimOp p
+           -> do
+             -- A comparison op that does not appear within a 'case'.
+             -- We must now fabricate a 'Bool' into the result.
+             -- That is, `x ># y` is translated into:
+             --
+             -- >     if x > y then goto l1 else goto l2
+             -- > l1: loadlit rslt, True
+             -- >     goto l3:
+             -- > l2: loadlit rslt, False
+             -- > l3:
+             rslt <- mbFreshLocal (contextVar ctxt)
+             l1 <- freshLabel;  l2 <- freshLabel;  l3 <- freshLabel
+             let is1 =  -- shape: O/O
+                   catGraphsC (is0 <*> insBranch cond ty r1 r2 l1 l2)
+                     [ mkLabel l1 <*> insLoadGbl rslt trueDataConId
+                                  <*> insGoto l3,
+                       mkLabel l2 <*> insLoadGbl rslt falseDataConId
+                                  <*> insGoto l3]
+                   |*><*| mkLabel l3
+             maybeAddRet ctxt is1 locs1 fvs rslt
+
   | isGhcConWorkId f  -- allocation
   = transStore f args env fvi locs0 ctxt
   | otherwise
@@ -797,6 +830,55 @@ transCaseAlts alts match_var env fvi locs0 ctxt = do
       return ((dataConTag altcon, l), mkLabel l <*> bcis, fvs))
   return (targets, bcis, mconcat fvss)
 
+transBinaryCase :: forall x.
+                   BinOp -> OpTy -> [CoreArg] -> CoreBndr
+                -> [CoreAlt] -> LocalEnv -> FreeVarsIndex
+                -> KnownLocs -> Context x
+                -> Trans (Bcis x, KnownLocs, FreeVars, Maybe BcVar)
+transBinaryCase cond ty args bndr alts env0 fvi locs0 ctxt = do
+  -- TODO: We may want to get the result of the comparison as a
+  -- Bool.  In the True branch we therefore want to have:
+  --
+  -- > bndr :-> loadLit True
+  --
+  (bcis, locs1, fvs, [r1, r2]) <- transArgs args env0 fvi locs0
+--  let locs2 = updateLoc locs1 bndr (InVar r)
+  let env = extendLocalEnv env0 bndr undefined
+  let match_var = error "There must be no binders in comparison binops"
+  let (trueBody, falseBody) =
+        case alts of
+          [(DEFAULT, [], b1), (DataAlt c, [], b2)]
+           | c == Ghc.trueDataCon  -> (b2, b1)
+           | c == Ghc.falseDataCon -> (b1, b2)
+          [(DataAlt c1, [], b1), (DataAlt _, [], b2)]
+           | c1 == Ghc.trueDataCon  -> (b1, b2)
+           | c1 == Ghc.falseDataCon -> (b2, b1)
+  -- If the context requires binding to a variable, then we have to
+  -- make sure both branches write their result into the same
+  -- variable.
+  ctxt' <- (case ctxt of
+             RetC -> return RetC
+             BindC mr -> BindC . Just <$> mbFreshLocal mr)
+             :: Trans (Context x)
+
+  let transUnaryConAlt body con_id = do
+        let locs2 = updateLoc locs1 bndr (Global con_id)
+        l <- freshLabel
+        (bcis, _locs1, fvs1, _mb_var)
+          <- transBody body env fvi locs2 ctxt'
+        return (l, mkLabel l <*> bcis, fvs1)
+
+  (tLabel, tBcis, tFvs) <- transUnaryConAlt trueBody trueDataConId
+  (fLabel, fBcis, fFvs) <- transUnaryConAlt falseBody falseDataConId
+
+  case ctxt' of
+    RetC -> do
+      return (bcis <*> insBranch cond ty r1 r2 tLabel fLabel
+                   |*><*| tBcis |*><*| fBcis,
+              locs1, mconcat [fvs, tFvs, fFvs], Nothing)
+    BindC (Just r) ->
+      error "UNIMPLEMENTED"
+
 addMatchLocs :: KnownLocs -> BcVar -> AltCon -> [CoreBndr] -> KnownLocs
 addMatchLocs locs _base_reg DEFAULT [] = locs
 addMatchLocs locs _base_reg (LitAlt _) [] = locs
@@ -849,7 +931,7 @@ primOpToBinOp primop =
     Ghc.IntSubOp -> Just (OpSub, Int32Ty)
     Ghc.IntMulOp -> Just (OpMul, Int32Ty)
     Ghc.IntQuotOp -> Just (OpDiv, Int32Ty)
-
+{-
     -- TODO: treat conditionals specially?
     Ghc.IntGtOp -> Just (CmpGt, Int32Ty)
     Ghc.IntGeOp -> Just (CmpGe, Int32Ty)
@@ -857,33 +939,20 @@ primOpToBinOp primop =
     Ghc.IntNeOp -> Just (CmpNe, Int32Ty)
     Ghc.IntLtOp -> Just (CmpLt, Int32Ty)
     Ghc.IntLeOp -> Just (CmpLe, Int32Ty)
-
+-}
     _ -> Nothing
 --primOpToBinOp _ = Nothing
 
-
--- | Directly turn GHC 'Ghc.Id' into 'Id'.
---
--- Reuses the 'Unique' from GHC.
-toplevelId :: Ghc.Id -> Id
-toplevelId x = --  | Ghc.VanillaId <- Ghc.idDetails x =
-  mkTopLevelId $
-    N.mkBuiltinName (fromGhcUnique x)
-      (showSDocForUser alwaysQualify (Ghc.ppr x))
-  --mkTopLevelId (N.mkBuiltinName (fromGhcUnique x) (Ghc.getOccString x))
-
-dataConInfoTableId :: Ghc.DataCon -> Id
-dataConInfoTableId dcon =
-  mkDataConInfoTableId $
-   N.mkBuiltinName (fromGhcUnique dcon) (Ghc.getOccString dcon)
-
--- | Take a GHC 'Unique.Unique' and turn it into a 'Unique'.
---
--- Be very careful when using this and make sure that the namespace
--- (the 'Char' argument to 'newUniqueSupply' and GHC's equivalent)
--- cannot possibly overlap.
-fromGhcUnique :: Uniquable a => a -> Unique
-fromGhcUnique x = fromExternalUnique (getKey (getUnique x))
+isCondPrimOp :: Ghc.PrimOp -> Maybe (BinOp, OpTy)
+isCondPrimOp primop =
+  case primop of
+    Ghc.IntGtOp -> Just (CmpGt, Int32Ty)
+    Ghc.IntGeOp -> Just (CmpGe, Int32Ty)
+    Ghc.IntEqOp -> Just (CmpEq, Int32Ty)
+    Ghc.IntNeOp -> Just (CmpNe, Int32Ty)
+    Ghc.IntLtOp -> Just (CmpLt, Int32Ty)
+    Ghc.IntLeOp -> Just (CmpLe, Int32Ty)
+    _ -> Nothing
 
 -- | View expression as n-ary application.  The expression in function
 -- position must be a variable.  Ignores type abstraction, notes and

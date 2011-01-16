@@ -327,6 +327,11 @@ insCase :: CaseType -> BcVar -> [(BcTag, BlockId)] -> BcGraph O C
 insCase cty r targets =
   mkLast $ Case cty r (map (\(t, b) -> (t, S.empty, b)) targets)
 
+insBranch :: BinOp -> OpTy -> BcVar -> BcVar -> BlockId -> BlockId
+          -> BcGraph O C
+insBranch op ty r1 r2 ltrue lfalse =
+  mkLast $ CondBranch op ty r1 r2 ltrue lfalse
+
 insGoto :: BlockId -> BcGraph O C
 insGoto l = mkLast $ Goto l
 

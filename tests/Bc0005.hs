@@ -14,3 +14,6 @@ null _ = False
 
 plusInt :: Int -> Int -> Int
 plusInt (I# m) (I# n) = I# (m +# n)
+
+gtInt :: Int -> Int -> Bool
+gtInt (I# m) (I# n) = m ># n

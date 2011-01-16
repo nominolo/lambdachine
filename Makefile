@@ -57,7 +57,7 @@ compiler/Opcodes.h: utils/genopcodes
 
 HSDEPFILE = compiler/.depend
 
-HSFLAGS = -package ghc -icompiler -hide-package mtl
+HSFLAGS = -package ghc -icompiler -hide-package mtl -odir build
 
 $(HSDEPFILE):
 	ghc -M $(HSFLAGS) compiler/Main.hs -dep-makefile $(HSDEPFILE)
@@ -70,12 +70,17 @@ include $(HSDEPFILE)
 %.o: %.hs
 	ghc -c $< $(HSFLAGS)
 
-compiler/lc: compiler/Main.o
+.PHONY: compiler/lc
+compiler/lc:
 	ghc --make $(HSFLAGS)  compiler/Main.hs -o $@
 
 .PHONY: clean
 clean:
-	rm -f $(SRCS:%.c=%.o) utils/*.o interp
+	rm -f $(SRCS:%.c=%.o) utils/*.o interp compiler/.depend
+	rm -rf build
+
+test:
+	./compiler/lc --dump-bytecode tests/Bc0005.hs
 
 -include $(SRCS:%.c=$(DEPDIR)/%.P)
 

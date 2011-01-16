@@ -1,11 +1,13 @@
 -- | Built-in types and constructors.
 module Lambdachine.Builtin where
 
-import Lambdachine.Utils.Unique
+import Lambdachine.Ghc.Utils
 import Lambdachine.Id
+import Lambdachine.Utils.Unique
 
+import qualified TysWiredIn as Ghc ( trueDataConId, falseDataConId,
+                                     trueDataCon, falseDataCon)
 
-falseDataConName, trueDataConName :: Name
 falseDataConId, trueDataConId :: Id
 falseItblId, trueItblId :: Id
 apDataConId :: Id
@@ -13,12 +15,10 @@ blackholeDataConId :: Id
 updateItblId :: Id
 initCodeId :: Id
 
-falseDataConName = mkBuiltinName (mkBuiltinUnique 1) "False"
-trueDataConName  = mkBuiltinName (mkBuiltinUnique 2) "True"
-falseDataConId = mkDataConId falseDataConName
-trueDataConId  = mkDataConId trueDataConName
-falseItblId = mkDataConInfoTableId falseDataConName
-trueItblId  = mkDataConInfoTableId trueDataConName
+falseDataConId = toplevelId Ghc.falseDataConId
+trueDataConId = toplevelId Ghc.trueDataConId
+falseItblId = dataConInfoTableId Ghc.falseDataCon
+trueItblId  = dataConInfoTableId Ghc.trueDataCon
 
 apDataConId = mkDataConId (mkBuiltinName (mkBuiltinUnique 3) ".AP")
 blackholeDataConId = mkDataConId (mkBuiltinName (mkBuiltinUnique 4) ".BLACKHOLE")
