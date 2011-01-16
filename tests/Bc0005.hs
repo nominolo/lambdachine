@@ -17,3 +17,9 @@ plusInt (I# m) (I# n) = I# (m +# n)
 
 gtInt :: Int -> Int -> Bool
 gtInt (I# m) (I# n) = m ># n
+
+infList :: Int -> List Int
+infList n =
+  let l1 = Cons n l2
+      l2 = Cons n l1
+  in l1

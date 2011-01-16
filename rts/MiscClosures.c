@@ -92,6 +92,24 @@ InfoTable stg_IND_info = DEF_INFO_TABLE(IND, 0, 1, 0);
 
 /*
 
+Blackhole
+---------
+
+*/
+static BCIns blackhole_code_insts[] =
+  // TODO: Add an error message.
+  { BCINS_AD(BC__MAX, 1, 0) };
+
+ThunkInfoTable stg_BLACKHOLE_info = {
+  .i = DEF_INFO_TABLE(BLACKHOLE, 0, 0, 0),
+  .name = "stg_BLACKHOLE",
+  .code = DEF_CODE(blackhole_code_insts, 1, 0)
+};
+
+Closure stg_BLACKHOLE_closure = DEF_CLOSURE(&stg_BLACKHOLE_info, {});
+
+/*
+
 Int
 ---
 

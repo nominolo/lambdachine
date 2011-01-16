@@ -258,6 +258,20 @@ int engine(Thread* T)
     DISPATCH_NEXT;
   }
 
+ op_LOADBH:
+  // A = target
+  {
+    base[opA] = (Word)&stg_BLACKHOLE_closure;
+    DISPATCH_NEXT;
+  }
+
+ op_LOADSLF:
+  // A = target
+  {
+    base[opA] = base[-1];
+    DISPATCH_NEXT;
+  }
+
  op_JFUNC:
  op_IFUNC:
  op_FUNC:

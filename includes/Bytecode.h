@@ -88,6 +88,8 @@ Round bytes to multiples of instructions.  Rounds upwards, i.e.,
   _(UPDATE,  RR) \
   _(LOADF,   RRN) \
   _(LOADFV,  RN) \
+  _(LOADBH,  R) \
+  _(LOADSLF, R) \
   _(INITF,   RRN) /* Write to field (for initialisation) */   \
   /* Binary ops. */ \
   _(ADDRR,   RRR) \

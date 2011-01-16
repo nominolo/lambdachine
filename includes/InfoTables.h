@@ -111,7 +111,8 @@ typedef struct _FwdRefInfoTable {
   _(FUN,            HNF) \
   _(THUNK,          THU) \
   _(IND,            IND) \
-  _(UPDATE_FRAME,   ___)
+  _(UPDATE_FRAME,   ___) \
+  _(BLACKHOLE,      ___)
 
 #define DEF_CLOS_TY(name, flags) name,
 enum {

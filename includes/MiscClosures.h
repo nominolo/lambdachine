@@ -14,6 +14,7 @@ extern Closure stg_UPD_closure;
 extern BCIns* stg_UPD_return_pc;
 extern IntClosure the_smallInt[256];
 extern ConInfoTable stg_Izh_con_info;
+extern Closure stg_BLACKHOLE_closure;
 
 #define smallInt(i) (the_smallInt[(i)+128])
 

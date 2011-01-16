@@ -389,6 +389,10 @@ putLinearIns lit_ids new_addrs ins_id ins = case ins of
     putIns $ insAD opc_KLIT (i2b d) (lit_ids M.! Right x)
   Mid (Assign (BcReg d) (Load (LoadLit l))) ->
     putIns $ insAD opc_KLIT (i2b d) (lit_ids M.! Left l)
+  Mid (Assign (BcReg d) (Load LoadBlackhole)) ->
+    putIns $ insAD opc_LOADBH (i2b d) 0
+  Mid (Assign (BcReg d) (Load LoadSelf)) ->
+    putIns $ insAD opc_LOADSLF (i2b d) 0
   Mid (Assign (BcReg d) (Alloc (BcReg i) args)) ->
     case args of
       [BcReg a] -> 
@@ -401,6 +405,8 @@ putLinearIns lit_ids new_addrs ins_id ins = case ins of
     putArgs args
   Mid (Assign (BcReg d) (Fetch (BcReg n) fld)) ->
     putIns $ insABC opc_LOADF (i2b d) (i2b n) (i2b fld)
+  Mid (Store (BcReg ptr) offs (BcReg src)) | offs <= 255 ->
+    putIns $ insABC opc_INITF (i2b ptr) (i2b src) (i2b offs)
   Mid m -> error $ pretty m
   
  where
