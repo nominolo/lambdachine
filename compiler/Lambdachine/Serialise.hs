@@ -413,6 +413,8 @@ putLinearIns lit_ids new_addrs ins_id ins = case ins of
     putIns $ insAD opc_KLIT (i2b d) (lit_ids M.! Left l)
   Mid (Assign (BcReg d) (Load LoadBlackhole)) ->
     putIns $ insAD opc_LOADBH (i2b d) 0
+  Mid (Assign (BcReg d) (Load (LoadClosureVar idx))) ->
+    putIns $ insAD opc_LOADFV (i2b d) (i2h idx)
   Mid (Assign (BcReg d) (Load LoadSelf)) ->
     putIns $ insAD opc_LOADSLF (i2b d) 0
   Mid (Assign (BcReg d) (Alloc (BcReg i) args)) ->
