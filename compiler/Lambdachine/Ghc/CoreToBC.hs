@@ -124,7 +124,8 @@ transTyCon :: TyCon -> BCOs
 transTyCon tycon = do
   collect' M.empty (Ghc.tyConDataCons tycon) $ \bcos dcon ->
     let dcon_id = dataConInfoTableId dcon
-        bco = BcConInfo { bcoConTag = Ghc.dataConTag dcon }
+        bco = BcConInfo { bcoConTag = Ghc.dataConTag dcon
+                        , bcoConFields = Ghc.dataConRepArity dcon }
     in M.insert dcon_id bco bcos
 
 transTopLevelBind :: CoreBndr -> CoreExpr -> Trans BCOs

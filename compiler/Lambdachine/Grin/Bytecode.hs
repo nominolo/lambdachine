@@ -362,6 +362,7 @@ data BytecodeObject' g
     }
   | BcConInfo
     { bcoConTag :: Int
+    , bcoConFields :: Int
     }
 
 type BytecodeObject = BytecodeObject' (Graph BcIns O C)

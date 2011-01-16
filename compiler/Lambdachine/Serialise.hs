@@ -127,12 +127,12 @@ encodeModule mdl = toLazyByteString builder
                 -> BuildM Word
    encodeInfoTable name bco =
      case bco of
-       BcConInfo tag -> do
+       BcConInfo tag fields -> do
          emit $ fromString "ITBL"
          encodeId name
          emit $ varUInt cltype_CONSTR
          emit $ varUInt (fromIntegral tag)
-         emit $ varUInt 0 -- TODO: ptrs
+         emit $ varUInt (fromIntegral fields) -- TODO: ptrs
          emit $ varUInt 0 -- TODO: nptrs
          encodeId name
          return 1
@@ -147,13 +147,24 @@ encodeModule mdl = toLazyByteString builder
             encodeId itblName
             encodeCode arity (bcoCode bco)
             return 1
-       _ ->
+         | ty `elem` [Thunk, CAF] -> do
+            let itblName = mkInfoTableId (idName name)
+            emit $ fromString "ITBL"
+            encodeId itblName
+            emit $ varUInt cltype_THUNK
+            emit $ varUInt (i2w (bcoFreeVars bco)) -- TODO: ptrs
+            emit $ varUInt 0 -- TODO: nptrs
+            encodeId itblName
+            encodeCode 0 (bcoCode bco)
+            return 1
+
+       BcoCon{ } ->
          return 0
 
    -- Create the closure part for a BCO
    encodeClosure name bco =
      case bco of
-       BcConInfo _ -> return 0
+       BcConInfo _ _ -> return 0
        BcoCon _ con_id fields -> do
          emit $ fromString "CLOS"
          encodeId name
@@ -168,6 +179,17 @@ encodeModule mdl = toLazyByteString builder
          encodeId (mkInfoTableId (idName name)) -- info table
          -- no payload, hence no literals
          return 1
+       BcObject{ bcoType = CAF, bcoFreeVars = fvs } | fvs == 0 -> do
+         emit $ fromString "CLOS"
+         encodeId name
+         emit $ varUInt 1  -- one word for the indirection
+         encodeId (mkInfoTableId (idName name))  -- info table
+         encodeField (Left (CInt 0))
+         return 1
+       BcObject{ bcoType = Thunk } ->
+         return 0  -- don't need a static closure
+       _ ->
+         error $ "UNIMPL: encodeClosure: " ++ pretty bco
 
    encodeField :: Either BcConst Id -> BuildM ()
    encodeField lit = case lit of 

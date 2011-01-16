@@ -23,3 +23,6 @@ infList n =
   let l1 = Cons n l2
       l2 = Cons n l1
   in l1
+
+caf1 :: Bool
+caf1 = null (infList (I# 1#))

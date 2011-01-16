@@ -111,6 +111,8 @@ typedef struct _FwdRefInfoTable {
   _(FUN,            HNF) \
   _(THUNK,          THU) \
   _(IND,            IND) \
+  _(CAF,            THU) \
+  _(STATIC_IND,     IND) \
   _(UPDATE_FRAME,   ___) \
   _(BLACKHOLE,      ___)
 
