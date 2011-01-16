@@ -1,7 +1,7 @@
 .SUFFIXES:  # delete default rules
 
 .PHONY: all
-all: interp
+all: interp compiler/Opcodes.h
 
 DEPDIR = .deps
 DEPDIRS = $(DEPDIR) $(DEPDIR)/rts
@@ -16,6 +16,8 @@ SRCS = rts/Bytecode.c rts/Capability.c rts/ClosureFlags.c \
        rts/FileUtils.c rts/HashTable.c rts/InterpThreaded.c \
        rts/Loader.c rts/MiscClosures.c rts/PrintClosure.c \
        rts/Thread.c
+
+UTILSRCS = utils/genopcodes.c
 
 echo:
 	@echo "SRCS = $(SRCS)"
@@ -83,4 +85,5 @@ test:
 	./compiler/lc --dump-bytecode tests/Bc0005.hs
 
 -include $(SRCS:%.c=$(DEPDIR)/%.P)
+-include $(UTILSRCS:%.c=$(DEPDIR)/%.P)
 
