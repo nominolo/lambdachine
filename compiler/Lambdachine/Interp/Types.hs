@@ -234,7 +234,6 @@ instance Biplate (Int, TRef) TRef where
 
 --  | ConstI Integer
 
-type CmpOp = BinOp -- for now
 
 data TRef
   = TNil

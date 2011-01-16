@@ -73,12 +73,12 @@ Round bytes to multiples of instructions.  Rounds upwards, i.e.,
 /* Bytecode instruction definitions.  Order matters. */
 #define BCDEF(_) \
   /* Comparison ops. */ \
-  _(ISLT,    J) \
-  _(ISGE,    J) \
-  _(ISLE,    J) \
-  _(ISGT,    J) \
-  _(ISEQ,    J) \
-  _(ISNE,    J) \
+  _(ISLT,    RRJ) \
+  _(ISGE,    RRJ) \
+  _(ISLE,    RRJ) \
+  _(ISGT,    RRJ) \
+  _(ISEQ,    RRJ) \
+  _(ISNE,    RRJ) \
   /* Unary ops */ \
   _(NOT,     RR) \
   _(NEG,     RR) \
@@ -132,6 +132,7 @@ typedef enum {
   IFM_RN,
   IFM_RRN,
   IFM_RS,
+  IFM_RRJ,
   IFM____
 } InsFormat;
 

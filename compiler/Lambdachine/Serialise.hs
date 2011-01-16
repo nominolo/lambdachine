@@ -276,6 +276,8 @@ insLength' ins = case ins of
   Lst (Eval _ _ _) -> 3
   Lst (Call Nothing _ (_:args)) -> 1 + arg_len args
   Lst (Call (Just _) _ (_:args)) -> 3 + arg_len args
+  Lst (CondBranch _ _ _ _ _ _) -> 2
+  Lst (Goto _) -> 1
   Lst Update -> 1
   Lst (Case casetype _ alts) -> alt_len casetype alts
   Mid (Assign _ (Alloc _ args@(x1:x2:_))) -> 1 + arg_len args
@@ -357,8 +359,28 @@ putLinearIns lit_ids new_addrs ins_id ins = case ins of
       putIns (insAD opc_MOV_RES (i2b rslt) 0)
   Lst (Case casetype x alts) ->
     putCase ins_id casetype x alts new_addrs
+  Lst (Goto tgt) ->
+    putIns $ insAJ opc_JMP 0 (new_addrs IM.! tgt - new_addrs IM.! ins_id - 1)
   Lst Update ->
     putIns (insAD opc_UPDATE 0 1)
+  Lst (CondBranch cond Int32Ty (BcReg r1) (BcReg r2) t1 t2) -> do
+    let (swap_targets, target)
+           | t1 == ins_id + 1 = (True, t2)
+           | t2 == ins_id + 1 = (False, t1)
+           | otherwise = error "putLinearIns: CondBranch: No branch target adjacent"
+        cond' | swap_targets = invertCondition cond
+              | otherwise    = cond
+        condOpcode c = case c of
+          CmpGt -> opc_ISGT
+          CmpLe -> opc_ISLE
+          CmpGe -> opc_ISGE
+          CmpLt -> opc_ISLT
+          CmpEq -> opc_ISEQ
+          CmpNe -> opc_ISNE
+        next_ins_addr = (new_addrs IM.! ins_id) + 2
+        offs = (new_addrs IM.! target) - next_ins_addr
+    putIns $ insAD (condOpcode cond') (i2b r1) (i2h r2)
+    putIns $ insAJ opc_JMP 0 offs
   Mid (Assign (BcReg d) (Move (BcReg s))) ->
     putIns $ insAD opc_MOV (i2b d) (i2h s)
   Mid (Assign (BcReg d) (BinOp op ty (BcReg a) (BcReg b))) ->
@@ -532,10 +554,9 @@ insAD o a d =
 
 insAJ :: Word8 -> Word8 -> Int -> Word32
 insAJ o a j =
-  b2w o .|. (b2w a `shiftL` 8) 
-   .|. (fromIntegral j' `shiftL` 16)
+  b2w o .|. (b2w a `shiftL` 8) .|. (j' `shiftL` 16)
  where
-   j' = j + br_bias
+   j' = fromIntegral (j + br_bias) :: Word32
 
 -- | Turn set of registers into bitmask.  Returns 'Nothing' if
 -- more than 31 bits would be required.

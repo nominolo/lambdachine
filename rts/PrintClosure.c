@@ -68,7 +68,12 @@ printInstruction(BCIns *ins /*in*/)
   case IFM_RS:
     printf("%s\tr%d, %d\n", name, bc_a(i), bc_sd(i)); break;
   case IFM_J:
-    printf("%s\t%p\n", name, ins + bc_j(i));
+    printf("%s\t%p\n", name, ins + bc_j(i)); break;
+  case IFM_RRJ:
+    printf("%s\tr%d, r%d, %p\n", name, bc_a(i), bc_d(i),
+           ins + 1 + bc_j(*ins));
+    ins++;
+    break;
   case IFM____:
     switch (bc_op(i)) {
     case BC_EVAL:

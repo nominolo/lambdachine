@@ -102,6 +102,8 @@ data BinOp
   | CmpGt | CmpLe | CmpGe | CmpLt | CmpEq | CmpNe
   deriving (Eq, Ord, Show)
 
+type CmpOp = BinOp
+
 data OpTy = Int32Ty | Float32Ty
   deriving (Eq, Ord)
 
@@ -327,7 +329,7 @@ insCase :: CaseType -> BcVar -> [(BcTag, BlockId)] -> BcGraph O C
 insCase cty r targets =
   mkLast $ Case cty r (map (\(t, b) -> (t, S.empty, b)) targets)
 
-insBranch :: BinOp -> OpTy -> BcVar -> BcVar -> BlockId -> BlockId
+insBranch :: CmpOp -> OpTy -> BcVar -> BcVar -> BlockId -> BlockId
           -> BcGraph O C
 insBranch op ty r1 r2 ltrue lfalse =
   mkLast $ CondBranch op ty r1 r2 ltrue lfalse
@@ -563,3 +565,12 @@ instance Biplate BcRhs BcVar where
   biplate (Alloc rt rs) = plate Alloc |* rt ||* rs
   biplate (AllocAp rs) = plate AllocAp ||* rs
   biplate rhs = plate rhs
+
+invertCondition :: CmpOp -> CmpOp
+invertCondition cond = case cond of
+  CmpGt -> CmpLe
+  CmpLe -> CmpGt
+  CmpGe -> CmpLt
+  CmpLt -> CmpGe
+  CmpEq -> CmpNe
+  CmpNe -> CmpEq

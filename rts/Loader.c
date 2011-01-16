@@ -351,12 +351,21 @@ printModule(Module* mdl)
 }
 
 void
+printClosure1(void *unused, const char *const name, Closure *cl)
+{
+  printf("%s: [%p]: ", name, cl);
+  printClosure(cl);
+}
+
+void
 printLoaderState()
 {
   printf("--- Info Tables ----------------\n");
   HashTable_print(G_loader->infoTables, (HashValuePrinter)printInfoTable);
   printf("--- Closures -------------------\n");
-  HashTable_print(G_loader->closures, (HashValuePrinter)printClosure);
+  HashTable_foreach(G_loader->closures,
+                    (HashValueCallback)printClosure1, NULL);
+  //  HashTable_print(G_loader->closures, (HashValuePrinter)printClosure);
 }
 
 #define MAX_PARTS  255
