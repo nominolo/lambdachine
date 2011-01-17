@@ -194,6 +194,39 @@ loadModule(const char *moduleName)
   ensureNoForwardRefs();
 }
 
+const char *wired_in_packages[] =
+  { "ghc-prim", "integer-gmp" };
+
+char *
+findModule(const char *moduleName)
+{
+  u4     i;
+  char  *filename, *base;
+  // 1. Try to find module in base directory
+
+  filename = moduleNameToFile(G_basepath, moduleName);
+
+  if (fileExists(filename)) {
+    return filename;
+  }
+  free(filename);
+
+  for (i = 0; i < countof(wired_in_packages); i++) {
+    asprintf(&base, "%s/%s", G_basepath, wired_in_packages[i]);
+    filename = moduleNameToFile(base, moduleName);
+    free(base);
+    if (fileExists(filename)) {
+      return filename;
+    } else {
+      free(filename);
+    }
+  }
+
+  fprintf(stderr, "ERROR: Could not find module: %s\n",
+          moduleName);
+  exit(13);
+}
+
 // Postorder traversal
 void
 loadModule_aux(const char *moduleName, u4 level)
@@ -204,25 +237,18 @@ loadModule_aux(const char *moduleName, u4 level)
   int       i;
   Word      todo;
 
-  for (i = 0; i < level; i++) putchar(' ');
-  printf("> Loading %s ...\n", moduleName);
-
-  filename = moduleNameToFile(G_basepath, moduleName);
-
-  mdl = (Module*)HashTable_lookup(G_loader->loadedModules, filename);
+  mdl = (Module*)HashTable_lookup(G_loader->loadedModules, moduleName);
 
   if (mdl != NULL) {
     // Module is either already loaded, or currently in process of
     // being loaded.
-      free(filename);
       return;
   }
 
-  if (!fileExists(filename)) {
-    fprintf(stderr, "ERROR: File does not exist: %s\n",
-            filename);
-    exit(13);
-  }
+  filename = findModule(moduleName);
+
+  for (i = 0; i < level; i++) putchar(' ');
+  printf("> Loading %s ...(%s)\n", moduleName, filename);
 
   f = fopen(filename, "rb");
   if (f == NULL) {
@@ -233,7 +259,7 @@ loadModule_aux(const char *moduleName, u4 level)
 
   mdl = loadModuleHeader(f, filename);
 
-  HashTable_insert(G_loader->loadedModules, filename, mdl);
+  HashTable_insert(G_loader->loadedModules, moduleName, mdl);
 
   // Load dependencies first.  This avoids creating many forward
   // references.  The downside is that we keep more file descriptors
