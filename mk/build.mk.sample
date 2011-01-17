@@ -1,0 +1,3 @@
+# Using out-of-tree builds
+
+# DIST := $(HOME)/tmp/dist-devel/lambdachine

@@ -1,10 +1,23 @@
 .SUFFIXES:  # delete default rules
 
-.PHONY: all
-all: interp compiler/Opcodes.h
+-include mk/build.mk
 
-DEPDIR = .deps
+DIST ?= dist
+
+HSBUILDDIR = $(DIST)/build
+LCC = $(HSBUILDDIR)/lcc
+
+DEPDIR = $(DIST)/.deps
 DEPDIRS = $(DEPDIR) $(DEPDIR)/rts
+
+.PHONY: all
+all: interp compiler/Opcodes.h $(LCC)
+
+.PHONY: boot
+boot:
+	mkdir -p $(HSBUILDDIR)
+	mkdir -p $(DEPDIR)/rts
+	mkdir -p $(DEPDIR)/utils
 
 INCLUDES = -Iincludes -Irts
 CFLAGS = -g
@@ -26,11 +39,6 @@ echo:
 interp: $(SRCS:.c=.o)
 	@echo "LINK $^ => $@"
 	@$(CC) -o $@ $^
-
-$(DEPDIR):
-	mkdir $@
-$(DEPDIR)/rts:
-	mkdir $@
 
 # Building a C file automatically generates dependencies as a side
 # effect.  This only works with `gcc'.
@@ -59,12 +67,13 @@ compiler/Opcodes.h: utils/genopcodes
 
 HSDEPFILE = compiler/.depend
 
-HSFLAGS = -package ghc -icompiler -hide-package mtl -odir build
+HSFLAGS = -package ghc -icompiler -hide-package mtl \
+          -odir $(HSBUILDDIR) -hidir $(HSBUILDDIR)
 
 $(HSDEPFILE):
 	ghc -M $(HSFLAGS) compiler/Main.hs -dep-makefile $(HSDEPFILE)
 
-include $(HSDEPFILE)
+# include $(HSDEPFILE)
 
 %.hi: %.o
 	@:
@@ -72,17 +81,55 @@ include $(HSDEPFILE)
 %.o: %.hs
 	ghc -c $< $(HSFLAGS)
 
-.PHONY: compiler/lc
-compiler/lc:
+HSSRCS := $(shell find compiler -name '*.hs')
+
+# FIXME: We let the compiler depend on the source files not the .o
+# files.  This actually doesn't always work.  Fortunately,
+#
+#    make clean && make boot && make
+#
+# is pretty quick.
+
+# .PHONY:
+$(LCC): $(HSSRCS) compiler/Opcodes.h
+	@mkdir -p $(HSBUILDDIR)
 	ghc --make $(HSFLAGS)  compiler/Main.hs -o $@
 
 .PHONY: clean
 clean:
-	rm -f $(SRCS:%.c=%.o) utils/*.o interp compiler/.depend
-	rm -rf build
+	rm -f $(SRCS:%.c=%.o) utils/*.o interp compiler/.depend \
+		compiler/lcc
+	rm -rf $(HSBUILDDIR)
+# find compiler -name "*.hi" -delete
 
 test:
-	./compiler/lc --dump-bytecode tests/Bc0005.hs
+	$(LCC) --dump-bytecode tests/Bc0005.hs
+	./interp Bc0005
+
+# Rules for building built-in packages
+
+tests/ghc-prim/GHC/Bool.lcbc: tests/ghc-prim/GHC/Bool.hs
+	$(LCC) $<
+
+tests/integer-gmp/%.lcbc: tests/integer-gmp/%.hs
+	cd tests/integer-gmp && $(LCC) $(patsubst tests/integer-gmp/%, %, $<)
+#	@echo "@ = $@, < = $<"
+
+tests/%.lcbc: tests/%.hs
+	cd tests && $(LCC) $(patsubst tests/%, %, $<)
+
+PRIM_MODULES_ghc-prim = GHC/Bool
+PRIM_MODULES_integer-gmp = GHC/Integer/Type GHC/Integer
+
+PRIM_MODULES = \
+	$(patsubst %,tests/ghc-prim/%.lcbc,$(PRIM_MODULES_ghc-prim)) \
+	$(patsubst %,tests/integer-gmp/%.lcbc,$(PRIM_MODULES_integer-gmp))
+
+test2: tests/Bc0006.lcbc $(PRIM_MODULES)
+	./interp Bc0006
+
+pr:
+	@echo $(PRIM_MODULES)
 
 -include $(SRCS:%.c=$(DEPDIR)/%.P)
 -include $(UTILSRCS:%.c=$(DEPDIR)/%.P)
