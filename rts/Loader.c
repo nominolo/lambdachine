@@ -195,7 +195,7 @@ loadModule(const char *moduleName)
 }
 
 const char *wired_in_packages[] =
-  { "ghc-prim", "integer-gmp" };
+  { "ghc-prim", "integer-gmp", "base" };
 
 char *
 findModule(const char *moduleName)

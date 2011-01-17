@@ -108,24 +108,32 @@ test:
 
 # Rules for building built-in packages
 
+LCCFLAGS = --dump-bytecode
+
 tests/ghc-prim/%.lcbc: tests/ghc-prim/%.hs
 	cd tests/ghc-prim && \
-	$(LCC) --package-name=ghc-prim $(patsubst tests/ghc-prim/%, %, $<)
+	$(LCC) $(LCCFLAGS) --package-name=ghc-prim $(patsubst tests/ghc-prim/%, %, $<)
 
 tests/integer-gmp/%.lcbc: tests/integer-gmp/%.hs
 	cd tests/integer-gmp && \
-	$(LCC) --package-name=integer-gmp $(patsubst tests/integer-gmp/%, %, $<)
+	$(LCC) $(LCCFLAGS) --package-name=integer-gmp $(patsubst tests/integer-gmp/%, %, $<)
+
+tests/base/%.lcbc: tests/base/%.hs
+	cd tests/base && \
+	$(LCC) $(LCCFLAGS) --package-name=base $(patsubst tests/base/%, %, $<)
 #	@echo "@ = $@, < = $<"
 
 tests/%.lcbc: tests/%.hs
-	cd tests && $(LCC) --dump-core-binds $(patsubst tests/%, %, $<)
+	cd tests && $(LCC) --dump-bytecode $(patsubst tests/%, %, $<)
 
 PRIM_MODULES_ghc-prim = GHC/Bool GHC/Types
 PRIM_MODULES_integer-gmp = GHC/Integer/Type GHC/Integer
+PRIM_MODULES_base = GHC/Base GHC/Classes
 
 PRIM_MODULES = \
 	$(patsubst %,tests/ghc-prim/%.lcbc,$(PRIM_MODULES_ghc-prim)) \
-	$(patsubst %,tests/integer-gmp/%.lcbc,$(PRIM_MODULES_integer-gmp))
+	$(patsubst %,tests/integer-gmp/%.lcbc,$(PRIM_MODULES_integer-gmp)) \
+	$(patsubst %,tests/base/%.lcbc,$(PRIM_MODULES_base)) \
 
 test2: tests/Bc0006.lcbc $(PRIM_MODULES)
 	./interp Bc0006
@@ -135,6 +143,9 @@ test3: tests/Bc0007.lcbc $(PRIM_MODULES)
 
 pr:
 	@echo $(PRIM_MODULES)
+
+clean-bytecode:
+	rm -f $(PRIM_MODULES)
 
 -include $(SRCS:%.c=$(DEPDIR)/%.P)
 -include $(UTILSRCS:%.c=$(DEPDIR)/%.P)
