@@ -7,12 +7,14 @@ import System.Console.CmdArgs
 
 data Options = Options
   { inputFile :: FilePath
+  , package_name :: String
   , dumpCoreBinds :: Bool
   , dumpBytecode  :: Bool }
  deriving (Show, Data, Typeable)
 
 options = Options
   { inputFile = def &= argPos 0 &= typFile
+  , package_name = def
   , dumpCoreBinds = def &= explicit &= name "dump-core-binds"
       &= help "Dump GHC's Core."
   , dumpBytecode = def &= explicit &= name "dump-bytecode"

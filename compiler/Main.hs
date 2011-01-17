@@ -14,6 +14,7 @@ import Lambdachine.Serialise
 import qualified Lambdachine.Options as Cli
 
 import GHC
+import DynFlags ( setPackageName )
 import GHC.Paths ( libdir )
 import Outputable
 import MonadUtils ( liftIO )
@@ -30,8 +31,13 @@ main :: IO ()
 main = do
   opts <- Cli.getOptions
   runGhc (Just libdir) $ do
-    dflags <- getSessionDynFlags
-    setSessionDynFlags dflags{ ghcLink = NoLink }
+    dflags0 <- getSessionDynFlags
+    let dflags1 = dflags0{ ghcLink = NoLink }
+        dflags2 | Cli.package_name opts /= ""
+                = setPackageName (Cli.package_name opts) dflags1
+                | otherwise = dflags1
+        dflags = dflags2
+    setSessionDynFlags dflags
     let file = Cli.inputFile opts
     (this_mod, core_binds, data_tycons, imports)
       <- compileToCore file

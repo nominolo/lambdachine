@@ -108,17 +108,19 @@ test:
 
 # Rules for building built-in packages
 
-tests/ghc-prim/GHC/Bool.lcbc: tests/ghc-prim/GHC/Bool.hs
-	$(LCC) $<
+tests/ghc-prim/%.lcbc: tests/ghc-prim/%.hs
+	cd tests/ghc-prim && \
+	$(LCC) --package-name=ghc-prim $(patsubst tests/ghc-prim/%, %, $<)
 
 tests/integer-gmp/%.lcbc: tests/integer-gmp/%.hs
-	cd tests/integer-gmp && $(LCC) $(patsubst tests/integer-gmp/%, %, $<)
+	cd tests/integer-gmp && \
+	$(LCC) --package-name=integer-gmp $(patsubst tests/integer-gmp/%, %, $<)
 #	@echo "@ = $@, < = $<"
 
 tests/%.lcbc: tests/%.hs
-	cd tests && $(LCC) $(patsubst tests/%, %, $<)
+	cd tests && $(LCC) --dump-core-binds $(patsubst tests/%, %, $<)
 
-PRIM_MODULES_ghc-prim = GHC/Bool
+PRIM_MODULES_ghc-prim = GHC/Bool GHC/Types
 PRIM_MODULES_integer-gmp = GHC/Integer/Type GHC/Integer
 
 PRIM_MODULES = \
@@ -127,6 +129,9 @@ PRIM_MODULES = \
 
 test2: tests/Bc0006.lcbc $(PRIM_MODULES)
 	./interp Bc0006
+
+test3: tests/Bc0007.lcbc $(PRIM_MODULES)
+	./interp Bc0007
 
 pr:
 	@echo $(PRIM_MODULES)
