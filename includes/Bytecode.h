@@ -70,7 +70,12 @@ Round bytes to multiples of instructions.  Rounds upwards, i.e.,
   (cast(BCIns, o)|(cast(BCIns, a)<<8)|(cast(BCIns, d)<<16))
 #define BCINS_AJ(o, a, j)	BCINS_AD(o, a, (BCPos)((int32_t)(j)+BCBIAS_J))
 
-/* Bytecode instruction definitions.  Order matters. */
+/* Bytecode instruction definitions.  Order matters.
+
+NOTE: When changing this, make sure to rebuild everything: compiler,
+interpreter, and all bytecode files.
+
+*/
 #define BCDEF(_) \
   /* Comparison ops. */ \
   _(ISLT,    RRJ) \

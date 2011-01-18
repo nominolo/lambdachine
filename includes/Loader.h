@@ -3,6 +3,7 @@
 
 #include "Common.h"
 #include "HashTable.h"
+#include "InfoTables.h"
 
 #define STR_SEC_HDR_MAGIC       MSB_u4('B','C','S','T')
 #define CLOS_SEC_HDR_MAGIC      MSB_u4('B','C','C','L')
@@ -31,6 +32,9 @@ typedef struct _Module {
   const char    **imports;
 } Module;
 
-
+Closure *lookupClosure(const char *name);
+void initLoader();
+void loadModule(const char *moduleName);
+void printLoaderState();
 
 #endif

@@ -28,7 +28,6 @@ void printStringTable(StringTabEntry *tbl, u4 len);
 void bufferOverflow(int sz, int bufsize);
 
 void initBasepath();
-void initLoader();
 
 void loadStringTabEntry(FILE *, StringTabEntry */*out*/);
 char *loadId(FILE *, const StringTabEntry *, const char* sep);
@@ -41,8 +40,6 @@ InfoTable *loadInfoTable(FILE *, const StringTabEntry*,
                           HashTable *itbls, HashTable *closures);
 Closure *loadClosure(FILE *, const StringTabEntry *,
                      HashTable *itbls, HashTable *closures);
-
-void loadModule(const char *moduleName);
 
 //--------------------------------------------------------------------
 
@@ -76,6 +73,12 @@ initLoader()
   G_loader->closures = HashTable_create();
 
   initBasepath();
+}
+
+Closure *
+lookupClosure(const char *name)
+{
+  HashTable_lookup(G_loader->closures, name);
 }
 
 int
@@ -704,27 +707,4 @@ printStringTable(StringTabEntry *tbl, u4 len)
   for (i = 0; i < len; i++) {
     printf("  %5d: %s\n", i, tbl[i].str);
   }
-}
-
-
-int
-main(int argc, char *argv[])
-{
-  const char *input_file;
-
-  if (argc <= 1)
-    input_file = "Bc0005";
-  else
-    input_file = argv[1];
-
-  initLoader();
-
-  //  printf("%s\n\n", moduleNameToFile("test","Foo.Bar.Baz"));
-
-  loadModule(input_file);
-
-  //  printModule(m);
-  printLoaderState();
-
-  return 0;
 }

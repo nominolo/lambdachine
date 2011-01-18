@@ -24,5 +24,5 @@ infList n =
       l2 = Cons n l1
   in l1
 
-caf1 :: Bool
-caf1 = null (infList (I# 1#))
+test :: Bool
+test = null (infList (I# 1#))

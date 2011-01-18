@@ -28,7 +28,7 @@ df = $(DEPDIR)/$(*D)/$(*F)
 SRCS = rts/Bytecode.c rts/Capability.c rts/ClosureFlags.c \
        rts/FileUtils.c rts/HashTable.c rts/InterpThreaded.c \
        rts/Loader.c rts/MiscClosures.c rts/PrintClosure.c \
-       rts/Thread.c
+       rts/Thread.c rts/Main.c
 
 UTILSRCS = utils/genopcodes.c
 
@@ -102,10 +102,6 @@ clean:
 	rm -rf $(HSBUILDDIR)
 # find compiler -name "*.hi" -delete
 
-test:
-	$(LCC) --dump-bytecode tests/Bc0005.hs
-	./interp Bc0005
-
 # Rules for building built-in packages
 
 LCCFLAGS = --dump-bytecode
@@ -133,7 +129,11 @@ PRIM_MODULES_base = GHC/Base GHC/Classes
 PRIM_MODULES = \
 	$(patsubst %,tests/ghc-prim/%.lcbc,$(PRIM_MODULES_ghc-prim)) \
 	$(patsubst %,tests/integer-gmp/%.lcbc,$(PRIM_MODULES_integer-gmp)) \
-	$(patsubst %,tests/base/%.lcbc,$(PRIM_MODULES_base)) \
+	$(patsubst %,tests/base/%.lcbc,$(PRIM_MODULES_base))
+
+
+test1: tests/Bc0005.lcbc $(PRIM_MODULES)
+	./interp Bc0005 'Bc0005.test!closure'
 
 test2: tests/Bc0006.lcbc $(PRIM_MODULES)
 	./interp Bc0006

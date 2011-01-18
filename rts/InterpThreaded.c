@@ -52,6 +52,21 @@ as follows:
 
 *********************************************************************/
 
+int engine(Thread *T);
+
+Closure *
+startThread(Thread *T, Closure *cl)
+{
+  int ans;
+  T->base[0] = (Word)cl;
+  ans = engine(T);
+  if (ans != 0) {
+    fprintf(stderr, "ABORT: Interpreter exitited abnormally (%d)\n", ans);
+    exit(1);
+  }
+  return (Closure*)T->stack[1];
+}
+
 #define STACK_FRAME_SIZEW   3
 #define UPDATE_FRAME_SIZEW  (STACK_FRAME_SIZEW + 2)
 #define MAX_CALLT_ARGS      12
@@ -61,12 +76,15 @@ typedef void* Inst;
 
 int engine(Thread* T)
 {
-  static Inst disp[] = {
+  static Inst disp1[] = {
 #define BCIMPL(name,_) &&op_##name,
     BCDEF(BCIMPL)
 #undef BCIMPL
     &&stop
   };
+  Inst *disp = disp1;
+
+
   Word *base = T->base;
   // The program counter always points to the *next* instruction to be
   // decoded.
@@ -94,6 +112,8 @@ int engine(Thread* T)
 # define DECODE_BC \
     opB = bc_b_from_d(opC); \
     opC = bc_c_from_d(opC)
+# define DECODE_AD \
+    ;
 
   // Dispatch first instruction
   DISPATCH_NEXT;
@@ -128,16 +148,19 @@ int engine(Thread* T)
 
 
  op_JMP:
+  DECODE_AD;
   // add opC to the current pc (which points to the next instruction).
   // This means "JMP 0" is a No-op, "JMP -1" is an infinite loop.
   pc += bc_j_from_d(opC);
   DISPATCH_NEXT;
 
  op_MOV:
+  DECODE_AD;
   base[opA] = base[opC];
   DISPATCH_NEXT;
 
  op_KINT:
+  DECODE_AD;
   /* D = signed 16 bit integer constant */
   base[opA] = (WordInt)opC;
   DISPATCH_NEXT;
@@ -145,6 +168,7 @@ int engine(Thread* T)
  op_NEW_INT:
   // A = result (IntClosure*)
   // C/D = value
+  DECODE_AD;
   {
     WordInt val = base[opC];
 
@@ -160,46 +184,54 @@ int engine(Thread* T)
   }
 
  op_NOT:
+  DECODE_AD;
   base[opA] = ~base[opC];
   DISPATCH_NEXT;
 
  op_NEG:
+  DECODE_AD;
   base[opA] = -(WordInt)base[opC];
   DISPATCH_NEXT;
 
   /* Conditional branch instructions are followed by a JMP
      instruction, but we implement both together. */
  op_ISLT:
+  DECODE_AD;
   ++pc;
   if ((WordInt)base[opA] < (WordInt)base[opC])
     pc += bc_j(*(pc - 1));
   DISPATCH_NEXT;
 
  op_ISGE:
+  DECODE_AD;
   ++pc;
   if ((WordInt)base[opA] >= (WordInt)base[opC])
     pc += bc_j(*(pc - 1));
   DISPATCH_NEXT;
 
  op_ISLE:
+  DECODE_AD;
   ++pc;
   if ((WordInt)base[opA] <= (WordInt)base[opC])
     pc += bc_j(*(pc - 1));
   DISPATCH_NEXT;
 
  op_ISGT:
+  DECODE_AD;
   ++pc;
   if ((WordInt)base[opA] > (WordInt)base[opC])
     pc += bc_j(*(pc - 1));
   DISPATCH_NEXT;
 
  op_ISNE:
+  DECODE_AD;
   ++pc;
   if (base[opA] != base[opC])
     pc += bc_j(*(pc - 1));
   DISPATCH_NEXT;
 
  op_ISEQ:
+  DECODE_AD;
   ++pc;
   if (base[opA] == base[opC])
     pc += bc_j(*(pc - 1));
@@ -441,6 +473,7 @@ int engine(Thread* T)
     Closure *oldnode = (Closure *)base[opA];
     Closure *newnode = (Closure *)base[opC];
     setInfo(oldnode, &stg_IND_info);
+    // TODO: Enforce invariant: *newcode is never an indirection.
     oldnode->payload[0] = (Word)newnode;
     last_result = (Word)newnode;
     goto do_return;
