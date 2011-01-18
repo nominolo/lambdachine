@@ -20,7 +20,7 @@ HashTable_create()
 }
 
 void *
-HashTable_insert(HashTable *ht, char *key, void *value)
+HashTable_insert(HashTable *ht, const char *key, void *value)
 {
   u4 size, mask, hash;
   HashEntry *entry;

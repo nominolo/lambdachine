@@ -4,7 +4,7 @@
 #include "Common.h"
 
 typedef struct _HashEntry {
-  char              *key;
+  const char        *key;
   void              *value;
   struct _HashEntry *next;
 } HashEntry;
@@ -16,13 +16,13 @@ typedef struct _HashTable {
   HashEntry **table;
 } HashTable;
 
-typedef void (*HashFreeFunc)(char *key, void *value);
+typedef void (*HashFreeFunc)(const char *key, void *value);
 typedef void (*ValueFreeFunc)(void *value);
 typedef void (*HashValuePrinter)(void *value);
 typedef void (*HashValueCallback)(void *env, const char *const key, void *value);
 
 HashTable *HashTable_create();
-void      *HashTable_insert(HashTable *, char *key, void *value);
+void      *HashTable_insert(HashTable *, const char *key, void *value);
 void      *HashTable_lookup(HashTable *, const char *key);
 void      *HashTable_update(HashTable *, char *key, void *value);
 void       HashTable_print(HashTable *, HashValuePrinter);
