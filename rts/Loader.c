@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <unistd.h>
 
 #define VERSION_MAJOR  0
 #define VERSION_MINOR  1
@@ -54,14 +55,21 @@ bufferOverflow(int sz, int bufsize)
 void
 initBasepath()
 {
-  char *home = getenv("HOME");
   char buf[BUFSIZE];
   int res;
+  char *cwd = getcwd(buf, BUFSIZE);
 
-  res = snprintf(buf, BUFSIZE, "%s/Dropbox/code/lambdachine/tests/", home);
-  if (res >= BUFSIZE) bufferOverflow(res, BUFSIZE);
+  if (cwd == NULL) {
+    fprintf(stderr, "Could not get working directory\n");
+    exit(1);
+  }
 
-  G_basepath = strdup(buf);
+  res = asprintf(&G_basepath, "%s/tests/", cwd);
+
+  if (res <= 0) {
+    fprintf(stderr, "Could not initialise base path.\n");
+    exit(1);
+  }
 }
 
 void
