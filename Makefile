@@ -2,7 +2,10 @@
 
 -include mk/build.mk
 
-DIST ?= dist
+# DIST must be an absolute directory
+ifeq ($(DIST),)
+DIST := $(shell pwd)/dist
+endif
 
 HSBUILDDIR = $(DIST)/build
 LCC = $(HSBUILDDIR)/lcc
