@@ -265,6 +265,7 @@ int engine(Thread* T)
     setInfo(cl, (InfoTable*)base[opB]);
     for (i = 0; i < sz; i++)
       cl->payload[i] = base[*arg++];
+    base[opA] = (Word)cl;
     pc += (sz + 3) / sizeof(BCIns);
     DISPATCH_NEXT;
   }
@@ -556,7 +557,7 @@ int engine(Thread* T)
       Closure *ap_closure;
       getAPClosure(&ap_closure, &ap_return_pc, extra_args);
 
-      base[-1] = (Word)&ap_closure;
+      base[-1] = (Word)ap_closure;
 
       u4 framesize = info->code.framesize;
       if (stackOverflow(T, top, STACK_FRAME_SIZEW + framesize)) {
@@ -595,6 +596,7 @@ int engine(Thread* T)
 	base[i] = callt_temp[i];
       }
 
+      base[-1] = (Word)fnode;
       code = &info->code;
       pc = info->code.code;
       DISPATCH_NEXT;
@@ -651,7 +653,7 @@ int engine(Thread* T)
       Closure *ap_closure;
       // Note the modification of `return_pc`.
       getAPClosure(&ap_closure, &return_pc, extra_args);
-      top[2] = (Word)&ap_closure;
+      top[2] = (Word)ap_closure;
       saved_base = &top[3];
 
       Word *p = &top[3];
