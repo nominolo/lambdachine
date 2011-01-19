@@ -12,6 +12,8 @@ typedef struct {
   int          print_loader_state;
 } Opts;
 
+#define MAX_CLOSURE_NAME_LEN 512
+
 int
 main(int argc, char *argv[])
 {
@@ -19,16 +21,27 @@ main(int argc, char *argv[])
   Closure  *clos0;
   Opts      opts = {
     .input_file = "Bc0005",
-    .main_closure = "Bc0005.caf1!closure",
+    .main_closure = NULL,
     .print_loader_state = 1
   };
+  char main_clos_name[MAX_CLOSURE_NAME_LEN];
 
   // TODO: Parse flags
 
   if (argc >= 2)
     opts.input_file = argv[1];
-  if (argc >= 3)
+  if (argc >= 3) {
     opts.main_closure = argv[2];
+  } else {
+    int n = snprintf(main_clos_name, MAX_CLOSURE_NAME_LEN,
+		     "%s.test!closure", opts.input_file);
+    if (n <= MAX_CLOSURE_NAME_LEN) {
+      opts.main_closure = main_clos_name;
+    } else {
+      fprintf(stderr, "ERROR: Main closure name too long.\n");
+      exit(1);
+    }
+  }
 
   initVM();
   initLoader();
