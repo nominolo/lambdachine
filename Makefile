@@ -151,7 +151,7 @@ pr:
 	@echo $(PRIM_MODULES)
 
 clean-bytecode:
-	rm -f $(PRIM_MODULES)
+	rm -f $(PRIM_MODULES) tests/*.lcbc
 
 -include $(SRCS:%.c=$(DEPDIR)/%.P)
 -include $(UTILSRCS:%.c=$(DEPDIR)/%.P)
