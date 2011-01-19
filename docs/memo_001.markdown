@@ -21,6 +21,9 @@ the execution of `CALLT` will then look like this:
              |                                  |
             base                               top
 
+The following two sections assume that `f` is a function closure.
+Other possible cases are discussed in Section "Partial application"
+below.
 
 ## Exact application
 
@@ -38,21 +41,8 @@ look as follows:
              |                             |
             base                          top
 
-
-## Underapplicaton / Partial application
-
-Now assume that `f` has arity 6, i.e., `f` is *partially applied*.
-
-In this case we:
-
-  1. allocate an AP2 closure, i.e., a partial application expecting
-     two more arguments.
-
-  2. put a pointer to this closure into the result register, so that
-     the next `MOV_RES` instruction will receive this function as a
-     result.
-
-  3. Return to the parent.
+If `f` is a known function, we can statically ensure that we will
+always end up in this case.
 
 
 ## Overapplication
@@ -169,7 +159,7 @@ We may even dynamically choose between either strategy based on which
 set is smaller.
 
 
-## Built-in Closures
+### Built-in Closures
 
 The above implementation method requires one variant of
 `stg_APn_closure` for every possible `n` where the possible of values
@@ -205,3 +195,55 @@ fact, they can be combined.  Option (3) would also mean that the
 encoding for `CALL` instructions could have a small maximum bound on
 the number of arguments.  It's not clear whether this is a useful
 feature to have.
+
+
+## Partial application
+
+Now assume that `f` has arity 6, i.e., `f` is *partially applied*.
+
+In this case we:
+
+  1. Allocate a PAP closure ("PAP" = "partial application").  In this
+     closure we store (a) the number of remaining arguments, (b) a
+     pointer to the closure for `f`, and (c) all arguments.
+
+  2. Put a pointer to this closure into the result register, so that
+     the next `MOV_RES` instruction will receive this function as a
+     result.
+
+  3. Return to the parent.
+
+So, creating a PAP is simple, but what happens if a `PAP` occurs in the
+function position of a `CALL` instruction?
+
+If there are still arguments missing we just create new PAP which
+contains the contents of the old PAP and the new arguments.
+Otherwise, we now have to call the function from the PAP.  The tricky
+bit is, again, the stack frame management.
+
+Assume our PAP pointed to by `f` has the shape
+
+    f -> PAP 2 g x y
+
+and our call site looks like this
+
+    CALL f a b
+
+We now set up a new stack frame for `g` that looks as follows:
+
+        +----+----+----+----+----+--     --+
+    ... | f  |  x |  y |  a |  b |   ...   |
+        +----+----+----+----+----+--     --+
+             ^ r0   r1   r2   r3           ^
+             |                             |
+         new base                        new top
+
+This can be achieved by first copying the arguments from the PAP into
+the new stack frame and then the arguments from the CALL.
+
+For a tail call, we can reuse the current stack frame.  Only this
+time we first have to move the CALL args into place and then copy the
+PAP args.
+
+Of course, we may overapply a PAP in which case we have to set up the
+application stack frames as discussed above.
