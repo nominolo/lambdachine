@@ -26,6 +26,7 @@ void      *HashTable_insert(HashTable *, const char *key, void *value);
 void      *HashTable_lookup(HashTable *, const char *key);
 void      *HashTable_update(HashTable *, char *key, void *value);
 void       HashTable_print(HashTable *, HashValuePrinter);
+u4         HashTable_entries(HashTable *);
 void       HashTable_destroy(HashTable *, HashFreeFunc);
 void       HashTable_foreach(HashTable *ht, HashValueCallback f, void *env);
 

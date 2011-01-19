@@ -19,6 +19,12 @@ HashTable_create()
   return ht;
 }
 
+u4
+HashTable_entries(HashTable *ht)
+{
+  return ht->entries;
+}
+
 void *
 HashTable_insert(HashTable *ht, const char *key, void *value)
 {
