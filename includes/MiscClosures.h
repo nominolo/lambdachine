@@ -2,6 +2,7 @@
 #define _LAMBDACHINE_MISCCLOSURES_H
 
 #include "InfoTables.h"
+#include "Bytecode.h"
 
 typedef struct _IntClosure {
   const ConInfoTable *info;
@@ -15,6 +16,11 @@ extern BCIns* stg_UPD_return_pc;
 extern IntClosure the_smallInt[256];
 extern ConInfoTable stg_Izh_con_info;
 extern Closure stg_BLACKHOLE_closure;
+
+#define MAX_AP_ARITY  (BCMAX_CALL_ARGS - 1)
+
+void initAPClosures();
+void getAPClosure(Closure **/*out*/, BCIns**/*out*/, int nargs);
 
 #define smallInt(i) (the_smallInt[(i)+128])
 

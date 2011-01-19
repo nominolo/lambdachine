@@ -69,10 +69,10 @@ startThread(Thread *T, Closure *cl)
 
 #define STACK_FRAME_SIZEW   3
 #define UPDATE_FRAME_SIZEW  (STACK_FRAME_SIZEW + 2)
-#define MAX_CALLT_ARGS      12
 
 typedef void* Inst;
 
+void printIndent(int i, char c);
 
 int engine(Thread* T)
 {
@@ -91,7 +91,7 @@ int engine(Thread* T)
   u4 *pc = T->pc;
   u4 opA, opB, opC, opcode;
   Word last_result = 0;
-  Word callt_temp[MAX_CALLT_ARGS];
+  Word callt_temp[BCMAX_CALL_ARGS];
   LcCode *code = NULL;
 
   /*
@@ -103,6 +103,7 @@ int engine(Thread* T)
   */
 # define DISPATCH_NEXT \
     opcode = bc_op(*pc); \
+    { printIndent(base - T->stack, ' '); printf("%p %s\n", pc, ins_name[opcode]); } \
     opA = bc_a(*pc); \
     opC = bc_d(*pc); \
     ++pc; \
@@ -428,6 +429,8 @@ int engine(Thread* T)
     LC_ASSERT(tnode != NULL);
 
     if (closure_HNF(tnode)) {
+      printIndent(base - T->stack, ' '); 
+      printf("         (in HNF)\n");
       last_result = base[opA];
       pc += 1; // skip live-out info
       DISPATCH_NEXT;
@@ -436,6 +439,8 @@ int engine(Thread* T)
       Word *top = T->top; //base + node->info->code.framesize;
       FuncInfoTable *info = (FuncInfoTable*)getInfo(tnode);
       u4 framesize = info->code.framesize;
+      printIndent(base - T->stack - 1, '='); 
+      printf("ENTER %s\n", info->name);
 
       if (stackOverflow(T, T->top, STACK_FRAME_SIZEW + UPDATE_FRAME_SIZEW +
                         framesize)) {
@@ -509,47 +514,91 @@ int engine(Thread* T)
     u4 nargs = opB;
     Word arg0 = base[opC];
     Closure *fnode = (Closure *)base[opA];
-    //Closure *node = (Closure *)base[-1];
+    u1 *args = (u1*)pc;
+    u4 i;
 
+    // TODO: I think the codegen assumed that CALL does an EVAL on
+    // 
     LC_ASSERT(fnode != NULL && getInfo(fnode)->type == FUN);
     FuncInfoTable *info = (FuncInfoTable*)getInfo(fnode);
 
-    if (nargs != info->code.arity) {
-      printf("TODO: Implement partial application / overapplication.\n");
+    printIndent(base - T->stack - 1, '=');
+    printf(" ENTER: %s\n", info->name);
+
+    if (nargs > BCMAX_CALL_ARGS) {
+      printf("Too many arguments to CALLT.  (Bug in code gen?)\n");
       return -1;
     }
 
-    u4 curframesize = T->top - base;
-    u4 newframesize = info->code.framesize;
+    // Because we do not yet require to allocate CALLT arguments in
+    // registers r0, r1, ..., we need to copy all of them into a scratch
+    // area (to avoid overwriting one value with another).
+    callt_temp[0] = arg0;
+    LC_ASSERT(LC_ARCH_ENDIAN == LAMBDACHINE_LE); // XXX: generalise
+    for (i = 1; i < nargs; i++, args++) {
+      callt_temp[i] = base[*args];
+    }
 
-    if (newframesize > curframesize) {
-      if (stackOverflow(T, base, newframesize)) {
-        printf("Stack overflow.  TODO: Automatically grow stack.\n");
-        return -1;
-      } else {
-        T->top = base + newframesize;
+    if (nargs < info->code.arity) { // Partial application
+      printf("TODO: Implement partial application.\n");
+      return -1;
+    } else if (nargs > info->code.arity) {
+      // Overapplication.  See [Memo 1] for details.
+      u4 immediate_args = info->code.arity;
+      u4 extra_args = nargs - immediate_args;
+
+      // Change current frame
+      Word *top = base + extra_args + 1;
+      for (i = 0; i < extra_args; i++) {
+	base[i] = callt_temp[immediate_args + i];
       }
-    }
+      BCIns *ap_return_pc;
+      Closure *ap_closure;
+      getAPClosure(&ap_closure, &ap_return_pc, extra_args);
 
-    if (nargs > MAX_CALLT_ARGS + 1) {
-      printf("Too many arguments to CALLT.  (Error in code gen?)\n");
-      return -1;
-    }
+      base[-1] = (Word)&ap_closure;
 
-    // Copy args into temporary area, then put them back onto the stack.
-    // This avoids accidentally overwriting registers contents.
-    u1 *arg = (u1 *)pc;
-    int i;
-    for (i = 0; i < nargs - 1; i++, arg++) {
-      callt_temp[i] = base[*arg];
+      u4 framesize = info->code.framesize;
+      if (stackOverflow(T, top, STACK_FRAME_SIZEW + framesize)) {
+	printf("Stack overflow.  TODO: Automatically grow stack.\n");
+	return -1;
+      }
+
+      // Build stack frame for fnode
+      // TODO: Check for stack overflow.
+      top[0] = (Word)base;
+      top[1] = (Word)ap_return_pc;
+      top[2] = (Word)fnode;
+      base = top + 3;
+      for (i = 0; i < immediate_args; i++) {
+	base[i] = callt_temp[i];
+      }
+      T->top = base + framesize;
+      code = &info->code;
+      pc = info->code.code;
+      DISPATCH_NEXT;
+
+    } else { // Exact application
+      u4 curframesize = T->top - base;
+      u4 newframesize = info->code.framesize;
+
+      if (newframesize > curframesize) {
+        if (stackOverflow(T, base, newframesize)) {
+          printf("Stack overflow.  TODO: Automatically grow stack.\n");
+          return -1;
+        } else {
+          T->top = base + newframesize;
+        }
+      }
+
+      for (i = 0; i < nargs; i++) {
+	base[i] = callt_temp[i];
+      }
+
+      code = &info->code;
+      pc = info->code.code;
+      DISPATCH_NEXT;
     }
-    base[0] = arg0;
-    for (i = 0; i < nargs - 1; i++) {
-      base[i + 1] = callt_temp[i];
-    }
-    code = &info->code;
-    pc = info->code.code;
-    DISPATCH_NEXT;
   }
 
  op_CALL:
@@ -559,44 +608,79 @@ int engine(Thread* T)
     // opC = first argument reg
     // following bytes: argument regs, live regs
     DECODE_BC;
-    u4 nargs = opC;
-    Word arg0 = base[opB];
+    u4 nargs = opB;
+    Word arg0 = base[opC];
     Closure *fnode = (Closure *)base[opA];
     //Closure *node = (Closure *)base[-1];   // the current node
     Word *top = T->top; //&base[node->info->code.framesize];
+    u4 i;
 
     LC_ASSERT(fnode != NULL && getInfo(fnode)->type == FUN);
     FuncInfoTable *info = (FuncInfoTable*)getInfo(fnode);
-
-    if (nargs != info->code.arity) {
-      printf("TODO: Implement partial application / overapplication.\n");
-      return -1;
-    }
-
-    u4 framesize = info->code.framesize;
-
-    if (stackOverflow(T, top, STACK_FRAME_SIZEW + framesize)) {
-      printf("Stack overflow.  TODO: Automatically grow stack.\n");
-      return -1;
-    }
 
     // each additional argument requires 1 byte,
     // we pad to multiples of an instruction
     // the liveness mask follows (one instruction)
     BCIns *return_pc = pc + BC_ROUND(nargs - 1) + 1;
+    u4 framesize = info->code.framesize;
+    Word *saved_base;
 
-    top[0] = (Word)base;
+    if (nargs < info->code.arity) {
+
+      printf("TODO: Implement partial application. arity = %d, args = %d\n",
+	     info->code.arity, nargs);
+      return -1;
+
+    } else if (nargs > info->code.arity) {
+      // Overapplication.
+
+      u4 immediate_args = info->code.arity;
+      u4 extra_args = nargs - immediate_args;
+
+      // We allocate two stack frames: one for applying the extra
+      // args, and one for the actual call (with arity arguments)
+      
+      u4 ap_frame_size = STACK_FRAME_SIZEW + extra_args + 1;
+      if (stackOverflow(T, top, STACK_FRAME_SIZEW + framesize + ap_frame_size)) {
+	printf("Stack overflow.  TODO: Automatically grow stack.\n");
+	return -1;
+      }
+
+      top[0] = (Word)base;
+      top[1] = (Word)return_pc;
+      Closure *ap_closure;
+      // Note the modification of `return_pc`.
+      getAPClosure(&ap_closure, &return_pc, extra_args);
+      top[2] = (Word)&ap_closure;
+      saved_base = &top[3];
+
+      Word *p = &top[3];
+      for (i = immediate_args; i < nargs; i++, p++) {
+	*p = base[i];
+      }
+      top += ap_frame_size;
+      // Fall through to exact arity case
+
+    } else {
+
+      // Exact application.
+      if (stackOverflow(T, top, STACK_FRAME_SIZEW + framesize)) {
+	printf("Stack overflow.  TODO: Automatically grow stack.\n");
+	return -1;
+      }
+      saved_base = base;
+    }
+
+    top[0] = (Word)saved_base;
     top[1] = (Word)return_pc;
     top[2] = (Word)fnode;
     top[3] = arg0;
 
     // copy arguments
     u1 *arg = (u1*)pc;
-    int i;
     for (i = 1; i < nargs; i++, arg++) {
       top[i + 3] = base[*arg];
     }
-    // assert: arg <= next_pc - 1
 
     base = top + STACK_FRAME_SIZEW;
     T->top = base + framesize;
@@ -666,4 +750,11 @@ int
 stackOverflow(Thread* thread, Word* top, u4 increment)
 {
   return 0;
+}
+
+void printIndent(int i, char c)
+{
+  while (i-- > 0) {
+    putchar(c);
+  }
 }

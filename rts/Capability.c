@@ -17,6 +17,8 @@ initVM()
     smallInt(i).info = &stg_Izh_con_info;
     smallInt(i).val = i;
   }
+
+  initAPClosures();
 }
 
 void*

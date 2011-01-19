@@ -27,6 +27,10 @@ and C.  We write SD when treating D as a signed field.
 #define BCMAX_C		0xff
 #define BCMAX_D		0xffff
 
+/* Calls with more arguments have to be translated into multiple calls
+   (where the first ones are partial applications). */
+#define BCMAX_CALL_ARGS  9
+
 typedef u4 BCIns; /* A byte code instruction */
 typedef u4 BCReg; /* Bytecode register. */
 typedef u4 BCPos;
