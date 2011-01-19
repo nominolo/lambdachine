@@ -233,7 +233,7 @@ getAPClosure(Closure **res_clos, BCIns **res_pc, int nargs)
     Closure *cl = malloc(sizeof(ClosureHeader));  // no payload
     setInfo(cl, (InfoTable*)info);
 
-    //printf("\033[34mCreated closure: %s\n", info->name);
+    //printf("\033[34mCreated closure: %s (%p)\n", info->name, cl);
     //printInfoTable((InfoTable*)info);
     //printf("\033[0m");
 

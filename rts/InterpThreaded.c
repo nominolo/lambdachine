@@ -53,6 +53,8 @@ as follows:
 *********************************************************************/
 
 int engine(Thread *T);
+void printStack(Word *base, Word *bottom);
+
 
 Closure *
 startThread(Thread *T, Closure *cl)
@@ -427,7 +429,13 @@ int engine(Thread* T)
     // opA = thing to evaluate
     Closure *tnode = (Closure *)base[opA];
 
+    //printIndent(base - T->stack, ' ');
+    //printf("evaluating: %p\n", tnode);
+
     LC_ASSERT(tnode != NULL);
+    LC_ASSERT(getInfo(tnode) != NULL);
+
+    //printf("eval: info.type = %d\n", getInfo(tnode)->type);
 
     if (closure_HNF(tnode)) {
       printIndent(base - T->stack, ' '); 
@@ -438,10 +446,11 @@ int engine(Thread* T)
     } else {
       //Closure *node = (Closure *)base[-1];
       Word *top = T->top; //base + node->info->code.framesize;
-      FuncInfoTable *info = (FuncInfoTable*)getInfo(tnode);
+      ThunkInfoTable *info = (ThunkInfoTable*)getInfo(tnode);
+
       u4 framesize = info->code.framesize;
       printIndent(base - T->stack - 1, '='); 
-      printf("ENTER %s\n", info->name);
+      printf(" ENTER %s (%p)\n", info->name, info);
 
       if (stackOverflow(T, T->top, STACK_FRAME_SIZEW + UPDATE_FRAME_SIZEW +
                         framesize)) {
@@ -495,6 +504,10 @@ int engine(Thread* T)
   pc = (BCIns*)base[-2];
   base = (Word*)base[-3];
   { FuncInfoTable *info = getFInfo((Closure*)base[-1]);
+    printIndent(base - T->stack, ' ');
+    printf("Returning to: %p, %d, %s\n", info, info->i.type, info->name);
+    printIndent(base - T->stack, ' ');
+    printf("New PC: %p\n", pc);
     code = &info->code;
   }
   DISPATCH_NEXT;
@@ -524,7 +537,7 @@ int engine(Thread* T)
     FuncInfoTable *info = (FuncInfoTable*)getInfo(fnode);
 
     printIndent(base - T->stack - 1, '=');
-    printf(" ENTER: %s\n", info->name);
+    printf(" ENTER: %s (%p)\n", info->name, info);
 
     if (nargs > BCMAX_CALL_ARGS) {
       printf("Too many arguments to CALLT.  (Bug in code gen?)\n");
@@ -547,6 +560,8 @@ int engine(Thread* T)
       // Overapplication.  See [Memo 1] for details.
       u4 immediate_args = info->code.arity;
       u4 extra_args = nargs - immediate_args;
+      printIndent(base - T->stack - 1, '=');
+      printf(" ... overapplication: %d + %d\n", immediate_args, extra_args);
 
       // Change current frame
       Word *top = base + extra_args + 1;
@@ -577,6 +592,7 @@ int engine(Thread* T)
       T->top = base + framesize;
       code = &info->code;
       pc = info->code.code;
+      printStack(base, T->stack);
       DISPATCH_NEXT;
 
     } else { // Exact application
@@ -599,6 +615,7 @@ int engine(Thread* T)
       base[-1] = (Word)fnode;
       code = &info->code;
       pc = info->code.code;
+      printStack(base, T->stack);
       DISPATCH_NEXT;
     }
   }
@@ -693,7 +710,9 @@ int engine(Thread* T)
 
  op_KLIT:
   {
+    //printf("fetching lit: r%d = lit[%d]\n", opA, opC);
     u2 lit_id = opC;
+    //printf("code = %p, lits = %d\n", code, code->sizelits);
     base[opA] = code->lits[lit_id];
     DISPATCH_NEXT;
   }
@@ -752,6 +771,17 @@ int
 stackOverflow(Thread* thread, Word* top, u4 increment)
 {
   return 0;
+}
+
+void
+printStack(Word *base, Word *bottom)
+{
+  while (base > bottom + 1) {
+    FuncInfoTable *i = getFInfo((Closure*)base[-1]);
+    printf("%s : ", i->name);
+    base = (Word*)base[-3];
+  }
+  printf("[]\n");
 }
 
 void printIndent(int i, char c)
