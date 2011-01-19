@@ -48,8 +48,10 @@ main(int argc, char *argv[])
 
   loadModule(opts.input_file);
 
-  if (opts.print_loader_state)
+  if (opts.print_loader_state) {
     printLoaderState();
+    fflush(stdout);
+  }
 
   if (opts.main_closure == NULL) // Nothing to run, just quit.
     return 0;
