@@ -383,7 +383,7 @@ printModule(Module* mdl)
   printf("  closures:    %d\n", mdl->numClosures);
   printf("--- Info Tables ----------------\n");
   HashTable_print(G_loader->infoTables, (HashValuePrinter)printInfoTable);
-  printf("--- Closures -------------------\n");
+  printf("--- Closures (%d) ---------------\n", HashTable_entries(G_loader->closures));
   HashTable_print(G_loader->closures, (HashValuePrinter)printClosure);
 }
 
@@ -399,7 +399,7 @@ printLoaderState()
 {
   printf("--- Info Tables ----------------\n");
   HashTable_print(G_loader->infoTables, (HashValuePrinter)printInfoTable);
-  printf("--- Closures -------------------\n");
+  printf("--- Closures (%d) ---------------\n", HashTable_entries(G_loader->closures));
   HashTable_foreach(G_loader->closures,
                     (HashValueCallback)printClosure1, NULL);
   //  HashTable_print(G_loader->closures, (HashValuePrinter)printClosure);
