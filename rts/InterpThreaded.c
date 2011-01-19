@@ -258,7 +258,7 @@ int engine(Thread* T)
   // payload regs
   {
     DECODE_BC;
-    u4 sz = base[opC];
+    u4 sz = opC;
     u4 i;
     u1 *arg = (u1 *)pc;
     Closure *cl = malloc(sizeof(ClosureHeader) + sz * sizeof(Word));
