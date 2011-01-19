@@ -38,11 +38,16 @@ instance Eq Int where
 {-# INLINE plusInt #-}
 {-# INLINE minusInt #-}
 {-# INLINE timesInt #-}
+{-# INLINE negateInt #-}
 
 plusInt, minusInt, timesInt:: Int -> Int -> Int
 (I# x) `plusInt`  (I# y) = I# (x +# y)
 (I# x) `minusInt` (I# y) = I# (x -# y)
 (I# x) `timesInt` (I# y) = I# (x *# y)
+
+-- XXX: Not quite correct, might overflow
+negateInt :: Int -> Int
+negateInt (I# n) = I# (0# -# n)
 
 
 {-
