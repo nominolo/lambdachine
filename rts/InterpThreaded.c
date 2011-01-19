@@ -276,7 +276,7 @@ int engine(Thread* T)
     DECODE_BC;
     u4 offset = (u1)opC;
     Closure *cl = (Closure*)base[opB];
-    base[opA] = cl->payload[offset];
+    base[opA] = cl->payload[offset - 1];
     DISPATCH_NEXT;
   }
 
