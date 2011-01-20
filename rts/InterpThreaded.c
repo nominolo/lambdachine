@@ -708,7 +708,7 @@ int engine(Thread* T)
     DISPATCH_NEXT;
   }
 
- op_KLIT:
+ op_LOADK:
   {
     //printf("fetching lit: r%d = lit[%d]\n", opA, opC);
     u2 lit_id = opC;

@@ -106,7 +106,7 @@ interpreter, and all bytecode files.
   _(MULRR,   RRR) \
   _(DIVRR,   RRR) \
   /* Constants */ \
-  _(KLIT,    RN) \
+  _(LOADK,   RN) \
   _(KINT,    RS) \
   _(NEW_INT, RS) \
   /* Allocation */ \

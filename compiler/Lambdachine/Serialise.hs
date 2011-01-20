@@ -408,9 +408,9 @@ putLinearIns lit_ids new_addrs ins_id ins = case ins of
   Mid (Assign (BcReg d) (BinOp op ty (BcReg a) (BcReg b))) ->
     putIns $ insABC (binOpOpcode ty op) (i2b d) (i2b a) (i2b b)
   Mid (Assign (BcReg d) (Load (LoadGlobal x))) ->
-    putIns $ insAD opc_KLIT (i2b d) (lit_ids M.! Right x)
+    putIns $ insAD opc_LOADK (i2b d) (lit_ids M.! Right x)
   Mid (Assign (BcReg d) (Load (LoadLit l))) ->
-    putIns $ insAD opc_KLIT (i2b d) (lit_ids M.! Left l)
+    putIns $ insAD opc_LOADK (i2b d) (lit_ids M.! Left l)
   Mid (Assign (BcReg d) (Load LoadBlackhole)) ->
     putIns $ insAD opc_LOADBH (i2b d) 0
   Mid (Assign (BcReg d) (Load (LoadClosureVar idx))) ->
