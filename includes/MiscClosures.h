@@ -18,10 +18,13 @@ extern ConInfoTable stg_Izh_con_info;
 extern Closure stg_BLACKHOLE_closure;
 extern PapInfoTable stg_PAP_info;
 
-#define MAX_AP_ARITY  (BCMAX_CALL_ARGS - 1)
+#define MAX_APK_ARITY           (BCMAX_CALL_ARGS - 1)
+
+#define MAX_AP_ARGS             16
 
 void initAPClosures();
-void getAPClosure(Closure **/*out*/, BCIns**/*out*/, int nargs);
+void getAPKClosure(Closure **/*out*/, BCIns**/*out*/, int nargs);
+InfoTable* getAPInfoTable(int nargs);
 
 #define smallInt(i) (the_smallInt[(i)+128])
 

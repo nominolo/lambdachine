@@ -190,24 +190,28 @@ garbage collector).
 
 */
 
-Closure *ap_closures[MAX_AP_ARITY];
-BCIns *ap_return_pcs[MAX_AP_ARITY];
+Closure *apk_closures[MAX_APK_ARITY];
+BCIns *apk_return_pcs[MAX_APK_ARITY];
+InfoTable *ap_infos[MAX_AP_ARGS - 1];
 
 void initAPClosures()
 {
   int i;
-  for (i = 0; i < MAX_AP_ARITY; i++) {
-    ap_closures[i] = NULL;
-    ap_return_pcs[i] = NULL;
+  for (i = 0; i < MAX_APK_ARITY; i++) {
+    apk_closures[i] = NULL;
+    apk_return_pcs[i] = NULL;
+  }
+  for (i = 0; i < MAX_AP_ARGS - 1; i++) {
+    ap_infos[i] = NULL;
   }
 }
 
 void
-getAPClosure(Closure **res_clos, BCIns **res_pc, int nargs)
+getAPKClosure(Closure **res_clos, BCIns **res_pc, int nargs)
 {
-  LC_ASSERT(nargs >= 1 && nargs <= MAX_AP_ARITY + 1);
+  LC_ASSERT(nargs >= 1 && nargs <= MAX_APK_ARITY + 1);
 
-  if (ap_closures[nargs - 1] == NULL) { // TODO: annotate as unlikely
+  if (apk_closures[nargs - 1] == NULL) { // TODO: annotate as unlikely
     // Create closure
 
     FuncInfoTable *info = malloc(sizeof(FuncInfoTable));
@@ -215,7 +219,7 @@ getAPClosure(Closure **res_clos, BCIns **res_pc, int nargs)
     info->i.tagOrBitmap = 0;
     info->i.layout.payload.ptrs = nargs;  // TODO: see comments above
     info->i.layout.payload.nptrs = 0;
-    asprintf(&info->name, "stg_AP%d_info", nargs);
+    asprintf(&info->name, "stg_APK%d_info", nargs);
     info->code.framesize = nargs + 1;
     info->code.arity = nargs;
     info->code.sizelits = 0;
@@ -246,10 +250,62 @@ getAPClosure(Closure **res_clos, BCIns **res_pc, int nargs)
     //printInfoTable((InfoTable*)info);
     //printf("\033[0m");
 
-    ap_closures[nargs - 1] = cl;
-    ap_return_pcs[nargs - 1] = &code[2];
+    apk_closures[nargs - 1] = cl;
+    apk_return_pcs[nargs - 1] = &code[2];
   }
 
-  *res_clos = ap_closures[nargs - 1];
-  *res_pc   = ap_return_pcs[nargs - 1];
+  *res_clos = apk_closures[nargs - 1];
+  *res_pc   = apk_return_pcs[nargs - 1];
+}
+
+
+//--------------------------------------------------------------------
+
+InfoTable *
+getAPInfoTable(int nargs)
+{
+  LC_ASSERT(nargs >= 1 && nargs <= MAX_AP_ARGS);
+  if (ap_infos[nargs - 1] != NULL)
+    return ap_infos[nargs - 1];
+
+  int codesize =
+    4 + // load and evaluate function
+    nargs + // load arguments
+    1 + BC_ROUND(nargs - 1); // CALLT + arguments
+  BCIns *code = malloc(sizeof(BCIns) * codesize);
+  code[0] = BCINS_AD(BC_LOADFV, nargs, 1); // load function ...
+  code[1] = BCINS_AD(BC_EVAL, nargs, 0);   // and evaluate it
+  code[2] = nargs << 1; // liveness mask
+  code[3] = BCINS_AD(BC_MOV_RES, nargs, 0);
+  int i;
+  for (i = 0; i < nargs; i++)
+    code[i + 4] = BCINS_AD(BC_LOADFV, i, i + 2); // load each argument
+  // finally, tailcall rN(r0, ..., r{N-1})
+  code[nargs + 4] = BCINS_ABC(BC_CALLT, nargs, nargs, 0);
+  u1 *p = (u1*)&code[nargs + 5];
+  LC_ASSERT(LC_ARCH_ENDIAN == LAMBDACHINE_LE);
+  for (i = 1; i < nargs; i++, p++) { *p = i; }
+
+  ThunkInfoTable *info = malloc(sizeof(ThunkInfoTable));
+  info->i.type = THUNK;
+  info->i.tagOrBitmap = (1 << (nargs + 1)) - 1;
+  info->i.layout.payload.ptrs = nargs + 1;
+  info->i.layout.payload.nptrs = 0;
+  asprintf(&info->name, "stg_AP%d_info", nargs);
+  info->code.framesize = nargs + 1;
+  info->code.arity = 0;
+  info->code.sizelits = 0;
+  info->code.sizecode = codesize;
+  info->code.lits = NULL;
+  info->code.littypes = NULL;
+  info->code.code = code;
+
+#if 0
+  printf("\033[34mCreated info table: %s (%p)\n", info->name, info);
+  printInfoTable((InfoTable*)info);
+  printf("\033[0m");
+#endif
+
+  ap_infos[nargs - 1] = (InfoTable*)info;
+  return (InfoTable*)info;
 }

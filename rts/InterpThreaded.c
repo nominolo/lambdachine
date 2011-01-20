@@ -634,7 +634,7 @@ int engine(Thread* T)
       }
       BCIns *ap_return_pc;
       Closure *ap_closure;
-      getAPClosure(&ap_closure, &ap_return_pc, extra_args);
+      getAPKClosure(&ap_closure, &ap_return_pc, extra_args);
 
       base[-1] = (Word)ap_closure;
 
@@ -800,7 +800,7 @@ int engine(Thread* T)
       top[1] = (Word)return_pc;
       Closure *ap_closure;
       // Note the modification of `return_pc`.
-      getAPClosure(&ap_closure, &return_pc, extra_args);
+      getAPKClosure(&ap_closure, &return_pc, extra_args);
       top[2] = (Word)ap_closure;
       saved_base = &top[3];
 
@@ -857,9 +857,31 @@ int engine(Thread* T)
     DISPATCH_NEXT;
   }
 
- op_INITF:
  op_ALLOCAP:
-  printf("Unimplemented bytecode\n.");
+  {
+    DECODE_BC;
+    // A = result register
+    // C = number of arguments (including function), always > 1
+    // B = first argument (function closure)
+    u4 nargs = opC;
+    u4 i;
+
+    Closure *cl = malloc(sizeof(ClosureHeader) + (nargs + 1) * sizeof(Word));
+    InfoTable *info = getAPInfoTable(nargs);
+    setInfo(cl, info);
+
+    cl->payload[0] = base[opB];
+    u1 *args = (u1 *)pc;
+    pc += BC_ROUND(nargs - 1);
+    for (i = 0; i < nargs; i++, args++)
+      cl->payload[i + 1] = base[*args];
+
+    base[opA] = (Word)cl;
+    DISPATCH_NEXT;
+  }
+
+ op_INITF:
+  fprintf(stderr, "Unimplemented bytecode\n.");
   return -1;
 }
 
