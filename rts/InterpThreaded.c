@@ -54,6 +54,7 @@ as follows:
 
 int engine(Thread *T);
 void printStack(Word *base, Word *bottom);
+void printFrame(Word *base, Word *top);
 
 
 Closure *
@@ -96,6 +97,17 @@ int engine(Thread* T)
   Word callt_temp[BCMAX_CALL_ARGS];
   LcCode *code = NULL;
 
+# define DBG_IND(stmt) \
+  do { printIndent(base - T->stack, ' '); stmt; } while (0)
+# define DBG_ENTER(info) \
+  do { printIndent(base - T->stack - 1, '='); \
+    printf(" ENTER %s (%p)\n", (info)->name, (info)); } while (0)
+# define DBG_RETURN(info, pc) \
+  DBG_IND(printf("Returning to: %s (%p), PC = %p\n", \
+		 (info)->name, (info), (pc)))
+# define DBG_STACK \
+  do { printStack(base, T->stack); } while (0)
+
   /*
     At the beginning of an instruction the following holds:
     - pc points to the next instruction.
@@ -105,7 +117,7 @@ int engine(Thread* T)
   */
 # define DISPATCH_NEXT \
     opcode = bc_op(*pc); \
-    { printIndent(base - T->stack, ' '); printf("%p %s\n", pc, ins_name[opcode]); } \
+    DBG_IND(printf("%p %s\n", pc, ins_name[opcode]));	\
     opA = bc_a(*pc); \
     opC = bc_d(*pc); \
     ++pc; \
@@ -431,29 +443,24 @@ int engine(Thread* T)
     // opA = thing to evaluate
     Closure *tnode = (Closure *)base[opA];
 
-    //printIndent(base - T->stack, ' ');
-    //printf("evaluating: %p\n", tnode);
+    //DBG_IND(printf("evaluating: %p\n", tnode));
 
     LC_ASSERT(tnode != NULL);
     LC_ASSERT(getInfo(tnode) != NULL);
 
-    //printf("eval: info.type = %d\n", getInfo(tnode)->type);
 
     if (closure_HNF(tnode)) {
-      printIndent(base - T->stack, ' '); 
-      printf("         (in HNF)\n");
+      DBG_IND(printf("         (in HNF)\n"));
       last_result = base[opA];
       pc += 1; // skip live-out info
       DISPATCH_NEXT;
     } else {
-      //Closure *node = (Closure *)base[-1];
       Word *top = T->top; //base + node->info->code.framesize;
       ThunkInfoTable *info = (ThunkInfoTable*)getInfo(tnode);
 
       u4 framesize = info->code.framesize;
-      printIndent(base - T->stack - 1, '='); 
-      printf(" ENTER %s (%p)\n", info->name, info);
-      printStack(base, T->stack);
+      DBG_ENTER(info);
+      DBG_STACK;
 
       if (stackOverflow(T, T->top, STACK_FRAME_SIZEW + UPDATE_FRAME_SIZEW +
                         framesize)) {
@@ -507,10 +514,7 @@ int engine(Thread* T)
   pc = (BCIns*)base[-2];
   base = (Word*)base[-3];
   { FuncInfoTable *info = getFInfo((Closure*)base[-1]);
-    printIndent(base - T->stack, ' ');
-    printf("Returning to: %p, %d, %s\n", info, info->i.type, info->name);
-    printIndent(base - T->stack, ' ');
-    printf("New PC: %p\n", pc);
+    DBG_RETURN(info, pc);
     code = &info->code;
   }
   DISPATCH_NEXT;
@@ -551,8 +555,7 @@ int engine(Thread* T)
 	LC_ASSERT(getInfo(fnode)->type == FUN);
 	info = getFInfo(fnode);
 
-	printIndent(base - T->stack - 1, '.');
-	printf(" calling a PAP%d (%s)\n", pap->nargs, info->name);
+	DBG_IND(printf("calling a PAP%d (%s)\n", pap->nargs, info->name));
 
 	// TODO: special case for another partial application?
 	arg_offs = pap->nargs;
@@ -593,9 +596,8 @@ int engine(Thread* T)
       pap->nargs = nargs;
       pap->fun = fnode;
 
-      printIndent(base - T->stack, ' ');
-      printf("Creating PAP = %s, nargs = %d, arity = %d\n",
-             info->name, pap->nargs, pap->arity);
+      DBG_IND(printf("Creating PAP = %s, nargs = %d, arity = %d\n",
+		     info->name, pap->nargs, pap->arity));
 
       for (i = 0; i < nargs; i++) {
 	pap->payload[i] = callt_temp[i];
@@ -607,31 +609,28 @@ int engine(Thread* T)
       pc = (BCIns*)base[-2];
       base = (Word*)base[-3];
       { FuncInfoTable *info = getFInfo((Closure*)base[-1]);
-	printIndent(base - T->stack, ' ');
-	printf("Returning PAP to: %p, %d, %s\n", info, info->i.type, info->name);
-	printIndent(base - T->stack, ' ');
-	printf("New PC: %p\n", pc);
+	DBG_RETURN(info, pc);
 	code = &info->code;
       }
       DISPATCH_NEXT;
     }
 
-    printIndent(base - T->stack - 1, '=');
-    printf(" ENTER: %s (%p)\n", info->name, info);
-    printStack(base, T->stack);
-
     if (nargs > info->code.arity) {
       // Overapplication.  See [Memo 1] for details.
       u4 immediate_args = info->code.arity;
       u4 extra_args = nargs - immediate_args;
-      printIndent(base - T->stack - 1, '=');
-      printf(" ... overapplication: %d + %d\n", immediate_args, extra_args);
+
+      DBG_IND(printf(" ... overapplication: %d + %d\n",
+		     immediate_args, extra_args));
+      DBG_ENTER(info);
 
       // Change current frame
       Word *top = base + extra_args + 1;
       for (i = 0; i < extra_args; i++) {
 	base[i] = callt_temp[immediate_args + i];
       }
+
+      //printFrame(base, top);
       BCIns *ap_return_pc;
       Closure *ap_closure;
       getAPKClosure(&ap_closure, &ap_return_pc, extra_args);
@@ -662,6 +661,8 @@ int engine(Thread* T)
     } else { // Exact application
       u4 curframesize = T->top - base;
       u4 newframesize = info->code.framesize;
+
+      DBG_ENTER(info);
 
       if (newframesize > curframesize) {
         if (stackOverflow(T, base, newframesize)) {
@@ -737,9 +738,8 @@ int engine(Thread* T)
       new_pap->nargs = nargs;
       new_pap->fun   = fnode;
 
-      printIndent(base - T->stack, ' ');
-      printf("Creating PAP = %s, nargs = %d, arity = %d\n",
-             info->name, pap->nargs, new_pap->arity);
+      DBG_IND(printf("Creating PAP = %s, nargs = %d, arity = %d\n",
+		     info->name, pap->nargs, new_pap->arity));
 
       if (pap != NULL) {
         // Copy first few args from old PAP
@@ -760,18 +760,14 @@ int engine(Thread* T)
       pc     = (BCIns*)base[-2];
       base   = (Word*)base[-3];
       { FuncInfoTable *info = getFInfo((Closure*)base[-1]);
-	printIndent(base - T->stack, ' ');
-	printf("Returning PAP to: %p, %d, %s\n", info, info->i.type, info->name);
-	printIndent(base - T->stack, ' ');
-	printf("New PC: %p\n", pc);
+	DBG_RETURN(info, pc);
 	code = &info->code;
       }
       DISPATCH_NEXT;
     }
 
-    printIndent(base - T->stack - 1, '=');
-    printf(" ENTER: %s (%p)\n", info->name, info);
-    printStack(base, T->stack);
+    DBG_ENTER(info);
+    DBG_STACK;
 
     // each additional argument requires 1 byte,
     // we pad to multiples of an instruction
@@ -945,6 +941,17 @@ printStack(Word *base, Word *bottom)
     base = (Word*)base[-3];
   }
   printf("[]\n");
+}
+
+void
+printFrame(Word *base, Word *top)
+{
+  printf("[%p]", base);
+  while (base < top) {
+    printf(" %" FMT_WordX, *base);
+    ++base;
+  }
+  printf("\n");
 }
 
 void printIndent(int i, char c)
