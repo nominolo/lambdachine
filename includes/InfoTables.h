@@ -32,8 +32,16 @@ typedef struct _ClosureHeader {
 
 typedef struct _Closure {
   ClosureHeader header;
-  Word          payload[];
+  Word          payload[FLEXIBLE_ARRAY];
 } Closure;
+
+typedef struct _PapClosure {
+  ClosureHeader header;
+  HalfWord      arity;
+  HalfWord      nargs;
+  Closure      *fun;
+  Word          payload[FLEXIBLE_ARRAY];
+} PapClosure;
 
 /*  
 inline InfoTable *getInfo(Closure *cl) { return cl->header.info; }

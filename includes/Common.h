@@ -85,6 +85,15 @@ enum { false = 0, true = 1 };
 #define wordsof(x)  ((sizeof(x) + sizeof(Word)-1) / sizeof(Word))
 #define countof(x)  (sizeof(x) / sizeof(*x))
 
+#if __GNUC__ >= 3
+/* Assume that a flexible array member at the end of a struct
+ * can be defined thus: T arr[]; */
+#define FLEXIBLE_ARRAY
+#else
+/* Assume that it must be defined thus: T arr[0]; */
+#define FLEXIBLE_ARRAY 0
+#endif
+
 /* 
 
 Inlining 
