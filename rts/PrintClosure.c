@@ -186,10 +186,12 @@ printCode(LcCode *code)
       printf("\"%s\"", (char*)code->lits[i]);
       break;
     case LIT_CLOSURE:
-      printf("closure %" FMT_WordX, code->lits[i]);
+      printf("clos %" FMT_WordX " (%s)", code->lits[i],
+             getFInfo(code->lits[i])->name);
       break;
     case LIT_INFO:
-      printf("info %" FMT_WordX, code->lits[i]);
+      printf("info %" FMT_WordX " (%s)", code->lits[i],
+             cast(FuncInfoTable*,code->lits[i])->name);
       break;
     default:
       printf("???");
