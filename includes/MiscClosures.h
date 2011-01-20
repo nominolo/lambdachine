@@ -16,6 +16,7 @@ extern BCIns* stg_UPD_return_pc;
 extern IntClosure the_smallInt[256];
 extern ConInfoTable stg_Izh_con_info;
 extern Closure stg_BLACKHOLE_closure;
+extern PapInfoTable stg_PAP_info;
 
 #define MAX_AP_ARITY  (BCMAX_CALL_ARGS - 1)
 

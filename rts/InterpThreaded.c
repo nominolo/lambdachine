@@ -451,6 +451,7 @@ int engine(Thread* T)
       u4 framesize = info->code.framesize;
       printIndent(base - T->stack - 1, '='); 
       printf(" ENTER %s (%p)\n", info->name, info);
+      printStack(base, T->stack);
 
       if (stackOverflow(T, T->top, STACK_FRAME_SIZEW + UPDATE_FRAME_SIZEW +
                         framesize)) {
@@ -531,32 +532,93 @@ int engine(Thread* T)
     u1 *args = (u1*)pc;
     u4 i;
 
-    // TODO: I think the codegen assumed that CALL does an EVAL on
-    // 
-    LC_ASSERT(fnode != NULL && getInfo(fnode)->type == FUN);
-    FuncInfoTable *info = (FuncInfoTable*)getInfo(fnode);
-
-    printIndent(base - T->stack - 1, '=');
-    printf(" ENTER: %s (%p)\n", info->name, info);
+    LC_ASSERT(fnode != NULL);
 
     if (nargs > BCMAX_CALL_ARGS) {
       printf("Too many arguments to CALLT.  (Bug in code gen?)\n");
       return -1;
     }
 
+    u4 arg_offs = 0;
+    FuncInfoTable *info;
+    switch (getInfo(fnode)->type) {
+    case PAP:
+      {
+	PapClosure *pap = (PapClosure*)fnode;
+	fnode = pap->fun;
+	LC_ASSERT(getInfo(fnode)->type == FUN);
+	info = getFInfo(fnode);
+
+	printIndent(base - T->stack - 1, '.');
+	printf(" calling a PAP%d (%s)\n", pap->nargs, info->name);
+
+	// TODO: special case for another partial application?
+	arg_offs = pap->nargs;
+	for (i = 0; i < arg_offs; i++) {
+	  callt_temp[i] = (Word)pap->payload[i];
+	}
+	nargs += pap->nargs;
+      }
+      break;
+    case FUN:
+      info = getFInfo(fnode);
+      break;
+    default:
+      // TODO: should we do an automatic EVAL here?
+      fprintf(stderr, "FATAL: Function argument to CALLT not FUN or PAP.\n");
+      exit(1);
+    }
     // Because we do not yet require to allocate CALLT arguments in
     // registers r0, r1, ..., we need to copy all of them into a scratch
     // area (to avoid overwriting one value with another).
-    callt_temp[0] = arg0;
+    callt_temp[arg_offs] = arg0;
     LC_ASSERT(LC_ARCH_ENDIAN == LAMBDACHINE_LE); // XXX: generalise
-    for (i = 1; i < nargs; i++, args++) {
+    for (i = arg_offs + 1; i < nargs; i++, args++) {
       callt_temp[i] = base[*args];
     }
 
+    // At this point we have the invariants:
+    //   - fnode is a pointer to a FUN
+    //   - info is its info table
+    //   - nargs is the *total* numbers of arguments applied (not just
+    //      from this instruction)
+    //   - callt_temp contains the values of all arguments in order
+
     if (nargs < info->code.arity) { // Partial application
-      printf("TODO: Implement partial application.\n");
-      return -1;
-    } else if (nargs > info->code.arity) {
+      PapClosure *pap = malloc(sizeof(PapClosure) + sizeof(Word) * nargs);
+      setInfo(pap, (InfoTable*)&stg_PAP_info);
+      pap->arity = info->code.arity - nargs;
+      pap->nargs = nargs;
+      pap->fun = fnode;
+
+      printIndent(base - T->stack, ' ');
+      printf("Creating PAP = %s, nargs = %d, arity = %d\n",
+             info->name, pap->nargs, pap->arity);
+
+      for (i = 0; i < nargs; i++) {
+	pap->payload[i] = callt_temp[i];
+      }
+
+      // return pointer to pap
+      last_result = (Word)pap;
+      T->top = base - 3;
+      pc = (BCIns*)base[-2];
+      base = (Word*)base[-3];
+      { FuncInfoTable *info = getFInfo((Closure*)base[-1]);
+	printIndent(base - T->stack, ' ');
+	printf("Returning PAP to: %p, %d, %s\n", info, info->i.type, info->name);
+	printIndent(base - T->stack, ' ');
+	printf("New PC: %p\n", pc);
+	code = &info->code;
+      }
+      DISPATCH_NEXT;
+    }
+
+    printIndent(base - T->stack - 1, '=');
+    printf(" ENTER: %s (%p)\n", info->name, info);
+    printStack(base, T->stack);
+
+    if (nargs > info->code.arity) {
       // Overapplication.  See [Memo 1] for details.
       u4 immediate_args = info->code.arity;
       u4 extra_args = nargs - immediate_args;
@@ -627,41 +689,108 @@ int engine(Thread* T)
     // opC = first argument reg
     // following bytes: argument regs, live regs
     DECODE_BC;
-    u4 nargs = opB;
-    Word arg0 = base[opC];
+    // Arguments from this call instruction
+    u4       callargs = opB;
+    // Total number of arguments, including PAP arguments.
+    u4       nargs = callargs;
     Closure *fnode = (Closure *)base[opA];
-    //Closure *node = (Closure *)base[-1];   // the current node
-    Word *top = T->top; //&base[node->info->code.framesize];
+    Word     arg0  = base[opC];
+    Word    *top   = T->top;
     u4 i;
 
-    LC_ASSERT(fnode != NULL && getInfo(fnode)->type == FUN);
-    FuncInfoTable *info = (FuncInfoTable*)getInfo(fnode);
+    LC_ASSERT(fnode != NULL);
+
+    FuncInfoTable *info;
+    PapClosure *pap = NULL;
+    switch (getInfo(fnode)->type) {
+    case PAP:
+      {
+        pap     = (PapClosure*)fnode;
+        fnode   = pap->fun;
+        LC_ASSERT(getInfo(fnode)->type == FUN);
+        info    = getFInfo(fnode);
+        nargs  += pap->nargs;
+      }
+      break;
+    case FUN:
+      info = getFInfo(fnode);
+      break;
+    default:
+      fprintf(stderr, "ERROR: CALL function argument not a PAP or FUN.\n");
+      exit(1);
+    }
+
+    if (nargs < info->code.arity) {
+      // Partial application
+      //
+      // Construct a PAP and return it.
+
+      // If there is an existing PAP we do not reuse it, but instead
+      // allocate a new PAP and copy over the old args and the args
+      // from this call.
+
+      PapClosure *new_pap = malloc(sizeof(PapClosure) + nargs * sizeof(Word));
+      setInfo(new_pap, (InfoTable*)&stg_PAP_info);
+      new_pap->arity = info->code.arity - nargs;
+      new_pap->nargs = nargs;
+      new_pap->fun   = fnode;
+
+      printIndent(base - T->stack, ' ');
+      printf("Creating PAP = %s, nargs = %d, arity = %d\n",
+             info->name, pap->nargs, new_pap->arity);
+
+      if (pap != NULL) {
+        // Copy first few args from old PAP
+        for (i = 0; i < pap->nargs; i++)
+          new_pap->payload[i] = pap->payload[i];
+
+        // Copy rest
+        u1 *args = (u1*)pc;
+        LC_ASSERT(LC_ARCH_ENDIAN == LAMBDACHINE_LE);
+        new_pap->payload[pap->nargs] = arg0;
+        for (i = pap->nargs + 1; i < nargs; i++, args++)
+          new_pap->payload[i] = base[*args];
+      }
+
+      // Return the PAP
+      last_result = (Word)new_pap;
+      T->top = base - 3;
+      pc     = (BCIns*)base[-2];
+      base   = (Word*)base[-3];
+      { FuncInfoTable *info = getFInfo((Closure*)base[-1]);
+	printIndent(base - T->stack, ' ');
+	printf("Returning PAP to: %p, %d, %s\n", info, info->i.type, info->name);
+	printIndent(base - T->stack, ' ');
+	printf("New PC: %p\n", pc);
+	code = &info->code;
+      }
+      DISPATCH_NEXT;
+    }
+
+    printIndent(base - T->stack - 1, '=');
+    printf(" ENTER: %s (%p)\n", info->name, info);
+    printStack(base, T->stack);
 
     // each additional argument requires 1 byte,
     // we pad to multiples of an instruction
     // the liveness mask follows (one instruction)
     BCIns *return_pc = pc + BC_ROUND(nargs - 1) + 1;
-    u4 framesize = info->code.framesize;
-    Word *saved_base;
+    u4     framesize = info->code.framesize;
+    Word  *saved_base;
 
-    if (nargs < info->code.arity) {
-
-      printf("TODO: Implement partial application. arity = %d, args = %d\n",
-	     info->code.arity, nargs);
-      return -1;
-
-    } else if (nargs > info->code.arity) {
+    if (nargs > info->code.arity) {
       // Overapplication.
+      //
+      // In this case we create an application stack frame below the
+      // function's frame.  I.e., when the function returns, the
+      // remaining arguments will be applied.
 
       u4 immediate_args = info->code.arity;
       u4 extra_args = nargs - immediate_args;
 
-      // We allocate two stack frames: one for applying the extra
-      // args, and one for the actual call (with arity arguments)
-      
       u4 ap_frame_size = STACK_FRAME_SIZEW + extra_args + 1;
       if (stackOverflow(T, top, STACK_FRAME_SIZEW + framesize + ap_frame_size)) {
-	printf("Stack overflow.  TODO: Automatically grow stack.\n");
+	fprintf(stderr, "ABORT: Stack overflow.  TODO: Automatically grow stack.\n");
 	return -1;
       }
 
@@ -674,9 +803,10 @@ int engine(Thread* T)
       saved_base = &top[3];
 
       Word *p = &top[3];
-      for (i = immediate_args; i < nargs; i++, p++) {
+      for (i = immediate_args; i < callargs; i++, p++) {
 	*p = base[i];
       }
+      // Move `top`, so the code below allocates on top of it.
       top += ap_frame_size;
       // Fall through to exact arity case
 
@@ -693,12 +823,20 @@ int engine(Thread* T)
     top[0] = (Word)saved_base;
     top[1] = (Word)return_pc;
     top[2] = (Word)fnode;
-    top[3] = arg0;
+
+    u4 arg0pos = 3; // index where arg0 should go
+    if (pap != NULL) {
+      for (i = 0; i < pap->nargs; i++) {
+        top[i + 3] = pap->payload[i];
+      }
+      arg0pos += pap->nargs;
+    }
 
     // copy arguments
+    top[arg0pos] = arg0;
     u1 *arg = (u1*)pc;
-    for (i = 1; i < nargs; i++, arg++) {
-      top[i + 3] = base[*arg];
+    for (i = 1; i < callargs; i++, arg++) {
+      top[arg0pos + i] = base[*arg];
     }
 
     base = top + STACK_FRAME_SIZEW;
@@ -776,6 +914,7 @@ stackOverflow(Thread* thread, Word* top, u4 increment)
 void
 printStack(Word *base, Word *bottom)
 {
+  printf(">>> Stack = ");
   while (base > bottom + 1) {
     FuncInfoTable *i = getFInfo((Closure*)base[-1]);
     printf("%s : ", i->name);

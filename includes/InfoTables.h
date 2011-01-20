@@ -87,16 +87,14 @@ typedef struct _FuncInfoTable {
   LcCode    code;
 } FuncInfoTable;
 
-typedef struct _ThunkInfoTable {
-  InfoTable i;
-  char     *name;
-  LcCode    code;
-} ThunkInfoTable;
+typedef FuncInfoTable ThunkInfoTable;
 
 typedef struct _ConInfoTable {
   InfoTable i;
   char     *name;
 } ConInfoTable;
+
+typedef ConInfoTable PapInfoTable;
 
 /* Used only during loading */
 typedef struct _FwdRefInfoTable {
@@ -120,6 +118,7 @@ typedef struct _FwdRefInfoTable {
   _(THUNK,          THU) \
   _(IND,            IND) \
   _(CAF,            THU) \
+  _(PAP,            HNF) \
   _(STATIC_IND,     IND) \
   _(UPDATE_FRAME,   ___) \
   _(BLACKHOLE,      ___)

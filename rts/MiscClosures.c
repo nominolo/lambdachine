@@ -112,6 +112,15 @@ ThunkInfoTable stg_BLACKHOLE_info = {
 
 Closure stg_BLACKHOLE_closure = DEF_CLOSURE(&stg_BLACKHOLE_info, {});
 
+
+// PAPs
+// ----
+
+PapInfoTable stg_PAP_info = {
+  .i = DEF_INFO_TABLE(PAP, 0, 0, 0),  // special layout
+  .name = "stg_PAP"
+};
+
 /*
 
 Int

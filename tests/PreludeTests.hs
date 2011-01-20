@@ -7,13 +7,22 @@ import GHC.Num
 t1 :: Int -> Int -> Bool
 t1 x y = x /= y
 
+test = test3
+
 test1 = let !b = t1 3 4 in
   if b then t1 (I# 5#) (I# 5#) else False
 
-test :: Int
-test = 3 - 11 + 6 * 8 - (-2)
+test2 :: Int
+test2 = 3 - 11 + 6 * 8 - (-2)
 
 rep :: Int# -> [Int]
 rep n = if n ==# 0# then [] else I# n : rep (n -# 1#)
 
 --test = rep 3#
+
+{-# NOINLINE app #-}
+app :: (a -> b) -> a -> b
+app f x = f x
+
+test3 :: Bool
+test3 = if (app eqInt 3) (4 :: Int) then False else True
