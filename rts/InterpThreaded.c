@@ -290,7 +290,7 @@ int engine(Thread* T)
   {
     u4 offset = (u2)opC;
     Closure *node = (Closure*)base[-1];
-    base[opA] = node->payload[offset];
+    base[opA] = node->payload[offset - 1];
     DISPATCH_NEXT;
   }
 
