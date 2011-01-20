@@ -346,8 +346,10 @@ int engine(Thread* T)
     pc += (num_cases + 1) >> 1;
     // assert cl->info.type == CONSTR
 
-    u2 tag = getTag(cl);
-    if (tag < num_cases) { // tags start at 0
+    u2 tag = getTag(cl) - 1;  // tags start at 1
+    //printf("CASE, tag = %d\n", tag);
+
+    if (tag < num_cases) {
       BCIns target = table[tag >> 1];
       u2 offs =
         tag & 1 ? bc_case_target(target) : bc_case_targetlo(target);
