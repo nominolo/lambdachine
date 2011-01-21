@@ -79,6 +79,7 @@ void printIndent(int i, char c);
 
 int engine(Thread* T)
 {
+  int maxsteps = 100000;
   static Inst disp1[] = {
 #define BCIMPL(name,_) &&op_##name,
     BCDEF(BCIMPL)
@@ -97,17 +98,24 @@ int engine(Thread* T)
   Word callt_temp[BCMAX_CALL_ARGS];
   LcCode *code = NULL;
 
+#if 0
 # define DBG_IND(stmt) \
-  do { printIndent(base - T->stack, ' '); stmt; } while (0)
+  do { printIndent(base - T->stack, '.'); stmt;} while (0)
 # define DBG_ENTER(info) \
   do { printIndent(base - T->stack - 1, '='); \
-    printf(" ENTER %s (%p)\n", (info)->name, (info)); } while (0)
+    printf(" ENTER %s (%p)\n", (info)->name, (info)); \
+    /* printFrame(base, T->top); */ } while (0)
 # define DBG_RETURN(info, pc) \
   DBG_IND(printf("Returning to: %s (%p), PC = %p\n", \
 		 (info)->name, (info), (pc)))
 # define DBG_STACK \
   do { printStack(base, T->stack); } while (0)
-
+#else
+# define DBG_IND(stmt)
+# define DBG_ENTER(info)
+# define DBG_RETURN(info, pc)
+# define DBG_STACK
+#endif
   /*
     At the beginning of an instruction the following holds:
     - pc points to the next instruction.
@@ -117,7 +125,9 @@ int engine(Thread* T)
   */
 # define DISPATCH_NEXT \
     opcode = bc_op(*pc); \
-    DBG_IND(printf("%p %s\n", pc, ins_name[opcode]));	\
+    /* DBG_IND(printf("    "); printFrame(base, T->top)); */   \
+    /* DBG_IND(printf("%p %s\n", pc, ins_name[opcode])); */	\
+    maxsteps--;  if (maxsteps == 0) return -3; \
     opA = bc_a(*pc); \
     opC = bc_d(*pc); \
     ++pc; \
@@ -136,6 +146,7 @@ int engine(Thread* T)
  stop:
   T->pc = pc;
   T->base = base;
+  printf(">>> Steps Left: %d\n", maxsteps);
   return 0;
 
  op_ADDRR:
@@ -356,10 +367,10 @@ int engine(Thread* T)
     u2 num_cases = opC;
     BCIns *table = pc;
     pc += (num_cases + 1) >> 1;
-    // assert cl->info.type == CONSTR
+    LC_ASSERT(getInfo(cl)->type == CONSTR);
 
     u2 tag = getTag(cl) - 1;  // tags start at 1
-    //printf("CASE, tag = %d\n", tag);
+    DBG_IND(printf("... tag = %d\n", tag + 1));
 
     if (tag < num_cases) {
       BCIns target = table[tag >> 1];
@@ -661,7 +672,7 @@ int engine(Thread* T)
       T->top = base + framesize;
       code = &info->code;
       pc = info->code.code;
-      printStack(base, T->stack);
+      DBG_STACK;
       DISPATCH_NEXT;
 
     } else { // Exact application
@@ -686,7 +697,7 @@ int engine(Thread* T)
       base[-1] = (Word)fnode;
       code = &info->code;
       pc = info->code.code;
-      printStack(base, T->stack);
+      DBG_STACK;
       DISPATCH_NEXT;
     }
   }
@@ -791,6 +802,10 @@ int engine(Thread* T)
 
       u4 immediate_args = info->code.arity;
       u4 extra_args = nargs - immediate_args;
+
+      DBG_IND(printf(" ... overapplication: %d + %d\n",
+		     immediate_args, extra_args));
+      DBG_ENTER(info);
 
       u4 ap_frame_size = STACK_FRAME_SIZEW + extra_args + 1;
       if (stackOverflow(T, top, STACK_FRAME_SIZEW + framesize + ap_frame_size)) {
@@ -957,7 +972,7 @@ printFrame(Word *base, Word *top)
 {
   printf("[%p]", base);
   while (base < top) {
-    printf(" %" FMT_WordX, *base);
+    printf(" %09" FMT_WordX, *base);
     ++base;
   }
   printf("\n");
