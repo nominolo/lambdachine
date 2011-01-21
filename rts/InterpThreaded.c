@@ -806,9 +806,12 @@ int engine(Thread* T)
       top[2] = (Word)ap_closure;
       saved_base = &top[3];
 
+      u1 *args = (u1*)pc;
+      args += immediate_args - 1;
       Word *p = &top[3];
-      for (i = immediate_args; i < callargs; i++, p++) {
-	*p = base[i];
+      for (i = immediate_args; i < callargs; i++, p++, args++) {
+        //DBG_IND(printf(" copying %d r%d %" FMT_WordX "\n", i, *args, base[*args]));
+        *p = base[*args];
       }
       // Move `top`, so the code below allocates on top of it.
       top += ap_frame_size;
