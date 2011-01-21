@@ -147,6 +147,9 @@ test3: tests/Bc0007.lcbc $(PRIM_MODULES)
 test4: tests/PreludeTests.lcbc $(PRIM_MODULES)
 	./interp PreludeTests
 
+test5: tests/Bc0008.lcbc $(PRIM_MODULES)
+	./interp Bc0008
+
 pr:
 	@echo $(PRIM_MODULES)
 

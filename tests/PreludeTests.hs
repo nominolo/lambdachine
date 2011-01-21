@@ -7,7 +7,7 @@ import GHC.Num
 t1 :: Int -> Int -> Bool
 t1 x y = x /= y
 
-test = test3
+test = test4
 
 test1 = let !b = t1 3 4 in
   if b then t1 (I# 5#) (I# 5#) else False
@@ -26,3 +26,13 @@ app f x = f x
 
 test3 :: Bool
 test3 = if (app eqInt 3) (4 :: Int) then False else True
+
+sum :: Int -> [Int] -> Int
+sum n [] = n
+sum !n (x:xs) = sum (n + x) xs
+
+test4 :: Int
+test4 = sum 0 (rep 4#)
+
+test5 :: Int
+test5 = sum 0 [1,2]
