@@ -968,15 +968,61 @@ printStack(Word *base, Word *bottom)
   printf("[]\n");
 }
 
+void printSlot(Word *slot);
+
 void
 printFrame(Word *base, Word *top)
 {
+  u4 i = 0;
   printf("[%p]", base);
   while (base < top) {
-    printf(" %09" FMT_WordX, *base);
-    ++base;
+    printf(" %d:", i);
+    printSlot(base);
+    ++base; ++i;
   }
   printf("\n");
+}
+
+void shortName(char *rslt, u4 maxlen, const char *str);
+
+void
+printSlot(Word *slot)
+{
+  if (looksLikeClosure((void*)*slot)) {
+    Closure *cl = (Closure*)(*slot);
+    ConInfoTable *info = (ConInfoTable*)getInfo(cl);
+    char name[10];
+    shortName(name, 10, info->name);
+    if (name[0] == 'I' && name[1] == '#') {
+      printf("[I# %" FMT_Word "]", cl->payload[0]);
+    } else {
+      printf("[%s]", name);
+    }
+  } else if (looksLikeInfoTable((void*)*slot)) {
+    ConInfoTable *info = (ConInfoTable*)*slot;
+    char name[10];
+    shortName(name, 10, info->name);
+    printf("<%s>", name);
+  } else {
+    printf("$%" FMT_WordX, *slot);
+  }
+}
+
+void
+shortName(char *rslt, u4 maxlen, const char *str)
+{
+  u4 i, n = 0, last_dot = 0;
+  const char *p = str;
+  while (*p != 0 && *p != '!') {
+    if (*p == '.') last_dot = n + 1;
+    p++; n++;
+  }
+  for (i = 0, p = str + last_dot;
+       (i < maxlen - 1) && i < n - last_dot;
+       i++, p++) {
+    rslt[i] = *p;
+  }
+  rslt[i] = '\0';
 }
 
 void printIndent(int i, char c)
