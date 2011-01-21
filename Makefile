@@ -150,6 +150,9 @@ test4: tests/PreludeTests.lcbc $(PRIM_MODULES)
 test5: tests/Bc0008.lcbc $(PRIM_MODULES)
 	./interp Bc0008
 
+test6: tests/Toys/Ackermann.lcbc $(PRIM_MODULES)
+	./interp Toys.Ackermann
+
 pr:
 	@echo $(PRIM_MODULES)
 
