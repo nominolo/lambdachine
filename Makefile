@@ -31,7 +31,7 @@ df = $(DEPDIR)/$(*D)/$(*F)
 SRCS = rts/Bytecode.c rts/Capability.c rts/ClosureFlags.c \
        rts/FileUtils.c rts/HashTable.c rts/InterpThreaded.c \
        rts/Loader.c rts/MiscClosures.c rts/PrintClosure.c \
-       rts/Thread.c rts/Main.c
+       rts/Thread.c rts/Main.c rts/StorageManager.c
 
 UTILSRCS = utils/genopcodes.c
 

@@ -12,6 +12,7 @@
 #include "Thread.h"
 #include "MiscClosures.h"
 #include "PrintClosure.h"
+#include "StorageManager.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -201,7 +202,7 @@ int engine(Thread* T)
     if (val >= -128 && val <= 127) {
       base[opA] = (Word)&smallInt(val);
     } else {
-      IntClosure *cl = allocate(cap0, 2);
+      IntClosure *cl = allocClosure(wordsof(IntClosure));
       base[opA] = (Word)cl;
       cl->info = &stg_Izh_con_info;
       cl->val = val;
@@ -269,7 +270,7 @@ int engine(Thread* T)
   // C = payload[0]
   {
     DECODE_BC;
-    Closure *cl = malloc(sizeof(ClosureHeader) + sizeof(Word));
+    Closure *cl = allocClosure(wordsof(ClosureHeader) + 1);
     setInfo(cl, (InfoTable*)base[opB]);
     cl->payload[0] = base[opC];
     base[opA] = (Word)cl;
@@ -286,7 +287,7 @@ int engine(Thread* T)
     u4 sz = opC;
     u4 i;
     u1 *arg = (u1 *)pc;
-    Closure *cl = malloc(sizeof(ClosureHeader) + sz * sizeof(Word));
+    Closure *cl = allocClosure(wordsof(ClosureHeader) + sz);
     setInfo(cl, (InfoTable*)base[opB]);
     for (i = 0; i < sz; i++)
       cl->payload[i] = base[*arg++];
@@ -607,7 +608,7 @@ int engine(Thread* T)
     //   - callt_temp contains the values of all arguments in order
 
     if (nargs < info->code.arity) { // Partial application
-      PapClosure *pap = malloc(sizeof(PapClosure) + sizeof(Word) * nargs);
+      PapClosure *pap = allocClosure(wordsof(PapClosure) + nargs);
       setInfo(pap, (InfoTable*)&stg_PAP_info);
       pap->arity = info->code.arity - nargs;
       pap->nargs = nargs;
@@ -749,7 +750,7 @@ int engine(Thread* T)
       // allocate a new PAP and copy over the old args and the args
       // from this call.
 
-      PapClosure *new_pap = malloc(sizeof(PapClosure) + nargs * sizeof(Word));
+      PapClosure *new_pap = allocClosure(wordsof(PapClosure) + nargs);
       setInfo(new_pap, (InfoTable*)&stg_PAP_info);
       new_pap->arity = info->code.arity - nargs;
       new_pap->nargs = nargs;
@@ -886,7 +887,7 @@ int engine(Thread* T)
     u4 nargs = opC;
     u4 i;
 
-    Closure *cl = malloc(sizeof(ClosureHeader) + (nargs + 1) * sizeof(Word));
+    Closure *cl = allocClosure(wordsof(ClosureHeader) + (nargs + 1));
     InfoTable *info = getAPInfoTable(nargs);
     setInfo(cl, info);
 

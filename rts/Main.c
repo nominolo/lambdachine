@@ -2,6 +2,7 @@
 #include "Thread.h"
 #include "HashTable.h"
 #include "PrintClosure.h"
+#include "StorageManager.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,6 +46,7 @@ main(int argc, char *argv[])
 
   initVM();
   initLoader();
+  initStorageManager();
 
   loadModule(opts.input_file);
 

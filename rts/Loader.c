@@ -3,6 +3,7 @@
 #include "InfoTables.h"
 #include "FileUtils.h"
 #include "PrintClosure.h"
+#include "StorageManager.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -149,9 +150,6 @@ loadStringTabEntry(FILE *f, StringTabEntry *e /*out*/)
   fread(e->str, 1, e->len, f);
   e->str[e->len] = '\0';
 }
-
-#define allocInfoTable(size)     (malloc(size))
-#define allocStaticClosure(size) (malloc(size))
 
 char *
 moduleNameToFile(const char *basepath, const char *name)
@@ -474,7 +472,7 @@ loadInfoTable(FILE *f, const StringTabEntry *strings,
   case CONSTR:
     // A statically allocated constructor
     {
-      ConInfoTable *info = allocInfoTable(sizeof(ConInfoTable));
+      ConInfoTable *info = allocInfoTable(wordsof(ConInfoTable));
       info->i.type = cl_type;
       info->i.tagOrBitmap = fget_varuint(f);  // tag
       info->i.layout.payload.ptrs = fget_varuint(f);
@@ -485,7 +483,7 @@ loadInfoTable(FILE *f, const StringTabEntry *strings,
     break;
   case FUN:
     {
-      FuncInfoTable *info = allocInfoTable(sizeof(FuncInfoTable));
+      FuncInfoTable *info = allocInfoTable(wordsof(FuncInfoTable));
       info->i.type = cl_type;
       info->i.tagOrBitmap = 0; // TODO: anything useful to put in here?
       info->i.layout.payload.ptrs = fget_varuint(f);
@@ -497,7 +495,7 @@ loadInfoTable(FILE *f, const StringTabEntry *strings,
     break;
   case THUNK:
     {
-      ThunkInfoTable *info = allocInfoTable(sizeof(ThunkInfoTable));
+      ThunkInfoTable *info = allocInfoTable(wordsof(ThunkInfoTable));
       info->i.type = cl_type;
       info->i.tagOrBitmap = 0; // TODO: anything useful to put in here?
       info->i.layout.payload.ptrs = fget_varuint(f);
@@ -610,8 +608,7 @@ loadClosure(FILE *f, const StringTabEntry *strings,
   u4 payloadsize = fget_varuint(f);
   char *itbl_name = loadId(f, strings, ".");
 
-  Closure *cl = allocStaticClosure(sizeof(ClosureHeader) +
-                                   payloadsize * sizeof(Word));
+  Closure *cl = allocStaticClosure(wordsof(ClosureHeader) + payloadsize);
   Closure *fwd_ref;
   InfoTable* info = HashTable_lookup(itbls, itbl_name);
   LC_ASSERT(info != NULL && info->type != INVALID_OBJECT);

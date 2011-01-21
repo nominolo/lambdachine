@@ -8,6 +8,7 @@
 #include "InfoTables.h"
 #include "MiscClosures.h"
 #include "PrintClosure.h"
+#include "StorageManager.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -217,7 +218,7 @@ getAPKClosure(Closure **res_clos, BCIns **res_pc, int nargs)
   if (apk_closures[nargs - 1] == NULL) { // TODO: annotate as unlikely
     // Create closure
 
-    FuncInfoTable *info = malloc(sizeof(FuncInfoTable));
+    FuncInfoTable *info = allocInfoTable(wordsof(FuncInfoTable));
     info->i.type = FUN;
     info->i.tagOrBitmap = 0;
     info->i.layout.payload.ptrs = nargs;  // TODO: see comments above
@@ -246,7 +247,7 @@ getAPKClosure(Closure **res_clos, BCIns **res_pc, int nargs)
       *args = i;
     }
 
-    Closure *cl = malloc(sizeof(ClosureHeader));  // no payload
+    Closure *cl = allocStaticClosure(wordsof(ClosureHeader));  // no payload
     setInfo(cl, (InfoTable*)info);
 
     //printf("\033[34mCreated closure: %s (%p)\n", info->name, cl);
@@ -289,7 +290,7 @@ getAPInfoTable(int nargs)
   LC_ASSERT(LC_ARCH_ENDIAN == LAMBDACHINE_LE);
   for (i = 1; i < nargs; i++, p++) { *p = i; }
 
-  ThunkInfoTable *info = malloc(sizeof(ThunkInfoTable));
+  ThunkInfoTable *info = allocInfoTable(wordsof(ThunkInfoTable));
   info->i.type = THUNK;
   info->i.tagOrBitmap = (1 << (nargs + 1)) - 1;
   info->i.layout.payload.ptrs = nargs + 1;
