@@ -443,15 +443,20 @@ int engine(Thread* T)
     // opA = thing to evaluate
     Closure *tnode = (Closure *)base[opA];
 
-    //DBG_IND(printf("evaluating: %p\n", tnode));
-
     LC_ASSERT(tnode != NULL);
     LC_ASSERT(getInfo(tnode) != NULL);
 
+    DBG_IND(printf("evaluating: %p\n", tnode));
+    DBG_IND(printf("itbl %p\n", getFInfo(tnode)->name));
+
+    while (closure_IND(tnode)) {
+      DBG_IND(printf("... following indirection\n"));
+      tnode = (Closure*)tnode->payload[0];
+    }
 
     if (closure_HNF(tnode)) {
       DBG_IND(printf("         (in HNF)\n"));
-      last_result = base[opA];
+      last_result = (Word)tnode;
       pc += 1; // skip live-out info
       DISPATCH_NEXT;
     } else {
