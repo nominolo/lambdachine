@@ -91,7 +91,10 @@ static BCIns ind_code_insts[] =
     BCINS_AD(BC_RET1, 0, 0)    // return r0
   };
 
-InfoTable stg_IND_info = DEF_INFO_TABLE(IND, 0, 1, 0);
+ConInfoTable stg_IND_info = {
+  .i = DEF_INFO_TABLE(IND, 0, 1, 0),
+  .name = "stg_IND"
+};
 
 /*
 

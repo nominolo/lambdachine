@@ -9,7 +9,7 @@ typedef struct _IntClosure {
   Word val;
 } IntClosure;
 
-extern LcInfoTable stg_IND_info;
+extern ConInfoTable stg_IND_info;
 extern Closure stg_STOP_closure;
 extern Closure stg_UPD_closure;
 extern BCIns* stg_UPD_return_pc;

@@ -497,7 +497,8 @@ int engine(Thread* T)
   {
     Closure *oldnode = (Closure *)base[opA];
     Closure *newnode = (Closure *)base[opC];
-    setInfo(oldnode, &stg_IND_info);
+    DBG_IND(printf("... updating: %p with %p\n", oldnode, newnode));
+    setInfo(oldnode, (InfoTable*)&stg_IND_info);
     // TODO: Enforce invariant: *newcode is never an indirection.
     oldnode->payload[0] = (Word)newnode;
     last_result = (Word)newnode;
