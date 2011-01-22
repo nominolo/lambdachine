@@ -882,18 +882,20 @@ int engine(Thread* T)
   {
     DECODE_BC;
     // A = result register
-    // C = number of arguments (including function), always > 1
+    // C = number of arguments (*excluding* function), always >= 1
     // B = first argument (function closure)
     u4 nargs = opC;
     u4 i;
 
-    Closure *cl = allocClosure(wordsof(ClosureHeader) + (nargs + 1));
+    LC_ASSERT(nargs >= 1);
+
+    Closure *cl = allocClosure(wordsof(ClosureHeader) + nargs + 1);
     InfoTable *info = getAPInfoTable(nargs);
     setInfo(cl, info);
 
     cl->payload[0] = base[opB];
     u1 *args = (u1 *)pc;
-    pc += BC_ROUND(nargs - 1);
+    pc += BC_ROUND(nargs);
     for (i = 0; i < nargs; i++, args++)
       cl->payload[i + 1] = base[*args];
 

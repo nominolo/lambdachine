@@ -118,7 +118,8 @@ printInstruction_aux(const BCIns *ins /*in*/, int oneline)
       break;
     case BC_ALLOCAP:
       {
-        u1 *arg = (u1*)ins; ins += (bc_c(i) + 2) / 4;
+        u1 *arg = (u1*)ins; ins += BC_ROUND(bc_c(i));
+        printf("sz = %ld ", ins - ins0);
         printf("ALLOCAP\tr%d, r%d", bc_a(i), bc_b(i));
         for (j = 0; j < bc_c(i); j++, arg++)
           printf(", r%d", *arg);
