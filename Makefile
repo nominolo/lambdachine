@@ -153,6 +153,9 @@ test5: tests/Bc0008.lcbc $(PRIM_MODULES)
 test6: tests/Toys/Ackermann.lcbc $(PRIM_MODULES)
 	./interp Toys.Ackermann
 
+bench1: tests/Bench/Append.lcbc $(PRIM_MODULES)
+	./interp Bench.Append
+
 pr:
 	@echo $(PRIM_MODULES)
 

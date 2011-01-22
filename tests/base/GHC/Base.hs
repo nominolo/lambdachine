@@ -12,6 +12,8 @@ import GHC.Types
 import GHC.Bool
 import GHC.Classes
 
+infixr 5  ++
+
 -- | Identity function.
 id                      :: a -> a
 id x                    =  x
@@ -57,3 +59,8 @@ quotInt, remInt, divInt, modInt :: Int -> Int -> Int
 (I# x) `divInt`   (I# y) = I# (x `divInt#`  y)
 (I# x) `modInt`   (I# y) = I# (x `modInt#`  y)
 -}
+
+(++) :: [a] -> [a] -> [a]
+(++) []     ys = ys
+(++) (x:xs) ys = x : xs ++ ys
+
