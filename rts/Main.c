@@ -6,6 +6,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <getopt.h>
 
 typedef struct {
   const char  *input_file;
@@ -15,27 +16,87 @@ typedef struct {
 
 #define MAX_CLOSURE_NAME_LEN 512
 
+static Opts opts = {
+  .input_file = "Bc0005",
+  .main_closure = "test",
+  .print_loader_state = 0
+};
+
 int
 main(int argc, char *argv[])
 {
   Thread   *T0;
   Closure  *clos0;
-  Opts      opts = {
-    .input_file = "Bc0005",
-    .main_closure = NULL,
-    .print_loader_state = 1
-  };
   char main_clos_name[MAX_CLOSURE_NAME_LEN];
 
   // TODO: Parse flags
 
-  if (argc >= 2)
-    opts.input_file = argv[1];
-  if (argc >= 3) {
-    opts.main_closure = argv[2];
-  } else {
+  static struct option long_options[] = {
+    {"print-loader-state", no_argument, &opts.print_loader_state, 1},
+    {"no-run",             no_argument, 0, 'l'},
+    {"entry",              required_argument, 0, 'e'},
+    {"help",               no_argument, 0, 'h'},
+    {0, 0, 0, 0}
+  };
+
+  int c;
+
+  while (1) {
+    int option_index = 0;
+    c = getopt_long(argc, argv, "he:", long_options, &option_index);
+
+    if (c == -1)
+      break;
+
+    switch (c) {
+    case 0:
+      /* If this option set a flag, do nothing else now. */
+      if (long_options[option_index].flag != 0)
+        break;
+      break;
+    case 'e':
+      printf("entry = %s\n", optarg);
+      opts.main_closure = optarg;
+      break;
+    case 'l':
+      opts.main_closure = NULL;
+      break;
+    case 'h':
+      printf("Usage: %s [options] MODULE_NAME\n\n"
+             "Options:\n"
+             "  -h --help       Print this help.\n"
+             "  -e --entry      Set entry point (default: test)\n"
+             "     --no-run     Load module only.\n"
+             "     --print-loader-state\n"
+             "                  Print static closures and info tables after loading.\n"
+             "\n",
+             argv[0]);
+      exit(0);
+    default:
+      printf("c = %d\n", c);
+      abort();
+    }
+  }
+
+  int nmodules = argc - optind;
+
+  if (nmodules == 1) {
+    opts.input_file = argv[optind];
+  } else if (nmodules == 0) {
+    fprintf(stderr, "No module specified.\n");
+    exit(1);
+  } else { // modules > 1
+    fprintf(stderr, "Too many modules specified (%d).\n",
+            nmodules);
+    while (optind < argc)
+      printf("%s\n", argv[optind++]);
+    exit(1);
+  }
+
+  if (opts.main_closure != NULL) {
     int n = snprintf(main_clos_name, MAX_CLOSURE_NAME_LEN,
-		     "%s.test!closure", opts.input_file);
+                     "%s.%s!closure", opts.input_file,
+                     opts.main_closure);
     if (n <= MAX_CLOSURE_NAME_LEN) {
       opts.main_closure = main_clos_name;
     } else {
@@ -47,7 +108,6 @@ main(int argc, char *argv[])
   initVM();
   initLoader();
   initStorageManager();
-
   loadModule(opts.input_file);
 
   if (opts.print_loader_state) {
@@ -70,6 +130,6 @@ main(int argc, char *argv[])
   T0 = createThread(cap0, 1024);
   clos0 = startThread(T0, clos0);
   printClosure(clos0);
-  
+
   return 0;
 }

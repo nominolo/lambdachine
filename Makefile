@@ -136,7 +136,7 @@ PRIM_MODULES = \
 
 
 test1: tests/Bc0005.lcbc $(PRIM_MODULES)
-	./interp Bc0005 'Bc0005.test!closure'
+	./interp --print-loader-state Bc0005
 
 test2: tests/Bc0006.lcbc $(PRIM_MODULES)
 	./interp Bc0006
