@@ -456,6 +456,7 @@ int engine(Thread* T)
     Closure *tnode = (Closure *)base[opA];
 
     LC_ASSERT(tnode != NULL);
+    LC_ASSERT(!looksLikeInfoTable((void*)tnode));
     LC_ASSERT(getInfo(tnode) != NULL);
 
     DBG_IND(printf("evaluating: %p\n", tnode));
