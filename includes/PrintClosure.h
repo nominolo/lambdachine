@@ -9,7 +9,8 @@ void printInfoTable(InfoTable* info0);
 // Print a bytecode instruction.
 //
 // Returns: length of printed instrution (in multiples of BCIns).
-u4 printInstruction(BCIns *ins);
+u4 printInstruction(const BCIns *ins);
+u4 printInstructionOneLine(const BCIns *ins);
 void printCode(LcCode *code);
 
 #endif

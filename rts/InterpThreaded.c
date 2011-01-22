@@ -126,8 +126,8 @@ int engine(Thread* T)
   */
 # define DISPATCH_NEXT \
     opcode = bc_op(*pc); \
-    /* DBG_IND(printf("    "); printFrame(base, T->top)); */   \
-    /* DBG_IND(printf("%p %s\n", pc, ins_name[opcode])); */	\
+    DBG_IND(printf("    "); printFrame(base, T->top));   \
+    DBG_IND(printInstructionOneLine(pc)); \
     maxsteps--;  if (maxsteps == 0) return -3; \
     opA = bc_a(*pc); \
     opC = bc_d(*pc); \

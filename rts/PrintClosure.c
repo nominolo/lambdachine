@@ -41,12 +41,24 @@ printClosure(Closure* cl)
   
 }
 
+u4 printInstruction_aux(const BCIns *ins /*in*/, int oneline);
+
 u4
-printInstruction(BCIns *ins /*in*/)
+printInstruction(const BCIns *ins) {
+  return printInstruction_aux(ins, 0);
+}
+
+u4
+printInstructionOneLine(const BCIns *ins) {
+  return printInstruction_aux(ins, 1);
+}
+
+u4
+printInstruction_aux(const BCIns *ins /*in*/, int oneline)
 {
-  BCIns *ins0 = ins;
+  const BCIns *ins0 = ins;
   u4 j;
-  BCIns i = *ins;
+  const BCIns i = *ins;
   const char *name = ins_name[bc_op(i)];
 
   printf("%p: ", ins);
@@ -84,8 +96,10 @@ printInstruction(BCIns *ins /*in*/)
       { u2 *tgt = (u2*)ins;  u4 ncases = bc_d(i);
         ins += (ncases + 1) / 2;
         printf("CASE\tr%d\n", bc_a(i));
-        for (j = 0; j < ncases; j++, tgt++) {
-          printf("         %d: %p\n", j + 1, ins + bc_j_from_d(*tgt));
+        if (!oneline) {
+          for (j = 0; j < ncases; j++, tgt++) {
+            printf("         %d: %p\n", j + 1, ins + bc_j_from_d(*tgt));
+          }
         }
       }
       break;
