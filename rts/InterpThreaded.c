@@ -954,9 +954,12 @@ int main(int argc, char* argv[])
 }
 */
 int
-stackOverflow(Thread* thread, Word* top, u4 increment)
+stackOverflow(Thread* T, Word* top, u4 increment)
 {
-  return 0;
+  if (T->stack + T->stack_size >= top + increment)
+    return 0;
+  else
+    return 1;
 }
 
 void
