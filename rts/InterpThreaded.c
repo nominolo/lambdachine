@@ -493,6 +493,20 @@ int engine(Thread* T)
       Word *top = T->top; //base + node->info->code.framesize;
       ThunkInfoTable *info = (ThunkInfoTable*)getInfo(tnode);
 
+      // NOTE: At this poin we would normally overwrite the info table
+      // of the thunk with a BLACKHOLE (or more precisely we overwrite
+      // the info table).  However, we cannot do this due to the
+      // literal table.  Consider this sequence of events:
+      //
+      //  1. We enter a thunk and overwrite it with a BLACKHOLE
+      //  2. The evaluation code calls some function.
+      //  3. The function returns and reloads the literal table
+      //     from the saved Node pointer which now points to the
+      //     BLACKHOLE info table which does not have any literals.
+      //  4. The evaluation code tries to load a literal.
+      //
+      // We now get an invalid memory access.
+
       u4 framesize = info->code.framesize;
       DBG_ENTER(info);
       DBG_STACK;
