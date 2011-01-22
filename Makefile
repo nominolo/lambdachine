@@ -156,6 +156,9 @@ test6: tests/Toys/Ackermann.lcbc $(PRIM_MODULES)
 bench1: tests/Bench/Append.lcbc $(PRIM_MODULES)
 	./interp Bench.Append
 
+bench2: tests/Bench/SumFromTo1.lcbc $(PRIM_MODULES)
+	./interp Bench.SumFromTo1
+
 pr:
 	@echo $(PRIM_MODULES)
 
