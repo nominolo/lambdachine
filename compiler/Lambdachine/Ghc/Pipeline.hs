@@ -1,5 +1,6 @@
 module Lambdachine.Ghc.Pipeline where
 
+import DynFlags
 import HscTypes
 import MonadUtils ( MonadIO(..) )
 import CoreSyn
@@ -21,11 +22,13 @@ compileToCore file = do
   mod_graph <- depanal [] True
   case find ((== file) . msHsFilePath) mod_graph of
     Just mod_summary -> 
-      withTempSession (\env -> env{ hsc_dflags = ms_hspp_opts mod_summary }) $
+      withTempSession (\env ->
+                         env{ hsc_dflags = updOptLevel 1 $ ms_hspp_opts mod_summary }) $
         hscParse mod_summary >>=
           hscTypecheck mod_summary >>=
             hscDesugar mod_summary >>=
-              prepareCore mod_summary
+              hscSimplify >>=
+                prepareCore mod_summary
     Nothing -> 
       error $ "compileToCore: File not found in module graph: " ++ file
     
