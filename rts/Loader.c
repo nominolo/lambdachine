@@ -462,11 +462,7 @@ loadInfoTable(FILE *f, const StringTabEntry *strings,
   InfoTable *new_itbl = NULL;
   FwdRefInfoTable *old_itbl = HashTable_lookup(itbls, itbl_name);
 
-  //printf("Loading info table: %s\n", itbl_name);
-  if (old_itbl != NULL) {
-    printf("Old itbl: ");
-    printInfoTable((InfoTable*)old_itbl);
-  }
+  LC_ASSERT(old_itbl == NULL || old_itbl->i.type == INVALID_OBJECT);
 
   switch (cl_type) {
   case CONSTR:
@@ -512,7 +508,7 @@ loadInfoTable(FILE *f, const StringTabEntry *strings,
   // new_itbl is the new info table.  There may have been forward
   // references (even during loading the code for this info table).
   if (old_itbl != NULL) {
-    printf("Forward reference for: %s\n", itbl_name);
+    //printf("Forward reference for: %s\n", itbl_name);
     void **p, *next;
     LC_ASSERT(old_itbl->i.type == INVALID_OBJECT);
 
