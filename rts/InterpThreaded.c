@@ -57,6 +57,12 @@ int engine(Thread *T);
 void printStack(Word *base, Word *bottom);
 void printFrame(Word *base, Word *top);
 
+enum {
+  INTERP_OK = 0,
+  INTERP_OUT_OF_STEPS = 1,
+  INTERP_STACK_OVERFLOW = 2,
+  INTERP_UNIMPLEMENTED = 3
+} InterpExitCode;
 
 Closure *
 startThread(Thread *T, Closure *cl)
@@ -64,8 +70,19 @@ startThread(Thread *T, Closure *cl)
   int ans;
   T->base[0] = (Word)cl;
   ans = engine(T);
-  if (ans != 0) {
-    fprintf(stderr, "ABORT: Interpreter exitited abnormally (%d)\n", ans);
+  if (ans != INTERP_OK) {
+    fprintf(stderr, "*** ABORT: Interpreter exitited abnormally.\n"
+            "***   Reason: ");
+    switch (ans) {
+    case INTERP_OUT_OF_STEPS:
+      fprintf(stderr, "Out of steps\n"); break;
+    case INTERP_STACK_OVERFLOW:
+      fprintf(stderr, "Stack overflow\n"); break;
+    case INTERP_UNIMPLEMENTED:
+      fprintf(stderr, "Unimplemented bytecode.\n"); break;
+    default:
+      fprintf(stderr, "Unknown reason (%d)\n", ans);
+    }
     exit(1);
   }
   return (Closure*)T->stack[1];
@@ -80,7 +97,7 @@ void printIndent(int i, char c);
 
 int engine(Thread* T)
 {
-  int maxsteps = 100000;
+  int maxsteps = 100000000;
   static Inst disp1[] = {
 #define BCIMPL(name,_) &&op_##name,
     BCDEF(BCIMPL)
@@ -128,7 +145,7 @@ int engine(Thread* T)
     opcode = bc_op(*pc); \
     DBG_IND(printf("    "); printFrame(base, T->top));   \
     DBG_IND(printInstructionOneLine(pc)); \
-    maxsteps--;  if (maxsteps == 0) return -3; \
+    maxsteps--;  if (maxsteps == 0) return INTERP_OUT_OF_STEPS; \
     opA = bc_a(*pc); \
     opC = bc_d(*pc); \
     ++pc; \
@@ -148,7 +165,7 @@ int engine(Thread* T)
   T->pc = pc;
   T->base = base;
   printf(">>> Steps Left: %d\n", maxsteps);
-  return 0;
+  return INTERP_OK;
 
  op_ADDRR:
   DECODE_BC;
@@ -482,8 +499,7 @@ int engine(Thread* T)
 
       if (stackOverflow(T, T->top, STACK_FRAME_SIZEW + UPDATE_FRAME_SIZEW +
                         framesize)) {
-        printf("Stack overflow.  TODO: Automatically grow stack.\n");
-        return -1;
+        return INTERP_STACK_OVERFLOW;
       }
 
       BCIns *return_pc = pc + 1; // skip live-out info
@@ -558,11 +574,7 @@ int engine(Thread* T)
     u4 i;
 
     LC_ASSERT(fnode != NULL);
-
-    if (nargs > BCMAX_CALL_ARGS) {
-      printf("Too many arguments to CALLT.  (Bug in code gen?)\n");
-      return -1;
-    }
+    LC_ASSERT(nargs <= BCMAX_CALL_ARGS);
 
     u4 arg_offs = 0;
     FuncInfoTable *info;
@@ -641,7 +653,6 @@ int engine(Thread* T)
 
       DBG_IND(printf(" ... overapplication: %d + %d\n",
 		     immediate_args, extra_args));
-      DBG_ENTER(info);
 
       // Change current frame
       Word *top = base + extra_args + 1;
@@ -649,6 +660,7 @@ int engine(Thread* T)
 	base[i] = callt_temp[immediate_args + i];
       }
 
+      DBG_ENTER(info);
       //printFrame(base, top);
       BCIns *ap_return_pc;
       Closure *ap_closure;
@@ -658,8 +670,7 @@ int engine(Thread* T)
 
       u4 framesize = info->code.framesize;
       if (stackOverflow(T, top, STACK_FRAME_SIZEW + framesize)) {
-	printf("Stack overflow.  TODO: Automatically grow stack.\n");
-	return -1;
+	return INTERP_STACK_OVERFLOW;
       }
 
       // Build stack frame for fnode
@@ -685,8 +696,7 @@ int engine(Thread* T)
 
       if (newframesize > curframesize) {
         if (stackOverflow(T, base, newframesize)) {
-          printf("Stack overflow.  TODO: Automatically grow stack.\n");
-          return -1;
+          return INTERP_STACK_OVERFLOW;
         } else {
           T->top = base + newframesize;
         }
@@ -811,8 +821,7 @@ int engine(Thread* T)
 
       u4 ap_frame_size = STACK_FRAME_SIZEW + extra_args + 1;
       if (stackOverflow(T, top, STACK_FRAME_SIZEW + framesize + ap_frame_size)) {
-	fprintf(stderr, "ABORT: Stack overflow.  TODO: Automatically grow stack.\n");
-	return -1;
+	return INTERP_STACK_OVERFLOW;
       }
 
       top[0] = (Word)base;
@@ -838,8 +847,7 @@ int engine(Thread* T)
 
       // Exact application.
       if (stackOverflow(T, top, STACK_FRAME_SIZEW + framesize)) {
-	printf("Stack overflow.  TODO: Automatically grow stack.\n");
-	return -1;
+	return INTERP_STACK_OVERFLOW;
       }
       saved_base = base;
     }
@@ -905,8 +913,7 @@ int engine(Thread* T)
   }
 
  op_INITF:
-  fprintf(stderr, "Unimplemented bytecode\n.");
-  return -1;
+  return INTERP_UNIMPLEMENTED;
 }
 
 static BCIns test_code[] = {
