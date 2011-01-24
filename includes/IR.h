@@ -1,5 +1,5 @@
-#ifndef LC_IR_H
-#define LC_IR_H
+#ifndef _LAMBDACHINE_IR_H
+#define _LAMBDACHINE_IR_H
 
 #include "Common.h"
 
@@ -47,6 +47,60 @@ typedef union IRIns {
   Word lit;
 } IRIns;
 
+// A side effect of this design is that we have to use two IR instructions
+// per store, because a store takes three arguments (base pointer,
+// offset, and value).  A store is therefore encoded as:
+//
+//     ref  FREF   base offs   ; reference to a field
+//     void FSTORE ref value
+//
+// Flags:
+//   N .. normal
+//   C .. commutative
+//   G .. guard
+//   A .. alloc
+//
+// Operand Types:
+//   ref .. IR reference
+//   lit .. 16 bit unsigned literal
+//   cst .. 32/64bit constant (pointer, int)
+//   none .. unised operand
+//
+#define IRDEF(_) \
+  _(NOP,     N,   ___, ___) \
+  _(BASE,    N,   lit, lit) \
+  _(LOOP,    N,   ___, ___) \
+  _(PHI,     S,   ref, ref) \
+  _(RENAME,  S,   ref, lit) \
+  \
+  _(KINT,    N,   cst, ___) \
+  \
+  _(EQ,      G,   ref, ref) \
+  _(NE,      G,   ref, ref) \
+  _(LT,      G,   ref, ref) \
+  _(GE,      G,   ref, ref) \
+  _(LE,      G,   ref, ref) \
+  _(GT,      G,   ref, ref) \
+  \
+  _(BNOT,    N,   ref, ___) \
+  _(BAND,    C,   ref, ref) \
+  _(BOR,     C,   ref, ref) \
+  _(BXOR,    C,   ref, ref) \
+  _(BSHL,    N,   ref, ref) \
+  _(BSHR,    N,   ref, ref) \
+  _(BSAR,    N,   ref, ref) \
+  _(BROL,    N,   ref, ref) \
+  _(BROR,    N,   ref, ref) \
+  \
+  _(ADD,     C,   ref, ref) \
+  _(SUB,     N,   ref, ref) \
+  _(MUL,     C,   ref, ref) \
+  _(DIV,     N,   ref, ref) \
+  \
+  _(FREF,    R,   ref, ref) \
+  _(FLOAD,   L,   ref, ___) \
+  _(SLOAD,   L,   lit, lit) \
+  _(NEW,     A,   ref, lit)
 
 
-#endif /* LC_IR_H */
+#endif /* _LAMBDACHINE_IR_H */

@@ -146,6 +146,25 @@ from separately compiled modules.
 
 #define MSB_u4(hh,hl,lh,ll) \
   ((hh) << 24 | (hl) << 16 | (lh) << 8 | (ll))
+
+#if defined(__GNUC__)
+
+#if (__GNUC__ < 3) || ((__GNUC__ == 3) && __GNUC_MINOR__ < 4)
+#error "sorry, need GCC 3.4 or newer"
+#endif
+
+#if defined(__i386__)
+#define LC_FASTCALL	__attribute__((fastcall))
+#endif
+
+#define LC_LIKELY(x)	__builtin_expect(!!(x), 1)
+#define LC_UNLIKELY(x)	__builtin_expect(!!(x), 0)
+
+#else
+
+#error "Unknown compiler.  Don't know how to define LC_FASTCALL et al."
+
+#endif
   
 
 #endif
