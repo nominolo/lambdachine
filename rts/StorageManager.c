@@ -2,6 +2,7 @@
 #include "MiscClosures.h"
 
 #include <stdlib.h>
+#include <stdio.h>
 
 typedef struct _MemRegion {
   Word *start;
@@ -67,12 +68,21 @@ int isClosure(void *p)
     && looksLikeInfoTable((void*)getInfo((Closure*)p));
 }
 
+void *xmalloc(size_t bytes) {
+  void *p = malloc(bytes);
+  if (p == NULL) {
+    fprintf(stderr, "FATAL: Out of memory.\n");
+    exit(2);
+  }
+  return p;
+}
+
 MemRegion *
 allocRegion(u4 nwords)
 {
-  MemRegion *r = malloc(sizeof(MemRegion));
+  MemRegion *r = xmalloc(sizeof(MemRegion));
 
-  r->start = malloc(nwords * sizeof(Word));
+  r->start = xmalloc(nwords * sizeof(Word));
   r->next = r->start;
   r->top = r->start + nwords;
   r->nwords = nwords;
