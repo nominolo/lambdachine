@@ -159,6 +159,9 @@ bench1: tests/Bench/Append.lcbc $(PRIM_MODULES)
 bench2: tests/Bench/SumFromTo1.lcbc $(PRIM_MODULES)
 	./interp Bench.SumFromTo1
 
+bench3: tests/Bench/Tak.lcbc $(PRIM_MODULES)
+	./interp Bench.Tak
+
 pr:
 	@echo $(PRIM_MODULES)
 
