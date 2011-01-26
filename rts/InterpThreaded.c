@@ -56,6 +56,7 @@ as follows:
 int engine(Thread *T);
 void printStack(Word *base, Word *bottom);
 void printFrame(Word *base, Word *top);
+void printSlot(Word *slot);
 
 enum {
   INTERP_OK = 0,
@@ -104,8 +105,29 @@ int engine(Thread* T)
 #undef BCIMPL
     &&stop
   };
-  Inst *disp = disp1;
 
+  Inst *disp2;
+  int last_was_branch = -1;
+  u4 *last_pc = NULL;
+  { int i;
+    disp2 = malloc(sizeof(disp1));
+    for (i = 0; i < countof(disp1); i++) {
+      disp2[i] = &&tr_other;
+    }
+    disp2[BC_CASE] = &&tr_branch;
+    disp2[BC_EVAL] = &&tr_branch;
+    disp2[BC_CALL] = &&tr_branch;
+    disp2[BC_CALLT] = &&tr_branch;
+    disp2[BC_ISGT] = &&tr_branch;
+    disp2[BC_ISLT] = &&tr_branch;
+    disp2[BC_ISGE] = &&tr_branch;
+    disp2[BC_ISLE] = &&tr_branch;
+    disp2[BC_ISEQ] = &&tr_branch;
+    disp2[BC_ISNE] = &&tr_branch;
+    disp2[BC_RET1] = &&tr_branch;
+  }
+
+  Inst *disp = disp2;
 
   Word *base = T->base;
   // The program counter always points to the *next* instruction to be
@@ -160,6 +182,44 @@ int engine(Thread* T)
 
   // Dispatch first instruction
   DISPATCH_NEXT;
+
+# define TRACE1                           \
+  if (last_was_branch != -1) { \
+    printf("TR: %10p %5s %3ld ", pc - 1, \
+           ins_name[last_was_branch], \
+           T->top - T->stack);       \
+    if ((last_pc + instructionSize(last_pc)) == pc - 1) {       \
+      printf("- "); } else { printf("j "); } \
+    printSlot(&base[-1]); \
+    printf("\n"); \
+    last_was_branch = -1; \
+  }
+
+# define TRACE_SHAPES(finfo, ptr, num)     \
+  do { int j, n = (num); Word* p = (ptr); \
+    printf("TR: CALL "); printSlot((Word*)&(finfo)); putchar(' ');     \
+       for (j = 0; j < n; j++) { printSlot(p++); putchar(' '); } \
+       printf("\n"); \
+  } while (0)
+
+ tr_other:
+  {
+    TRACE1;
+    goto *disp1[opcode];
+  }
+
+ tr_branch:
+  {
+    TRACE1;
+    last_was_branch = opcode;
+    last_pc = pc - 1;
+    goto *disp1[opcode];
+  }
+
+ tr_eval:
+  {
+
+  }
 
  stop:
   T->pc = pc;
@@ -696,6 +756,7 @@ int engine(Thread* T)
       for (i = 0; i < immediate_args; i++) {
 	base[i] = callt_temp[i];
       }
+      TRACE_SHAPES(info, base, immediate_args);
       T->top = base + framesize;
       code = &info->code;
       pc = info->code.code;
@@ -719,6 +780,7 @@ int engine(Thread* T)
       for (i = 0; i < nargs; i++) {
 	base[i] = callt_temp[i];
       }
+      TRACE_SHAPES(info, base, nargs);
 
       base[-1] = (Word)fnode;
       code = &info->code;
@@ -995,7 +1057,6 @@ printStack(Word *base, Word *bottom)
   printf("[]\n");
 }
 
-void printSlot(Word *slot);
 
 void
 printFrame(Word *base, Word *top)
