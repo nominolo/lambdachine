@@ -33,14 +33,16 @@ void initBasepath();
 
 void loadStringTabEntry(FILE *, StringTabEntry */*out*/);
 char *loadId(FILE *, const StringTabEntry *, const char* sep);
-void loadCode(FILE *, LcCode */*out*/, const StringTabEntry *,
+void loadCode(const char *filename, FILE *, LcCode */*out*/, const StringTabEntry *,
                HashTable *itbls, HashTable *closures);
-void loadLiteral(FILE *, u1 *littype /*out*/, Word *literal /*out*/,
+void loadLiteral(const char *filename,
+                 FILE *, u1 *littype /*out*/, Word *literal /*out*/,
                   const StringTabEntry *,
                   HashTable *itbls, HashTable *closures);
-InfoTable *loadInfoTable(FILE *, const StringTabEntry*,
+InfoTable *loadInfoTable(const char *filename,
+                         FILE *, const StringTabEntry*,
                           HashTable *itbls, HashTable *closures);
-Closure *loadClosure(FILE *, const StringTabEntry *,
+Closure *loadClosure(const char *filename, FILE *, const StringTabEntry *,
                      HashTable *itbls, HashTable *closures);
 
 //--------------------------------------------------------------------
@@ -189,7 +191,7 @@ moduleNameToFile(const char *basepath, const char *name)
 
 void loadModule_aux(const char *moduleName, u4 level);
 Module *loadModuleHeader(FILE *f, const char *filename);
-void loadModuleBody(FILE *f, Module *mdl);
+void loadModuleBody(const char *filename, FILE *f, Module *mdl);
 void ensureNoForwardRefs();
 
 // Load the given module and all its dependencies.
@@ -276,7 +278,7 @@ loadModule_aux(const char *moduleName, u4 level)
   for (i = 0; i < mdl->numImports; i++)
     loadModule_aux(mdl->imports[i], level + 1);
 
-  loadModuleBody(f, mdl);
+  loadModuleBody(filename, f, mdl);
 
   fclose(f);
 
@@ -353,7 +355,7 @@ loadModuleHeader(FILE *f, const char *filename)
 }
 
 void
-loadModuleBody(FILE *f, Module *mdl)
+loadModuleBody(const char *filename, FILE *f, Module *mdl)
 {
   u4 i;
   u4 secmagic;
@@ -362,12 +364,12 @@ loadModuleBody(FILE *f, Module *mdl)
   assert(secmagic == CLOS_SEC_HDR_MAGIC);
 
   for (i = 0; i < mdl->numInfoTables; ++i) {
-    loadInfoTable(f, mdl->strings,
+    loadInfoTable(filename, f, mdl->strings,
                    G_loader->infoTables, G_loader->closures);
   }
 
   for (i = 0; i < mdl->numClosures; i++) {
-    loadClosure(f, mdl->strings,
+    loadClosure(filename, f, mdl->strings,
                 G_loader->infoTables, G_loader->closures);
   }
 }
@@ -451,8 +453,9 @@ loadBCIns(FILE *f)
 }
 
 InfoTable *
-loadInfoTable(FILE *f, const StringTabEntry *strings,
-               HashTable *itbls, HashTable *closures)
+loadInfoTable(const char *filename,
+              FILE *f, const StringTabEntry *strings,
+              HashTable *itbls, HashTable *closures)
 {
   u4 magic = fget_u4(f);
   assert(magic == INFO_MAGIC);
@@ -485,7 +488,7 @@ loadInfoTable(FILE *f, const StringTabEntry *strings,
       info->i.layout.payload.ptrs = fget_varuint(f);
       info->i.layout.payload.nptrs = fget_varuint(f);
       info->name = loadId(f, strings, ".");
-      loadCode(f, &info->code, strings, itbls, closures);
+      loadCode(filename, f, &info->code, strings, itbls, closures);
       new_itbl = (InfoTable*)info;
     }
     break;
@@ -497,7 +500,7 @@ loadInfoTable(FILE *f, const StringTabEntry *strings,
       info->i.layout.payload.ptrs = fget_varuint(f);
       info->i.layout.payload.nptrs = fget_varuint(f);
       info->name = loadId(f, strings, ".");
-      loadCode(f, &info->code, strings, itbls, closures);
+      loadCode(filename, f, &info->code, strings, itbls, closures);
       new_itbl = (InfoTable*)info;
     }
     break;
@@ -529,9 +532,10 @@ loadInfoTable(FILE *f, const StringTabEntry *strings,
 }
 
 void
-loadLiteral(FILE *f, u1 *littype /*out*/, Word *literal /*out*/,
-             const StringTabEntry *strings, HashTable *itbls,
-	     HashTable *closures)
+loadLiteral(const char *filename,
+            FILE *f, u1 *littype /*out*/, Word *literal /*out*/,
+            const StringTabEntry *strings, HashTable *itbls,
+            HashTable *closures)
 {
   u4 i;
   *littype = fget_u1(f);
@@ -597,13 +601,16 @@ loadLiteral(FILE *f, u1 *littype /*out*/, Word *literal /*out*/,
     }
     break;
   default:
-    fprintf(stderr, "ERROR: Unknown literal type (%d).", *littype);
+    fprintf(stderr, "ERROR: Unknown literal type (%d) "
+            "when loading file: %s\n",
+            *littype, filename);
     exit(1);
   }
 }
 
 Closure *
-loadClosure(FILE *f, const StringTabEntry *strings,
+loadClosure(const char *filename,
+            FILE *f, const StringTabEntry *strings,
             HashTable *itbls, HashTable *closures)
 {
   u4 i;
@@ -624,7 +631,7 @@ loadClosure(FILE *f, const StringTabEntry *strings,
   free(itbl_name);
   for (i = 0; i < payloadsize; i++) {
     u1 dummy;
-    loadLiteral(f, &dummy, &cl->payload[i], strings, itbls, closures);
+    loadLiteral(filename, f, &dummy, &cl->payload[i], strings, itbls, closures);
   }
 
   fwd_ref = HashTable_lookup(closures, clos_name);
@@ -688,7 +695,8 @@ void ensureNoForwardRefs()
 }
 
 void
-loadCode(FILE *f, LcCode *code/*out*/,
+loadCode(const char *filename,
+         FILE *f, LcCode *code/*out*/,
           const StringTabEntry *strings,
           HashTable *itbls, HashTable *closures)
 {
@@ -701,7 +709,7 @@ loadCode(FILE *f, LcCode *code/*out*/,
   code->lits = malloc(sizeof(*code->lits) * code->sizelits);
   code->littypes = malloc(sizeof(u1) * code->sizelits);
   for (i = 0; i < code->sizelits; ++i) {
-    loadLiteral(f, &code->littypes[i], &code->lits[i], strings, itbls, closures);
+    loadLiteral(filename, f, &code->littypes[i], &code->lits[i], strings, itbls, closures);
   }
   code->code = malloc(sizeof(BCIns) * code->sizecode);
   for (i = 0; i < code->sizecode; i++) {
