@@ -27,6 +27,9 @@ main(int argc, char **argv)
   printf("#define opc_STOP %d\n\n", BC__MAX);
 
   printf("#define littype_INT %d\n", LIT_INT);
+  printf("#define littype_WORD %d\n", LIT_WORD);
+  printf("#define littype_CHAR %d\n", LIT_CHAR);
+  printf("#define littype_FLOAT %d\n", LIT_FLOAT);
   printf("#define littype_STRING %d\n", LIT_STRING);
   printf("#define littype_CLOSURE %d\n", LIT_CLOSURE);
   printf("#define littype_INFO %d\n", LIT_INFO);

@@ -9,6 +9,7 @@ import Lambdachine.Id
 import Lambdachine.Grin.Bytecode
 import Lambdachine.Utils.IO
 import Lambdachine.Utils.Pretty
+import Lambdachine.Utils.Convert
 
 import qualified Data.Map as M
 import qualified Data.IntMap as IM
@@ -192,7 +193,7 @@ encodeModule mdl = toLazyByteString builder
          error $ "UNIMPL: encodeClosure: " ++ pretty bco
 
    encodeField :: Either BcConst Id -> BuildM ()
-   encodeField lit = case lit of 
+   encodeField lit = case lit of
      Left (CInt n) -> do
        emit $ varUInt littype_INT
        emit $ varSInt (fromIntegral n)
@@ -200,6 +201,15 @@ encodeModule mdl = toLazyByteString builder
        emit $ varUInt littype_STRING
        sid <- addString (U.fromString s)
        emit $ varUInt sid
+     Left (CChar c) -> do
+       emit $ varUInt littype_CHAR
+       emit $ varUInt (fromIntegral (ord c))
+     Left (CWord n) -> do
+       emit $ varUInt littype_WORD
+       emit $ varUInt (fromIntegral n)
+     Left (CFloat r) -> do
+       emit $ varUInt littype_FLOAT
+       emit $ fromWrite $ writeWord32be $ floatToWord32 $ fromRational r
      Right x -> do
        case idDetails x of
          InfoTableId -> emit $ varUInt littype_INFO

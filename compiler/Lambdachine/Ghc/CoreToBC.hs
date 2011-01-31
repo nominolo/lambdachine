@@ -646,13 +646,18 @@ transBody e _ _ _ _ = error $ "transBody: " ++ showPpr e
 -- Indices of the constant pool are determined in a separate pass.
 transLiteral :: Ghc.Literal -> Maybe BcVar
              -> Trans (Bcis O, BcVar)
-transLiteral (Ghc.MachInt n) mbvar = do
+transLiteral lit mbvar = do
   rslt <- mbFreshLocal mbvar
-  return (insLoadLit rslt (CInt n), rslt)
-transLiteral (Ghc.MachStr fs) mb_var = do
-  rslt <- mbFreshLocal mb_var
-  return (insLoadLit rslt (CStr (unpackFS fs)), rslt)
-transLiteral x _ = unimplemented ("literal: " ++ showPpr x)
+  return (insLoadLit rslt (fromGhcLit lit), rslt)
+ where
+   fromGhcLit (Ghc.MachStr fs)   = CStr (unpackFS fs)
+   fromGhcLit (Ghc.MachChar c)   = CChar c
+   fromGhcLit (Ghc.MachInt n)    = CInt n
+   fromGhcLit (Ghc.MachInt64 n)  = CInt64 n
+   fromGhcLit (Ghc.MachWord n)   = CWord n
+   fromGhcLit (Ghc.MachWord64 n) = CWord64 n
+   fromGhcLit (Ghc.MachFloat r)  = CFloat r
+   fromGhcLit (Ghc.MachDouble r) = CDouble r
 
 -- | Translate a variable reference into bytecode.
 --

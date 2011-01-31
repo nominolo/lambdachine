@@ -410,6 +410,12 @@ collectLiterals code = V.foldl' comb S.empty (fc_code code)
 data BcConst
   = CInt Integer
   | CStr String
+  | CChar Char
+  | CWord Integer
+  | CInt64 Integer
+  | CWord64 Integer
+  | CFloat Rational
+  | CDouble Rational
   deriving (Eq, Ord, Show)
 
 -- | A linearised and register-allocated version of the byte code.
@@ -426,6 +432,12 @@ type FinalIns = LinearIns' Int
 instance Pretty BcConst where
   ppr (CInt n) = ppr n
   ppr (CStr s) = text (show s)
+  ppr (CWord n) = text (show n) <> char 'u'
+  ppr (CChar c) = text (show c)
+  ppr (CInt64 n) = text (show n) <> char 'L'
+  ppr (CWord64 n) = text (show n) <> char 'U'
+  ppr (CFloat r) = text (show (fromRational r :: Float)) <> char 'f'
+  ppr (CDouble r) = text (show (fromRational r :: Double)) <> char 'd'
 
 instance Pretty BcoType where
   ppr (BcoFun n) = text "FUN_" <> int n

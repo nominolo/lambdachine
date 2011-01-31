@@ -539,6 +539,15 @@ loadLiteral(FILE *f, u1 *littype /*out*/, Word *literal /*out*/,
   case LIT_INT:
     *literal = (Word)fget_varsint(f);
     break;
+  case LIT_CHAR:
+    *literal = (Word)fget_varuint(f);
+    break;
+  case LIT_WORD:
+    *literal = (Word)fget_varuint(f);
+    break;
+  case LIT_FLOAT:
+    *literal = (Word)fget_u4(f);
+    break;
   case LIT_STRING:
     i = fget_varuint(f);
     *literal = (Word)strings[i].str;

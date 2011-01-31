@@ -19,6 +19,12 @@ typedef struct {
 enum {
   LIT_INT,    /* Word-sized integer literal */
   LIT_STRING, /* String literal (utf8-encoded) */
+  LIT_CHAR,   /* Char literal, 32 bits */
+  //  LIT_INT64,  /* Signed integer of at least 64 bits */
+  LIT_WORD,   /* Word-sized unsigned integer */
+  //  LIT_WORD64, /* Unsigned integer of at least 64 bits */
+  LIT_FLOAT,  /* 32 bit floating point number */
+  //  LIT_DOUBLE, /* 64 bit floating point number */
   LIT_CLOSURE, /* Reference to a (static) closure. */
   LIT_INFO     /* Reference to an info table. */
 } LitType;

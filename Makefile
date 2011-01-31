@@ -153,6 +153,9 @@ test5: tests/Bc0008.lcbc $(PRIM_MODULES)
 test6: tests/Toys/Ackermann.lcbc $(PRIM_MODULES)
 	./interp Toys.Ackermann
 
+test7: tests/Bc0009.lcbc  $(PRIM_MODULES)
+	./interp --print-loader-state Bc0009
+
 bench1: tests/Bench/Append.lcbc $(PRIM_MODULES)
 	./interp Bench.Append
 

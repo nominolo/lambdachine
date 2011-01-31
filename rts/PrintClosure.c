@@ -196,7 +196,21 @@ printCode(LcCode *code)
     printf("   %3d: ", i);
     switch (code->littypes[i]) {
     case LIT_INT:
-      printf("%" FMT_Int, (WordInt)code->lits[i]);
+      printf("%" FMT_Int " (i)", (WordInt)code->lits[i]);
+      break;
+    case LIT_WORD:
+      printf("%" FMT_Word " (w)", (Word)code->lits[i]);
+      break;
+    case LIT_FLOAT:
+      printf("%f / %" FMT_WordX, *((float*)&code->lits[i]), code->lits[i]);
+      break;
+    case LIT_CHAR:
+      { Word c = code->lits[i];
+	if (c < 256)
+	  printf("'%c'", (char)c);
+	else
+	  printf("u%xd", (u4)c);
+      }
       break;
     case LIT_STRING:
       printf("\"%s\"", (char*)code->lits[i]);
