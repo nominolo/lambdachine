@@ -24,6 +24,7 @@ import qualified Data.Set as S
 import qualified Data.ByteString.Lazy      as B
 import qualified Data.ByteString.Lazy.UTF8 as B
 import qualified Data.Vector as V
+import Data.Monoid
 
 import Debug.Trace
 
@@ -32,6 +33,10 @@ import Debug.Trace
 
 class Pretty a where
   ppr :: a -> PDoc
+
+instance Monoid P.Doc where
+  mempty = P.empty
+  mappend = (P.<>)
 
 type PDoc = PrettyStyle -> P.Doc
 

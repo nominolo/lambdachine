@@ -4,10 +4,14 @@ module Lambdachine.Grin.RegAlloc where
 import Lambdachine.Grin.Bytecode
 import Lambdachine.Grin.Analyse
 import Lambdachine.Utils
+import qualified Lambdachine.Utils.Graph.Base as Gr
+import qualified Lambdachine.Utils.Graph.Ops as Gr
+import qualified Lambdachine.Utils.Graph.Colour as Gr
 
-import Compiler.Hoopl
+import Compiler.Hoopl hiding ( UniqueSet )
 import Data.Maybe ( fromMaybe )
 import Data.Vector ( Vector )
+import Data.Word ( Word8 )
 import qualified Data.Vector as Vec
 import qualified Data.Set as S
 import qualified Data.Map as M
@@ -42,13 +46,10 @@ allocRegsBco bco0@BcObject{ bcoCode = code } =
               livenessAnalysis2 noFacts
    code' = allocRegsGraph live_facts (bcoCode bco)
 
+-- | Allocate registers and linearise bytecode.
 allocRegsGraph :: FactBase LiveVars -> Graph BcIns O C -> LinearCode
-allocRegsGraph lives g = mkAllocMap (lineariseCode lives g)
---   GMany NothingO blocks' NothingO
---  where blocks' = allocRegsBody blocks
-
---allocRegsBody :: Body BcIns -> [LinearIns]
---allocRegsBody body = 
+allocRegsGraph lives g =
+   assignRegs (lineariseCode lives g)
 
 -- | Finalise step in generating executable bytecode.  Does the
 -- following:
@@ -95,6 +96,7 @@ finaliseCode arity (LinearCode code0 lives labels) =
    adjust_idx new_labels i (Lst ins) =
      Lst $ mapLabels (\l -> (new_labels M.! l)) ins
 
+-- | Contains linear bytecode annotated with liveness info for each graph.
 data LinearCode = LinearCode
   { lc_code    :: Vector LinearIns
   , lc_liveIns :: Vector LiveVars
@@ -156,6 +158,94 @@ liveIns global_live_outs inss =
 
 allRegs :: S.Set BcVar
 allRegs = S.fromList $ map BcReg [0..255]
+
+newtype FinalReg = R Word8
+  deriving Eq
+
+instance Uniquable FinalReg where
+  getUnique (R x) = unsafeMkUniqueNS 'F' (fromIntegral x)
+
+-- | TODO: Size2 for Double's?
+data RegClass = Size1
+  deriving Eq
+
+instance Uniquable RegClass where
+  getUnique Size1 = unsafeMkUniqueNS 'C' 1
+
+type IGraph = Gr.Graph BcVar RegClass FinalReg
+
+instance Pretty RegClass where
+  ppr Size1 = text "Sz1"
+
+instance Pretty FinalReg where
+  ppr (R r) = char 'R' <> text (show r)
+
+assignRegs :: LinearCode -> LinearCode
+assignRegs lc@(LinearCode code lives lbls) =
+  let !ig = colourGraph (buildInterferenceGraph lc)
+      !code' = Vec.map (transformBi (assign1 ig)) code
+  in
+    if not (verifyAlloc ig lives) then
+      error $ "BUG-IN-REGALLOC\n" ++ pretty code ++ "\n\n"
+            ++ pretty ig
+     else
+       LinearCode code' lives lbls
+ where
+   assign1 :: IGraph -> BcVar -> BcVar
+   assign1 ig x =
+     case Gr.lookupNode x ig of
+       Just n | Just (R r) <- Gr.nodeColour n
+        -> BcReg (fromIntegral r)
+       _ -> error $ "No register allocated for " ++ pretty x
+
+   -- An allocation is valid if registers that are live at the same
+   -- time are all assigned different colours.
+   verifyAlloc ig lives =
+     Vec.and (Vec.map (\l -> S.size (S.map (assign1 ig) l) == S.size l) lives)
+
+colourGraph :: IGraph -> IGraph --UniqueMap BcReg FinalReg
+colourGraph igraph =
+  case Gr.colourGraph True 0 classes triv spill igraph of
+    (igraph', uncoloured, coalesced)
+      | nullUS uncoloured -> igraph'
+ where
+   classes =
+     singletonUM Size1 (fromListUS (map R [0..255]))
+   triv Size1 neighbs excls = True
+   spill gr = error "Cannot spill"
+
+buildInterferenceGraph :: LinearCode -> IGraph
+buildInterferenceGraph lc@(LinearCode code0 lives lbls) =
+  gr3
+ where
+   !gr1 = Vec.foldl' add_conflicts Gr.newGraph lives
+   !gr2 = Vec.foldl' add_coalesces gr1 code0
+   !gr3 = fixColours gr2
+
+   -- TODO: Can be optimised by detecting which new nodes are becoming
+   -- live and only adding those.  Each call to Gr.addConflicts is
+   -- O(n^2) in the size of the lives set.
+   add_conflicts :: IGraph -> LiveVars -> IGraph
+   add_conflicts gr lives =
+     Gr.addConflicts (conv lives) (const Size1) gr
+
+   conv :: LiveVars -> UniqueSet BcVar
+   conv vs = fromListUS (S.toList vs)
+
+   add_coalesces :: IGraph -> LinearIns -> IGraph
+   add_coalesces gr (Mid (Assign dst (Move src))) =
+     Gr.addCoalesce (src, Size1) (dst, Size1) gr
+   add_coalesces gr _ = gr
+
+   fixColours :: IGraph -> IGraph
+   fixColours gr =
+     Gr.modifyGraphMap gr $ \mp ->
+       mapUM fix_colour mp
+
+   fix_colour node =
+     case Gr.nodeId node of
+       BcReg n -> node{ Gr.nodeColour = Just (R (fromIntegral n)) }
+       _ -> node
 
 mkAllocMap :: LinearCode -> LinearCode -- M.Map BcVar BcVar
 mkAllocMap lc@(LinearCode code0 lives lbls) =

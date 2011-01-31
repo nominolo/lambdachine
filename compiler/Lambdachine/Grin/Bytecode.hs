@@ -113,6 +113,10 @@ data BcVar = BcVar !Id
 
 instance Show BcVar where show v = pretty v
 
+instance U.Uniquable BcVar where
+  getUnique (BcVar x) = U.getUnique x
+  getUnique (BcReg n) = U.unsafeMkUniqueNS 'R' n
+
 instance NonLocal (BcIns' Label) where
   entryLabel (Label l) = l
   successors (Goto l) = [l]
