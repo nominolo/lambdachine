@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# OPTIONS_GHC -fno-cse -fno-full-laziness -fno-strictness #-}
 module Lambdachine.Options 
   ( Options(..),  getOptions )
 where
