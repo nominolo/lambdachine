@@ -159,11 +159,22 @@ liveIns global_live_outs inss =
 allRegs :: S.Set BcVar
 allRegs = S.fromList $ map BcReg [0..255]
 
+-- * Register Allocation
+
+-- We use a graph-colouring register allocator.  While this is less
+-- efficient than a linear-scan register allocator, it has certain
+-- advantages w.r.t. flexibility.  In particular, eliminating
+-- redundant moves are probably handled more easily by using
+-- graph-colouring.
+
 newtype FinalReg = R Word8
   deriving Eq
 
 instance Uniquable FinalReg where
   getUnique (R x) = unsafeMkUniqueNS 'F' (fromIntegral x)
+
+instance Pretty FinalReg where
+  ppr (R r) = char 'R' <> text (show r)
 
 -- | TODO: Size2 for Double's?
 data RegClass = Size1
@@ -172,47 +183,65 @@ data RegClass = Size1
 instance Uniquable RegClass where
   getUnique Size1 = unsafeMkUniqueNS 'C' 1
 
-type IGraph = Gr.Graph BcVar RegClass FinalReg
-
 instance Pretty RegClass where
   ppr Size1 = text "Sz1"
 
-instance Pretty FinalReg where
-  ppr (R r) = char 'R' <> text (show r)
+-- | The register allocator is parameterised over three types:
+--
+--  1. The type of virtual registers ('BcVar')
+--
+--  2. The register classes.  This is used to handle overlapping
+--     registers or registers for different operand types (e.g.,
+--     floating point vs. integer).  We currently only have one
+--     register class.
+--
+--  3. The type of registers we are allocating to ('FinalReg').
+--
+type IGraph = Gr.Graph BcVar RegClass FinalReg
 
+-- | Allocate registers for the given code sequence.
+--
+-- The returned linear code satisfies the invariants:
+--
+--  * Each 'BcVar' is of shape @BcReg n@.
+--
+--  * Variables that are live at the same time are allocated to
+--    different registers (the register allocation invariant).
+--
 assignRegs :: LinearCode -> LinearCode
 assignRegs lc@(LinearCode code lives lbls) =
-  let !ig = colourGraph (buildInterferenceGraph lc)
-      !code' = Vec.map (transformBi (assign1 ig)) code
+  let !assign1 = colourGraph (buildInterferenceGraph lc)
+      !code' = Vec.map (transformBi assign1) code
   in
-    if not (verifyAlloc ig lives) then
+    if not (verifyAlloc assign1 lives) then
       error $ "BUG-IN-REGALLOC\n" ++ pretty code ++ "\n\n"
-            ++ pretty ig
+--            ++ pretty ig
      else
        LinearCode code' lives lbls
  where
-   assign1 :: IGraph -> BcVar -> BcVar
-   assign1 ig x =
-     case Gr.lookupNode x ig of
-       Just n | Just (R r) <- Gr.nodeColour n
-        -> BcReg (fromIntegral r)
-       _ -> error $ "No register allocated for " ++ pretty x
-
    -- An allocation is valid if registers that are live at the same
    -- time are all assigned different colours.
-   verifyAlloc ig lives =
-     Vec.and (Vec.map (\l -> S.size (S.map (assign1 ig) l) == S.size l) lives)
+   verifyAlloc assign1 lives =
+     Vec.and (Vec.map (\l -> S.size (S.map assign1 l)
+                               == S.size l) lives)
 
-colourGraph :: IGraph -> IGraph --UniqueMap BcReg FinalReg
+colourGraph :: IGraph -> (BcVar -> BcVar)
 colourGraph igraph =
   case Gr.colourGraph True 0 classes triv spill igraph of
     (igraph', uncoloured, coalesced)
-      | nullUS uncoloured -> igraph'
+      | nullUS uncoloured -> get_alloc igraph' coalesced
  where
    classes =
      singletonUM Size1 (fromListUS (map R [0..255]))
    triv Size1 neighbs excls = True
    spill gr = error "Cannot spill"
+
+   get_alloc ig co x =
+     case Gr.lookupNode x ig of
+       Just n | Just (R r) <- Gr.nodeColour n
+         -> BcReg (fromIntegral r)
+       Nothing | Just y <- lookupUM x co
+         -> get_alloc ig co y
 
 buildInterferenceGraph :: LinearCode -> IGraph
 buildInterferenceGraph lc@(LinearCode code0 lives lbls) =
@@ -237,6 +266,8 @@ buildInterferenceGraph lc@(LinearCode code0 lives lbls) =
      Gr.addCoalesce (src, Size1) (dst, Size1) gr
    add_coalesces gr _ = gr
 
+   -- For BcVars that represent specific registers, assign the proper
+   -- colour.
    fixColours :: IGraph -> IGraph
    fixColours gr =
      Gr.modifyGraphMap gr $ \mp ->
@@ -247,6 +278,7 @@ buildInterferenceGraph lc@(LinearCode code0 lives lbls) =
        BcReg n -> node{ Gr.nodeColour = Just (R (fromIntegral n)) }
        _ -> node
 
+-- | The linear-scan register allocator.
 mkAllocMap :: LinearCode -> LinearCode -- M.Map BcVar BcVar
 mkAllocMap lc@(LinearCode code0 lives lbls) =
   let (alloc, _, _) = Vec.foldl' alloc1 (M.empty, allRegs, S.empty) lives
@@ -276,15 +308,3 @@ mkAllocMap lc@(LinearCode code0 lives lbls) =
          _ ->
            let (reg, avail') = S.deleteFindMin avail in
            (M.insert x reg alloc, avail')
-
-
-
-{-
-deleteFindMinN :: Ord a => Int -> S.Set a -> ([a], S.Set a)
-deleteFindMinN n s
-  | n <= 0 = ([], s)
-  | otherwise =
-    let (m, s') = S.deleteFindMin s
-        (ms, s'') = deleteFindMinN (n - 1) s'
-    in (m:ms, s'')
--}

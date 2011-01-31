@@ -312,6 +312,7 @@ insLength' ins = case ins of
   Lst (Goto _) -> 1
   Lst Update -> 1
   Lst (Case casetype _ alts) -> alt_len casetype alts
+  Mid (Assign d (Move s)) | d == s -> 0
   Mid (Assign _ (Alloc _ args@(x1:x2:_))) -> 1 + arg_len args
   Mid (Assign _ (AllocAp (_:args))) -> 1 + arg_len args
   Mid _ -> 1
@@ -413,6 +414,8 @@ putLinearIns lit_ids new_addrs ins_id ins = case ins of
         offs = (new_addrs IM.! target) - next_ins_addr
     putIns $ insAD (condOpcode cond') (i2b r1) (i2h r2)
     putIns $ insAJ opc_JMP 0 offs
+  Mid (Assign (BcReg d) (Move (BcReg s))) | d == s ->
+    return () -- redundant move instruction
   Mid (Assign (BcReg d) (Move (BcReg s))) ->
     putIns $ insAD opc_MOV (i2b d) (i2h s)
   Mid (Assign (BcReg d) (BinOp op ty (BcReg a) (BcReg b))) ->

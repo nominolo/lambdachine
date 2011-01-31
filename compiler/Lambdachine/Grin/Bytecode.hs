@@ -159,6 +159,7 @@ instance Pretty BinOp where
 
 instance Pretty b => Pretty (BcIns' b e x) where
   ppr (Label _) = empty
+  ppr (Assign d (Move s)) | d == s = text "---"
   ppr (Assign r rhs) = ppr r <+> char '=' <+> ppr rhs
   ppr (Eval _ lives r) =
     text "eval" <+> ppr r <+> 

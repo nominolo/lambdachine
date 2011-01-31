@@ -44,9 +44,11 @@ data Graph k cls colour = Graph {
 instance (Pretty k, Pretty cls, Pretty colour)
   => Pretty (Graph k cls colour) where
   ppr Graph{graphMap = mp} =
-    braces $ sep (map pp1 (elementsUM mp))
-   where pp1 n =
-           char '[' <> ppr (nodeId n) <> colon <>
+    braces $ sep (map ppr (elementsUM mp))
+
+instance (Pretty k, Pretty cls, Pretty colour)
+  => Pretty (Node k cls colour) where
+  ppr n = char '[' <> ppr (nodeId n) <> colon <>
            maybe (char '?') ppr (nodeColour n) <> comma <+>
            ppr (nodeConflicts n) <> comma <+>
            ppr (nodeCoalesce n) <> char ']'

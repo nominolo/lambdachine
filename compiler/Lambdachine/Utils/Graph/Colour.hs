@@ -143,7 +143,7 @@ colourGraph iterative spinCount colours triv spill graph0 =
 --
 colourScan ::
      (Uniquable k, Uniquable cls, Uniquable colour,
-      Ord k, Eq cls, Pretty k, Pretty cls) =>
+      Ord k, Eq cls, Pretty k, Pretty cls, Pretty colour) =>
      Bool -- ^ whether to do iterative coalescing
   -> Triv k cls colour		-- ^ fn to decide whether a node is trivially colourable
   -> (Graph k cls colour -> k)	-- ^ fn to choose a node to potentially leave uncoloured if nothing is trivially colourable.

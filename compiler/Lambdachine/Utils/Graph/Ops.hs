@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 -- Source code from GHC  (BSD3)
 -- Authors:  (c) Ben Lippmeier, Ian Lynagh, Simon Marlow
 
@@ -249,7 +250,7 @@ freezeNode k graph = modifyGraphMap graph $ \fm ->
 -- coalesced together.  for each pair, the resulting node will have
 -- the least key and be second in the pair.
 --
-coalesceGraph :: (Uniquable k, Ord k, Eq cls, Pretty k) =>
+coalesceGraph :: (Uniquable k, Ord k, Eq cls, Pretty k, Pretty cls, Pretty colour) =>
      Bool -- ^ If True, coalesce nodes even if this might make the
           -- graph less colourable (aggressive coalescing)
   -> Triv k cls colour
@@ -296,16 +297,17 @@ coalesceGraph' aggressive triv graph kkPairsAcc =
 
 -- | Coalesce this pair of nodes unconditionally \/ agressively.
 --
--- The resulting node is the one with the least key.
+-- The resulting node is the one with the least key, or the
+-- precoloured node.
 --
 -- Returns:
 --
 --  * @Just@ the pair of keys if the nodes were coalesced the second
---    element of the pair being the least one
+--    element of the pair being the least one or the precoloured one.
 --
 --  * @Nothing@ if either of the nodes weren't in the graph
 --
-coalesceNodes :: (Uniquable k, Ord k, Eq cls, Pretty k) =>
+coalesceNodes :: (Uniquable k, Ord k, Eq cls, Pretty k, Pretty cls, Pretty colour) =>
      Bool -- ^ If True, coalesce nodes even if this might make the
           -- graph less colourable (aggressive coalescing)
   -> Triv  k cls colour
@@ -327,6 +329,9 @@ coalesceNodes aggressive triv graph (k1, k2)
     -- can't coalesce the same node
   , nodeId nMin /= nodeId nMax
 
+    -- At least one node must be uncoloured
+  , isNothing (nodeColour nMin) || isNothing (nodeColour nMax)
+
   = coalesceNodes_merge aggressive triv graph kMin kMax nMin nMax
 
    -- don't do the coalescing after all
@@ -338,8 +343,14 @@ coalesceNodes_merge aggressive triv graph kMin kMax nMin nMax
   | nodeClass nMin /= nodeClass nMax
   = error "coalesceNodes: can't coalesce nodes of different classes."
 
-  | not (isNothing (nodeColour nMin) && isNothing (nodeColour nMax))
-  = error "coalesceNodes: can't coalesce coloured nodes."
+--  | not (isNothing (nodeColour nMin) && isNothing (nodeColour nMax))
+--  = error $ "coalesceNodes: can't coalesce coloured nodes.\n" ++
+--           pretty (nMin, nMax)
+
+  -- TODO: Does this break some invariant elsewhere?
+  -- Let nMin be the coloured node (if any)
+  | Nothing <- nodeColour nMin, Just _ <- nodeColour nMax
+  = coalesceNodes_merge aggressive triv graph kMax kMin nMax nMin
 
   | otherwise
   = let
@@ -347,7 +358,7 @@ coalesceNodes_merge aggressive triv graph kMin kMax nMin nMax
       node =
 	Node { nodeId = kMin
 	     , nodeClass  = nodeClass nMin
-	     , nodeColour = Nothing
+	     , nodeColour = nodeColour nMin
 	       -- nodes don't conflict with themselves..
 	     , nodeConflicts =
 	         deleteUS kMin $ deleteUS kMax $

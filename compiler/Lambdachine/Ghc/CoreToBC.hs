@@ -695,9 +695,10 @@ transVar x env fvi locs0 mr =
   case lookupLoc locs0 x of
     Just (InVar x') -> -- trace "inVAR" $
       return (mbMove mr x', fromMaybe x' mr, in_whnf, locs0, mempty)
-    Just (InReg r) -> -- trace "inREG" $
-      let x' = BcReg r in
-      return (mbMove mr x', fromMaybe x' mr, in_whnf, locs0, mempty)
+    Just (InReg r) -> do -- trace "inREG" $
+      x' <- mbFreshLocal mr
+      return (insMove x' (BcReg r), x', in_whnf,
+              updateLoc locs0 x (InVar x'), mempty)
     Just (Field p n) -> do -- trace "inFLD" $ do
       r <- mbFreshLocal mr
       return (insFetch r p n,
