@@ -15,7 +15,7 @@ import Data.List ( mapAccumL )
 import Data.Maybe ( catMaybes )
 
 -- | Try to colour a graph with this set of colours.
--- 
+--
 -- Uses Chaitin's algorithm to colour the graph.  The graph is scanned
 -- for nodes which are deemed 'trivially colourable'. These nodes are
 -- pushed onto a stack and removed from the graph.  Once this process
@@ -40,7 +40,7 @@ colourGraph ::
      -- nothing is trivially colourable.
   -> Graph  k cls colour
      -- ^ The graph to colour.
-     
+
   -> ( Graph k cls colour, UniqueSet k, UniqueMap k k )
      -- ^ Returns:
      --
@@ -80,26 +80,27 @@ colourGraph iterative spinCount colours triv spill graph0 =
     -- Because we've got the whole, non-pruned graph here we turn on
     -- aggressive coalescing to force all the (conservative)
     -- coalescences found during scanning.
-    -- 
+    --
     (graph_scan_coalesced, _) =
       mapAccumL (coalesceNodes True triv) graph_coalesced kksCoalesce2
 
     -- Colour the trivially colourable nodes.
-    -- 
+    --
     -- During scanning, keys of triv nodes were added to the front of
     -- the list as they were found this colours them in the reverse
     -- order, as required by the algorithm.
     (graph_triv, ksNoTriv) =
+       --trace ("coalesced: " ++ pretty graph_scan_coalesced) $
        assignColours colours graph_scan_coalesced ksTriv
 
     -- Try and colour the problem nodes.
-    -- 
+    --
     -- Problem nodes are the ones that were left uncoloured because
     -- they weren't triv.  theres a change we can colour them here
     -- anyway.
     (graph_prob, ksNoColour) =
        assignColours colours graph_triv ksProblems
-                    
+
     -- if the trivially colourable nodes didn't colour then something is
     -- probably wrong with the provided triv function.
 
@@ -160,7 +161,7 @@ colourScan_spin iterative triv spill graph
   = (ksTriv, ksSpill, reverse kksCoalesce)
 
   -- Simplify:
-  -- 
+  --
   -- Look for trivially colourable nodes.  If we can find some then
   -- remove them from the graph and go back for more.
   --
@@ -179,19 +180,19 @@ colourScan_spin iterative triv spill graph
                    kksCoalesce
 
  -- Coalesce:
- -- 
+ --
  -- If we're doing iterative coalescing and no triv nodes are
  -- avaliable then it's time for a coalescing pass.
   | iterative
   = case coalesceGraph False triv graph of
       -- we were able to coalesce something; go back to Simplify and
       -- see if this frees up more nodes to be trivially colourable.
-      (graph2, kksCoalesceFound @(_:_)) -> 
+      (graph2, kksCoalesceFound @(_:_)) ->
         colourScan_spin iterative triv spill graph2
 		       ksTriv ksSpill (reverse kksCoalesceFound ++ kksCoalesce)
 
       -- Freeze:
-      -- 
+      --
       -- nothing could be coalesced (or was triv), time to choose a
       -- node to freeze and give up on ever coalescing it.
       (graph2, []) ->
@@ -214,7 +215,7 @@ colourScan_spin iterative triv spill graph
                     ksTriv ksSpill kksCoalesce
 
 -- Select:
--- 
+--
 -- We couldn't find any triv nodes or things to freeze or coalesce,
 -- and the graph isn't empty yet.. We'll have to choose a spill
 -- candidate and leave it uncoloured.
@@ -227,7 +228,7 @@ colourScan_spill iterative triv spill graph
                     ksTriv (kSpill : ksSpill) kksCoalesce
 
 -- | Try to assign a colour to all these nodes.
-assignColours :: 
+assignColours ::
      (Uniquable k, Uniquable cls, Uniquable colour,
       Eq colour, Pretty cls) =>
      UniqueMap cls (UniqueSet colour)
@@ -257,14 +258,14 @@ assignColours colours graph ks =
 
      | otherwise
      = Nothing
-	
-	
+
+
 -- | Select a colour for a certain node taking into account
 -- preferences, neighbors and exclusions.
 --
 -- Returns @Nothing@ if no colour can be assigned to this node.
 --
-selectColour :: 
+selectColour ::
      (Uniquable k, Uniquable cls, Uniquable colour,
       Eq colour, Pretty cls) =>
      UniqueMap cls (UniqueSet colour)
@@ -289,10 +290,10 @@ selectColour colours graph u =
     Just nsConflicts =
        sequence $ map (`lookupNode` graph)
                 $ toList $ nodeConflicts node
-    	
+
     colours_conflict =
       fromListUS $ catMaybes $ map nodeColour nsConflicts
-    
+
     -- the prefs of our neighbors
     colours_neighbor_prefs =
       fromListUS $ concatMap nodePreference nsConflicts
@@ -300,13 +301,13 @@ selectColour colours graph u =
     -- colours that are still valid for us
     colours_ok_ex = colours_avail `differenceUS` nodeExclusions node
     colours_ok	= colours_ok_ex `differenceUS` colours_conflict
-    			
+
     -- the colours that we prefer, and are still ok
     colours_ok_pref =
       fromListUS (nodePreference node) `intersectionUS` colours_ok
 
     -- the colours that we could choose while being nice to our neighbors
-    colours_ok_nice = 
+    colours_ok_nice =
       colours_ok `differenceUS` colours_neighbor_prefs
 
     -- the best of all possible worlds..
@@ -322,22 +323,22 @@ selectColour colours graph u =
       = Just c
 
       -- we've got one of our preferences
-      | not $ nullUS colours_ok_pref	
+      | not $ nullUS colours_ok_pref
       , c : _ <- filter (`memberUS` colours_ok_pref)
                         (nodePreference node)
       = Just c
-    	
+
       -- it wasn't a preference, but it was still ok
       | not $ nullUS colours_ok
       , c : _ <- toList colours_ok
       = Just c
-    	
+
       -- No colours were available for us this time.  Looks like we're
       -- going around the loop again..
       | otherwise
       = Nothing
    in
-     chooseColour 
+     chooseColour
 
 newtype Reg = R Int
   deriving (Eq, Ord, Show, Uniquable)
