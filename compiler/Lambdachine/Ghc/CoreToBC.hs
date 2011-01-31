@@ -773,18 +773,24 @@ transApp f args env fvi locs0 ctxt
   = do (is0, locs1, fvs0, regs) <- transArgs args env fvi locs0
        (is1, fr, _, locs2, fvs1)
           <- transVar f env fvi locs1 Nothing
-       let is = is0 <*> is1
+       let is2 = is0 <*> is1
            fvs = fvs0 `mappend` fvs1
        case ctxt of
-         RetC -> -- tailcall, x = C
-           let ins = is <*> insCall Nothing fr regs in
+         RetC -> -- tailcall
+           -- Ensure that tailcalls always use registers r0..r(N-1)
+           -- for arguments.  This allows zero-copy function call.
+           let is = is2 <*>
+                      catGraphs [ insMove (BcReg n) r |
+                                   (n,r) <- zip [0..] regs ]
+               ins = is <*> insCall Nothing fr (map BcReg [0.. length regs - 1 ])
+           in
            return (ins, locs2, fvs, Nothing)
          BindC mr ->  do
            -- need to ensure that x = O, so we need to emit
            -- a fresh label after the call
            r <- mbFreshLocal mr
            let ins = withFresh $ \l ->
-                       is <*> insCall (Just (r, l)) fr regs |*><*| mkLabel l
+                       is2 <*> insCall (Just (r, l)) fr regs |*><*| mkLabel l
            return (ins, locs2, fvs, Just r)
 --error $ "transApp: " ++ showPpr f ++ " " ++ showPpr (Ghc.idDetails f)
 
