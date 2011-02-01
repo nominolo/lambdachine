@@ -578,20 +578,17 @@ int engine(Thread* T)
  op_CALLT:
   {
     // opA = function
-    // opB = no of args
-    // opC = first argument
-    DECODE_BC;
-    u4 nargs = opB;
-    Word arg0 = base[opC];
+    // opC/D = no of args
+    u4 callargs = opC; // arguments from this call
+    u4 nargs = callargs;
     Closure *fnode = (Closure *)base[opA];
-    u1 *args = (u1*)pc;
     u4 i;
 
     LC_ASSERT(fnode != NULL);
-    LC_ASSERT(nargs <= BCMAX_CALL_ARGS);
+    LC_ASSERT(callargs <= 16);
 
-    u4 arg_offs = 0;
     FuncInfoTable *info;
+    PapClosure *pap = NULL;
     switch (getInfo(fnode)->type) {
     case PAP:
       {
@@ -599,15 +596,9 @@ int engine(Thread* T)
 	fnode = pap->fun;
 	LC_ASSERT(getInfo(fnode)->type == FUN);
 	info = getFInfo(fnode);
+	nargs += pap->nargs;
 
 	DBG_IND(printf("calling a PAP%d (%s)\n", pap->nargs, info->name));
-
-	// TODO: special case for another partial application?
-	arg_offs = pap->nargs;
-	for (i = 0; i < arg_offs; i++) {
-	  callt_temp[i] = (Word)pap->payload[i];
-	}
-	nargs += pap->nargs;
       }
       break;
     case FUN:
@@ -618,38 +609,34 @@ int engine(Thread* T)
       fprintf(stderr, "FATAL: Function argument to CALLT not FUN or PAP.\n");
       exit(1);
     }
-    // Because we do not yet require to allocate CALLT arguments in
-    // registers r0, r1, ..., we need to copy all of them into a scratch
-    // area (to avoid overwriting one value with another).
-    callt_temp[arg_offs] = arg0;
-    LC_ASSERT(LC_ARCH_ENDIAN == LAMBDACHINE_LE); // XXX: generalise
-    for (i = arg_offs + 1; i < nargs; i++, args++) {
-      callt_temp[i] = base[*args];
-    }
 
     // At this point we have the invariants:
     //   - fnode is a pointer to a FUN
     //   - info is its info table
     //   - nargs is the *total* numbers of arguments applied (not just
     //      from this instruction)
-    //   - callt_temp contains the values of all arguments in order
 
     if (nargs < info->code.arity) { // Partial application
-      PapClosure *pap = allocClosure(wordsof(PapClosure) + nargs);
-      setInfo(pap, (InfoTable*)&stg_PAP_info);
-      pap->arity = info->code.arity - nargs;
-      pap->nargs = nargs;
-      pap->fun = fnode;
+      PapClosure *new_pap = allocClosure(wordsof(PapClosure) + nargs);
+      setInfo(new_pap, (InfoTable*)&stg_PAP_info);
+      new_pap->arity = info->code.arity - nargs;
+      new_pap->nargs = nargs;
+      new_pap->fun = fnode;
 
       DBG_IND(printf("Creating PAP = %s, nargs = %d, arity = %d\n",
-		     info->name, pap->nargs, pap->arity));
+		     info->name, new_pap->nargs, new_pap->arity));
 
-      for (i = 0; i < nargs; i++) {
-	pap->payload[i] = callt_temp[i];
+      if (pap != NULL) {
+	for (i = 0; i < pap->nargs; i++)
+	  new_pap->payload[i] = pap->payload[i];
+
+	// Copy rest (registers r0 ... r{callargs-1})
+	for (i = 0; i < callargs; i++)
+	  new_pap->payload[i + pap->nargs] = base[i];
       }
 
       // return pointer to pap
-      last_result = (Word)pap;
+      last_result = (Word)new_pap;
       T->top = base - 3;
       pc = (BCIns*)base[-2];
       base = (Word*)base[-3];
@@ -664,38 +651,89 @@ int engine(Thread* T)
       // Overapplication.  See [Memo 1] for details.
       u4 immediate_args = info->code.arity;
       u4 extra_args = nargs - immediate_args;
+      Word *top = T->top;
 
       DBG_IND(printf(" ... overapplication: %d + %d\n",
 		     immediate_args, extra_args));
 
-      // Change current frame
-      Word *top = base + extra_args + 1;
-      for (i = 0; i < extra_args; i++) {
-	base[i] = callt_temp[immediate_args + i];
-      }
-
-      DBG_ENTER(info);
-      //printFrame(base, top);
-      BCIns *ap_return_pc;
-      Closure *ap_closure;
-      getAPKClosure(&ap_closure, &ap_return_pc, extra_args);
-
-      base[-1] = (Word)ap_closure;
+      // 1. Calculate where new frame must start.
+      top = base + extra_args + 1;
 
       u4 framesize = info->code.framesize;
       if (stackOverflow(T, top, STACK_FRAME_SIZEW + framesize)) {
 	return INTERP_STACK_OVERFLOW;
       }
 
-      // Build stack frame for fnode
-      // TODO: Check for stack overflow.
+      u4 pap_args = pap ? pap->nargs : 0;
+
+      // 2. Rotate immediate and extra arguments:
+      //
+      // -+----+----+-   -+----+----+----+-   -+
+      //  | i0 | i1 | ... | iN | e0 | e1 | ... | eM
+      // -+----+----+-   -+----+----+----+-   -+
+      //     '------------------------|----------.
+      //         .--------------------'          |
+      //         v                               v
+      // -+----+----+-   -+----+----+------   -+----
+      //  |    |    | ... | eM |    | frame ...|
+      // -+----+----+-   -+----+----+------   -+----
+      //
+      if (top + pap_args + STACK_FRAME_SIZEW >= base + callargs) {
+	// No overlap.  Copy immediate arguments up
+	for (i = 0; i < immediate_args; i++)
+	  top[STACK_FRAME_SIZEW + pap_args + i] = base[i];
+
+	// Copy down extra arguments
+	for (i = 0; i < extra_args; i++)
+	  base[i] = base[i + immediate_args];
+
+      } else if (immediate_args < extra_args) {
+
+        // a. Save immediate args to temporary buffer
+        for (i = 0; i < immediate_args; i++)
+          callt_temp[i] = base[i];
+
+        // b. Move extra args into place
+        for (i = 0; i < extra_args; i++)
+          base[i] = base[i + immediate_args];
+
+        // c. Move immediate args into place
+        for (i = 0; i < immediate_args; i++)
+          top[STACK_FRAME_SIZEW + pap_args + i] = callt_temp[i];
+
+      } else { // immediate_args >= extra_args
+
+        // a. Save extra args to temporary buffer
+        for (i = 0; i < extra_args; i++)
+          callt_temp[i] = base[i + immediate_args];
+
+        // b. Move immediate args into place
+        for (i = 0; i < immediate_args; i++)
+          top[STACK_FRAME_SIZEW + pap_args + i] = base[i];
+
+        // c. Move extra args into place
+        for (i = 0; i < extra_args; i++)
+          base[i] = callt_temp[i];
+      }
+
+      // Add args from PAP (if any)
+      for (i = 0; i < pap_args; i++)
+        top[STACK_FRAME_SIZEW + i] = pap->payload[i];
+
+      // 3. Fill in rest of stack frame.
+      BCIns *ap_return_pc;
+      Closure *ap_closure;
+      getAPKClosure(&ap_closure, &ap_return_pc, extra_args);
+      base[-1] = (Word)ap_closure;
+
       top[0] = (Word)base;
       top[1] = (Word)ap_return_pc;
       top[2] = (Word)fnode;
+
+      DBG_ENTER(info);
+      //printFrame(base, top);
+
       base = top + 3;
-      for (i = 0; i < immediate_args; i++) {
-	base[i] = callt_temp[i];
-      }
       T->top = base + framesize;
       code = &info->code;
       pc = info->code.code;
@@ -716,8 +754,15 @@ int engine(Thread* T)
         }
       }
 
-      for (i = 0; i < nargs; i++) {
-	base[i] = callt_temp[i];
+      if (!pap) {
+	// Arguments already in place.
+      } else {
+	// Copy up arguments (stack check already done above)
+	for (i = callargs - 1; i >= 0; i --)
+	  base[pap->nargs + i] = base[i];
+	// Fill in arguments from PAP
+	for (i = 0; i < pap->nargs; i++)
+	  base[i] = pap->payload[i];
       }
 
       base[-1] = (Word)fnode;

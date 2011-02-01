@@ -127,9 +127,7 @@ printInstruction_aux(const BCIns *ins /*in*/, int oneline)
       }
       break;
     case BC_CALL:
-    case BC_CALLT:
-      { u1 *arg = (u1*)ins; ins += BC_ROUND(bc_b(i) - 1);
-        if (bc_op(i) == BC_CALL) ins ++;  // skip bitset
+      { u1 *arg = (u1*)ins; ins += BC_ROUND(bc_b(i) - 1) + 1;
         printf("%s\tr%d(r%d", name, bc_a(i), bc_c(i));
         for (j = 1; j < bc_b(i); j++, arg++)
           printf(", r%d", *arg);

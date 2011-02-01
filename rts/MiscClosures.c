@@ -182,7 +182,7 @@ garbage collector).
   code:
     1. a bitmask where r0...r(N-1) are live
     2. MOV_RES rN
-    3. CALLT rN, N, r0    ; r0 is always the first argument
+    3. CALLT rN, N
     framesize = N + 1
     arity = N  (though, unused)
 
@@ -227,7 +227,7 @@ getAPKClosure(Closure **res_clos, BCIns **res_pc, int nargs)
     info->code.framesize = nargs + 1;
     info->code.arity = nargs;
     info->code.sizelits = 0;
-    info->code.sizecode = 4 + BC_ROUND(nargs - 1);
+    info->code.sizecode = 4;
     info->code.lits = NULL;
     info->code.littypes = NULL;
     info->code.code = malloc(info->code.sizecode * sizeof(BCIns));
@@ -240,12 +240,7 @@ getAPKClosure(Closure **res_clos, BCIns **res_pc, int nargs)
     code[0] = BCINS_AD(BC_EVAL, nargs, 0);
     code[1] = cast(BCIns, (1 << nargs) - 1); // liveness mask
     code[2] = BCINS_AD(BC_MOV_RES, nargs, 0); // rN = result
-    code[3] = BCINS_ABC(BC_CALLT, nargs, nargs, 0);
-    u1 i;
-    u1 *args = (u1*)(&code[4]);
-    for (i = 1; i < nargs; i++, args++) {
-      *args = i;
-    }
+    code[3] = BCINS_AD(BC_CALLT, nargs, nargs);
 
     Closure *cl = allocStaticClosure(wordsof(ClosureHeader));  // no payload
     setInfo(cl, (InfoTable*)info);
@@ -273,9 +268,9 @@ getAPInfoTable(int nargs)
     return ap_infos[nargs - 1];
 
   int codesize =
-    4 + // load and evaluate function
+    4 +     // load and evaluate function
     nargs + // load arguments
-    1 + BC_ROUND(nargs - 1); // CALLT + arguments
+    1;      // CALLT
   BCIns *code = malloc(sizeof(BCIns) * codesize);
   code[0] = BCINS_AD(BC_LOADFV, nargs, 1); // load function ...
   code[1] = BCINS_AD(BC_EVAL, nargs, 0);   // and evaluate it
@@ -285,10 +280,7 @@ getAPInfoTable(int nargs)
   for (i = 0; i < nargs; i++)
     code[i + 4] = BCINS_AD(BC_LOADFV, i, i + 2); // load each argument
   // finally, tailcall rN(r0, ..., r{N-1})
-  code[nargs + 4] = BCINS_ABC(BC_CALLT, nargs, nargs, 0);
-  u1 *p = (u1*)&code[nargs + 5];
-  LC_ASSERT(LC_ARCH_ENDIAN == LAMBDACHINE_LE);
-  for (i = 1; i < nargs; i++, p++) { *p = i; }
+  code[nargs + 4] = BCINS_AD(BC_CALLT, nargs, nargs);
 
   ThunkInfoTable *info = allocInfoTable(wordsof(ThunkInfoTable));
   info->i.type = THUNK;

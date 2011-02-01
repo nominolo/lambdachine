@@ -115,7 +115,7 @@ interpreter, and all bytecode files.
   _(ALLOCAP, ___) \
   /* Calls and jumps */ \
   _(CALL,    ___) \
-  _(CALLT,   ___) \
+  _(CALLT,   RN) \
   _(RET1,    R) \
   _(JMP,     J) \
   _(EVAL,    ___) \

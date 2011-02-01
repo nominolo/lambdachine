@@ -22,6 +22,7 @@ import Blaze.ByteString.Builder
 import Blaze.ByteString.Builder.Word
 import Blaze.ByteString.Builder.Char8 ( fromString )
 import Control.Applicative
+import Control.Exception.Base ( assert )
 import Control.Monad ( liftM, ap, forM_, forM )
 import Control.Monad.State.Strict --( StateT, runStateT )
 import Data.Bits
@@ -306,7 +307,7 @@ insLength' ins = case ins of
   Lst Stop -> 1
   Lst (Ret1 _) -> 1
   Lst (Eval _ _ _) -> 3
-  Lst (Call Nothing _ (_:args)) -> 1 + arg_len args
+  Lst (Call Nothing _ (_:args)) -> 1
   Lst (Call (Just _) _ (_:args)) -> 3 + arg_len args
   Lst (CondBranch _ _ _ _ _ _) -> 2
   Lst (Goto _) -> 1
@@ -381,9 +382,9 @@ putLinearIns lit_ids new_addrs ins_id ins = case ins of
     putIns (insAD opc_EVAL (i2b r) 0)
     putIns bitset
     putIns (insAD opc_MOV_RES (i2b r) 0)
-  Lst (Call Nothing (BcReg f) (BcReg arg0:args)) ->
-    putIns (insABC opc_CALLT (i2b f) (i2b $ 1 + length args) (i2b arg0))
-      >> putArgs args
+  Lst (Call Nothing (BcReg f) args) ->
+    assert (args == map BcReg [0 .. length args - 1]) $
+    putIns (insAD opc_CALLT (i2b f) (i2h (length args)))
   Lst (Call (Just (BcReg rslt, _, lives)) (BcReg f) (BcReg arg0:args)) 
     | Just bitset <- regsToBits lives -> do
       putIns (insABC opc_CALL (i2b f) (i2b $ 1 + length args) (i2b arg0))
