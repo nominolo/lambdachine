@@ -5,7 +5,7 @@
 module Lambdachine.Grin.Bytecode
   ( module Lambdachine.Grin.Bytecode,
     (<*>), (|*><*|), O, C, emptyGraph, catGraphs, MaybeO(..),
-    withFresh, HooplNode(..), freshLabel, UniqueMonad(..),
+    withFresh, HooplNode(..), freshLabel, UniqueMonad(..), Label,
   )
 where
 
@@ -104,7 +104,14 @@ data BinOp
 
 type CmpOp = BinOp
 
-data OpTy = Int32Ty | Float32Ty
+data OpTy = IntTy
+          | WordTy
+          | Int64Ty
+          | Word64Ty
+          | CharTy
+          | FloatTy
+          | DoubleTy
+          | AddrTy
   deriving (Eq, Ord)
 
 data BcVar = BcVar !Id
@@ -201,8 +208,14 @@ instance Pretty BcRhs where
     text "alloc_ap(" <> hsep (commaSep (map ppr args)) <> char ')'
 
 instance Pretty OpTy where
-  ppr Int32Ty = text "i32"
-  ppr Float32Ty = text "f32"
+  ppr IntTy = text "i"
+  ppr Int64Ty = text "I"
+  ppr WordTy = text "u"
+  ppr Word64Ty = text "U"
+  ppr CharTy = text "c"
+  ppr AddrTy = text "a"
+  ppr FloatTy = text "f"
+  ppr DoubleTy = text "d"
 
 instance Pretty BcLoadOperand where
   ppr (LoadLit l) = ppr l
@@ -217,7 +230,7 @@ instance Pretty BcTag where
   ppr (LitT n) = char '#' <> text (show n)
 
 tst1 = do
-  pprint ((Assign (BcReg 1) (BinOp OpAdd Int32Ty (BcReg 2) (BcReg 3))) :: BcIns O O)
+  pprint ((Assign (BcReg 1) (BinOp OpAdd IntTy (BcReg 2) (BcReg 3))) :: BcIns O O)
   pprint ((Assign (BcReg 2) (Fetch (BcReg 2) 42)) :: BcIns O O)
 
 -- -------------------------------------------------------------------
@@ -533,9 +546,9 @@ tst2 = pprint $ runBcM $ do
                      ] <*>
             mkLast (Goto l2)) |*><*|
            (mkFirst (Label l2) <*>
-            mkMiddles [Assign (BcReg 1) (BinOp OpAdd Int32Ty (BcReg 1) (BcReg 0)),
-                       Assign (BcReg 0) (BinOp OpSub Int32Ty (BcReg 0) (BcReg 2))] <*>
-            mkLast (CondBranch CmpGt Int32Ty (BcReg 1) (BcReg 0) l2 l3))
+            mkMiddles [Assign (BcReg 1) (BinOp OpAdd IntTy (BcReg 1) (BcReg 0)),
+                       Assign (BcReg 0) (BinOp OpSub IntTy (BcReg 0) (BcReg 2))] <*>
+            mkLast (CondBranch CmpGt IntTy (BcReg 1) (BcReg 0) l2 l3))
            |*><*|
            (mkFirst (Label l3) <*> mkLast (Ret1 (BcReg 1)))
   (g1, lives1, _) <- analyzeAndRewriteBwd livenessAnalysis2 (JustC l)
@@ -546,7 +559,7 @@ tst2 = pprint $ runBcM $ do
   ppL lives l = ppr l <> colon <+> text "--- lives=" <> ppr (fromMaybe S.empty (lookupFact l lives))
 
 tst3 :: [BcVar]
-tst3 = universeBi $ Assign (BcReg 1) (BinOp OpAdd Int32Ty (BcReg 1) (BcReg 0))
+tst3 = universeBi $ Assign (BcReg 1) (BinOp OpAdd IntTy (BcReg 1) (BcReg 0))
 
 --newtype BcGraph e x = BcGraph (Graph BcIns e x)
 

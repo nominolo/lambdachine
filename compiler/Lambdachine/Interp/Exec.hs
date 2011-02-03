@@ -257,7 +257,7 @@ interp1 vm0@VMState{ vm_env = env } heap
      old_src <- readReg args src
      writeReg args dst old_src
      k vm heap bco (pc + 1) args
-   interp_rhs vm dst (BinOp op Int32Ty (BcReg r1) (BcReg r2)) = do
+   interp_rhs vm dst (BinOp op IntTy (BcReg r1) (BcReg r2)) = do
      ValI v1 <- readReg args r1
      ValI v2 <- readReg args r2
      writeReg args dst (bin_op_int32ty op v1 v2)
@@ -713,7 +713,7 @@ test_insts1 = do
                   [Mid (Assign (BcReg 0) (Move (BcReg 1)))]
                   (map Just [ValI 3, ValI 3])
   ok2 <- pre_post [ValI 2, ValI 3]
-                  [Mid (Assign (BcReg 0) (BinOp OpAdd Int32Ty (BcReg 0) (BcReg 1)))]
+                  [Mid (Assign (BcReg 0) (BinOp OpAdd IntTy (BcReg 0) (BcReg 1)))]
                   (map Just [ValI 5, ValI 3])
   ok3 <- pre_post [ValI 2]
                   [Mid (Assign (BcReg 0) (Load (LoadLit (CInt 42))))]

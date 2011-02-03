@@ -91,10 +91,14 @@ finaliseCode arity (LinearCode code0 lives labels) =
       calc_offs (mp, new_idx) (i, keep) =
         (mp, if keep then new_idx + 1 else new_idx)
 
+   lookup_label new_labels l =
+     case M.lookup l new_labels of
+       Just x -> x
+       Nothing -> error $ "Label not found: " ++ show l
    adjust_idx new_labels i (Mid ins) =
-     Mid $ mapLabels (\l -> (new_labels M.! l)) ins
+     Mid $ mapLabels (\l -> (lookup_label new_labels l)) ins
    adjust_idx new_labels i (Lst ins) =
-     Lst $ mapLabels (\l -> (new_labels M.! l)) ins
+     Lst $ mapLabels (\l -> (lookup_label new_labels l)) ins
 
 -- | Contains linear bytecode annotated with liveness info for each graph.
 data LinearCode = LinearCode

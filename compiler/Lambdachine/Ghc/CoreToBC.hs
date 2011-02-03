@@ -81,7 +81,8 @@ import Control.Monad.State
 import Control.Monad.Reader
 --import Control.Monad.Fix
 import Data.Foldable ( toList )
-import Data.List ( foldl' )
+import Data.List ( foldl', sortBy )
+import Data.Ord ( comparing )
 import Data.Monoid
 import Data.Maybe ( fromMaybe )
 
@@ -410,6 +411,7 @@ data ValueLocation
   | Self
     -- ^ The value is the contents of the @Node@ pointer.
   | Global Id
+  deriving Show
 
 -- | Maps GHC Ids to their (current) location in bytecode.
 --
@@ -585,39 +587,16 @@ transBody expr@(Ghc.App _ _) env fvi locs0 ctxt
  | Just (f, args) <- viewGhcApp expr
  = transApp f args env fvi locs0 ctxt
 
--- Special case for (case x #< y of ...) and such.
+-- Special case for primitive conditions, i.e., (case x #< y of ...)
+-- and such.
 transBody (Ghc.Case scrut@(Ghc.App _ _) bndr _ty alts) env0 fvi locs0 ctxt
   | Just (f, args) <- viewGhcApp scrut,
     Just (cond, ty) <- isCondPrimOp =<< isGhcPrimOpId f,
     isLength 2 args
   = transBinaryCase cond ty args bndr alts env0 fvi locs0 ctxt
  
-transBody (Ghc.Case scrut bndr _ty alts) env0 fvi locs0 ctxt = do
-  (bcis, locs1, fvs0, Just r) <- transBody scrut env0 fvi locs0 (BindC Nothing)
-  let locs2 = updateLoc locs1 bndr (InVar r)
-  let env = extendLocalEnv env0 bndr undefined
-  case alts of
-    [(altcon, vars, body)] -> do
-      let locs3 = addMatchLocs locs2 r altcon vars
-          env' = extendLocalEnvList env vars
-      (bcis', locs4, fvs1, mb_r) <- transBody body env' fvi locs3 ctxt
-      return (bcis <*> bcis', locs4, fvs0 `mappend` fvs1, mb_r)
-    _ -> do
-      case ctxt of
-        RetC -> do -- inss are closed at exit
-          (alts, inss, fvs1) <- transCaseAlts alts r env fvi locs2 RetC
-          return ((bcis <*> insCase CaseOnTag {- XXX: wrong -} r alts)
-                  `catGraphsC` inss,
-                  locs1, fvs0 `mappend` fvs1, Nothing)
-        BindC mr -> do -- close inss' first
-          r <- mbFreshLocal mr
-          (alts, inss, fvs1) <- transCaseAlts alts r env fvi locs2 (BindC (Just r))
-          let bcis' =
-                withFresh $ \l -> 
-                  let inss' = [ ins <*> insGoto l | ins <- inss ] in
-                  ((bcis <*> insCase CaseOnTag r alts) `catGraphsC` inss')
-                   |*><*| mkLabel l  -- make sure we're open at the end
-          return (bcis', locs1, fvs0 `mappend` fvs1, Just r)
+transBody (Ghc.Case scrut bndr _ty alts) env0 fvi locs0 ctxt =
+  transCase scrut bndr alts env0 fvi locs0 ctxt
 
 transBody (Ghc.Let (NonRec x (viewGhcApp -> Just (f, args@(_:_)))) body)
           env fvi locs0 ctxt
@@ -648,16 +627,18 @@ transLiteral :: Ghc.Literal -> Maybe BcVar
              -> Trans (Bcis O, BcVar)
 transLiteral lit mbvar = do
   rslt <- mbFreshLocal mbvar
-  return (insLoadLit rslt (fromGhcLit lit), rslt)
- where
-   fromGhcLit (Ghc.MachStr fs)   = CStr (unpackFS fs)
-   fromGhcLit (Ghc.MachChar c)   = CChar c
-   fromGhcLit (Ghc.MachInt n)    = CInt n
-   fromGhcLit (Ghc.MachInt64 n)  = CInt64 n
-   fromGhcLit (Ghc.MachWord n)   = CWord n
-   fromGhcLit (Ghc.MachWord64 n) = CWord64 n
-   fromGhcLit (Ghc.MachFloat r)  = CFloat r
-   fromGhcLit (Ghc.MachDouble r) = CDouble r
+  return (insLoadLit rslt (fromGhcLiteral lit), rslt)
+
+fromGhcLiteral :: Ghc.Literal -> BcConst
+fromGhcLiteral lit = case lit of
+  Ghc.MachStr fs   -> CStr (unpackFS fs)
+  Ghc.MachChar c   -> CChar c
+  Ghc.MachInt n    -> CInt n
+  Ghc.MachInt64 n  -> CInt64 n
+  Ghc.MachWord n   -> CWord n
+  Ghc.MachWord64 n -> CWord64 n
+  Ghc.MachFloat r  -> CFloat r
+  Ghc.MachDouble r -> CDouble r
 
 -- | Translate a variable reference into bytecode.
 --
@@ -690,7 +671,10 @@ transVar ::
      -- * Updated 'KnownLocs'
      --
      -- * TODO
---transVar x _ _ _ _ | trace ("transVar: " ++ showPpr x ++ " : " ++ showPpr (Ghc.idType x) ++ " / " ++ show (not (Ghc.isUnLiftedType (Ghc.idType x)))) False = undefined
+-- transVar x _ _ _ _ | trace ("transVar: " ++ showPpr x ++ " : "
+--                            ++ showPpr (Ghc.idType x) ++ " / "
+--                            ++ show (not (Ghc.isUnLiftedType (Ghc.idType x))))
+--                     False = undefined
 transVar x env fvi locs0 mr =
   case lookupLoc locs0 x of
     Just (InVar x') -> -- trace "inVAR" $
@@ -729,6 +713,8 @@ transVar x env fvi locs0 mr =
           r <- mbFreshLocal mr
           return (insLoadGbl r x', r, isGhcConWorkId x,  -- TODO: only if CAF
                   updateLoc locs0 x (InVar r), globalVar x')
+    r -> error $ "transVar: unhandled case: " ++ show r ++ " "
+              ++ showPpr x
  where
    in_whnf = Ghc.isUnLiftedType (Ghc.idType x)
 
@@ -828,6 +814,161 @@ transStore dcon args env fvi locs0 ctxt = do
   let bcis = (bcis0 <*> bcis1) <*> insAlloc rslt con_reg regs
   maybeAddRet ctxt bcis locs2 (fvs `mappend` fvs') rslt
 
+transCase :: forall x.
+             CoreExpr -> CoreBndr -> [CoreAlt]
+          -> LocalEnv -> FreeVarsIndex -> KnownLocs
+          -> Context x
+          -> Trans (Bcis x, KnownLocs, FreeVars, Maybe BcVar)
+
+-- Only a single case alternative.  This is just EVAL(bndr) and
+-- possibly matching on the result.
+transCase scrut bndr [(altcon, vars, body)] env0 fvi locs0 ctxt = do
+  (bcis, locs1, fvs0, Just r) <- transBody scrut env0 fvi locs0 (BindC Nothing)
+  let locs2 = updateLoc locs1 bndr (InVar r)
+      env = extendLocalEnv env0 bndr undefined
+  let locs3 = addMatchLocs locs2 r altcon vars
+      env' = extendLocalEnvList env vars
+  (bcis', locs4, fvs1, mb_r) <- transBody body env' fvi locs3 ctxt
+  return (bcis <*> bcis', locs4, fvs0 `mappend` fvs1, mb_r)
+
+-- Literal cases are handled specially by translating them into a
+-- decision tree.  There's still room for improvement, though.  See
+-- 'buildCaseTree' below.
+transCase scrut bndr alts env0 fvi locs0 ctxt
+ | isLitCase alts
+ = do
+  (bcis0, locs1, fvs0, Just reg) <- transBody scrut env0 fvi locs0 (BindC Nothing)
+  -- bndr gets bound to the literal
+  let locs2 = updateLoc locs1 bndr (InVar reg)
+      env = extendLocalEnv env0 bndr undefined
+  let (dflt, ty, tree) = buildCaseTree alts
+
+  -- If the context requires binding to a variable, then we have to
+  -- make sure all branches write their result into the same
+  -- variable.
+  ctxt' <- (case ctxt of
+             RetC -> return RetC
+             BindC mr -> BindC . Just <$> mbFreshLocal mr)
+            :: Trans (Context x)
+
+  end_label <- freshLabel
+
+  let
+    transArm :: CoreExpr -> Trans (Label, BcGraph C C, FreeVars)
+    transArm bdy = do
+      l <- freshLabel
+      (bcis, _locs', fvs, _mb_var)
+        <- transBody bdy env fvi locs2 ctxt'
+      case ctxt' of
+        RetC ->
+          return (l, mkLabel l <*> bcis, fvs)
+        BindC _ ->
+          return (l, mkLabel l <*> bcis <*> insGoto end_label, fvs)
+
+  (dflt_label, dflt_bcis, dflt_fvs) <- transArm dflt
+
+  let
+    build_branches :: CaseTree
+                   -> Trans (Label, [BcGraph C C], FreeVars)
+
+    build_branches (Leaf Nothing) = do
+      return (dflt_label, [], mempty)
+    build_branches (Leaf (Just expr)) = do
+      (lbl, bci, fvs) <- transArm expr
+      return (lbl, [bci], fvs)
+
+    build_branches (Branch cmp lit true false) = do
+      (true_lbl, true_bcis, true_fvs) <- build_branches true
+      (false_lbl, false_bcis, false_fvs) <- build_branches false
+      -- Ensure the code blocks are closed at the end
+      (lit_bcis, lit_reg) <- transLiteral lit Nothing
+      l <- freshLabel
+      return (l, [mkLabel l <*> lit_bcis
+                  <*> insBranch cmp ty reg lit_reg true_lbl false_lbl]
+                 ++ true_bcis ++ false_bcis,
+              true_fvs `mappend` false_fvs)
+
+  case ctxt' of
+    RetC -> do
+      (l_root, bcis, fvs1) <- build_branches tree
+      return ((bcis0 <*> insGoto l_root) `catGraphsC` bcis
+               |*><*| dflt_bcis,
+              locs1, mconcat [fvs0, fvs1, dflt_fvs], Nothing)
+    BindC (Just r) -> do
+      (l_root, bcis, fvs1) <- build_branches tree
+      return ((bcis0 <*> insGoto l_root) `catGraphsC` bcis
+                |*><*| dflt_bcis |*><*| mkLabel end_label,
+              locs1, mconcat [fvs0, fvs1, dflt_fvs], Just r)
+
+-- The general case
+transCase scrut bndr alts env0 fvi locs0 ctxt = do
+  (bcis, locs1, fvs0, Just r) <- transBody scrut env0 fvi locs0 (BindC Nothing)
+  let locs2 = updateLoc locs1 bndr (InVar r)
+  let env = extendLocalEnv env0 bndr undefined
+  case ctxt of
+    RetC -> do -- inss are closed at exit
+      (alts, inss, fvs1) <- transCaseAlts alts r env fvi locs2 RetC
+      return ((bcis <*> insCase CaseOnTag {- XXX: wrong -} r alts)
+              `catGraphsC` inss,
+              locs1, fvs0 `mappend` fvs1, Nothing)
+    BindC mr -> do -- close inss' first
+      error "UNTESTED"
+      r1 <- mbFreshLocal mr
+      (alts, inss, fvs1) <- transCaseAlts alts r env fvi locs2 (BindC (Just r1))
+      let bcis' =
+            withFresh $ \l ->
+              let inss' = [ ins <*> insGoto l | ins <- inss ] in
+              ((bcis <*> insCase CaseOnTag r alts) `catGraphsC` inss')
+               |*><*| mkLabel l  -- make sure we're open at the end
+      return (bcis', locs1, fvs0 `mappend` fvs1, Just r1)
+
+
+data CaseTree
+  = Leaf (Maybe CoreExpr)  -- execute this code (or default)
+  | Branch CmpOp Ghc.Literal CaseTree CaseTree
+    -- cmp + ty,  true_case, false_case
+
+-- | Given a list of literal pattern matches, builds a balanced tree.
+--
+-- The goal is for this tree to select among the @N@ alternatives in
+-- @log2(N)@ time.
+--
+-- TODO: Detect and take advantage of ranges.
+buildCaseTree :: [CoreAlt]
+              -> (CoreExpr, OpTy, CaseTree)
+                 -- ^ Default code, comparison type, and other cases
+buildCaseTree ((DEFAULT, [], dflt_expr):alts0) =
+  assert alts_is_sorted $ (dflt_expr, ty, buildTree alts)
+ where
+   alts = map simpl_lit alts0
+
+   alts_is_sorted =
+     map fst (sortBy (comparing fst) alts) == map fst alts
+
+   dflt = Leaf Nothing
+   leaf x = Leaf (Just x)
+
+   simpl_lit (LitAlt lit, [], expr) =
+     assert (ghcLiteralType lit == ty) $ (lit, expr)
+
+   ty = case alts0 of ((LitAlt l, _, _):_) -> ghcLiteralType l
+
+   buildTree [(l, body)] =
+     Branch CmpEq l (leaf body) dflt
+   buildTree [(l1, body1), (l2,body2)] =
+     Branch CmpEq l1 (leaf body1) (Branch CmpEq l2 (leaf body2) dflt)
+   buildTree alts1 =
+     let l = length alts1 in
+     case splitAt (l `div` 2) alts1 of
+       (lows, highs@((l, _):_)) ->
+         Branch CmpGe l (buildTree highs) (buildTree lows)
+
+isLitCase :: [CoreAlt] -> Bool
+isLitCase ((DEFAULT, _, _):alts) = isLitCase alts
+isLitCase ((LitAlt _, _, _):_) = True
+isLitCase ((DataAlt _, _, _):_) = False
+isLitCase [] = False
+
 transCaseAlts ::
      [CoreAlt] -- ^ The case alternatives
   -> BcVar     -- ^ The variable we're matching on.
@@ -872,7 +1013,7 @@ transBinaryCase cond ty args bndr alts env0 fvi locs0 ctxt = do
   ctxt' <- (case ctxt of
              RetC -> return RetC
              BindC mr -> BindC . Just <$> mbFreshLocal mr)
-             :: Trans (Context x)
+            :: Trans (Context x)
 
   let transUnaryConAlt body con_id = do
         let locs2 = updateLoc locs1 bndr (Global con_id)
@@ -890,7 +1031,7 @@ transBinaryCase cond ty args bndr alts env0 fvi locs0 ctxt = do
                    |*><*| tBcis |*><*| fBcis,
               locs1, mconcat [fvs, tFvs, fFvs], Nothing)
     BindC (Just r) ->
-      error "UNIMPLEMENTED"
+      error "UNIMPLEMENTED: if-then-else in non-return context"
 
 addMatchLocs :: KnownLocs -> BcVar -> AltCon -> [CoreBndr] -> KnownLocs
 addMatchLocs locs _base_reg DEFAULT [] = locs
@@ -940,18 +1081,18 @@ isGhcPrimOpId x
 primOpToBinOp :: Ghc.PrimOp -> Maybe (BinOp, OpTy)
 primOpToBinOp primop =
   case primop of
-    Ghc.IntAddOp -> Just (OpAdd, Int32Ty)
-    Ghc.IntSubOp -> Just (OpSub, Int32Ty)
-    Ghc.IntMulOp -> Just (OpMul, Int32Ty)
-    Ghc.IntQuotOp -> Just (OpDiv, Int32Ty)
+    Ghc.IntAddOp -> Just (OpAdd, IntTy)
+    Ghc.IntSubOp -> Just (OpSub, IntTy)
+    Ghc.IntMulOp -> Just (OpMul, IntTy)
+    Ghc.IntQuotOp -> Just (OpDiv, IntTy)
 {-
     -- TODO: treat conditionals specially?
-    Ghc.IntGtOp -> Just (CmpGt, Int32Ty)
-    Ghc.IntGeOp -> Just (CmpGe, Int32Ty)
-    Ghc.IntEqOp -> Just (CmpEq, Int32Ty)
-    Ghc.IntNeOp -> Just (CmpNe, Int32Ty)
-    Ghc.IntLtOp -> Just (CmpLt, Int32Ty)
-    Ghc.IntLeOp -> Just (CmpLe, Int32Ty)
+    Ghc.IntGtOp -> Just (CmpGt, IntTy)
+    Ghc.IntGeOp -> Just (CmpGe, IntTy)
+    Ghc.IntEqOp -> Just (CmpEq, IntTy)
+    Ghc.IntNeOp -> Just (CmpNe, IntTy)
+    Ghc.IntLtOp -> Just (CmpLt, IntTy)
+    Ghc.IntLeOp -> Just (CmpLe, IntTy)
 -}
     _ -> Nothing
 --primOpToBinOp _ = Nothing
@@ -959,12 +1100,12 @@ primOpToBinOp primop =
 isCondPrimOp :: Ghc.PrimOp -> Maybe (BinOp, OpTy)
 isCondPrimOp primop =
   case primop of
-    Ghc.IntGtOp -> Just (CmpGt, Int32Ty)
-    Ghc.IntGeOp -> Just (CmpGe, Int32Ty)
-    Ghc.IntEqOp -> Just (CmpEq, Int32Ty)
-    Ghc.IntNeOp -> Just (CmpNe, Int32Ty)
-    Ghc.IntLtOp -> Just (CmpLt, Int32Ty)
-    Ghc.IntLeOp -> Just (CmpLe, Int32Ty)
+    Ghc.IntGtOp -> Just (CmpGt, IntTy)
+    Ghc.IntGeOp -> Just (CmpGe, IntTy)
+    Ghc.IntEqOp -> Just (CmpEq, IntTy)
+    Ghc.IntNeOp -> Just (CmpNe, IntTy)
+    Ghc.IntLtOp -> Just (CmpLt, IntTy)
+    Ghc.IntLeOp -> Just (CmpLe, IntTy)
     _ -> Nothing
 
 -- | View expression as n-ary application.  The expression in function
@@ -1011,3 +1152,14 @@ viewGhcArg (Ghc.App x (Ghc.Type _)) = viewGhcArg x
 viewGhcArg (Lam a x) | isTyVar a    = viewGhcArg x
 viewGhcArg (Cast x _)               = viewGhcArg x
 viewGhcArg (Note _ x)               = viewGhcArg x
+
+ghcLiteralType :: Ghc.Literal -> OpTy
+ghcLiteralType lit = case lit of
+  Ghc.MachInt _    -> IntTy
+  Ghc.MachInt64 _  -> Int64Ty
+  Ghc.MachChar _   -> CharTy
+  Ghc.MachWord _   -> WordTy
+  Ghc.MachWord64 _ -> Word64Ty
+  Ghc.MachStr _    -> AddrTy
+  Ghc.MachFloat _  -> FloatTy
+  Ghc.MachDouble _ -> DoubleTy
