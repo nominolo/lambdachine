@@ -123,7 +123,7 @@ tests/base/%.lcbc: tests/base/%.hs
 #	@echo "@ = $@, < = $<"
 
 tests/%.lcbc: tests/%.hs
-	cd tests && $(LCC) --dump-bytecode $(patsubst tests/%, %, $<)
+	cd tests && $(LCC) $(LCCFLAGS) $(patsubst tests/%, %, $<)
 
 PRIM_MODULES_ghc-prim = GHC/Bool GHC/Types
 PRIM_MODULES_integer-gmp = GHC/Integer/Type GHC/Integer
