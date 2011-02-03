@@ -26,3 +26,8 @@ class  Eq a  where
 not :: Bool -> Bool
 not True  = False
 not False = True
+
+-- | Boolean \"and\"
+(&&)                    :: Bool -> Bool -> Bool
+True  && x              =  x
+False && _              =  False
