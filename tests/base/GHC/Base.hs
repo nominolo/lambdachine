@@ -11,12 +11,41 @@ import GHC.Prim
 import GHC.Types
 import GHC.Bool
 import GHC.Classes
+import GHC.Ordering
 
 infixr 5  ++
+infixl 1  >>, >>=
 
 -- | Identity function.
 id                      :: a -> a
 id x                    =  x
+
+class  Monad m  where
+    -- | Sequentially compose two actions, passing any value produced
+    -- by the first as an argument to the second.
+    (>>=)       :: m a -> (a -> m b) -> m b
+    -- | Sequentially compose two actions, discarding any value produced
+    -- by the first, like sequencing operators (such as the semicolon)
+    -- in imperative languages.
+    (>>)        :: m a -> m b -> m b
+        -- Explicit for-alls so that we know what order to
+        -- give type arguments when desugaring
+
+    -- | Inject a value into the monadic type.
+    return      :: a -> m a
+    -- | Fail with a message.  This operation is not part of the
+    -- mathematical definition of a monad, but is invoked on pattern-match
+    -- failure in a @do@ expression.
+    fail        :: String -> m a
+
+    {-# INLINE (>>) #-}
+    m >> k      = m >>= \_ -> k
+    fail s      = error s
+
+type String = [Char]
+
+error :: String -> a
+error = error
 
 {-# INLINE eqInt #-}
 {-# INLINE neInt #-}
@@ -36,6 +65,23 @@ gtInt, geInt, eqInt, neInt, ltInt, leInt :: Int -> Int -> Bool
 instance Eq Int where
   (==) = eqInt
   (/=) = neInt
+
+instance Ord Int where
+    compare = compareInt
+    (<)     = ltInt
+    (<=)    = leInt
+    (>=)    = geInt
+    (>)     = gtInt
+  
+compareInt :: Int -> Int -> Ordering
+(I# x#) `compareInt` (I# y#) = compareInt# x# y#
+
+compareInt# :: Int# -> Int# -> Ordering
+compareInt# x# y#
+    | x# <#  y# = LT
+    | x# ==# y# = EQ
+    | otherwise = GT
+
 
 {-# INLINE plusInt #-}
 {-# INLINE minusInt #-}
@@ -64,3 +110,10 @@ quotInt, remInt, divInt, modInt :: Int -> Int -> Int
 (++) []     ys = ys
 (++) (x:xs) ys = x : xs ++ ys
 
+-- |'otherwise' is defined as the value 'True'.  It helps to make
+-- guards more readable.  eg.
+--
+-- >  f x | x < 0     = ...
+-- >      | otherwise = ...
+otherwise               :: Bool
+otherwise               =  True
