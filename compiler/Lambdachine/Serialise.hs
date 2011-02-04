@@ -397,7 +397,9 @@ putLinearIns lit_ids new_addrs ins_id ins = case ins of
     putIns $ insAJ opc_JMP 0 (new_addrs IM.! tgt - new_addrs IM.! ins_id - 1)
   Lst Update ->
     putIns (insAD opc_UPDATE 0 1)
-  Lst (CondBranch cond IntTy (BcReg r1) (BcReg r2) t1 t2) -> do
+  Lst (CondBranch cond ty (BcReg r1) (BcReg r2) t1 t2)
+   | ty == IntTy || ty == CharTy
+   -> do
     let (swap_targets, target)
            | t1 == ins_id + 1 = (True, t2)
            | t2 == ins_id + 1 = (False, t1)

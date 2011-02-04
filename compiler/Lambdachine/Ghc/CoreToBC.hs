@@ -1094,17 +1094,8 @@ primOpToBinOp primop =
     Ghc.IntSubOp -> Just (OpSub, IntTy)
     Ghc.IntMulOp -> Just (OpMul, IntTy)
     Ghc.IntQuotOp -> Just (OpDiv, IntTy)
-{-
-    -- TODO: treat conditionals specially?
-    Ghc.IntGtOp -> Just (CmpGt, IntTy)
-    Ghc.IntGeOp -> Just (CmpGe, IntTy)
-    Ghc.IntEqOp -> Just (CmpEq, IntTy)
-    Ghc.IntNeOp -> Just (CmpNe, IntTy)
-    Ghc.IntLtOp -> Just (CmpLt, IntTy)
-    Ghc.IntLeOp -> Just (CmpLe, IntTy)
--}
+
     _ -> Nothing
---primOpToBinOp _ = Nothing
 
 isCondPrimOp :: Ghc.PrimOp -> Maybe (BinOp, OpTy)
 isCondPrimOp primop =
@@ -1115,6 +1106,14 @@ isCondPrimOp primop =
     Ghc.IntNeOp -> Just (CmpNe, IntTy)
     Ghc.IntLtOp -> Just (CmpLt, IntTy)
     Ghc.IntLeOp -> Just (CmpLe, IntTy)
+
+    Ghc.CharGtOp -> Just (CmpGt, CharTy)
+    Ghc.CharGeOp -> Just (CmpGe, CharTy)
+    Ghc.CharEqOp -> Just (CmpEq, CharTy)
+    Ghc.CharNeOp -> Just (CmpNe, CharTy)
+    Ghc.CharLtOp -> Just (CmpLt, CharTy)
+    Ghc.CharLeOp -> Just (CmpLe, CharTy)
+
     _ -> Nothing
 
 -- | View expression as n-ary application.  The expression in function
