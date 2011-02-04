@@ -101,9 +101,9 @@ tracePpr o exp = trace (">>> " ++ showPpr o) exp
 -- * Top-level Interface
 type Bcis x = BcGraph O x
 
-generateBytecode :: Supply Unique -> [CoreBind] -> [TyCon] -> BCOs
-generateBytecode us bndrs0 data_tycons =
-  runTrans us $ do
+generateBytecode :: Supply Unique -> Ghc.ModuleName -> [CoreBind] -> [TyCon] -> BCOs
+generateBytecode us mdl bndrs0 data_tycons =
+  runTrans mdl us $ do
     let dcon_bcos = M.unions $ map transTyCon data_tycons
     toplevel_bcos <- go bndrs0 mempty
     local_bcos <- getBCOs
@@ -131,7 +131,8 @@ transTyCon tycon = do
 
 transTopLevelBind :: CoreBndr -> CoreExpr -> Trans BCOs
 transTopLevelBind f (viewGhcLam -> (params, body)) = do
-  let !f' = toplevelId f
+  this_mdl <- getThisModule
+  let !f' = toplevelId this_mdl f
   let bco_type | (_:_) <- params = BcoFun (length params)
                | looksLikeCon body = Con
                | isGhcConWorkId f = Con
@@ -159,8 +160,9 @@ looksLikeCon _ = False
 
 buildCon :: Id -> CoreExpr -> Trans BCOs
 buildCon f (viewGhcApp -> Just (dcon, args0)) = do
+  this_mdl <- getThisModule
   let dcon' = dataConInfoTableId (ghcIdDataCon dcon)
-      fields = transFields toplevelId args0
+      fields = transFields (toplevelId this_mdl) args0
   return (M.singleton f (BcoCon Con dcon' fields))
 
 data ClosureInfo
@@ -334,8 +336,9 @@ transBind x (viewGhcLam -> (bndrs, body)) env0 = do
         -- maps from closure variable to its index
         cv_indices = Ghc.mkVarEnv (zip closure_vars [(1::Int)..])
     return (bcis, closure_vars, globalVars fvs, cv_indices)
-  x' <- freshVar ("cl_" ++ Ghc.getOccString x) mkTopLevelId
---  x' <- freshVar "closure" mkTopLevelId
+
+  this_mdl <- getThisModule
+  x' <- freshVar (showPpr this_mdl ++ ".cl_" ++ Ghc.getOccString x) mkTopLevelId
   g <- finaliseBcGraph bcis
   let arity = length bndrs
   let bco = BcObject { bcoType = if arity > 0 then BcoFun arity else Thunk
@@ -368,13 +371,15 @@ newtype Trans a = Trans (State TransState a)
 
 data TransState = TransState
   { tsUniques :: Supply Unique
-  , tsLocalBCOs :: BCOs }
+  , tsLocalBCOs :: BCOs
+  , tsModuleName :: Ghc.ModuleName }
 
-runTrans :: Supply Unique -> Trans a -> a
-runTrans us (Trans m) = evalState m s0
+runTrans :: Ghc.ModuleName -> Supply Unique -> Trans a -> a
+runTrans mdl us (Trans m) = evalState m s0
  where
    s0 = TransState { tsUniques = us
-                   , tsLocalBCOs = M.empty }
+                   , tsLocalBCOs = M.empty
+                   , tsModuleName = mdl }
 
 genUnique :: Trans (Supply Unique)
 genUnique = Trans $ do
@@ -383,6 +388,9 @@ genUnique = Trans $ do
     (us, us') -> do
       put $! s{ tsUniques = us }
       return us'
+
+getThisModule :: Trans Ghc.ModuleName
+getThisModule = Trans $ gets tsModuleName
 
 instance UniqueMonad Trans where
   freshUnique = hooplUniqueFromUniqueSupply `fmap` genUnique
@@ -705,11 +713,12 @@ transVar x env fvi locs0 mr =
                   updateLoc locs0 x (InVar r), closureVar x)
 
       | otherwise -> do  -- global variable
+          this_mdl <- getThisModule
           let x' | isGhcConWorkId x,
                    not (Ghc.isNullarySrcDataCon (ghcIdDataCon x))
                  = dataConInfoTableId (ghcIdDataCon x)
                  | otherwise
-                 = toplevelId x
+                 = toplevelId this_mdl x
           r <- mbFreshLocal mr
           return (insLoadGbl r x', r, isGhcConWorkId x,  -- TODO: only if CAF
                   updateLoc locs0 x (InVar r), globalVar x')

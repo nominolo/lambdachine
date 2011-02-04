@@ -465,7 +465,11 @@ loadInfoTable(const char *filename,
   InfoTable *new_itbl = NULL;
   FwdRefInfoTable *old_itbl = HashTable_lookup(itbls, itbl_name);
 
-  LC_ASSERT(old_itbl == NULL || old_itbl->i.type == INVALID_OBJECT);
+  if (old_itbl && old_itbl->i.type != INVALID_OBJECT) {
+    fprintf(stderr, "ERROR: Duplicate info table: %s\n",
+            itbl_name);
+    exit(1);
+  }
 
   switch (cl_type) {
   case CONSTR:

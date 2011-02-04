@@ -15,8 +15,8 @@ blackholeDataConId :: Id
 updateItblId :: Id
 initCodeId :: Id
 
-falseDataConId = toplevelId Ghc.falseDataConId
-trueDataConId = toplevelId Ghc.trueDataConId
+falseDataConId = toplevelId undefined Ghc.falseDataConId
+trueDataConId = toplevelId undefined Ghc.trueDataConId
 falseItblId = dataConInfoTableId Ghc.falseDataCon
 trueItblId  = dataConInfoTableId Ghc.trueDataCon
 
