@@ -18,6 +18,5 @@ isFourtyTwo :: Int -> Bool
 isFourtyTwo 42 = True
 isFourtyTwo _ = False
 
-
 test =
   fib1 5 == 8 && isFourtyTwo 42
