@@ -129,7 +129,7 @@ encodeModule mdl = toLazyByteString builder
                 -> BuildM Word
    encodeInfoTable name bco =
      case bco of
-       BcConInfo tag fields -> do
+       BcConInfo tag fields ty -> do
          emit $ fromString "ITBL"
          encodeId name
          emit $ varUInt cltype_CONSTR
@@ -163,10 +163,12 @@ encodeModule mdl = toLazyByteString builder
        BcoCon{ } ->
          return 0
 
+       BcTyConInfo{ } -> return 0
+
    -- Create the closure part for a BCO
    encodeClosure name bco =
      case bco of
-       BcConInfo _ _ -> return 0
+       BcConInfo _ _ _ -> return 0
        BcoCon _ con_id fields -> do
          emit $ fromString "CLOS"
          encodeId name
@@ -190,6 +192,8 @@ encodeModule mdl = toLazyByteString builder
          return 1
        BcObject{ bcoType = Thunk } ->
          return 0  -- don't need a static closure
+       BcTyConInfo{ } ->
+         return 0
        _ ->
          error $ "UNIMPL: encodeClosure: " ++ pretty bco
 

@@ -112,6 +112,9 @@ data OpTy = IntTy
           | FloatTy
           | DoubleTy
           | AddrTy
+          | PtrTy
+          | FunTy [OpTy] OpTy
+          | AlgTy !Id
   deriving (Eq, Ord)
 
 data BcVar = BcVar !Id
@@ -216,6 +219,11 @@ instance Pretty OpTy where
   ppr AddrTy = text "a"
   ppr FloatTy = text "f"
   ppr DoubleTy = text "d"
+  ppr PtrTy = text "p"
+  ppr (FunTy args res) =
+    char '(' <> hcat (map ppr args) <> text "):" <> ppr res
+  ppr (AlgTy n) =
+    char '[' <> ppr n <> char ']'
 
 instance Pretty BcLoadOperand where
   ppr (LoadLit l) = ppr l
@@ -381,7 +389,10 @@ data BytecodeObject' g
   | BcConInfo
     { bcoConTag :: Int
     , bcoConFields :: Int
+    , bcoConArgTypes :: [OpTy]
     }
+  | BcTyConInfo
+    { bcoDataCons :: [Id] }
 
 type BytecodeObject = BytecodeObject' (Graph BcIns O C)
 
@@ -473,8 +484,13 @@ instance Pretty g => Pretty (BytecodeObject' g) where
      ppr dcon <+> hsep (map pp_fld fields)
     where pp_fld (Left l) = ppr l
           pp_fld (Right x) = ppr x
-  ppr BcConInfo{ bcoConTag = tag } =
-    text "CONSTR" <> parens (text "tag:" <> ppr tag)
+  ppr BcConInfo{ bcoConTag = tag, bcoConArgTypes = tys } =
+    text "CONSTR" <>
+      (parens $ align $
+       sep [text "tag:" <> ppr tag <> comma,
+            text "args:" <> sep (commaSep (map ppr tys))])
+  ppr BcTyConInfo{ bcoDataCons = dcons } =
+    text "TYPE" <> parens (hsep (commaSep (map ppr dcons)))
 
 instance Pretty (Graph BcIns O C) where
   ppr g = pprGraph ppr (\l -> ppr l <> colon) g

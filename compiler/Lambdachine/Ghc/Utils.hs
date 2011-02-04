@@ -33,6 +33,12 @@ dataConInfoTableId dcon =
    N.mkBuiltinName (fromGhcUnique dcon)
       (showSDocForUser alwaysQualify (Ghc.ppr dcon))
 
+tyConId :: Ghc.Name -> Id
+tyConId x =
+  mkTopLevelId $
+    N.mkBuiltinName (fromGhcUnique x)
+      (showSDocForUser alwaysQualify (Ghc.ppr x))
+
 -- | Take a GHC 'Unique.Unique' and turn it into a 'Unique'.
 --
 -- Be very careful when using this and make sure that the namespace

@@ -25,6 +25,7 @@ data IdDetails
   | PrimOpId
   | InfoTableId
   | DataConInfoTableId
+  | TyConId
   deriving (Eq, Ord, Show)
 
 mkTopLevelId :: Name -> Id
@@ -44,6 +45,9 @@ mkPrimOpId n = Id n PrimOpId
 
 mkDataConInfoTableId :: Name -> Id
 mkDataConInfoTableId n = Id n DataConInfoTableId
+
+mkTyConId :: Name -> Id
+mkTyConId n = Id n TyConId
 
 isDataConId :: Id -> Bool
 isDataConId ident = idDetails ident == DataConId

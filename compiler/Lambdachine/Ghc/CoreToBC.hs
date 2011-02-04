@@ -60,9 +60,10 @@ import qualified Type as Ghc
 import qualified DataCon as Ghc
 import qualified CoreSyn as Ghc ( Expr(..) )
 import qualified PrimOp as Ghc
-import qualified TysWiredIn as Ghc ( trueDataConId, falseDataConId,
-                                     trueDataCon, falseDataCon)
+import qualified TysWiredIn as Ghc
+import qualified TysPrim as Ghc
 import qualified TyCon as Ghc
+import qualified TypeRep as Ghc
 import qualified Outputable as Ghc
 import TyCon ( TyCon )
 import Outputable ( Outputable, showPpr, alwaysQualify, showSDocForUser )
@@ -123,10 +124,18 @@ generateBytecode us mdl bndrs0 data_tycons =
 
 transTyCon :: TyCon -> BCOs
 transTyCon tycon = do
-  collect' M.empty (Ghc.tyConDataCons tycon) $ \bcos dcon ->
+  let bcos0 =
+        M.singleton (tyConId (Ghc.tyConName tycon))
+           BcTyConInfo{ bcoDataCons =
+                          map dataConInfoTableId (Ghc.tyConDataCons tycon) }
+  collect' bcos0 (Ghc.tyConDataCons tycon) $ \bcos dcon ->
     let dcon_id = dataConInfoTableId dcon
+        ty = transType (Ghc.dataConRepType dcon)
+        arg_tys | FunTy args _ <- ty = args
+                | otherwise = []
         bco = BcConInfo { bcoConTag = Ghc.dataConTag dcon
-                        , bcoConFields = Ghc.dataConRepArity dcon }
+                        , bcoConFields = Ghc.dataConRepArity dcon
+                        , bcoConArgTypes = arg_tys }
     in M.insert dcon_id bco bcos
 
 transTopLevelBind :: CoreBndr -> CoreExpr -> Trans BCOs
@@ -152,6 +161,41 @@ transTopLevelBind f (viewGhcLam -> (params, body)) = do
                          , bcoFreeVars = 0
                          }
       return (M.singleton f' bco)
+
+-- | Translate a GHC System FC type into runtime type info.
+--
+-- We currently look through type abstraction and application.  A
+-- polymorphic type (i.e., a type variable) is just represented as a
+-- pointer.  At runtime such a value must have an associated info
+-- table, so we can just look at that to figure out the type.
+--
+-- TODO: How to deal with 'void' types, like @State#@?
+--
+transType :: Ghc.Type -> OpTy
+transType (Ghc.TyConApp tycon _)
+  | Ghc.isPrimTyCon tycon =
+    case () of
+     _ | tycon == Ghc.intPrimTyCon   -> IntTy
+       | tycon == Ghc.charPrimTyCon  -> CharTy
+       | tycon == Ghc.floatPrimTyCon -> FloatTy
+       | tycon == Ghc.byteArrayPrimTyCon -> PtrTy
+       | otherwise ->
+         error $ "Unknown primitive type: " ++ showPpr tycon
+  | otherwise =
+    AlgTy (tyConId (Ghc.tyConName tycon))
+transType ty@(Ghc.FunTy _ _) | (args, res) <- Ghc.splitFunTys ty =
+  FunTy (map transType args) (transType res)
+-- Type abstraction stuff.  See documentation above.
+transType (Ghc.ForAllTy _ t) = transType t
+transType (Ghc.TyVarTy _) = PtrTy
+transType (Ghc.AppTy t _) = transType t
+-- Get the dictionary data type for predicates.
+-- TODO: I think this may cause a GHC panic under some circumstances.
+transType (Ghc.PredTy pred) =
+  transType (Ghc.predTypeRep pred)
+transType ty =
+  error $ "transType: Don't know how to translate type: "
+          ++ showPpr ty
 
 looksLikeCon :: CoreExpr -> Bool
 looksLikeCon (viewGhcApp -> Just (f, args)) = 

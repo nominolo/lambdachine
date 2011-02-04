@@ -636,8 +636,8 @@ updateId = updateItblId
 
 builtInEnv :: FinalBCOs
 builtInEnv = M.fromList
-  [(falseItblId, BcConInfo 1 0)
-  ,(trueItblId, BcConInfo 2 0)
+  [(falseItblId, BcConInfo 1 0 [])
+  ,(trueItblId, BcConInfo 2 0 [])
   ,(falseDataConId, BcoCon Con falseItblId [])
   ,(trueDataConId, BcoCon Con trueItblId [])
   ,(updateId, updateBCO)
