@@ -662,6 +662,7 @@ recordIns(JitState *J)
       // that the info table remains the same.
       ra = getSlot(J, bc_a(ins));
       Closure *cl = (Closure*)tbase[bc_a(ins)];
+      ra = emit(J, IRT(IR_ILOAD, IRT_INFO), ra, 0);
       guardEqualKWord(J, ra, (Word)getInfo(cl), LIT_INFO);
     }
     break;
