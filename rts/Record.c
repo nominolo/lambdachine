@@ -751,13 +751,21 @@ foldIR(JitState *J)
     }
     break;
   case IR_ILOAD:
+  iload_again:
     if (irref_islit(foldIns->op1)) {
       IRIns ir = J->cur.ir[foldIns->op1];
       LC_ASSERT(ir.o == IR_KWORD);
       Closure *c = (Closure*)J->kwords[ir.u];
       printf("FOLD: ILOAD for static closure\n");
       return emitKWord(J, (Word)getFInfo(c), LIT_INFO);
+    } else {
+      IRIns *left = IR(foldIns->op1);
+      if (left->o == IR_NEW) {
+        printf("FOLD: ILOAD for NEW closure\n");
+        return left->op1;
+      }
     }
+    break;
   default:
     ;
   }
