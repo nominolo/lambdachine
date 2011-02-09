@@ -18,22 +18,24 @@
 
 
 
+// -- Convenience macros.  Undefined at end of file. -----------------
+
+// Pointer to referenced IR.
+#define IR(ref)     (&J->cur.ir[(ref)])
+// The instruction currently being optimised
+#define foldIns     (&J->fold.ins)
+
 // -------------------------------------------------------------------
 
 TRef
 emitLoadSlot(JitState *J, i4 slot)
 {
-  TRef ref = emit_raw(J, IRT(IR_SLOAD, IRT_PTR), (i4)J->baseslot + slot, 0);
+  TRef ref = emit_raw(J, IRT(IR_SLOAD, IRT_UNK), (i4)J->baseslot + slot, 0);
   J->base[slot] = ref;
   //  if (slot >= J->maxslot) J->maxslot = slot + 1;
   return ref;
 }
 
-
-// Address of reference
-#define IR(ref)     (&J->cur.ir[(ref)])
-// The instruction currently being optimised
-#define foldIns     (&J->fold.ins)
 
 // Return reference location of next instruction.
 //
@@ -230,8 +232,9 @@ INLINE_HEADER IRType littype_to_irtype(LitType lt)
   case LIT_CHAR:    return IRT_I32;
   case LIT_WORD:    return IRT_U32;
   case LIT_FLOAT:   return IRT_F32;
-  case LIT_INFO:    return IRT_PTR;
-  case LIT_CLOSURE: return IRT_PTR;
+  case LIT_INFO:    return IRT_INFO;
+  case LIT_CLOSURE: return IRT_CLOS;
+  case LIT_PC:      return IRT_PC;
   default: LC_ASSERT(0); return 0;
   }
 }
@@ -312,7 +315,7 @@ INLINE_HEADER TRef
 emitFLoad(JitState *J, TRef ptr, u2 offset)
 {
   TRef ref = emit(J, IRT(IR_FREF, IRT_PTR), ptr, offset);
-  return emit(J, IRT(IR_FLOAD, IRT_PTR), ref, 0);
+  return emit(J, IRT(IR_FLOAD, IRT_UNK), ref, 0);
 }
 
 INLINE_HEADER TRef
@@ -325,7 +328,7 @@ INLINE_HEADER void
 guardEqualKWord(JitState *J, TRef ref, Word k, LitType lt)
 {
   TRef kref = emitKWord(J, k, lt);
-  emit(J, IRT(IR_EQ, IRT_PTR), ref, kref);
+  emit(J, IRT(IR_EQ, IRT_VOID), ref, kref);
 }
 
 void
@@ -447,7 +450,7 @@ recordIns(JitState *J)
   case BC_MOV_RES:
     {
       if (!J->last_result)
-        J->last_result = emit_raw(J, IRT(IR_RLOAD, IRT_PTR), 0, 0);
+        J->last_result = emit_raw(J, IRT(IR_RLOAD, IRT_UNK), 0, 0);
       setSlot(J, bc_a(ins), J->last_result);
       //printSlots(J);
     }
@@ -504,8 +507,8 @@ recordIns(JitState *J)
       // Specialise on info table:  Emit guard to check for same info
       // table as the one we encountered at recording time.
       rc = emitKWord(J, (Word)ninfo, LIT_INFO);
-      rb = emit(J, IRT(IR_ILOAD, IRT_PTR), ra, 0);
-      emit(J, IRT(IR_EQ, IRT_PTR), rb, rc);
+      rb = emit(J, IRT(IR_ILOAD, IRT_INFO), ra, 0);
+      emit(J, IRT(IR_EQ, IRT_VOID), rb, rc);
 
       if (closure_HNF(node)) {
         // ra is in normal form.  Guard makes sure of that, so we now just
@@ -528,12 +531,12 @@ recordIns(JitState *J)
         const BCIns *return_pc = J->pc + 2;
         // TODO: undefine local slots that are not live-out
         setSlot(J, t + 0, emitKBaseOffset(J, 0));
-        setSlot(J, t + 1, emitKWord(J, (Word)return_pc, LIT_INFO));
+        setSlot(J, t + 1, emitKWord(J, (Word)return_pc, LIT_PC));
         setSlot(J, t + 2, emitKWord(J, (Word)&stg_UPD_closure, LIT_CLOSURE));
         setSlot(J, t + 3, ra); // the thing to update
         setSlot(J, t + 4, 0); // undefined
         setSlot(J, t + 5, emitKBaseOffset(J, t + 3));
-        setSlot(J, t + 6, emitKWord(J, (Word)stg_UPD_return_pc, LIT_INFO));
+        setSlot(J, t + 6, emitKWord(J, (Word)stg_UPD_return_pc, LIT_PC));
         setSlot(J, t + 7, ra);
         printf("baseslot %d => %d\n", J->baseslot, J->baseslot + t + 7);
         J->baseslot += t + 8;
@@ -561,8 +564,8 @@ recordIns(JitState *J)
       // Guard for info table, as usual
       TRef rinfo = emitKWord(J, (Word)info, LIT_INFO);
       ra = getSlot(J, bc_a(ins));
-      ra = emit(J, IRT(IR_ILOAD, IRT_PTR), ra, 0);
-      emit(J, IRT(IR_EQ, IRT_PTR), ra, rinfo);
+      ra = emit(J, IRT(IR_ILOAD, IRT_INFO), ra, 0);
+      emit(J, IRT(IR_EQ, IRT_VOID), ra, rinfo);
 
       J->maxslot = info->code.framesize;
       // Invalidate non-argument slots:
@@ -577,7 +580,7 @@ recordIns(JitState *J)
     {
       ra = getSlot(J, bc_a(ins));
       rb = getSlot(J, bc_d(ins));
-      emit(J, IRT(IR_UPDATE, 0), ra, rb);
+      emit(J, IRT(IR_UPDATE, IRT_VOID), ra, rb);
       J->last_result = rb;
       J->needsnap = 1;
       goto do_return;
@@ -598,7 +601,7 @@ recordIns(JitState *J)
 
       J->framedepth--;
 
-      guardEqualKWord(J, getSlot(J, -2), return_pc, LIT_INFO); // TODO: what type?
+      guardEqualKWord(J, getSlot(J, -2), return_pc, LIT_PC);
 
       // TODO: Do something with slot(-3)?
       J->baseslot -= basediff;
@@ -617,11 +620,12 @@ recordIns(JitState *J)
       rb = getSlot(J, bc_b(ins));
       // Ensure that r(B) actually contains the the info table we're
       // expecting.  Usually, this will be optimised away.
-      emit(J, IRT(IR_EQ, IRT_PTR), rb, rinfo);
+      emit(J, IRT(IR_EQ, IRT_VOID), rb, rinfo);
+
       rc = getSlot(J, bc_c(ins));
-      rnew = emit(J, IRT(IR_NEW, IRT_PTR), rinfo, 2);
+      rnew = emit(J, IRT(IR_NEW, IRT_CLOS), rinfo, 2);
       rfield = emit(J, IRT(IR_FREF, IRT_PTR), rnew, 1);
-      emit(J, IRT(IR_FSTORE, 0), rfield, rc);
+      emit(J, IRT(IR_FSTORE, IRT_VOID), rfield, rc);
       setSlot(J, bc_a(ins), rnew);
       //printSlots(J);
     }
@@ -637,15 +641,15 @@ recordIns(JitState *J)
       u4 i;
       rinfo = emitKWord(J, (Word)info, LIT_INFO);
       rb = getSlot(J, bc_b(ins));
-      emit(J, IRT(IR_EQ, IRT_PTR), rb, rinfo);
+      emit(J, IRT(IR_EQ, IRT_VOID), rb, rinfo);
       cinfo = (ConInfoTable*)info;
-      rnew = emit(J, IRT(IR_NEW, IRT_PTR), rinfo,
+      rnew = emit(J, IRT(IR_NEW, IRT_CLOS), rinfo,
                   cinfo->i.layout.payload.ptrs +
                   cinfo->i.layout.payload.nptrs + 1);
       for (i = 1; i <= size; i++, arg++) {
         rc = getSlot(J, *arg);
         rfield = emit(J, IRT(IR_FREF, IRT_PTR), rnew, i);
-        emit(J, IRT(IR_FSTORE, 0), rfield, rc);
+        emit(J, IRT(IR_FSTORE, IRT_VOID), rfield, rc);
       }
       setSlot(J, bc_a(ins), rnew);
       //printSlots(J);
@@ -767,3 +771,6 @@ foldIR(JitState *J)
     return optCSE(J);
   }
 }
+
+#undef IR
+#undef foldIns

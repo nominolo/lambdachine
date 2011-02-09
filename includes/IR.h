@@ -165,12 +165,17 @@ extern const char *ir_name[];
 #define irm_iscomm(m)  ((m) & IRM_C)
 
 typedef enum {
+  IRT_UNK,
+  IRT_VOID,
   IRT_I32,
   IRT_U32,
   IRT_CHAR,
   IRT_F32,
 
-  IRT_PTR,
+  IRT_CLOS,  // Pointer to a closure
+  IRT_INFO,  // Pointer to an info table
+  IRT_PC,    // Program counter
+  IRT_PTR,   // Other pointer
 
   // Flags
   IRT_MARK  = 0x20,  // Marker for various purposes

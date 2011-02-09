@@ -26,7 +26,8 @@ typedef enum {
   LIT_FLOAT,  /* 32 bit floating point number */
   //  LIT_DOUBLE, /* 64 bit floating point number */
   LIT_CLOSURE, /* Reference to a (static) closure. */
-  LIT_INFO     /* Reference to an info table. */
+  LIT_INFO,     /* Reference to an info table. */
+  LIT_PC        /* Not actually used by bytecode, only by trace recorder. */
 } LitType;
 
 typedef struct _InfoTable InfoTable;
