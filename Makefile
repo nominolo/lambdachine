@@ -1,11 +1,14 @@
 .SUFFIXES:  # delete default rules
 
+# Put local customisations into `mk/build.mk`.
 -include mk/build.mk
 
 # DIST must be an absolute directory
 ifeq ($(DIST),)
 DIST := $(shell pwd)/dist
 endif
+
+CC ?= gcc
 
 HSBUILDDIR = $(DIST)/build
 LCC = $(HSBUILDDIR)/lcc
@@ -50,7 +53,7 @@ interp: $(SRCS:.c=.o)
 #
 %.o: %.c
 	@echo "CC $(CFLAGS) $< => $@"
-	@gcc -c $(INCLUDES) -MD -MF $(patsubst %.c,$(DEPDIR)/%.d,$<) $(CFLAGS) -o $@ $<
+	@$(CC) -c $(INCLUDES) -MD -MF $(patsubst %.c,$(DEPDIR)/%.d,$<) $(CFLAGS) -o $@ $<
 	@cp $(df).d $(df).P; \
 	    sed -e 's/#.*//' -e 's/^[^:]*: *//' -e 's/ *\\$$//' \
 	        -e '/^$$/ d' -e 's/$$/ :/' < $(df).d >> $(df).P; \

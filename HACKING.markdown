@@ -11,6 +11,13 @@ shouldn't be too inconvenient.
 If you changed the bytecode format (see below) then you also need to
 do `make clean-bytecode`.
 
+If you prefer to have actually useful error messages you can use
+`clang` instead of `gcc` to build the C sources.  Call `make` with
+
+    make CC=clang
+
+or add `CC=clang` to your `mk/build.mk`.
+
 
 ## Changing the Bytecode
 

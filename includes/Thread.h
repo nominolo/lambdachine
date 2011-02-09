@@ -21,13 +21,7 @@ int stackOverflow(Thread *, Word *top, u4 increment);
 
 Closure *startThread(Thread *, Closure *);
 
-/* From GHC.  Apparently works around a gcc bug on certain
-   architectures. */
-
-extern Thread dummy_thread;
-
-#define THREAD_STRUCT_SIZE \
-  ((char *)&dummy_thread.stack - (char *)&dummy_thread.header)
+#define THREAD_STRUCT_SIZE  (sizeof(Thread))
 
 #define THREAD_STRUCT_SIZEW (THREAD_STRUCT_SIZE / sizeof(Word))
 
