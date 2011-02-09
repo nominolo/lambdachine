@@ -1,45 +1,55 @@
-#ifndef LC_CAPABILITY_H
-#define LC_CAPABILITY_H
+#ifndef _LAMBDACHINE_CAPABILITY_H
+#define _LAMBDACHINE_CAPABILITY_H
 
 #include "Common.h"
+#include "VM.h"
+
+#include "Jit.h"
 
 typedef int AsmFunction;
 
 #define DISPATCH_TABLE_LEN   64
 
-/* Type for hot counter. */
-typedef u2 HotCount;
-
-/* Number of entries in the hash table for hot counters.
-   The hash value is calculated by applying the mask to the target PC.
- */
-#define HOTCOUNT_SIZE           64
-#define HOTCOUNT_MASK           ((HOTCOUNT_SIZE - 1) * sizeof(HotCount))
-
-
-
 /* The VM state associated with an OS thread. */
-typedef struct CapabilityState {
+struct Capability_ {
+  Thread   *T;                 /* Currently running thread. */
+#if LC_HAS_JIT
+  JitState  J;
+  HotCount  hotcount[HOTCOUNT_SIZE]; /* Hot counters. */
+#endif
+};
 
-  HotCount hotcount[HOTCOUNT_SIZE]; /* Hot counters are per-thread. */
-  //AsmFunction dispatch[DISPATCH_TABLE_LEN];
-    /* Instruction dispatch table.  Because the dispatch table
-       represents the interpreter mode, we use a per-thread dispatch
-       table. */
-} CapabilityState;
+extern Capability* G_cap0;
 
-typedef CapabilityState Capability;
-
-extern Capability* cap0;
-
-
-#define hotcountGet(cap, pc) \
+#define hotcount_get(cap, pc) \
   (cap)->hotcount[(u4ptr(pc) >> 2) & (HOTCOUNT_SIZE - 1)]
-#define hotcountSet(cap, pc, val) \
-  (hotcountGet((cap), (pc)) = (HotCount)(val))
+#define hotcount_set(J, pc, val) \
+  (hotcount_get((cap), (pc)) = (HotCount)(val))
+
+INLINE_HEADER int
+hotcountTick(Capability *cap, const BCIns *pc, Word *base)
+{
+  JitState *J = &cap->J;
+  if (LC_UNLIKELY(J->mode != 0))
+    return 0;
+
+  HotCount c = --cap->hotcount[(u4ptr(pc) >> 2) & (HOTCOUNT_SIZE - 1)];
+  if (LC_UNLIKELY(c == 0)) {
+    // Target has become hot.
+
+    // Reset hotcount
+    hotcount_set(cap, pc, HOTCOUNT_DEFAULT);
+    startRecording(J, pc, cap->T, base);
+    return 1;
+  }
+
+  return 0;
+}
+
 
 void *allocate(Capability *cap, u4 num_words);
 
 void initVM();
+void initialiseCapability(Capability *cap);
 
 #endif

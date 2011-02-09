@@ -59,7 +59,7 @@ void
 initBasepath()
 {
   char buf[BUFSIZE];
-  int res;
+  int res, sz;
   char *cwd = getcwd(buf, BUFSIZE);
 
   if (cwd == NULL) {
@@ -67,7 +67,9 @@ initBasepath()
     exit(1);
   }
 
-  res = asprintf(&G_basepath, "%s/tests/", cwd);
+  sz = strlen(cwd) + 8;
+  G_basepath = xmalloc(sz);
+  res = snprintf(G_basepath, sz, "%s/tests/", cwd);
 
   if (res <= 0) {
     fprintf(stderr, "Could not initialise base path.\n");
@@ -78,7 +80,7 @@ initBasepath()
 void
 initLoader()
 {
-  G_loader = malloc(sizeof(*G_loader));
+  G_loader = xmalloc(sizeof(*G_loader));
   G_loader->loadedModules = HashTable_create();
   G_loader->infoTables = HashTable_create();
   G_loader->closures = HashTable_create();
@@ -89,7 +91,7 @@ initLoader()
 Closure *
 lookupClosure(const char *name)
 {
-  HashTable_lookup(G_loader->closures, name);
+  return HashTable_lookup(G_loader->closures, name);
 }
 
 int
@@ -148,7 +150,7 @@ void
 loadStringTabEntry(FILE *f, StringTabEntry *e /*out*/)
 {
   e->len = fget_varuint(f);
-  e->str = malloc(e->len + 1);
+  e->str = xmalloc(e->len + 1);
   fread(e->str, 1, e->len, f);
   e->str[e->len] = '\0';
 }
@@ -168,7 +170,7 @@ moduleNameToFile(const char *basepath, const char *name)
   }
 
   rsltlen = baselen + 1 + len + 5;
-  filename = malloc(rsltlen + 1);
+  filename = xmalloc(rsltlen + 1);
 
   strcpy(filename, basepath);
   filename[baselen] = '/';
@@ -198,10 +200,7 @@ void ensureNoForwardRefs();
 void
 loadModule(const char *moduleName)
 {
-  HashTable *q;
-
   loadModule_aux(moduleName, 0);
-
   ensureNoForwardRefs();
 }
 
@@ -212,7 +211,8 @@ char *
 findModule(const char *moduleName)
 {
   u4     i;
-  char  *filename, *base;
+  char  *filename;
+  char   base[512];
   // 1. Try to find module in base directory
 
   filename = moduleNameToFile(G_basepath, moduleName);
@@ -220,16 +220,15 @@ findModule(const char *moduleName)
   if (fileExists(filename)) {
     return filename;
   }
-  free(filename);
+  xfree(filename);
 
   for (i = 0; i < countof(wired_in_packages); i++) {
-    asprintf(&base, "%s/%s", G_basepath, wired_in_packages[i]);
+    snprintf(base, 512, "%s/%s", G_basepath, wired_in_packages[i]);
     filename = moduleNameToFile(base, moduleName);
-    free(base);
     if (fileExists(filename)) {
       return filename;
     } else {
-      free(filename);
+      xfree(filename);
     }
   }
 
@@ -246,7 +245,6 @@ loadModule_aux(const char *moduleName, u4 level)
   Module   *mdl;
   FILE     *f;
   int       i;
-  Word      todo;
 
   mdl = (Module*)HashTable_lookup(G_loader->loadedModules, moduleName);
 
@@ -283,7 +281,7 @@ loadModule_aux(const char *moduleName, u4 level)
   fclose(f);
 
   // We now don't need the string table anymore.
-  free(mdl->strings);
+  xfree(mdl->strings);
   mdl->strings = NULL;
 
   for (i = 0; i < level; i++) putchar(' ');
@@ -311,7 +309,7 @@ loadModuleHeader(FILE *f, const char *filename)
     exit(1);
   }
 
-  mdl = malloc(sizeof(Module));
+  mdl = xmalloc(sizeof(Module));
 
   major = fget_u2(f);
   minor = fget_u2(f);
@@ -335,7 +333,7 @@ loadModuleHeader(FILE *f, const char *filename)
   secmagic = fget_u4(f);
   assert(secmagic == STR_SEC_HDR_MAGIC);
 
-  mdl->strings = malloc(sizeof(StringTabEntry) * mdl->numStrings);
+  mdl->strings = xmalloc(sizeof(StringTabEntry) * mdl->numStrings);
   for (i = 0; i < mdl->numStrings; i++) {
     loadStringTabEntry(f, &mdl->strings[i]);
   }
@@ -345,7 +343,7 @@ loadModuleHeader(FILE *f, const char *filename)
   mdl->name = loadId(f, mdl->strings, ".");
   // printf("mdl name = %s\n", mdl->name);
 
-  mdl->imports = malloc(sizeof(*mdl->imports) * mdl->numImports);
+  mdl->imports = xmalloc(sizeof(*mdl->imports) * mdl->numImports);
   for (i = 0; i < mdl->numImports; i++) {
     mdl->imports[i] = loadId(f, mdl->strings, ".");
     // printf("import: %s\n", mdl->imports[i]);
@@ -430,7 +428,7 @@ loadId(FILE *f, const StringTabEntry *strings, const char* sep)
   }
   len -= seplen;
 
-  ident = malloc(sizeof(char) * len + 1);
+  ident = xmalloc(sizeof(char) * len + 1);
   p = ident;
   for (i = 0; i < numparts; i++) {
     len = strings[parts[i]].len;
@@ -525,9 +523,9 @@ loadInfoTable(const char *filename,
     }
 
     // TODO: fixup forward refs
-    free(old_itbl);
+    xfree(old_itbl);
     HashTable_update(itbls, itbl_name, new_itbl);
-    free(itbl_name);
+    xfree(itbl_name);
   } else {
     HashTable_insert(itbls, itbl_name, new_itbl);
   }
@@ -565,7 +563,7 @@ loadLiteral(const char *filename,
       Closure *cl = HashTable_lookup(closures, clname);
       if (cl == NULL) {
         // 1st forward ref, create the link
-        cl = malloc(sizeof(ClosureHeader) + sizeof(Word));
+        cl = xmalloc(sizeof(ClosureHeader) + sizeof(Word));
         setInfo(cl, NULL);
         cl->payload[0] = (Word)literal;
         *literal = (Word)NULL;
@@ -574,10 +572,10 @@ loadLiteral(const char *filename,
         // forward ref (not the first), insert into linked list
         *literal = (Word)cl->payload[0];
         cl->payload[0] = (Word)literal;
-        free(clname);
+        xfree(clname);
       } else {
         *literal = (Word)cl;
-        free(clname);
+        xfree(clname);
       }
     }
     break;
@@ -587,7 +585,7 @@ loadLiteral(const char *filename,
       FwdRefInfoTable *info2;
       if (info == NULL) {
 	// 1st forward ref
-	info2 = malloc(sizeof(FwdRefInfoTable));
+	info2 = xmalloc(sizeof(FwdRefInfoTable));
 	info2->i.type = INVALID_OBJECT;
 	info2->next = (void**)literal;
 	*literal = (Word)NULL;
@@ -597,10 +595,10 @@ loadLiteral(const char *filename,
 	info2 = (FwdRefInfoTable*)info;
 	*literal = (Word)info2->next;
 	info2->next = (void**)literal;
-	free(infoname);
+	xfree(infoname);
       } else {
 	*literal = (Word)info;
-	free(infoname);
+	xfree(infoname);
       }
     }
     break;
@@ -632,7 +630,7 @@ loadClosure(const char *filename,
   // Fill in closure payload.  May create forward references to
   // the current closure.
   setInfo(cl, info);
-  free(itbl_name);
+  xfree(itbl_name);
   for (i = 0; i < payloadsize; i++) {
     u1 dummy;
     loadLiteral(filename, f, &dummy, &cl->payload[i], strings, itbls, closures);
@@ -648,11 +646,11 @@ loadClosure(const char *filename,
       *p = (void*)cl;
     }
 
-    free(fwd_ref);
+    xfree(fwd_ref);
     HashTable_update(closures, clos_name, cl);
     // The key has been allocated by whoever installed the first
     // forward reference.
-    free(clos_name);
+    xfree(clos_name);
 
   } else {
 
@@ -710,12 +708,12 @@ loadCode(const char *filename,
   code->sizelits = fget_varuint(f);
   code->sizecode = fget_varuint(f);
 
-  code->lits = malloc(sizeof(*code->lits) * code->sizelits);
-  code->littypes = malloc(sizeof(u1) * code->sizelits);
+  code->lits = xmalloc(sizeof(*code->lits) * code->sizelits);
+  code->littypes = xmalloc(sizeof(u1) * code->sizelits);
   for (i = 0; i < code->sizelits; ++i) {
     loadLiteral(filename, f, &code->littypes[i], &code->lits[i], strings, itbls, closures);
   }
-  code->code = malloc(sizeof(BCIns) * code->sizecode);
+  code->code = xmalloc(sizeof(BCIns) * code->sizecode);
   for (i = 0; i < code->sizecode; i++) {
     code->code[i] = loadBCIns(f);
   }

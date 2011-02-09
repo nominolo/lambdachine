@@ -16,7 +16,7 @@ typedef struct {
   /* INVARIANT: code != NULL */
 } LcCode;
 
-enum {
+typedef enum {
   LIT_INT,    /* Word-sized integer literal */
   LIT_STRING, /* String literal (utf8-encoded) */
   LIT_CHAR,   /* Char literal, 32 bits */

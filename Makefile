@@ -26,7 +26,7 @@ boot:
 	mkdir -p $(DEPDIR)/utils
 
 INCLUDES = -Iincludes -Irts
-CFLAGS = -g
+CFLAGS = -Wall -g
 
 df = $(DEPDIR)/$(*D)/$(*F)
 
@@ -34,7 +34,10 @@ df = $(DEPDIR)/$(*D)/$(*F)
 SRCS = rts/Bytecode.c rts/Capability.c rts/ClosureFlags.c \
        rts/FileUtils.c rts/HashTable.c rts/InterpThreaded.c \
        rts/Loader.c rts/MiscClosures.c rts/PrintClosure.c \
-       rts/Thread.c rts/Main.c rts/StorageManager.c
+       rts/Thread.c rts/StorageManager.c \
+       rts/Main.c \
+       rts/Record.c rts/PrintIR.c \
+       rts/Snapshot.c
 
 UTILSRCS = utils/genopcodes.c
 

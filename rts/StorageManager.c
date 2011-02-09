@@ -68,15 +68,6 @@ int isClosure(void *p)
     && looksLikeInfoTable((void*)getInfo((Closure*)p));
 }
 
-void *xmalloc(size_t bytes) {
-  void *p = malloc(bytes);
-  if (p == NULL) {
-    fprintf(stderr, "FATAL: Out of memory.\n");
-    exit(2);
-  }
-  return p;
-}
-
 MemRegion *
 allocRegion(u4 nwords)
 {

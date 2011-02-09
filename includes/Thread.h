@@ -1,19 +1,21 @@
 #ifndef _LAMBDACHINE_THREAD_H
 #define _LAMBDACHINE_THREAD_H
 
-#include "Capability.h"
 #include "Common.h"
+#include "VM.h"
+#include "Capability.h"
 #include "Bytecode.h"
 #include "InfoTables.h"
 
-typedef struct Thread_ {
+struct Thread_ {
   Word       header;
   BCIns      *pc;
   u4         stack_size;        /* Stack size in _words_ */
   Word       *base;             /* The current base pointer. */
   Word       *top;              /* Top of stack */
+  Word       last_result;
   Word       stack[FLEXIBLE_ARRAY];
-} Thread;
+};
 
 Thread *createThread(Capability *cap, u4 stack_size);
 

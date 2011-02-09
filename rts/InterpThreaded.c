@@ -13,6 +13,7 @@
 #include "MiscClosures.h"
 #include "PrintClosure.h"
 #include "StorageManager.h"
+#include "Jit.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -53,7 +54,7 @@ as follows:
 
 *********************************************************************/
 
-int engine(Thread *T);
+int engine(Capability *);
 void printStack(Word *base, Word *bottom);
 void printFrame(Word *base, Word *top);
 
@@ -67,9 +68,11 @@ enum {
 Closure *
 startThread(Thread *T, Closure *cl)
 {
+  Capability *cap = G_cap0;
+  cap->T = T;
   int ans;
   T->base[0] = (Word)cl;
-  ans = engine(T);
+  ans = engine(cap);
   if (ans != INTERP_OK) {
     fprintf(stderr, "*** ABORT: Interpreter exitited abnormally.\n"
             "***   Reason: ");
@@ -95,8 +98,9 @@ typedef void* Inst;
 
 void printIndent(int i, char c);
 
-int engine(Thread* T)
+int engine(Capability *cap)
 {
+  Thread *T = cap->T;
   int maxsteps = 100000000;
   static Inst disp1[] = {
 #define BCIMPL(name,_) &&op_##name,
@@ -106,13 +110,22 @@ int engine(Thread* T)
   };
   Inst *disp = disp1;
 
+  Inst *disp_record;
+  JitState *J = &cap->J;
+  //  initJitState(J);
+  {
+    int i;
+    disp_record = xmalloc(sizeof(disp1));
+    for (i = 0; i < countof(disp1); i++)
+      disp_record[i] = &&recording;
+  }
 
   Word *base = T->base;
   // The program counter always points to the *next* instruction to be
   // decoded.
   u4 *pc = T->pc;
   u4 opA, opB, opC, opcode;
-  Word last_result = 0;
+  T->last_result = 0;
   Word callt_temp[BCMAX_CALL_ARGS];
   LcCode *code = NULL;
 
@@ -160,6 +173,20 @@ int engine(Thread* T)
 
   // Dispatch first instruction
   DISPATCH_NEXT;
+
+ recording:
+  //printf("%p, %p\n", pc, J->startpc);
+  {
+    T->base = base;
+    J->pc = T->pc = pc - 1;
+    J->func = getFInfo((Closure*)base[-1]);
+    if (!recordIns(J)) {
+      disp = disp1;
+      return INTERP_UNIMPLEMENTED; // TODO:
+    }
+    // Continue interpreting
+    goto *disp1[opcode];
+  }
 
  stop:
   T->pc = pc;
@@ -486,7 +513,7 @@ int engine(Thread* T)
 
     if (closure_HNF(tnode)) {
       DBG_IND(printf("         (in HNF)\n"));
-      last_result = (Word)tnode;
+      T->last_result = (Word)tnode;
       pc += 1; // skip live-out info
       DISPATCH_NEXT;
     } else {
@@ -549,7 +576,7 @@ int engine(Thread* T)
     setInfo(oldnode, (InfoTable*)&stg_IND_info);
     // TODO: Enforce invariant: *newcode is never an indirection.
     oldnode->payload[0] = (Word)newnode;
-    last_result = (Word)newnode;
+    T->last_result = (Word)newnode;
     goto do_return;
   }
 
@@ -557,7 +584,7 @@ int engine(Thread* T)
   // opA = result
   //
   // The return address is on the stack. just jump to it.
-  last_result = base[opA];
+  T->last_result = base[opA];
  do_return:
   T->top = base - 3;
   pc = (BCIns*)base[-2];
@@ -572,7 +599,7 @@ int engine(Thread* T)
   // Copy last function call result into a register.
   //
   // opA = target register
-  base[opA] = last_result;
+  base[opA] = T->last_result;
   DISPATCH_NEXT;
 
  op_CALLT:
@@ -636,7 +663,7 @@ int engine(Thread* T)
       }
 
       // return pointer to pap
-      last_result = (Word)new_pap;
+      T->last_result = (Word)new_pap;
       T->top = base - 3;
       pc = (BCIns*)base[-2];
       base = (Word*)base[-3];
@@ -768,6 +795,10 @@ int engine(Thread* T)
       base[-1] = (Word)fnode;
       code = &info->code;
       pc = info->code.code;
+
+      if (hotcountTick(cap, pc, base))
+        disp = disp_record;
+
       DBG_STACK;
       DISPATCH_NEXT;
     }
@@ -843,7 +874,7 @@ int engine(Thread* T)
       }
 
       // Return the PAP
-      last_result = (Word)new_pap;
+      T->last_result = (Word)new_pap;
       T->top = base - 3;
       pc     = (BCIns*)base[-2];
       base   = (Word*)base[-3];
@@ -930,7 +961,7 @@ int engine(Thread* T)
       top[arg0pos + i] = base[*arg];
     }
 
-    base = top + STACK_FRAME_SIZEW;
+    T->base = base = top + STACK_FRAME_SIZEW;
     T->top = base + framesize;
     code = &info->code;
     pc = info->code.code;

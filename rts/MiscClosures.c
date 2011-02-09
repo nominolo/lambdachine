@@ -230,7 +230,7 @@ getAPKClosure(Closure **res_clos, BCIns **res_pc, int nargs)
     info->code.sizecode = 4;
     info->code.lits = NULL;
     info->code.littypes = NULL;
-    info->code.code = malloc(info->code.sizecode * sizeof(BCIns));
+    info->code.code = xmalloc(info->code.sizecode * sizeof(BCIns));
 
     BCIns *code = info->code.code;
 
@@ -271,7 +271,7 @@ getAPInfoTable(int nargs)
     4 +     // load and evaluate function
     nargs + // load arguments
     1;      // CALLT
-  BCIns *code = malloc(sizeof(BCIns) * codesize);
+  BCIns *code = xmalloc(sizeof(BCIns) * codesize);
   code[0] = BCINS_AD(BC_LOADFV, nargs, 1); // load function ...
   code[1] = BCINS_AD(BC_EVAL, nargs, 0);   // and evaluate it
   code[2] = nargs << 1; // liveness mask

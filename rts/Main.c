@@ -127,7 +127,7 @@ main(int argc, char *argv[])
     exit(1);
   }
 
-  T0 = createThread(cap0, 1024);
+  T0 = createThread(G_cap0, 1024);
   clos0 = startThread(T0, clos0);
   printClosure(clos0);
 

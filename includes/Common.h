@@ -11,8 +11,10 @@
 #endif
 
 #include "Arch.h"
+#include "Config.h"
 #include <stdint.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <assert.h>
 
 /* Static (compile-time) assertions. */
@@ -66,6 +68,8 @@ typedef int64_t  i8;
 /* LC_STATIC_ASSERT(sizeof(u8) == 8); */
 
 #define u4ptr(p) ((u4)(intptr_t)(void *)(p))
+
+#define in_range_i4(w) ((i8)(i4)(w) == (i8)(w))
 
 #if LC_ARCH_ENDIAN == LAMBDACHINE_BE
 #define LC_ENDIAN_LOHI(lo, hi)  hi lo
@@ -155,6 +159,8 @@ from separately compiled modules.
 
 #if defined(__i386__)
 #define LC_FASTCALL	__attribute__((fastcall))
+#else
+#define LC_FASTCALL
 #endif
 
 #define LC_LIKELY(x)	__builtin_expect(!!(x), 1)
@@ -166,5 +172,24 @@ from separately compiled modules.
 
 #endif
   
+/* Terminal colours */
+
+#define COL_RESET  "\033[0m"
+#define COL_BLUE   "\033[34m"
+#define COL_GREEN  "\033[32m"
+
+#define COLOURED(col, str)   col str COL_RESET
+
+INLINE_HEADER void *xmalloc(size_t s)
+{
+  void *p = malloc(s);
+  if (p == NULL) exit(1);
+  return p;
+}
+
+INLINE_HEADER void xfree(void *p)
+{
+  free(p);
+}
 
 #endif

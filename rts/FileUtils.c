@@ -33,7 +33,7 @@ char *
 fget_string(FILE *f)
 {
   u4 len = fget_varuint(f);
-  char *str = malloc(len + 1);
+  char *str = xmalloc(len + 1);
   fread(str, 1, len, f);
   str[len] = '\0';
   return str;

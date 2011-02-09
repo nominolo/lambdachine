@@ -1,4 +1,5 @@
 #include "HashTable.h"
+#include "Common.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -10,11 +11,11 @@ void HashTable_rebuild(HashTable *);
 HashTable *
 HashTable_create()
 {
-  HashTable *ht = malloc(sizeof(HashTable));
+  HashTable *ht = xmalloc(sizeof(HashTable));
   ht->size = HASHTABLE_DEFAULT_SIZE;
   ht->threshold = HASHTABLE_DEFAULT_THRESHOLD;
   ht->entries = 0;
-  ht->table = malloc(sizeof(HashEntry*) * ht->size);
+  ht->table = xmalloc(sizeof(HashEntry*) * ht->size);
   memset(ht->table, 0, sizeof(HashEntry*) * ht->size);
   return ht;
 }
@@ -38,7 +39,7 @@ HashTable_insert(HashTable *ht, const char *key, void *value)
   size = ht->size;
   mask = size - 1;
   hash = hashString(key) & mask;
-  entry = malloc(sizeof(HashEntry));
+  entry = xmalloc(sizeof(HashEntry));
 
   entry->key = key;
   entry->value = value;
@@ -58,7 +59,7 @@ HashTable_rebuild(HashTable *ht)
 
   ht->size *= 2;
   ht->entries = 0;
-  ht->table = malloc(sizeof(HashEntry*) * ht->size);
+  ht->table = xmalloc(sizeof(HashEntry*) * ht->size);
   memset(ht->table, 0, sizeof(HashEntry*) * ht->size);
 
   for (i = 0; i < oldsize; ++i) {
@@ -67,11 +68,11 @@ HashTable_rebuild(HashTable *ht)
     for (p = old_table[i]; p != NULL; p = next) {
       next = p->next;
       HashTable_insert(ht, p->key, p->value);
-      free(p);
+      xfree(p);
     }
   }
 
-  free(old_table);
+  xfree(old_table);
 }
 
 void *
@@ -117,11 +118,11 @@ HashTable_destroy(HashTable *ht, HashFreeFunc func)
       next = p->next;
       if (func != NULL)
 	func(p->key, p->value);
-      free(p);
+      xfree(p);
     }
   }
-  free(ht->table);
-  free(ht);
+  xfree(ht->table);
+  xfree(ht);
 }
 
 void
