@@ -711,6 +711,8 @@ startRecording(JitState *J, const BCIns *startpc, Thread *T, Word *base)
 void
 finishRecording(JitState *J)
 {
+  addSnapshot(J);
+  emit_raw(J, IRT(IR_LOOP, IRT_VOID), 0, 0);
   printf("*** Stopping to record.\n");
   printIRBuffer(J);
 }

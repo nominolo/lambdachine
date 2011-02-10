@@ -105,6 +105,11 @@ printIR(JitState *J, IRIns ir)
   char comment[MAX_COMMENT];
   int  lencomment = 0;
 
+  if (ir.o == IR_LOOP) {
+    printf("=== LOOP =============\n");
+    return;
+  }
+
   printf("%3s %-8s ", irt_str(ir.t), ir_name[ir.o]);
   switch (irm_op1(ir_mode[ir.o])) {
   case IRMref:
