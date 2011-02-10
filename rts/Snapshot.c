@@ -75,6 +75,7 @@ snapshotFrame(JitState *J, SnapEntry *map)
   map[0] = (SnapEntry)d;
   map[1] = J->baseslot;
 }
+
 static void
 snapshotStack(JitState *J, SnapShot *snap, Word nsnapmap)
 {
@@ -120,13 +121,14 @@ void
 printSnapshot(JitState *J, SnapShot *snap, SnapEntry *map)
 {
   SnapEntry *p = &map[snap->mapofs];
-  u4 i, nent = snap->nent;
+  int i;
+  u4 nent = snap->nent;
   u4 nslots = snap->nslots;
   u4 baseslot = (u4)p[nent + 1];
   const BCIns *pc = J->cur.startpc + (ptrdiff_t)(i4)p[nent];
 
   for (i = 0; i < nslots; i++) {
-    u4 j = i - baseslot;
+    int j = i - baseslot;
     if ((j & 3) == 0)
       printf("[%d]:", j);
 

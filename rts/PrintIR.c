@@ -92,9 +92,9 @@ void
 printIRRef(JitState *J, IRRef1 ref)
 {
   if (ref < REF_BIAS)
-    printf("K%03d ", REF_BIAS - ref);
+    printf("K%03d ", (int)(REF_BIAS - ref));
   else
-    printf("%04d ", ref - REF_BIAS);
+    printf("%04d ", (int)(ref - REF_BIAS));
 }
 
 #define MAX_COMMENT 100
