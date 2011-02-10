@@ -65,6 +65,9 @@ emitIR(JitState *J)
   ir->op2 = foldIns->op2;
   printf("emitted: %5d ", ref - REF_BIAS);
   printIR(J, *ir);
+
+  if (ir_mode[op] & IRM_G)
+    J->needsnap = 1;
   return TREF(ref, ir->t);
 }
 
@@ -356,13 +359,24 @@ printSlots(JitState *J)
 void
 printIRBuffer(JitState *J)
 {
+  IRRef ref;
+  SnapShot *snap = J->cur.nsnap > 0 ? J->cur.snap : NULL;
+  IRRef nextsnap = snap ? snap->ref : 0;
+
   printf("IRs (%d..%d):\n",
          J->cur.nk - REF_BIAS,
          J->cur.nins - REF_BIAS);
 
-  IRRef ref;
-
   for (ref = J->cur.nk; ref < J->cur.nins; ref++) {
+    if (ref == nextsnap) {
+      printf("         ");
+      printSnapshot(J, snap, J->cur.snapmap);
+      ++snap;
+      if (snap >= J->cur.snap + J->cur.nsnap) {
+        snap = NULL; nextsnap = 0;
+      } else 
+        nextsnap = snap->ref;
+    }
     printIRRef(J, ref);
     printIR(J, *IR(ref));
   }

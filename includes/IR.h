@@ -151,7 +151,7 @@ typedef enum {
 #define IRM_A     0x20
 #define IRM_L     0x40
 #define IRM_S     0x60
-#define IRM_G     IRM_N
+#define IRM_G     0x80
 
 // TODO: add flags to ir_mode info
 #define IRMODE(name, flags, m1, m2) \
@@ -166,7 +166,7 @@ extern const char *ir_name[];
 
 typedef enum {
   IRT_UNK,
-  IRT_VOID,
+  IRT_VOID,  // No result
   IRT_I32,
   IRT_U32,
   IRT_CHAR,
