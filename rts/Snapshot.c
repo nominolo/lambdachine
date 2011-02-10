@@ -141,7 +141,7 @@ printSnapshot(JitState *J, SnapShot *snap, SnapEntry *map)
     if ((j & 3) == 0)
       printf("[%d]:", j);
 
-    if (snap_slot(*p) == i) {
+    if (nent > 0 && snap_slot(*p) == i) {
       printIRRef(J, snap_ref(*p));
       ++p;
     } else
