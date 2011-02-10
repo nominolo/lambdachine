@@ -17,10 +17,11 @@ createThread(Capability *cap, u4 size)
 
   // TODO: maybe round size to mem manager block size
   T = (Thread *)allocate(cap, size);
-  for (i = 0; i < size; i++) { // helpful for debugging
+  stack_size = size - THREAD_STRUCT_SIZEW;
+
+  for (i = 0; i < stack_size; i++) { // helpful for debugging
     T->stack[i] = 0xfbad0000 + i;
   }
-  stack_size = size - THREAD_STRUCT_SIZEW;
 
   T->header = 42;  // TODO
   T->stack_size = stack_size;

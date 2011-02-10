@@ -123,7 +123,7 @@ printSnapshot(JitState *J, SnapShot *snap, SnapEntry *map)
   u4 i, nent = snap->nent;
   u4 nslots = snap->nslots;
   u4 baseslot = (u4)p[nent + 1];
-  const BCIns* pc = J->cur.startpc + (i4)p[nent + 2];
+  const BCIns *pc = J->cur.startpc + (ptrdiff_t)(i4)p[nent];
 
   for (i = 0; i < nslots; i++) {
     u4 j = i - baseslot;
