@@ -18,6 +18,12 @@
 // Maximum number of snapshots per trace.
 #define JIT_MAXSNAP      100
 
+// -- Convenience macros.  Undefined at end of file. -----------------
+
+// Pointer to referenced IR.
+#define IR(ref)     (&J->cur.ir[(ref)])
+
+
 // Grow snapshot buffer of current trace.
 void
 growSnapshotBuffer_(JitState *J, Word needed)
@@ -58,6 +64,9 @@ snapshotSlots(JitState *J, SnapEntry *map, BCReg nslots)
 
     if (ref) {
       SnapEntry sn = SNAP_TR(s, tr);
+      IRIns *ir = IR(ref);
+      if (ir->o == IR_SLOAD && ir->op1 == s)
+	continue;  // Slot has only been read, not modified
       // TODO: There may be cases where we don't need to save the
       // slot.
       map[n++] = sn;
@@ -140,3 +149,5 @@ printSnapshot(JitState *J, SnapShot *snap, SnapEntry *map)
   }
   printf("pc = %p\n", pc);
 }
+
+#undef IR
