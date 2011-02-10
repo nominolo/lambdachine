@@ -53,9 +53,14 @@ nextIns(JitState *J)
 LC_FASTCALL TRef
 emitIR(JitState *J)
 {
+  IROp op = foldIns->o;
+
+  if (ir_mode[op] & IRM_G)
+    addSnapshot(J);
+
   IRRef ref = nextIns(J);
   IRIns *ir = IR(ref);
-  IROp op = foldIns->o;
+
   // Link into per-opcode chain.
   ir->prev = J->chain[op];
   J->chain[op] = (IRRef1)ref;
@@ -66,8 +71,6 @@ emitIR(JitState *J)
   printf("emitted: %5d ", ref - REF_BIAS);
   printIR(J, *ir);
 
-  if (ir_mode[op] & IRM_G)
-    J->needsnap = 1;
   return TREF(ref, ir->t);
 }
 
