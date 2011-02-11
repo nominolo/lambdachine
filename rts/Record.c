@@ -815,14 +815,15 @@ void
 optUnrollLoop(JitState *J)
 {
   TRef *renaming;
-  u4 max_renamings = J->cur.nloop - REF_FIRST;
+  u4 max_renamings = J->cur.nloop - REF_BIAS;
   IRRef ref;
   u4 nextsnap = 0;
 
   // TODO: Keep track of PHI nodes
 
-  printf("max_renamings = %ud\n", max_renamings);
+  printf("max_renamings = %u\n", max_renamings);
   renaming = xmalloc(max_renamings * sizeof(*renaming));
+  renaming -= REF_BIAS;
 
   for (ref = REF_FIRST; ref < J->cur.nloop; ref++) {
     IRIns *ir = IR(ref);
@@ -830,7 +831,7 @@ optUnrollLoop(JitState *J)
 
 # define RENAME(r) \
     (((r) < ref && (r) > REF_BIAS) ? \
-      tref_ref(renaming[(r) - REF_BIAS]) : (r))
+      tref_ref(renaming[(r)]) : (r))
 
     printf("UNROLL: ");
     printIR(J, *ir);
@@ -860,7 +861,7 @@ optUnrollLoop(JitState *J)
     op2 = (irm_op2(ir_mode[ir->o]) == IRMref) ? RENAME(ir->op2) : ir->op2;
 
     //printf("op1 = %d, op2 = %d\n", op1 - REF_BIAS, op2 - REF_BIAS);
-    renaming[ref - REF_BIAS] = emit(J, IRT(ir->o, ir->t), op1, op2);
+    renaming[ref] = emit(J, IRT(ir->o, ir->t), op1, op2);
 
     // FRAME and RET instructions keep track of the
     switch (ir->o) {
@@ -878,14 +879,12 @@ optUnrollLoop(JitState *J)
     }
 
     printf("   %d => ", ref - REF_BIAS);
-    printIRRef(J, tref_ref(renaming[ref - REF_BIAS]));
+    printIRRef(J, tref_ref(renaming[ref]));
     printf("\n");
-
 # undef RENAME
-
   }
 
-  xfree(renaming);
+  xfree(renaming + REF_BIAS);
 }
 
 #undef IR
