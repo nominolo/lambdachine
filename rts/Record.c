@@ -753,6 +753,8 @@ optForward(JitState *J)
         }
         ref = IR(ref)->prev;
       }
+      // TODO: Check for aliases?
+      return optCSE(J);
     }
     break;
   default:
