@@ -454,7 +454,7 @@ recordIns(JitState *J)
       int irop = (int)IR_LT + ((int)op - (int)BC_ISLT);
       // Invert condition if negative outcome
       if (!evalNumComp(rav, rcv, irop)) irop ^= 1;
-      emit(J, IRT(irop, IRT_I32), ra, rc);
+      emit(J, IRT(irop, IRT_VOID), ra, rc);
     }
     break;
 
