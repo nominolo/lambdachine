@@ -50,6 +50,7 @@ typedef struct _Fragment {
   IRIns *ir;
   IRRef nins;  // Next IR instruction
   IRRef nk;    // Lowest IR literal
+  IRRef nloop; // Reference to LOOP instruction (if any)
 
   u2 nsnap;    // Number of snapshots
   u2 nsnapmap; // Number of snapshot map elements
@@ -122,16 +123,17 @@ void finishRecording(JitState *J);
 TRef LC_FASTCALL emitIR(JitState *J);
 TRef foldIR(JitState *J);
 LC_FASTCALL TRef optCSE(JitState *);
+void optUnrollLoop(JitState *J);
 void growIRBufferTop(JitState *J);
 TRef emitLoadSlot(JitState *J, i4 slot);
 int recordIns(JitState *J);
 
-INLINE_HEADER TRef getSlot(JitState *J, i4 slot)
+INLINE_HEADER TRef getSlot(JitState *J, int slot)
 {
   return J->base[slot] ? J->base[slot] : emitLoadSlot(J, slot);
 }
 
-INLINE_HEADER void setSlot(JitState *J, BCReg slot, TRef ref)
+INLINE_HEADER void setSlot(JitState *J, int slot, TRef ref)
 {
   //printf("Setting slot: %d (%ld) to %d\n",
   //       slot, &J->base[slot] - J->slot, (IRRef1)ref - REF_BIAS);

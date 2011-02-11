@@ -79,6 +79,8 @@ typedef union IRIns {
 #define IRDEF(_) \
   _(NOP,     N,   ___, ___) \
   _(BASE,    N,   lit, lit) \
+  _(FRAME,   S,   lit, lit) \
+  _(RET,     S,   lit, lit) \
   _(LOOP,    N,   ___, ___) \
   _(PHI,     S,   ref, ref) \
   _(RENAME,  S,   ref, lit) \

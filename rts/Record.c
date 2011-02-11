@@ -180,6 +180,7 @@ recordSetup(JitState *J, Thread *T)
   J->cur.ir = J->irbuf = NULL;
   J->cur.nins = REF_BASE;
   J->cur.nk = REF_BASE;
+  J->cur.nloop = 0;
   // Emit BASE.  Causes buffer allocation.
   emit_raw(J, IRT(IR_BASE, IRT_PTR), 0, 0);
   J->last_result = 0;
@@ -541,7 +542,7 @@ recordIns(JitState *J)
         Word *top = J->T->top;
         ThunkInfoTable *info = (ThunkInfoTable*)ninfo;
         u4 framesize = info->code.framesize;
-        if (LC_UNLIKELY(stackOverflow(J->T, top, 7 + framesize)))
+        if (LC_UNLIKELY(stackOverflow(J->T, top, 8 + framesize)))
           abortRecording(J);
         u4 t = top - J->T->base; // Slot name of *top
         u4 i;
@@ -555,13 +556,15 @@ recordIns(JitState *J)
         setSlot(J, t + 5, emitKBaseOffset(J, t + 3));
         setSlot(J, t + 6, emitKWord(J, (Word)stg_UPD_return_pc, LIT_PC));
         setSlot(J, t + 7, ra);
-        printf("baseslot %d => %d\n", J->baseslot, J->baseslot + t + 7);
+        printf("baseslot %d => %d (top = %d, frame = %d)\n",
+               J->baseslot, J->baseslot + t + 8, t, framesize);
         J->baseslot += t + 8;
         J->base = J->slot + J->baseslot;
         J->maxslot = framesize;
+        emit_raw(J, IRT(IR_FRAME, IRT_VOID), t + 8, framesize);
         for (i = 0; i < J->maxslot; i++) setSlot(J, i, 0); // clear slots
         J->framedepth += 2;
-        //printSlots(J);
+        printSlots(J);
       }
     }
     break;
@@ -581,13 +584,15 @@ recordIns(JitState *J)
       // Guard for info table, as usual
       TRef rinfo = emitKWord(J, (Word)info, LIT_INFO);
       ra = getSlot(J, bc_a(ins));
-      ra = emit(J, IRT(IR_ILOAD, IRT_INFO), ra, 0);
-      emit(J, IRT(IR_EQ, IRT_VOID), ra, rinfo);
+      rb = emit(J, IRT(IR_ILOAD, IRT_INFO), ra, 0);
+      emit(J, IRT(IR_EQ, IRT_VOID), rb, rinfo);
+      setSlot(J, -1, ra);
 
       J->maxslot = info->code.framesize;
       // Invalidate non-argument slots:
       u4 i;
       for (i = nargs; i < J->maxslot; i++) setSlot(J, i, 0);
+      emit_raw(J, IRT(IR_FRAME, IRT_VOID), 0, J->maxslot);
 
       printSlots(J);
     }
@@ -624,8 +629,9 @@ recordIns(JitState *J)
       J->baseslot -= basediff;
       J->base = J->slot + J->baseslot;
       J->maxslot = basediff - 3;
+      emit_raw(J, IRT(IR_RET, IRT_VOID), basediff, 0);
 
-      //printSlots(J);
+      printSlots(J);
     }
     break;
 
@@ -715,7 +721,8 @@ void
 finishRecording(JitState *J)
 {
   addSnapshot(J);
-  emit_raw(J, IRT(IR_LOOP, IRT_VOID), 0, 0);
+  J->cur.nloop = tref_ref(emit_raw(J, IRT(IR_LOOP, IRT_VOID), 0, 0));
+  optUnrollLoop(J);
   printf("*** Stopping to record.\n");
   printIRBuffer(J);
 }
@@ -785,6 +792,10 @@ foldIR(JitState *J)
       }
     }
     break;
+  case IR_SLOAD:
+    if (J->slot[foldIns->op1])
+      return J->slot[foldIns->op1];
+    break;
   default:
     ;
   }
@@ -792,12 +803,89 @@ foldIR(JitState *J)
   if (ir_mode[op] & IRM_A) {
     // Don't optimise allocation, yet.
     return emitIR(J);
-  } else if (ir_mode[op] & IRM_L) {
+  } else if (ir_mode[op] & IRM_L && op != IR_ILOAD) {
     return optForward(J);
   } else {
     //printf("CSE on %s\n", ir_name[op]);
     return optCSE(J);
   }
+}
+
+void
+optUnrollLoop(JitState *J)
+{
+  TRef *renaming;
+  u4 max_renamings = J->cur.nloop - REF_FIRST;
+  IRRef ref;
+  u4 nextsnap = 0;
+
+  // TODO: Keep track of PHI nodes
+
+  printf("max_renamings = %ud\n", max_renamings);
+  renaming = xmalloc(max_renamings * sizeof(*renaming));
+
+  for (ref = REF_FIRST; ref < J->cur.nloop; ref++) {
+    IRIns *ir = IR(ref);
+    IRRef1 op1, op2;
+
+# define RENAME(r) \
+    (((r) < ref && (r) > REF_BIAS) ? \
+      tref_ref(renaming[(r) - REF_BIAS]) : (r))
+
+    printf("UNROLL: ");
+    printIR(J, *ir);
+
+    // If there is a snapshot at the current instruction we need to
+    // "replay" it first.  We simply loop over the elements in the
+    // snapshot, apply the substitution and modify the slot table.
+    if (nextsnap < J->cur.nsnap && J->cur.snap[nextsnap].ref == ref) {
+      SnapShot *snap = &J->cur.snap[nextsnap];
+      SnapEntry *p = J->cur.snapmap + snap->mapofs;
+      int i;
+      for (i = 0; i < snap->nent; i++, p++) {
+        IRRef1 r = RENAME(snap_ref(*p));
+        IRIns *ir = IR(r);
+        int slot = snap_slot(*p);
+        //printf("setting slot %d, to %d, %d\n", slot, r - REF_BIAS, ir->t);
+        J->slot[slot] = TREF(r, ir->t);
+      }
+      nextsnap++;
+    }
+
+    // Apply renaming to operands if needed.
+    //
+    // If the operand is a reference and we already have a valid
+    // renaming, then use that.  Otherwise, it remains unchanged.
+    op1 = (irm_op1(ir_mode[ir->o]) == IRMref) ? RENAME(ir->op1) : ir->op1;
+    op2 = (irm_op2(ir_mode[ir->o]) == IRMref) ? RENAME(ir->op2) : ir->op2;
+
+    //printf("op1 = %d, op2 = %d\n", op1 - REF_BIAS, op2 - REF_BIAS);
+    renaming[ref - REF_BIAS] = emit(J, IRT(ir->o, ir->t), op1, op2);
+
+    // FRAME and RET instructions keep track of the
+    switch (ir->o) {
+    case IR_FRAME:
+      J->baseslot += ir->op1;
+      J->base = J->slot + J->baseslot;
+      J->maxslot = ir->op2;
+      break;
+    case IR_RET:
+      J->baseslot -= ir->op1;
+      J->base = J->slot + J->baseslot;
+      J->maxslot = ir->op1 - 3;
+      break;
+    default: break;
+    }
+
+    printf("   %d => ", ref - REF_BIAS);
+    printIRRef(J, tref_ref(renaming[ref - REF_BIAS]));
+    printf("\n");
+
+# undef RENAME
+
+  }
+
+  xfree(renaming);
 }
 
 #undef IR
