@@ -231,7 +231,8 @@ emitKInt(JitState *J, i4 k)
   return TREF(ref, IRT_I32);
 }
 
-INLINE_HEADER IRType littype_to_irtype(LitType lt)
+INLINE_HEADER IRType
+litTypeToIRType(LitType lt)
 {
   switch (lt) {
   case LIT_INT:     return IRT_I32;
@@ -253,7 +254,7 @@ emitKWord(JitState *J, Word w, LitType lt)
   IRIns *ir, *cir = J->cur.ir;
   Word *kword = J->kwords;
   IRRef ref;
-  IRType t = littype_to_irtype(lt);
+  IRType t = litTypeToIRType(lt);
 
   for (ref = J->chain[IR_KWORD]; ref; ref = cir[ref].prev)
     if (cir[ref].t == t && kword[cir[ref].u] == w)
