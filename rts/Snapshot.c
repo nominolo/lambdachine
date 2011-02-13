@@ -47,7 +47,7 @@ growSnapshotMapBuffer_(JitState *J, Word needed)
 
   J->snapmapbuf = realloc(J->snapmapbuf, needed * sizeof(SnapEntry));
   J->cur.snapmap = J->snapmapbuf;
-  J->sizesnap = needed;
+  J->sizesnapmap = needed;
 }
 
 // -- Snapshot creation ----------------------------------------------
