@@ -839,8 +839,8 @@ optUnrollLoop(JitState *J)
     printIR(J, *ir);
 
     // If there is a snapshot at the current instruction we need to
-    // "replay" it first.  We simply loop over the elements in the
-    // snapshot, apply the substitution and modify the slot table.
+    // "replay" it first.  Simply loop over the elements in the
+    // snapshot and apply the substitution and modify the slot table.
     if (nextsnap < J->cur.nsnap && J->cur.snap[nextsnap].ref == ref) {
       SnapShot *snap = &J->cur.snap[nextsnap];
       SnapEntry *p = J->cur.snapmap + snap->mapofs;
@@ -852,6 +852,8 @@ optUnrollLoop(JitState *J)
         //printf("setting slot %d, to %d, %d\n", slot, r - REF_BIAS, ir->t);
         J->slot[slot] = TREF(r, ir->t);
       }
+      J->pc = J->cur.startpc + (ptrdiff_t)(i4)(*p);
+      // base slot is updated separately via ENTER and RET instructions.
       nextsnap++;
     }
 
