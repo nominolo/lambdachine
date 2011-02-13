@@ -621,10 +621,14 @@ recordIns(JitState *J)
       Word return_pc = tbase[-2];
       Word *return_base = (Word*)tbase[-3];
       i4 basediff = tbase - return_base;
+      int i;
 
       J->framedepth--;
 
       guardEqualKWord(J, getSlot(J, -2), return_pc, LIT_PC);
+
+      for (i = -3; i < (int)J->maxslot; i++)
+        J->base[i] = 0;
 
       // TODO: Do something with slot(-3)?
       J->baseslot -= basediff;
