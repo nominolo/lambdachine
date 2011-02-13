@@ -33,7 +33,6 @@ typedef struct _SnapShot {
   u1     nslots; // Number of valid slots;
   u1     nent;   // Number of compressed entries.
   u1     unused1;
-  u1     unused2;
   u1     count;  // Number of taken exits for this snapshot.
 } SnapShot;
 
