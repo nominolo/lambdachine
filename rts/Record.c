@@ -888,6 +888,15 @@ optUnrollLoop(JitState *J)
 # undef RENAME
   }
 
+  for (ref = REF_FIRST; ref < J->cur.nloop; ref++) {
+    TRef tr = renaming[ref];
+    IRIns *ir = IR(tref_ref(tr));
+    if (tref_t(tr) != IRT_VOID && tref_ref(tr) > J->cur.nloop &&
+        ir->o != IR_FREF) {
+      emit(J, IRT(IR_PHI, ir->t), ref, tref_ref(tr));
+    }
+  }
+
   xfree(renaming + REF_BIAS);
 }
 
