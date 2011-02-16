@@ -6,6 +6,7 @@
 #include "MiscClosures.h"
 #include "Thread.h"
 #include "Snapshot.h"
+#include "HeapInfo.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -196,6 +197,11 @@ recordSetup(JitState *J, Thread *T)
   J->cur.nsnapmap = J->sizesnapmap = 0;
   J->cur.snap = J->snapbuf = NULL;
   J->cur.snapmap = J->snapmapbuf = NULL;
+
+  J->cur.nheap = J->sizeheap = 0;
+  J->cur.nheapmap = J->sizeheapmap = 0;
+  J->cur.heap = J->heapbuf = NULL;
+  J->cur.heapmap = J->heapmapbuf = NULL;
 
   J->needsnap = 0;
 }
@@ -655,6 +661,9 @@ recordIns(JitState *J)
       rfield = emit(J, IRT(IR_FREF, IRT_PTR), rnew, 1);
       emit(J, IRT(IR_FSTORE, IRT_VOID), rfield, rc);
       setSlot(J, bc_a(ins), rnew);
+      u4 h = newHeapInfo(J, rnew, info);
+      IR(tref_ref(rnew))->op2 = h;
+      setHeapInfoField(J, &J->cur.heap[h], 0, rc);
       //printSlots(J);
     }
     break;
@@ -674,10 +683,14 @@ recordIns(JitState *J)
       rnew = emit(J, IRT(IR_NEW, IRT_CLOS), rinfo,
                   cinfo->i.layout.payload.ptrs +
                   cinfo->i.layout.payload.nptrs + 1);
+      u4 h = newHeapInfo(J, rnew, info);
+      IR(tref_ref(rnew))->op2 = h;
+      HeapInfo *hp = &J->cur.heap[h];
       for (i = 1; i <= size; i++, arg++) {
         rc = getSlot(J, *arg);
         rfield = emit(J, IRT(IR_FREF, IRT_PTR), rnew, i);
         emit(J, IRT(IR_FSTORE, IRT_VOID), rfield, rc);
+        setHeapInfoField(J, hp, i - 1, rc);
       }
       setSlot(J, bc_a(ins), rnew);
       //printSlots(J);
@@ -730,6 +743,7 @@ finishRecording(JitState *J)
   optUnrollLoop(J);
   printf("*** Stopping to record.\n");
   printIRBuffer(J);
+  printHeapInfo(J);
 }
 
 // Perform store->load forwarding.
@@ -883,6 +897,20 @@ optUnrollLoop(JitState *J)
       J->baseslot -= ir->op1;
       J->base = J->slot + J->baseslot;
       J->maxslot = ir->op1 - 3;
+      break;
+    case IR_NEW:
+      {
+        HeapInfo *hpold = &J->cur.heap[ir->op2];
+        u2 entry = cloneHeapInfo(J, tref_ref(renaming[ref]), ir->op2);
+        HeapInfo *hpnew = &J->cur.heap[entry];
+        IRIns *ir2 = IR(tref_ref(renaming[ref]));
+        u2 i;
+        for (i = 0; i < hpnew->nfields; i++) {
+          IRRef r = getHeapInfoField(J, hpold, i);
+          setHeapInfoField(J, hpnew, i, RENAME(r));
+        }
+        ir2->op2 = entry;
+      }
       break;
     default: break;
     }

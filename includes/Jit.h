@@ -45,6 +45,26 @@ typedef u4 SnapEntry;
 #define snap_ref(sn)            ((sn) & 0xffff)
 #define snap_slot(sn)           (cast(BCReg, ((sn) >> 24)))
 
+
+typedef u4 HeapEntry;
+
+#define HEAP_TR(offs, tr) \
+  (((HeapEntry)(offs) << 24) | ((HeapEntry)tref_ref(tr)))
+
+#define heap_ref(hr)            ((hr) & 0xffff)
+
+typedef struct _HeapInfo {
+  u2 mapofs;
+  IRRef1 ref; // First reference to heap object
+  u1 nfields; // Total number of fields
+  u1 nent;    // Number of `HeapEntry`s used
+  u1 compact; // non-zero if fields are in order.
+  u1 unused2;
+  u2 dfs;
+  u2 scc;
+} HeapInfo;
+
+
 typedef struct _Fragment {
   IRIns *ir;
   IRRef nins;  // Next IR instruction
@@ -56,6 +76,10 @@ typedef struct _Fragment {
   SnapShot *snap;    // Snapshot array.
   SnapEntry *snapmap; // Snapshot map array.
   const BCIns *startpc; // needed for snapshot decoding
+  u2 nheap;
+  u2 nheapmap;
+  HeapInfo *heap;
+  HeapEntry *heapmap;
 } Fragment;
 
 typedef struct _FoldState {
@@ -108,6 +132,11 @@ typedef struct _JitState {
   SnapShot *snapbuf;
   SnapEntry *snapmapbuf;
   Word sizesnapmap;
+
+  Word sizeheap;
+  Word sizeheapmap;
+  HeapInfo *heapbuf;
+  HeapEntry *heapmapbuf;
 
   const BCIns *startpc; // Address where recording was started.
 
