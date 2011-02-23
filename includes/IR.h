@@ -82,7 +82,7 @@ typedef union IRIns {
   _(FRAME,   S,   lit, lit) \
   _(RET,     S,   lit, lit) \
   _(LOOP,    N,   ___, ___) \
-  _(PHI,     S,   ref, ref) \
+  _(PHI,     N,   ref, ref) \
   _(RENAME,  S,   ref, lit) \
   \
   _(KINT,    N,   cst, ___) \
@@ -189,6 +189,10 @@ typedef enum {
   IRT_T    = 0xff
 } IRType;
 
+#define irt_setmark(irt) ((irt) |= IRT_MARK)
+#define irt_getmark(irt) ((irt) & IRT_MARK)
+#define irt_setphi(irt)  ((irt) |= IRT_ISPHI)
+#define irt_getphi(irt)  ((irt) & IRT_ISPHI)
 
 enum {
   REF_BIAS  = 0x8000,

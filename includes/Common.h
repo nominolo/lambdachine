@@ -192,4 +192,28 @@ INLINE_HEADER void xfree(void *p)
   free(p);
 }
 
+
+/* -- Debugging --------------------------------------------------- */
+
+#ifndef NDEBUG
+
+# ifndef LC_DEBUG_LEVEL
+#  define LC_DEBUG_LEVEL 1
+# endif
+
+#include <stdio.h>
+
+# define DBG_PR(fmt, ...)  fprintf(stderr, fmt, __VA_ARGS__)
+# define DBG_LVL(lvl, fmt, ...)  \
+  do { if ((lvl) <= LC_DEBUG_LEVEL) fprintf(stderr, fmt, __VA_ARGS__); } \
+  while (0)
+# define IF_DBG_LVL(lvl, stmt)  if ((lvl) <= LC_DEBUG_LEVEL) { stmt; }
+
+#else
+
+# define DBG_PR(fmt, ...)  do {} while (0)
+# define DBG_LVL(lvl, fmt, ...)  do {} while (0)
+
+#endif
+
 #endif

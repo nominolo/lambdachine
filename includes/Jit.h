@@ -59,7 +59,7 @@ typedef struct _HeapInfo {
   u1 nfields; // Total number of fields
   u1 nent;    // Number of `HeapEntry`s used
   u1 compact; // non-zero if fields are in order.
-  u1 unused2;
+  u1 loop;
   u2 dfs;
   u2 scc;
 } HeapInfo;
@@ -152,9 +152,11 @@ TRef LC_FASTCALL emitIR(JitState *J);
 TRef foldIR(JitState *J);
 LC_FASTCALL TRef optCSE(JitState *);
 void optUnrollLoop(JitState *J);
+LC_FASTCALL void optDeadCodeElim(JitState *J);
 void growIRBufferTop(JitState *J);
 TRef emitLoadSlot(JitState *J, i4 slot);
 int recordIns(JitState *J);
+LC_FASTCALL IRRef findPhiTwin(JitState *J, IRRef ref);
 
 INLINE_HEADER TRef getSlot(JitState *J, int slot)
 {

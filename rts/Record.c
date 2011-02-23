@@ -12,7 +12,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define DBG_PR(fmt, ...)  fprintf(stderr, fmt, __VA_ARGS__)
+/* #define DBG_PR(fmt, ...)  fprintf(stderr, fmt, __VA_ARGS__) */
 
 
 // -- Forward Declarations -------------------------------------------
@@ -380,7 +380,7 @@ printIRBuffer(JitState *J)
 
   for (ref = J->cur.nk; ref < J->cur.nins; ref++) {
     if (ref == nextsnap) {
-      printf("         ");
+      printf("          ");
       printSnapshot(J, snap, J->cur.snapmap);
       ++snap;
       if (snap >= J->cur.snap + J->cur.nsnap) {
@@ -738,15 +738,22 @@ startRecording(JitState *J, const BCIns *startpc, Thread *T, Word *base)
 void
 finishRecording(JitState *J)
 {
+  // int i;
   addSnapshot(J);
   J->cur.nloop = tref_ref(emit_raw(J, IRT(IR_LOOP, IRT_VOID), 0, 0));
   optUnrollLoop(J);
+  optDeadCodeElim(J);
+  heapSCCs(J);
+
+  //  for (i = J->cur.nheap - 1; i >= 0; i--)
+  //    heapSCCs(J, i);
+
   printf("*** Stopping to record.\n");
   printIRBuffer(J);
   printHeapInfo(J);
 }
 
-// Perform store->load forwarding.
+// Perform store->load forwarding on the current foldIns.
 TRef
 optForward(JitState *J)
 {
@@ -817,6 +824,10 @@ foldIR(JitState *J)
     if (J->slot[foldIns->op1])
       return J->slot[foldIns->op1];
     break;
+  case IR_NEW:
+    // TODO: Allocating a loop-invariant value only needs to be done
+    // once.
+    break;
   default:
     ;
   }
@@ -842,7 +853,7 @@ optUnrollLoop(JitState *J)
 
   // TODO: Keep track of PHI nodes
 
-  printf("max_renamings = %u\n", max_renamings);
+  DBG_LVL(2,"max_renamings = %u\n", max_renamings);
   renaming = xmalloc(max_renamings * sizeof(*renaming));
   renaming -= REF_BIAS;
 
@@ -854,8 +865,8 @@ optUnrollLoop(JitState *J)
     (((r) < ref && (r) > REF_BIAS) ? \
       tref_ref(renaming[(r)]) : (r))
 
-    printf("UNROLL: ");
-    printIR(J, *ir);
+    DBG_LVL(2, "UNROLL: %s", "");
+    IF_DBG_LVL(2, printIR(J, *ir));
 
     // If there is a snapshot at the current instruction we need to
     // "replay" it first.  Simply loop over the elements in the
@@ -915,22 +926,132 @@ optUnrollLoop(JitState *J)
     default: break;
     }
 
-    printf("   %d => ", ref - REF_BIAS);
-    printIRRef(J, tref_ref(renaming[ref]));
-    printf("\n");
+    DBG_LVL(2, "   %d => ", ref - REF_BIAS);
+    IF_DBG_LVL(2, printIRRef(J, tref_ref(renaming[ref])));
+    DBG_LVL(2, "\n%s", "");
 # undef RENAME
   }
 
+  // Emit PHI instructions
   for (ref = REF_FIRST; ref < J->cur.nloop; ref++) {
     TRef tr = renaming[ref];
     IRIns *ir = IR(tref_ref(tr));
     if (tref_t(tr) != IRT_VOID && tref_ref(tr) > J->cur.nloop &&
         ir->o != IR_FREF) {
+      irt_setphi(IR(ref)->t);
       emit(J, IRT(IR_PHI, ir->t), ref, tref_ref(tr));
+      irt_setphi(ir->t);
     }
   }
 
   xfree(renaming + REF_BIAS);
+}
+
+// Find the corresponding twin of a referenced involved in a PHI node.
+//
+// For example:
+//
+//     t1  ADD a b
+//     --- LOOP ---
+//     x1  SUB t1 c  ; reference to t1 or t2
+//     t2  ADD t1 b
+//     x2  SUB t2 d  ; reference to just t2
+//     -   PHI t1 t2
+//
+// The basic principle is that all PHI nodes semantically occur right
+// after the LOOP marker.  The reference to `t1` in `x1` therefore refers
+// to `t1` in the first iteration and thereafter to `t2` from the
+// previous iteration.
+//
+LC_FASTCALL IRRef
+findPhiTwin(JitState *J, IRRef ref)
+{
+  if (ref < J->cur.nloop && irt_getphi(IR(ref)->t)) {
+    // We have a reference to a loop variant variable
+    IRRef1 r = J->chain[IR_PHI];
+    while (r) {
+      IRIns *ir = IR(r);
+      if (ir->op1 == ref)
+	return ir->op2;
+      r = ir->prev;
+    }
+    // We must have a matching PHI node if the IRT_PHI flag is set.
+    // So we should never reach this point.
+    LC_ASSERT(0);
+  } else
+    return 0;
+}
+
+INLINE_HEADER
+void
+markIRRef(JitState *J, IRRef ref, IRRef site)
+{
+  if (irref_islit(ref))
+    return;
+
+  IRIns *ir = IR(ref);
+
+  // If we are marking a node involved in a PHI node, mark the
+  // PHI node as well.  However, we only do this the first time
+  // around, because marking a PHI node uses linear search.
+  if (site > J->cur.nloop && irt_getphi(ir->t) && !irt_getmark(ir->t)) {
+    IRRef phiref = tref_ref(J->chain[IR_PHI]);
+    while (phiref) {
+      if (IR(phiref)->op1 == ref) {
+        irt_setmark(IR(phiref)->t);
+        break;
+      }
+      phiref = IR(phiref)->prev;
+    }
+  }
+  irt_setmark(ir->t);
+}
+
+// Dead code elimination.
+//
+// Marks all live-out references and their dependencies.  Anything not
+// marked at the end is dead code and can be deleted (replaced by NOPs).
+//
+// Allocation sinking is done in a separate pass.
+//
+LC_FASTCALL void
+optDeadCodeElim(JitState *J)
+{
+  SnapShot *snap;
+  i4 i, j;
+  // 1. Mark all variables mentioned in snapshots.
+  //
+  // We start from the end so that if a variable `x` is marked and `x`
+  // is involved in a PHI node, then marked `IR(x)` implies marked
+  // `PHI x`.
+  for (i = J->cur.nsnap - 1; i >= 0; i--) {
+    snap = &J->cur.snap[i];
+    SnapEntry *se = &J->cur.snapmap[snap->mapofs];
+    for (j = 0; j < snap->nent; j++, se++) {
+      markIRRef(J, snap_ref(*se), snap->ref);
+    }
+  }
+
+  // 2. Mark all instructions reachable from those marked above.
+  //
+  // Again we start from the back, because data dependencies point
+  // backwards.
+  IRRef ref;
+  for (ref = J->cur.nins - 1; ref >= REF_FIRST; ref--) {
+    IRIns *ir = IR(ref);
+    if (ir_mode[ir->o] & (IRM_S|IRM_G))
+      irt_setmark(ir->t);
+    if (irt_getmark(ir->t)) {
+      if (irm_op1(ir_mode[ir->o]) == IRMref)
+        markIRRef(J, ir->op1, ref);
+      if (irm_op2(ir_mode[ir->o]) == IRMref)
+        markIRRef(J, ir->op2, ref);
+    }
+  }
+
+  // 3. Replace all unmarked instructions by NOPs
+
+  // TODO
 }
 
 #undef IR

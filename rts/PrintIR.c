@@ -91,7 +91,9 @@ printIRRef_(JitState *J, IRRef1 ref, char *comment, int *lencomment, int maxlen)
 void
 printIRRef(JitState *J, IRRef1 ref)
 {
-  if (ref < REF_BIAS)
+  if (ref == 0)
+    printf("---- ");
+  else if (ref < REF_BIAS)
     printf("K%03d ", (int)(REF_BIAS - ref));
   else
     printf("%04d ", (int)(ref - REF_BIAS));
@@ -110,7 +112,10 @@ printIR(JitState *J, IRIns ir)
     return;
   }
 
-  printf("%3s %-8s ", irt_str(ir.t), ir_name[ir.o]);
+  printf("%3s %s%s%-8s ", irt_str(ir.t),
+         irt_getphi(ir.t) ? "%" : " ",
+         irt_getmark(ir.t) ? "*" : " ",
+         ir_name[ir.o]);
   switch (irm_op1(ir_mode[ir.o])) {
   case IRMref:
     printIRRef_(J, ir.op1, comment, &lencomment, MAX_COMMENT);

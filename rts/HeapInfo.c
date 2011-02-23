@@ -1,7 +1,7 @@
 #include "HeapInfo.h"
 #include "PrintIR.h"
 
-#include <strings.h>
+#include <string.h>
 
 // -- Convenience macros.  Undefined at end of file. -----------------
 
@@ -60,6 +60,7 @@ newHeapInfo(JitState *J, IRRef1 ref, InfoTable *info)
   hp->nfields = nfields;
   hp->nent = (nfields + 1) / 2;
   hp->dfs = hp->scc = 0;
+  hp->loop = 0;
   growHeapInfoMapBuffer(J, J->cur.nheapmap + hp->nent);
   memset(J->cur.heapmap + hp->mapofs, 0, hp->nent * sizeof(HeapEntry));
   J->cur.nheapmap += hp->nent;
@@ -80,6 +81,7 @@ cloneHeapInfo(JitState *J, IRRef1 ref, u2 orig)
   hp->nfields = hporig->nfields;
   hp->nent = hporig->nent;
   hp->dfs = hp->scc = 0;
+  hp->loop = 0;
   growHeapInfoMapBuffer(J, J->cur.nheapmap + hp->nent);
   memset(J->cur.heapmap + hp->mapofs, 0, hp->nent * sizeof(HeapEntry));
   J->cur.nheapmap += hp->nent;
@@ -105,7 +107,8 @@ printHeapInfo(JitState *J)
   u4 i, j;
   for (i = 0; i < J->cur.nheap; i++) {
     HeapInfo *hp = &J->cur.heap[i];
-    printf("  [%d,%d] ", hp->mapofs, hp->scc);
+    printf("  [%d,%d] %s ", hp->mapofs, hp->scc,
+           (hp->loop & 1) ? "L" : " ");
     printIRRef(J, hp->ref);
     printf("=> ");
     for (j = 0; j < hp->nfields; j++) {
@@ -195,12 +198,19 @@ void
 dfs1(JitState *J, SccData *D, u2 n)
 {
   HeapInfo *hp;
+  IRRef href;
   int i;
 
-  if (n == 0) return;
+  DBG_LVL(3,"dfs1: %d\n", n);
 
   hp = HP(n);
-  LC_ASSERT(!marked(hp));
+  //if (n < 0 || n >= J->cur.nheap) return;
+  if (marked(hp)) return;
+
+  href = hp->ref;
+  hp->loop = 0;
+
+  //LC_ASSERT(!marked(hp));
 
   hp->dfs = D->pre++;
   pushStack(&D->s, n);
@@ -208,21 +218,39 @@ dfs1(JitState *J, SccData *D, u2 n)
 
   // Traverse all children (may already be marked)
   for (i = 0; i < hp->nfields; i++) {
-    HeapEntry hpe = J->cur.heapmap[hp->mapofs + i];
+    IRRef ref = getHeapInfoField(J, hp, i);
     IRIns *ir;
-    if (heap_ref(hpe) == 0) continue;
-    ir = IR(heap_ref(hpe));
+    //printf("..%d -> %d?\n", n, ref - REF_BIAS);
+    if (ref == 0) continue;
+    if (ref == href)
+      hp->loop |= 1;
+    ir = IR(ref);
     if (ir->o == IR_NEW) {
       dfs2(J, D, ir->op2);
+      IRRef other = findPhiTwin(J, ref);
+      DBG_LVL(3,"..%d looking for phi twin of %d => %d\n", n, ref - REF_BIAS, other - REF_BIAS);
+      if (other) {
+	if (other == href)
+	  hp->loop |= 1;
+        DBG_LVL(3,"..%d following %d, %d\n", n,
+                other - REF_BIAS, IR(other)->op2);
+        dfs2(J, D, IR(other)->op2);
+      }
     }
   }
 
   if (peekStack(&D->p) == n) {  // Found SCC
     popStack(&D->p);
+    // We pop items off stack S until we found the current item.
+    // If the first item is != n, then were found an SCC of size > 1,
+    // so we mark all members as being part of a loop.
+    u1 isloop = (peekStack(&D->s) != n) ? 1 : 0;
     u2 p;
     do {
       p = popStack(&D->s);
+      DBG_LVL(3, "Adding item to SCC: %d, %d\n", n, p);
       HP(p)->scc = hp->dfs;
+      HP(p)->loop |= isloop;
     } while (p != n);
   }
 }
@@ -230,9 +258,10 @@ dfs1(JitState *J, SccData *D, u2 n)
 void
 dfs2(JitState *J, SccData *D, u2 w)
 {
+  DBG_LVL(3,"dfs2: %d\n", w);
   HeapInfo *hp;
 
-  if (w == 0) return;
+  if (w < 0 || w > J->cur.nheap) return;
 
   hp = HP(w);
 
@@ -245,15 +274,69 @@ dfs2(JitState *J, SccData *D, u2 w)
   }
 }
 
+#define UNSINK_VISITED   2
+#define UNSINK_LOOP      1
+
 void
-heapSCCs(JitState *J, u2 root)
+markUnsinkable(JitState *J, u2 hi, u1 mode)
+{
+  HeapInfo *hp = HP(hi);
+
+  if ((hp->loop & UNSINK_VISITED) && (hp->loop & UNSINK_LOOP))
+    return;
+
+  hp->loop |= UNSINK_VISITED | mode;
+  DBG_LVL(2, "unsink %d, %d\n", hi, mode);
+
+  if (hp->loop & UNSINK_LOOP) {
+    int i;
+    for (i = 0; i < hp->nfields; i++) {
+      // Follow children
+      IRRef twin, ref = getHeapInfoField(J, hp, i);
+      IRIns *ir;
+
+      if (ref == 0)
+        continue;
+
+      ir = IR(ref);
+      if (ir->o == IR_NEW) {
+        markUnsinkable(J, ir->op2, UNSINK_LOOP);
+
+        twin = findPhiTwin(J, ref);
+        if (twin)
+          markUnsinkable(J, IR(twin)->op2, UNSINK_LOOP);
+      }
+    }
+  }
+}
+
+void
+heapSCCs(JitState *J)
 {
   SccData D;
+  int i;
+
   initStack(&D.s, J->cur.nheap);
   initStack(&D.p, J->cur.nheap);
   D.pre = 1;
 
-  dfs1(J, &D, root);
+  // 1. Find all cycles (including
+
+  // Roots are all NEW instructions after the LOOP marker.
+  // Start with last instruction.
+  IRRef ref = J->chain[IR_NEW];
+  while (ref > J->cur.nloop) {
+    dfs1(J, &D, IR(ref)->op2);
+    ref = IR(ref)->prev;
+  }
+
+  // 2. Mark all nodes reachable from cycles as unsinkable.
+  //
+  // Starting from the back again, because nodes from the back
+  // may reach any other node, but not necessarily vice versa.
+  for (i = J->cur.nheap - 1; i >= 0; i--) {
+    markUnsinkable(J, i, 0);
+  }
 
   destroyStack(&D.s);
   destroyStack(&D.p);
