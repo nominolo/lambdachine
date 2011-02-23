@@ -851,8 +851,6 @@ optUnrollLoop(JitState *J)
   IRRef ref;
   u4 nextsnap = 0;
 
-  // TODO: Keep track of PHI nodes
-
   DBG_LVL(2,"max_renamings = %u\n", max_renamings);
   renaming = xmalloc(max_renamings * sizeof(*renaming));
   renaming -= REF_BIAS;
@@ -897,8 +895,12 @@ optUnrollLoop(JitState *J)
     //printf("op1 = %d, op2 = %d\n", op1 - REF_BIAS, op2 - REF_BIAS);
     renaming[ref] = emit(J, IRT(ir->o, ir->t), op1, op2);
 
-    // FRAME and RET instructions keep track of the
+    // Some instructions require special treatment, because they affect
+    // state outside of the IR buffer.
     switch (ir->o) {
+
+      // FRAME and RET instructions keep track of the boundaries of
+      // the stack
     case IR_FRAME:
       J->baseslot += ir->op1;
       J->base = J->slot + J->baseslot;
@@ -909,6 +911,8 @@ optUnrollLoop(JitState *J)
       J->base = J->slot + J->baseslot;
       J->maxslot = ir->op1 - 3;
       break;
+
+      // For NEW instructions we need to adjust the HeapInfo
     case IR_NEW:
       {
         HeapInfo *hpold = &J->cur.heap[ir->op2];
@@ -933,14 +937,24 @@ optUnrollLoop(JitState *J)
   }
 
   // Emit PHI instructions
+  //
+  // NOTE: That some PHI instructions may not be needed.  We eliminate
+  // those in [optDeadCodeElim].
   for (ref = REF_FIRST; ref < J->cur.nloop; ref++) {
     TRef tr = renaming[ref];
     IRIns *ir = IR(tref_ref(tr));
-    if (tref_t(tr) != IRT_VOID && tref_ref(tr) > J->cur.nloop &&
+    // We need PHI nodes for all instructions that:
+    //   - have been redefined in the unrolled loop
+    //   - return a result
+    //   - ar not FREFS
+    // For both IRs involved we set the IRT_PHI flag to efficiently
+    // detect wether any node is argument to a PHI node.
+    if (tref_t(tr) != IRT_VOID &&
+        tref_ref(tr) > J->cur.nloop &&
         ir->o != IR_FREF) {
       irt_setphi(IR(ref)->t);
-      emit(J, IRT(IR_PHI, ir->t), ref, tref_ref(tr));
       irt_setphi(ir->t);
+      emit(J, IRT(IR_PHI, ir->t), ref, tref_ref(tr));
     }
   }
 
@@ -982,6 +996,7 @@ findPhiTwin(JitState *J, IRRef ref)
     return 0;
 }
 
+// Mark reference [ref] from reference site [site].
 INLINE_HEADER
 void
 markIRRef(JitState *J, IRRef ref, IRRef site)
