@@ -649,7 +649,7 @@ recordIns(JitState *J)
   case BC_ALLOC1:
     {
       InfoTable *info = (InfoTable*)tbase[bc_b(ins)];
-      TRef rinfo, rnew, rfield;
+      TRef rinfo, rnew;
       rinfo = emitKWord(J, (Word)info, LIT_INFO);
       rb = getSlot(J, bc_b(ins));
       // Ensure that r(B) actually contains the the info table we're
@@ -658,8 +658,6 @@ recordIns(JitState *J)
 
       rc = getSlot(J, bc_c(ins));
       rnew = emit(J, IRT(IR_NEW, IRT_CLOS), rinfo, 2);
-      rfield = emit(J, IRT(IR_FREF, IRT_PTR), rnew, 1);
-      emit(J, IRT(IR_FSTORE, IRT_VOID), rfield, rc);
       setSlot(J, bc_a(ins), rnew);
       u4 h = newHeapInfo(J, rnew, info);
       IR(tref_ref(rnew))->op2 = h;
@@ -671,7 +669,7 @@ recordIns(JitState *J)
   case BC_ALLOC:
     {
       InfoTable *info = (InfoTable*)tbase[bc_b(ins)];
-      TRef rinfo, rnew, rfield;
+      TRef rinfo, rnew;
       u4 size = bc_c(ins);
       ConInfoTable *cinfo;
       u1 *arg = (u1*)(pc + 1);
@@ -688,8 +686,6 @@ recordIns(JitState *J)
       HeapInfo *hp = &J->cur.heap[h];
       for (i = 1; i <= size; i++, arg++) {
         rc = getSlot(J, *arg);
-        rfield = emit(J, IRT(IR_FREF, IRT_PTR), rnew, i);
-        emit(J, IRT(IR_FSTORE, IRT_VOID), rfield, rc);
         setHeapInfoField(J, hp, i - 1, rc);
       }
       setSlot(J, bc_a(ins), rnew);
@@ -758,27 +754,25 @@ TRef
 optForward(JitState *J)
 {
   IROp op = foldIns->o;
-  // There cannot be a store before the reference to the location is created.
-  // (This relies on CSE to find duplicate references).
-  IRRef lim = foldIns->op1;
-  IRRef1 fref = lim;
+  IRRef1 fref = foldIns->op1;
+  IRIns *cl_ir = IR(IR(fref)->op1);
 
   switch (op) {
   case IR_FLOAD:
     {
-      //printf("FWD: looking for store to %d\n",  fref - REF_BIAS);
-      IRRef ref = J->chain[IR_FSTORE];
-
-      // Find a store to same address.
-      while (ref > lim) {
-        if (IR(ref)->op1 == fref) {
-          IRRef val = IR(ref)->op2;
-          printf("FWD: Forwarding load: %d (%d, %d)\n",
-                 val - REF_BIAS, ref - REF_BIAS, fref - REF_BIAS);
-          return TREF(val, IR(val)->t);
-        }
-        ref = IR(ref)->prev;
+      // The closure we're referencing has been allocated in this
+      // trace.
+      if (cl_ir->o == IR_NEW) {
+        printf("ref = %d, new = %d\n", fref - REF_BIAS,
+               IR(fref)->op1 - REF_BIAS);
+        IRRef1 src = getHeapInfoField(J, &J->cur.heap[cl_ir->op2],
+                                      IR(fref)->op2 - 1);
+        LC_ASSERT(src != 0);
+        printf("FWD: Forwarding load: %d (%d, %d)\n",
+               src - REF_BIAS, IR(fref)->op1 - REF_BIAS, fref - REF_BIAS);
+        return TREF(src, IR(src)->t);
       }
+
       // TODO: Check for aliases?
       return optCSE(J);
     }
@@ -1013,12 +1007,15 @@ markIRRef(JitState *J, IRRef ref, IRRef site)
     IRRef phiref = tref_ref(J->chain[IR_PHI]);
     while (phiref) {
       if (IR(phiref)->op1 == ref) {
+        DBG_PR("Setting mark for PHI: %d\n", phiref - REF_BIAS);
         irt_setmark(IR(phiref)->t);
         break;
       }
       phiref = IR(phiref)->prev;
     }
   }
+  DBG_PR("Setting mark for: %d from %d\n", ref - REF_BIAS,
+         site - REF_BIAS);
   irt_setmark(ir->t);
 }
 
@@ -1028,45 +1025,85 @@ markIRRef(JitState *J, IRRef ref, IRRef site)
 // marked at the end is dead code and can be deleted (replaced by NOPs).
 //
 // Allocation sinking is done in a separate pass.
+
+INLINE_HEADER void markSnapshot(JitState *J, SnapShot *snap);
+INLINE_HEADER void markIRIns(JitState *J, IRRef ref);
 //
 LC_FASTCALL void
 optDeadCodeElim(JitState *J)
 {
-  SnapShot *snap;
-  i4 i, j;
-  // 1. Mark all variables mentioned in snapshots.
+  // Marking works in two steps.
+  //
+  // a. Mark all variables mentioned in snapshots.
   //
   // We start from the end so that if a variable `x` is marked and `x`
   // is involved in a PHI node, then marked `IR(x)` implies marked
   // `PHI x`.
-  for (i = J->cur.nsnap - 1; i >= 0; i--) {
-    snap = &J->cur.snap[i];
-    SnapEntry *se = &J->cur.snapmap[snap->mapofs];
-    for (j = 0; j < snap->nent; j++, se++) {
-      markIRRef(J, snap_ref(*se), snap->ref);
-    }
-  }
-
-  // 2. Mark all instructions reachable from those marked above.
+  //
+  // b. Mark all instructions reachable from those marked above.
   //
   // Again we start from the back, because data dependencies point
   // backwards.
+
+  // We mark the unrolled loop and the loop intro separately.  This is
+  // needed to deal effectively with PHI references.  See comments in
+  // [markIRIns].
+  int snapidx = J->cur.nsnap - 1;
   IRRef ref;
-  for (ref = J->cur.nins - 1; ref >= REF_FIRST; ref--) {
-    IRIns *ir = IR(ref);
-    if (ir_mode[ir->o] & (IRM_S|IRM_G))
-      irt_setmark(ir->t);
-    if (irt_getmark(ir->t)) {
-      if (irm_op1(ir_mode[ir->o]) == IRMref)
-        markIRRef(J, ir->op1, ref);
-      if (irm_op2(ir_mode[ir->o]) == IRMref)
-        markIRRef(J, ir->op2, ref);
-    }
-  }
+
+  // Mark unrolled loop
+  for ( ; snapidx >= 0 && J->cur.snap[snapidx].ref > J->cur.nloop;
+       snapidx--)
+    markSnapshot(J, &J->cur.snap[snapidx]);
+
+  for (ref = J->cur.nins - 1; ref > J->cur.nloop; ref--)
+    markIRIns(J, ref);
+
+  // Mark loop header
+  for ( ; snapidx >= 0; snapidx--)
+    markSnapshot(J, &J->cur.snap[snapidx]);
+
+  for (ref = J->cur.nloop - 1; ref >= REF_FIRST; ref--)
+    markIRIns(J, ref);
 
   // 3. Replace all unmarked instructions by NOPs
 
-  // TODO
+  for (ref = REF_FIRST; ref < J->cur.nins; ref++) {
+    IRIns *ir = IR(ref);
+    if (!irt_getmark(ir->t)) {
+      ir->o = IR_NOP;
+      ir->t = IRT_VOID;
+    }
+  }
+}
+
+INLINE_HEADER void markSnapshot(JitState *J, SnapShot *snap)
+{
+  int j;
+  SnapEntry *se = &J->cur.snapmap[snap->mapofs];
+  for (j = 0; j < snap->nent; j++, se++) {
+    markIRRef(J, snap_ref(*se), snap->ref);
+  }
+}
+
+INLINE_HEADER void markIRIns(JitState *J, IRRef ref)
+{
+  int i;
+  IRIns *ir = IR(ref);
+  if (ir_mode[ir->o] & (IRM_S|IRM_G))
+    irt_setmark(ir->t);
+  if (irt_getmark(ir->t)) {
+    if (irm_op1(ir_mode[ir->o]) == IRMref)
+      markIRRef(J, ir->op1, ref);
+    if (irm_op2(ir_mode[ir->o]) == IRMref)
+      markIRRef(J, ir->op2, ref);
+    if (ir->o == IR_NEW) {
+      HeapInfo *h = &J->cur.heap[ir->op2];
+      for (i = 0; i < h->nfields; i++) {
+        markIRRef(J, getHeapInfoField(J, h, i), ref);
+      }
+    }
+  }
 }
 
 #undef IR
