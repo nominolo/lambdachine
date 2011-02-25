@@ -1076,7 +1076,7 @@ optDeadCodeElim(JitState *J)
 
   for (ref = REF_FIRST; ref < J->cur.nins; ref++) {
     IRIns *ir = IR(ref);
-    if (!irt_getmark(ir->t)) {
+    if (!irt_getmark(ir->t) && ir->o != IR_LOOP) {
       ir->o = IR_NOP;
       ir->t = IRT_VOID;
       ir->prev = J->chain[IR_NOP];
