@@ -35,6 +35,7 @@ typedef int32_t  WordInt;
 #define FMT_WordX "x"
 #define FMT_Int   "d"
 #define FMT_WordLen "8"
+#define LC_ARCH_BITS_LOG2 5
 
 #elif LC_ARCH_BITS == 64
 
@@ -45,6 +46,7 @@ typedef int64_t  WordInt;
 #define FMT_WordX FMT_Word64X
 #define FMT_Int   FMT_Int64
 #define FMT_WordLen "16"
+#define LC_ARCH_BITS_LOG2 6
 
 #else
 #error "Only 32 bit and 64 bit architectures supported."

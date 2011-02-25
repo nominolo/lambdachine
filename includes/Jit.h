@@ -153,6 +153,7 @@ TRef foldIR(JitState *J);
 LC_FASTCALL TRef optCSE(JitState *);
 void optUnrollLoop(JitState *J);
 LC_FASTCALL void optDeadCodeElim(JitState *J);
+LC_FASTCALL void optDeadAssignElim(JitState *J);
 void growIRBufferTop(JitState *J);
 TRef emitLoadSlot(JitState *J, i4 slot);
 int recordIns(JitState *J);

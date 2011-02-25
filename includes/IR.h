@@ -191,8 +191,10 @@ typedef enum {
 
 #define irt_setmark(irt) ((irt) |= IRT_MARK)
 #define irt_getmark(irt) ((irt) & IRT_MARK)
+#define irt_clearmark(irt)  ((irt) &= ~IRT_MARK)
 #define irt_setphi(irt)  ((irt) |= IRT_ISPHI)
 #define irt_getphi(irt)  ((irt) & IRT_ISPHI)
+#define irt_type(irt)    ((irt) & IRT_TYPE)
 
 enum {
   REF_BIAS  = 0x8000,

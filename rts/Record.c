@@ -7,6 +7,7 @@
 #include "Thread.h"
 #include "Snapshot.h"
 #include "HeapInfo.h"
+#include "Bitset.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -740,6 +741,7 @@ finishRecording(JitState *J)
   optUnrollLoop(J);
   optDeadCodeElim(J);
   heapSCCs(J);
+  optDeadAssignElim(J);
 
   //  for (i = J->cur.nheap - 1; i >= 0; i--)
   //    heapSCCs(J, i);
@@ -1050,6 +1052,7 @@ optDeadCodeElim(JitState *J)
   // [markIRIns].
   int snapidx = J->cur.nsnap - 1;
   IRRef ref;
+  int i;
 
   // Mark unrolled loop
   for ( ; snapidx >= 0 && J->cur.snap[snapidx].ref > J->cur.nloop;
@@ -1066,14 +1069,23 @@ optDeadCodeElim(JitState *J)
   for (ref = J->cur.nloop - 1; ref >= REF_FIRST; ref--)
     markIRIns(J, ref);
 
-  // 3. Replace all unmarked instructions by NOPs
+  // 4. Replace all unmarked instructions by NOPs
+  //
+  // We also need to fix up the previous pointer and [J->chain.]
+  memset(J->chain, 0, sizeof(J->chain));
 
   for (ref = REF_FIRST; ref < J->cur.nins; ref++) {
     IRIns *ir = IR(ref);
     if (!irt_getmark(ir->t)) {
       ir->o = IR_NOP;
       ir->t = IRT_VOID;
+      ir->prev = J->chain[IR_NOP];
+      J->chain[IR_NOP] = ref;
+    } else {
+      ir->prev = J->chain[ir->o];
+      J->chain[ir->o] = ref;
     }
+    irt_clearmark(ir->t);
   }
 }
 
@@ -1101,6 +1113,89 @@ INLINE_HEADER void markIRIns(JitState *J, IRRef ref)
       HeapInfo *h = &J->cur.heap[ir->op2];
       for (i = 0; i < h->nfields; i++) {
         markIRRef(J, getHeapInfoField(J, h, i), ref);
+      }
+    }
+  }
+}
+
+// Dead assignment and update elimination.
+//
+// This uses liveness information to remove stores to otherwise dead
+// variables.
+//
+// TODO: This could potentially be integrated with register
+// allocation, since both need liveness information.
+//
+LC_FASTCALL void
+optDeadAssignElim(JitState *J)
+{
+  // Handling of PHI nodes:
+  //
+  // Variables mentioned on the *rhs* of PHI variables are live at the
+  // end of the loop.  Variables mentioned on the *lhs*, are live
+  // before the loop body starts.
+
+  int i;
+  u4 bsize = J->cur.nins - REF_BIAS;
+  Bitset lives[BITSET_SIZE(bsize)];
+  IRRef ref;
+  IRRef nextsnap = 0;
+  SnapShot *snap = NULL;
+  clearBitset(lives, bsize);
+  printBitset(lives, bsize);
+
+  if (J->cur.nloop && J->chain[IR_UPDATE]) {
+    IRIns *ir;
+    ref = J->cur.nins - 1;
+    ir = IR(ref);
+
+    // Initialise with PHIs
+    while (ir->o == IR_NOP || ir->o == IR_PHI) {
+      if (ir->o == IR_PHI)
+        setBit(lives, ir->op2 - REF_BIAS);
+      ref--;
+      ir = IR(ref);
+    }
+
+    if (J->cur.nsnap > 0) {
+      snap = &J->cur.snap[J->cur.nsnap - 1];
+      nextsnap = snap->ref;
+    }
+
+    IRRef prev_upd = J->chain[IR_UPDATE];
+    for ( ; ref > J->cur.nloop; ref--) {
+      printf("%d: ", ref - REF_BIAS);
+      printBitset(lives, bsize);
+      ir = IR(ref);
+      if (ir->o == IR_UPDATE) {
+        printf("Found UPDATE: \n");
+        printIR(J, *ir);
+        if (!getBit(lives, ir->op1 - REF_BIAS)) {
+          ir->o = IR_NOP;
+          // Update prev pointer.
+          if (ref == prev_upd)
+            prev_upd = ir->prev;
+          else
+            IR(prev_upd)->prev = ir->prev;
+          continue;
+        } else {
+          prev_upd = ref;
+        }
+      }
+      // Update lives
+      if (irt_type(ir->t) != IRT_VOID)
+        clearBit(lives, ref - REF_BIAS);
+      if (irm_op1(ir_mode[ir->o]) == IRMref && !irref_islit(ir->op1))
+        setBit(lives, ir->op1 - REF_BIAS);
+      if (irm_op2(ir_mode[ir->o]) == IRMref && !irref_islit(ir->op2))
+        setBit(lives, ir->op2 - REF_BIAS);
+
+      if (ref == nextsnap) {
+        SnapEntry *se = J->cur.snapmap + snap->mapofs;
+        for (i = 0; i < snap->nent; i++, se++) {
+          if (!irref_islit(snap_ref(*se)))
+            setBit(lives, snap_ref(*se) - REF_BIAS);
+        }
       }
     }
   }
