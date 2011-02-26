@@ -159,6 +159,8 @@ TRef emitLoadSlot(JitState *J, i4 slot);
 int recordIns(JitState *J);
 LC_FASTCALL IRRef findPhiTwin(JitState *J, IRRef ref);
 
+int irEngine(Capability *cap, Fragment *F);
+
 INLINE_HEADER TRef getSlot(JitState *J, int slot)
 {
   return J->base[slot] ? J->base[slot] : emitLoadSlot(J, slot);

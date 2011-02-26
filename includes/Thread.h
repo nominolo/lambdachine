@@ -27,4 +27,9 @@ Closure *startThread(Thread *, Closure *);
 
 #define THREAD_STRUCT_SIZEW (THREAD_STRUCT_SIZE / sizeof(Word))
 
+// -- Stuff likely to be removed -------------------------------------
+
+void printFrame(Word *base, Word *top);
+void printSlot(Word *slot);
+
 #endif

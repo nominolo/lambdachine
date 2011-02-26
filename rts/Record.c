@@ -749,6 +749,8 @@ finishRecording(JitState *J)
   printf("*** Stopping to record.\n");
   printIRBuffer(J);
   printHeapInfo(J);
+
+  irEngine(G_cap0, &J->cur);
 }
 
 // Perform store->load forwarding on the current foldIns.
