@@ -32,6 +32,7 @@ extern Capability* G_cap0;
 INLINE_HEADER int
 hotcountTick(Capability *cap, BCIns *pc, Word *base)
 {
+#if LC_HAS_JIT
   JitState *J = &cap->J;
   if (LC_UNLIKELY(J->mode != 0))
     return 0;
@@ -46,7 +47,7 @@ hotcountTick(Capability *cap, BCIns *pc, Word *base)
     startRecording(J, pc, cap->T, base);
     return 1;
   }
-
+#endif
   return 0;
 }
 

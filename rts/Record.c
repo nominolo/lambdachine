@@ -1,4 +1,8 @@
+
 #include "Common.h"
+
+#if LC_HAS_JIT
+
 #include "IR.h"
 #include "Jit.h"
 #include "PrintIR.h"
@@ -13,12 +17,14 @@
 #include <stdio.h>
 #include <string.h>
 
+
 /* #define DBG_PR(fmt, ...)  fprintf(stderr, fmt, __VA_ARGS__) */
 
 
 // -- Forward Declarations -------------------------------------------
 
 FragmentId registerCurrentFragment(JitState *J);
+void recordCleanup(JitState *J);
 
 
 // -- Convenience macros.  Undefined at end of file. -----------------
@@ -71,8 +77,8 @@ emitIR(JitState *J)
   ir->t = foldIns->t;
   ir->op1 = foldIns->op1;
   ir->op2 = foldIns->op2;
-  printf("emitted: %5d ", ref - REF_BIAS);
-  printIR(&J->cur, *ir);
+  DBG_LVL(2, "emitted: %5d ", ref - REF_BIAS);
+  IF_DBG_LVL(2, printIR(&J->cur, *ir));
 
   return TREF(ref, ir->t);
 }
@@ -233,8 +239,8 @@ emitKInt(JitState *J, i4 k)
   ir->o = IR_KINT;
   ir->prev = J->chain[IR_KINT];
   J->chain[IR_KINT] = (IRRef1)ref;
-  printf("emitted: %5d ", (IRRef1)ref - REF_BIAS);
-  printIR(&J->cur, *ir);
+  DBG_LVL(2, "emitted: %5d ", (IRRef1)ref - REF_BIAS);
+  IF_DBG_LVL(2, printIR(&J->cur, *ir));
  found:
   return TREF(ref, IRT_I32);
 }
@@ -282,8 +288,8 @@ emitKWord(JitState *J, Word w, LitType lt)
   ir->o = IR_KWORD;
   ir->prev = J->chain[IR_KWORD];
   J->chain[IR_KWORD] = (IRRef1)ref;
-  printf("emitted: %5d ", (IRRef1)ref - REF_BIAS);
-  printIR(&J->cur, *ir);
+  DBG_LVL(2, "emitted: %5d ", (IRRef1)ref - REF_BIAS);
+  IF_DBG_LVL(2, printIR(&J->cur, *ir));
  found:
   return TREF(ref, t);
 }
@@ -320,8 +326,8 @@ emitKBaseOffset(JitState *J, i4 offs)
   ir->t = IRT_PTR;
   ir->prev = J->chain[IR_KBASEO];
   J->chain[IR_KBASEO] = ir->prev;
-  printf("emitted: %5d ", (IRRef1)ref - REF_BIAS);
-  printIR(&J->cur, *ir);
+  DBG_LVL(2, "emitted: %5d ", (IRRef1)ref - REF_BIAS);
+  IF_DBG_LVL(2, printIR(&J->cur, *ir));
  found:
   return TREF(ref, ir->t);
 }
@@ -412,7 +418,7 @@ evalNumComp(Word x, Word y, IROp op)
 void
 abortRecording(JitState *J)
 {
-  LC_ASSERT(0); // TODO: Implement
+  exit(111);
 }
 
 RecordResult
@@ -434,10 +440,11 @@ recordIns(JitState *J)
 
   if (J->needsnap) {
     J->needsnap = 0;
-    printf(COL_GREEN);
-    printSlots(J);
-    addSnapshot(J);
-    printf(COL_RESET);
+    IF_DBG_LVL(1,
+               printf(COL_GREEN);
+               printSlots(J);
+               addSnapshot(J);
+               printf(COL_RESET));
     J->mergesnap = 1;
   }
 
@@ -527,7 +534,7 @@ recordIns(JitState *J)
       const InfoTable *ninfo = getInfo(node);
 
       if (closure_IND(node)) {
-        abortRecording(J); // TODO: Handle indirection following.
+        goto abort_recording; // TODO: Handle indirection following.
       }
 
       // Specialise on info table:  Emit guard to check for same info
@@ -551,7 +558,7 @@ recordIns(JitState *J)
         ThunkInfoTable *info = (ThunkInfoTable*)ninfo;
         u4 framesize = info->code.framesize;
         if (LC_UNLIKELY(stackOverflow(J->T, top, 8 + framesize)))
-          abortRecording(J);
+          goto abort_recording;
         u4 t = top - J->T->base; // Slot name of *top
         u4 i;
         const BCIns *return_pc = J->pc + 2;
@@ -564,7 +571,7 @@ recordIns(JitState *J)
         setSlot(J, t + 5, emitKBaseOffset(J, t + 3));
         setSlot(J, t + 6, emitKWord(J, (Word)stg_UPD_return_pc, LIT_PC));
         setSlot(J, t + 7, ra);
-        printf("baseslot %d => %d (top = %d, frame = %d)\n",
+        DBG_PR("baseslot %d => %d (top = %d, frame = %d)\n",
                J->baseslot, J->baseslot + t + 8, t, framesize);
         J->baseslot += t + 8;
         J->base = J->slot + J->baseslot;
@@ -572,7 +579,7 @@ recordIns(JitState *J)
         emit_raw(J, IRT(IR_FRAME, IRT_VOID), t + 8, framesize);
         for (i = 0; i < J->maxslot; i++) setSlot(J, i, 0); // clear slots
         J->framedepth += 2;
-        printSlots(J);
+        IF_DBG_LVL(1, printSlots(J));
       }
     }
     break;
@@ -586,7 +593,7 @@ recordIns(JitState *J)
 
       if (getInfo(fnode)->type != FUN ||
           getFInfo(fnode)->code.arity != nargs)
-        abortRecording(J);
+        goto abort_recording;
 
       info = getFInfo(fnode);
       // Guard for info table, as usual
@@ -602,7 +609,7 @@ recordIns(JitState *J)
       for (i = nargs; i < J->maxslot; i++) setSlot(J, i, 0);
       emit_raw(J, IRT(IR_FRAME, IRT_VOID), 0, J->maxslot);
 
-      printSlots(J);
+      IF_DBG_LVL(1, printSlots(J));
     }
     break;
 
@@ -623,7 +630,7 @@ recordIns(JitState *J)
 
     do_return:
       if (J->framedepth <= 0)
-        abortRecording(J); // for now
+        goto abort_recording; // for now
 
       Word return_pc = tbase[-2];
       Word *return_base = (Word*)tbase[-3];
@@ -643,7 +650,7 @@ recordIns(JitState *J)
       J->maxslot = basediff - 3;
       emit_raw(J, IRT(IR_RET, IRT_VOID), basediff, 0);
 
-      printSlots(J);
+      //printSlots(J);
     }
     break;
 
@@ -710,8 +717,11 @@ recordIns(JitState *J)
     LC_ASSERT(0);
     break;
   }
-
   return REC_CONT;
+
+ abort_recording:
+  recordCleanup(J);
+  return REC_ABORT;
 }
 
 void
@@ -729,13 +739,13 @@ initJitState(JitState *J)
 LC_FASTCALL void
 startRecording(JitState *J, BCIns *startpc, Thread *T, Word *base)
 {
-  printf("start recording: %p\n", T);
+  DBG_PR("start recording: %p\n", T);
   T->base = base;
   J->startpc = startpc;
   J->cur.startpc = startpc;
   J->mode = 1;
   recordSetup(J, T);
-  printf("*** Starting to record at: %p\n", startpc);
+  DBG_PR("*** Starting to record at: %p\n", startpc);
 }
 
 FragmentId
@@ -775,12 +785,12 @@ optForward(JitState *J)
       // The closure we're referencing has been allocated in this
       // trace.
       if (cl_ir->o == IR_NEW) {
-        printf("ref = %d, new = %d\n", fref - REF_BIAS,
+        DBG_PR("ref = %d, new = %d\n", fref - REF_BIAS,
                IR(fref)->op1 - REF_BIAS);
         IRRef1 src = getHeapInfoField(&J->cur, &J->cur.heap[cl_ir->op2],
                                       IR(fref)->op2 - 1);
         LC_ASSERT(src != 0);
-        printf("FWD: Forwarding load: %d (%d, %d)\n",
+        DBG_PR("FWD: Forwarding load: %d (%d, %d)\n",
                src - REF_BIAS, IR(fref)->op1 - REF_BIAS, fref - REF_BIAS);
         return TREF(src, IR(src)->t);
       }
@@ -806,7 +816,7 @@ foldIR(JitState *J)
   switch (op) {
   case IR_EQ:
     if (foldIns->op1 == foldIns->op2) {
-      printf("FOLD: trivial guard.\n");
+      DBG_PR("FOLD: trivial guard. %s\n", "EQ");
       return 0;
     }
     break;
@@ -816,12 +826,12 @@ foldIR(JitState *J)
       IRIns ir = J->cur.ir[foldIns->op1];
       LC_ASSERT(ir.o == IR_KWORD);
       Closure *c = (Closure*)J->cur.kwords[ir.u];
-      printf("FOLD: ILOAD for static closure\n");
+      DBG_PR("FOLD: ILOAD for static closure\n%s", "");
       return emitKWord(J, (Word)getFInfo(c), LIT_INFO);
     } else {
       IRIns *left = IR(foldIns->op1);
       if (left->o == IR_NEW) {
-        printf("FOLD: ILOAD for NEW closure\n");
+        DBG_PR("FOLD: ILOAD for NEW closure\n%s", "");
         return left->op1;
       }
     }
@@ -998,6 +1008,7 @@ findPhiTwin(JitState *J, IRRef ref)
     // We must have a matching PHI node if the IRT_PHI flag is set.
     // So we should never reach this point.
     LC_ASSERT(0);
+    return 0;
   } else
     return 0;
 }
@@ -1216,6 +1227,7 @@ recordCleanup(JitState *J)
   xfree(J->irbuf + J->irmin);
   J->irbuf = J->cur.ir = NULL;
   J->irmin = J->irmax = 0;
+  J->mode = 0;
 
   xfree(J->snapbuf);
   xfree(J->snapmapbuf);
@@ -1282,3 +1294,5 @@ registerCurrentFragment(JitState *J)
 
 #undef IR
 #undef foldIns
+
+#endif /* LC_HAS_JIT */

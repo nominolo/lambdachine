@@ -3,6 +3,7 @@
 #include "HashTable.h"
 #include "PrintClosure.h"
 #include "StorageManager.h"
+#include "Stats.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -130,6 +131,7 @@ main(int argc, char *argv[])
   T0 = createThread(G_cap0, 1024);
   clos0 = startThread(T0, clos0);
   printClosure(clos0);
+  printEvents();
 
   return 0;
 }

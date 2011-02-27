@@ -13,6 +13,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#if LC_HAS_JIT
+
 // -- Snapshot buffer management -------------------------------------
 
 // Maximum number of snapshots per trace.
@@ -102,14 +104,14 @@ snapshotStack(JitState *J, SnapShot *snap, Word nsnapmap)
   snap->nent = (u1)nent;
   snap->count = 0;
   J->cur.nsnapmap = nsnapmap + nent + 2;
-  printf("Created snapshot:\n  ");
-  printSnapshot(J, snap, J->cur.snapmap);
+  IF_DBG_LVL(1, printf("Created snapshot:\n  ");
+             printSnapshot(J, snap, J->cur.snapmap));
 }
 
 void
 addSnapshot(JitState *J)
 {
-  printf("Adding snapshot:\n");
+  DBG_PR("Adding snapshot:\n%s", "");
   Word nsnap = J->cur.nsnap;
   Word nsnapmap = J->cur.nsnapmap;
   // Merge snapshots if:
@@ -142,7 +144,7 @@ printSnapshot(JitState *J, SnapShot *snap, SnapEntry *map)
       printf("[%d]:", j);
 
     if (nent > 0 && snap_slot(*p) == i) {
-      printIRRef(J, snap_ref(*p));
+      printIRRef(&J->cur, snap_ref(*p));
       ++p;
     } else
       printf("---- ");
@@ -151,3 +153,5 @@ printSnapshot(JitState *J, SnapShot *snap, SnapEntry *map)
 }
 
 #undef IR
+
+#endif  /* LC_HAS_JIT */

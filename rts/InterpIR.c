@@ -6,6 +6,7 @@
 #include "MiscClosures.h"
 #include "HeapInfo.h"
 #include "StorageManager.h"
+#include "Stats.h"
 
 typedef void* Inst;
 
@@ -48,7 +49,7 @@ irEngine(Capability *cap, Fragment *F)
     default:
       LC_ASSERT(0); break;
     }
-    printf("%d, %" FMT_WordX "\n", ref - REF_BIAS, vals[ref]);
+    DBG_LVL(2, "%d, %" FMT_WordX "\n", ref - REF_BIAS, vals[ref]);
   }
   vals[REF_BASE] = (Word)base;
 
@@ -57,13 +58,14 @@ irEngine(Capability *cap, Fragment *F)
 # define DISPATCH_NEXT \
   if (irt_type(pc->t) != IRT_VOID && pc->o != IR_PHI) \
     if (irt_type(pc->t) == IRT_I32) \
-      printf("         ===> %" FMT_Int "\n", vals[pcref]); \
+      DBG_LVL(2, "         ===> %" FMT_Int "\n", vals[pcref]); \
     else \
-      printf("         ===> 0x%" FMT_WordX "\n", vals[pcref]); \
+      DBG_LVL(2, "         ===> 0x%" FMT_WordX "\n", vals[pcref]); \
   ++pc; ++pcref; \
   if (LC_UNLIKELY(pc >= pcmax)) { pc = pcloop; pcref = F->nloop + 1; } \
-  printf("[%d] ", pcref - REF_BIAS); \
-  printIR(F, *pc); \
+  if (pc->o != IR_NOP) { \
+    DBG_LVL(2, "[%d] ", pcref - REF_BIAS); \
+    IF_DBG_LVL(2, printIR(F, *pc)); } \
   goto *disp[pc->o]
 
  op_NOP:
@@ -77,45 +79,54 @@ irEngine(Capability *cap, Fragment *F)
   DISPATCH_NEXT;
 
  op_LT:
+  recordEvent(EV_CMP, 0);
   if (!((WordInt)vals[pc->op1] < (WordInt)vals[pc->op2]))
     goto guard_failed;
   DISPATCH_NEXT;
 
  op_GE:
+  recordEvent(EV_CMP, 0);
   if (!((WordInt)vals[pc->op1] >= (WordInt)vals[pc->op2]))
     goto guard_failed;
   DISPATCH_NEXT;
 
  op_LE:
+  recordEvent(EV_CMP, 0);
   if (!((WordInt)vals[pc->op1] <= (WordInt)vals[pc->op2]))
     goto guard_failed;
   DISPATCH_NEXT;
 
  op_GT:
+  recordEvent(EV_CMP, 0);
   if (!((WordInt)vals[pc->op1] > (WordInt)vals[pc->op2]))
     goto guard_failed;
   DISPATCH_NEXT;
 
  op_EQ:
+  recordEvent(EV_CMP, 0);
   if (!((WordInt)vals[pc->op1] == (WordInt)vals[pc->op2])) {
     goto guard_failed;
   }
   DISPATCH_NEXT;
 
  op_NE:
+  recordEvent(EV_CMP, 0);
   if (!((WordInt)vals[pc->op1] != (WordInt)vals[pc->op2]))
     goto guard_failed;
   DISPATCH_NEXT;
 
  op_ADD:
+  recordEvent(EV_ALU, 0);
   vals[pcref] = vals[pc->op1] + vals[pc->op2];
   DISPATCH_NEXT;
 
  op_SUB:
+  recordEvent(EV_ALU, 0);
   vals[pcref] = vals[pc->op1] - vals[pc->op2];
   DISPATCH_NEXT;
 
  op_MUL:
+  recordEvent(EV_MUL, 0);
   vals[pcref] = vals[pc->op1] * vals[pc->op2];
   DISPATCH_NEXT;
 
@@ -124,14 +135,17 @@ irEngine(Capability *cap, Fragment *F)
   DISPATCH_NEXT;
 
  op_FLOAD:
+  recordEvent(EV_LOAD, 0);
   vals[pcref] = *((Word*)vals[pc->op1]);
   DISPATCH_NEXT;
 
  op_SLOAD:
+  recordEvent(EV_LOAD, 0);
   vals[pcref] = base[pc->op1];
   DISPATCH_NEXT;
 
  op_ILOAD:
+  recordEvent(EV_LOAD, 0);
   vals[pcref] = (Word)getInfo(vals[pc->op1]);
   DISPATCH_NEXT;
 
@@ -139,6 +153,7 @@ irEngine(Capability *cap, Fragment *F)
   if (F->heap[pc->op2].loop & 1) {
     // TODO: do actual allocation on trace
     LC_ASSERT(0);
+    //recordEvent(EV_ALLOC, 0);
   } else {
     vals[pcref] = 0;  // to trigger an error if accessed
   }
@@ -146,6 +161,7 @@ irEngine(Capability *cap, Fragment *F)
 
  op_UPDATE:
   {
+    recordEvent(EV_UPDATE, 0);
     Closure *oldnode = (Closure *)vals[pc->op1];
     Closure *newnode = (Closure *)base[pc->op2];
     setInfo(oldnode, (InfoTable*)&stg_IND_info);
@@ -171,7 +187,7 @@ irEngine(Capability *cap, Fragment *F)
   LC_ASSERT(0);
 
  guard_failed:
-  printf("Exiting at %d\n", pcref - REF_BIAS);
+  DBG_PR("Exiting at %d\n", pcref - REF_BIAS);
 
   {
     int i;
@@ -188,6 +204,7 @@ irEngine(Capability *cap, Fragment *F)
     se = F->snapmap + snap->mapofs;
     DBG_PR("Snap entries: %d, slots = %d\n",
            snap->nent, snap->nslots);
+    recordEvent(EV_EXIT, snap->nent);
     for (i = 0; i < snap->nent; i++, se++) {
       BCReg s = snap_slot(*se);
       IRRef r = snap_ref(*se);
@@ -201,6 +218,7 @@ irEngine(Capability *cap, Fragment *F)
           // Need to allocate closure now.
           HeapInfo *hp = &F->heap[ir->op2];
           Closure *cl = allocClosure(wordsof(ClosureHeader) + hp->nfields);
+          recordEvent(EV_ALLOC, 1 + hp->nfields);
           int j;
           DBG_PR("(alloc[%lu])", wordsof(ClosureHeader) + hp->nfields);
           setInfo(cl, (InfoTable*)vals[ir->op1]);
@@ -212,7 +230,7 @@ irEngine(Capability *cap, Fragment *F)
           // Closure has been allocated on trace
           base[s] = vals[r];
       }
-      printSlot(base + s); printf("\n");
+      IF_DBG_LVL(1, printSlot(base + s); printf("\n"));
       //DBG_PR("0x%" FMT_WordX "\n", base[s]);
     }
     DBG_PR("Base slot: %d\n", se[1]);
@@ -220,7 +238,7 @@ irEngine(Capability *cap, Fragment *F)
     T->pc = (BCIns *)F->startpc + (int)se[0];
     T->base = base + se[1];
     T->top = base + snap->nslots;
-    printFrame(T->base, T->top);
+    //printFrame(T->base, T->top);
     return 0;
   }
 

@@ -213,8 +213,9 @@ INLINE_HEADER void xfree(void *p)
 
 #else
 
-# define DBG_PR(fmt, ...)  do {} while (0)
+# define DBG_PR(fmt, ...)        do {} while (0)
 # define DBG_LVL(lvl, fmt, ...)  do {} while (0)
+# define IF_DBG_LVL(lvl, stmt)   if (0) { }
 
 #endif
 

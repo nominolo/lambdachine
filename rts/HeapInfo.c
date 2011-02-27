@@ -1,3 +1,7 @@
+#include "Common.h"
+
+#if LC_HAS_JIT
+
 #include "HeapInfo.h"
 #include "PrintIR.h"
 
@@ -344,3 +348,5 @@ heapSCCs(JitState *J)
 
 #undef HP
 #undef IR
+
+#endif  /* LC_HAS_JIT */

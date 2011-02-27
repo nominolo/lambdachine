@@ -14,6 +14,7 @@
 #include "PrintClosure.h"
 #include "StorageManager.h"
 #include "Jit.h"
+#include "Stats.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -111,6 +112,7 @@ int engine(Capability *cap)
   Inst *disp = disp1;
 
   Inst *disp_record;
+#if LC_HAS_JIT
   JitState *J = &cap->J;
   //  initJitState(J);
   {
@@ -119,7 +121,7 @@ int engine(Capability *cap)
     for (i = 0; i < countof(disp1); i++)
       disp_record[i] = &&recording;
   }
-
+#endif
   Word *base = T->base;
   // The program counter always points to the *next* instruction to be
   // decoded.
@@ -129,7 +131,7 @@ int engine(Capability *cap)
   Word callt_temp[BCMAX_CALL_ARGS];
   LcCode *code = NULL;
 
-#if 0
+#if (LC_DEBUG_LEVEL > 1)
 # define DBG_IND(stmt) \
   do { printIndent(base - T->stack, '.'); stmt;} while (0)
 # define DBG_ENTER(info) \
@@ -159,6 +161,7 @@ int engine(Capability *cap)
     DBG_IND(printf("    "); printFrame(base, T->top));   \
     DBG_IND(printInstructionOneLine(pc)); \
     maxsteps--;  if (maxsteps == 0) return INTERP_OUT_OF_STEPS; \
+    recordEvent(EV_DISPATCH, 0); \
     opA = bc_a(*pc); \
     opC = bc_d(*pc); \
     ++pc; \
@@ -174,9 +177,11 @@ int engine(Capability *cap)
   // Dispatch first instruction
   DISPATCH_NEXT;
 
+#if LC_HAS_JIT
  recording:
   //printf("%p, %p\n", pc, J->startpc);
   {
+    recordEvent(EV_RECORD, 0);
     T->base = base;
     J->pc = T->pc = pc - 1;
     J->func = getFInfo((Closure*)base[-1]);
@@ -186,6 +191,7 @@ int engine(Capability *cap)
       disp = disp1;
       switch (recstatus & REC_MASK) {
       case REC_ABORT:
+        recordEvent(EV_ABORT_TRACE, 0);
       case REC_DONE:
         break; // Do Nothing, just continue interpreting
       case REC_LOOP:
@@ -194,6 +200,7 @@ int engine(Capability *cap)
           Fragment *F = J->fragment[getFragmentId(recstatus)];
           Closure *cl;
           LC_ASSERT(F != NULL);
+          recordEvent(EV_TRACE, 0);
           irEngine(cap, F);
           DBG_PR("*** Continuing at: pc = %p, base = %p\n",
                  T->pc, T->base);
@@ -209,7 +216,7 @@ int engine(Capability *cap)
     // Continue interpreting
     goto *disp1[opcode];
   }
-
+#endif
  stop:
   T->pc = pc;
   T->base = base;
@@ -218,16 +225,19 @@ int engine(Capability *cap)
 
  op_ADDRR:
   DECODE_BC;
+  recordEvent(EV_ALU, 0);
   base[opA] = base[opB] + base[opC];
   DISPATCH_NEXT;
 
  op_SUBRR:
   DECODE_BC;
+  recordEvent(EV_ALU, 0);
   base[opA] = base[opB] - base[opC];
   DISPATCH_NEXT;
 
  op_MULRR:
   DECODE_BC;
+  recordEvent(EV_MUL, 0);
   base[opA] = (WordInt)base[opB] * (WordInt)base[opC];
   DISPATCH_NEXT;
 
@@ -278,11 +288,13 @@ int engine(Capability *cap)
 
  op_NOT:
   DECODE_AD;
+  recordEvent(EV_ALU, 0);
   base[opA] = ~base[opC];
   DISPATCH_NEXT;
 
  op_NEG:
   DECODE_AD;
+  recordEvent(EV_ALU, 0);
   base[opA] = -(WordInt)base[opC];
   DISPATCH_NEXT;
 
@@ -290,6 +302,7 @@ int engine(Capability *cap)
      instruction, but we implement both together. */
  op_ISLT:
   DECODE_AD;
+  recordEvent(EV_CMP, 0);
   ++pc;
   if ((WordInt)base[opA] < (WordInt)base[opC])
     pc += bc_j(*(pc - 1));
@@ -297,6 +310,7 @@ int engine(Capability *cap)
 
  op_ISGE:
   DECODE_AD;
+  recordEvent(EV_CMP, 0);
   ++pc;
   if ((WordInt)base[opA] >= (WordInt)base[opC])
     pc += bc_j(*(pc - 1));
@@ -304,6 +318,7 @@ int engine(Capability *cap)
 
  op_ISLE:
   DECODE_AD;
+  recordEvent(EV_CMP, 0);
   ++pc;
   if ((WordInt)base[opA] <= (WordInt)base[opC])
     pc += bc_j(*(pc - 1));
@@ -311,6 +326,7 @@ int engine(Capability *cap)
 
  op_ISGT:
   DECODE_AD;
+  recordEvent(EV_CMP, 0);
   ++pc;
   if ((WordInt)base[opA] > (WordInt)base[opC])
     pc += bc_j(*(pc - 1));
@@ -318,6 +334,7 @@ int engine(Capability *cap)
 
  op_ISNE:
   DECODE_AD;
+  recordEvent(EV_CMP, 0);
   ++pc;
   if (base[opA] != base[opC])
     pc += bc_j(*(pc - 1));
@@ -325,6 +342,7 @@ int engine(Capability *cap)
 
  op_ISEQ:
   DECODE_AD;
+  recordEvent(EV_CMP, 0);
   ++pc;
   if (base[opA] == base[opC])
     pc += bc_j(*(pc - 1));
@@ -336,6 +354,7 @@ int engine(Capability *cap)
   // C = payload[0]
   {
     DECODE_BC;
+    recordEvent(EV_ALLOC, 2);
     Closure *cl = allocClosure(wordsof(ClosureHeader) + 1);
     setInfo(cl, (InfoTable*)base[opB]);
     cl->payload[0] = base[opC];
@@ -351,6 +370,7 @@ int engine(Capability *cap)
   {
     DECODE_BC;
     u4 sz = opC;
+    recordEvent(EV_ALLOC, 1 + sz);
     u4 i;
     u1 *arg = (u1 *)pc;
     Closure *cl = allocClosure(wordsof(ClosureHeader) + sz);
@@ -368,6 +388,7 @@ int engine(Capability *cap)
   // C = closure offset
   {
     DECODE_BC;
+    recordEvent(EV_LOAD, 0);
     u4 offset = (u1)opC;
     Closure *cl = (Closure*)base[opB];
     base[opA] = cl->payload[offset - 1];
@@ -378,6 +399,7 @@ int engine(Capability *cap)
   // A = target
   // C/D = offset
   {
+    recordEvent(EV_LOAD, 0);
     u4 offset = (u2)opC;
     Closure *node = (Closure*)base[-1];
     base[opA] = node->payload[offset - 1];
@@ -432,6 +454,7 @@ int engine(Capability *cap)
   {
     Closure *cl = (Closure *)base[opA];
     u2 num_cases = opC;
+    recordEvent(EV_CASE, num_cases);
     BCIns *table = pc;
     pc += (num_cases + 1) >> 1;
     LC_ASSERT(getInfo(cl)->type == CONSTR);
@@ -468,6 +491,7 @@ int engine(Capability *cap)
   {
     Closure *cl = (Closure*)base[opA];
     u2 num_cases = opC;
+    recordEvent(EV_CASE, num_cases);
     u2 min_tag = bc_case_mintag(*pc);
     u2 max_tag = bc_case_maxtag(*pc);
     BCIns *table = pc + 1;
@@ -534,6 +558,7 @@ int engine(Capability *cap)
     }
 
     if (closure_HNF(tnode)) {
+      recordEvent(EV_EVAL_HNF, 0);
       DBG_IND(printf("         (in HNF)\n"));
       T->last_result = (Word)tnode;
       pc += 1; // skip live-out info
@@ -541,6 +566,7 @@ int engine(Capability *cap)
     } else {
       Word *top = T->top; //base + node->info->code.framesize;
       ThunkInfoTable *info = (ThunkInfoTable*)getInfo(tnode);
+      recordEvent(EV_EVAL_THUNK, 0);
 
       // NOTE: At this poin we would normally overwrite the info table
       // of the thunk with a BLACKHOLE (or more precisely we overwrite
@@ -594,6 +620,8 @@ int engine(Capability *cap)
   {
     Closure *oldnode = (Closure *)base[opA];
     Closure *newnode = (Closure *)base[opC];
+    recordEvent(EV_UPDATE, 0);
+
     DBG_IND(printf("... updating: %p with %p\n", oldnode, newnode));
     setInfo(oldnode, (InfoTable*)&stg_IND_info);
     // TODO: Enforce invariant: *newcode is never an indirection.
@@ -632,6 +660,7 @@ int engine(Capability *cap)
     u4 nargs = callargs;
     Closure *fnode = (Closure *)base[opA];
     u4 i;
+    recordEvent(EV_CALL, callargs);
 
     LC_ASSERT(fnode != NULL);
     LC_ASSERT(callargs <= 16);
@@ -835,6 +864,7 @@ int engine(Capability *cap)
     DECODE_BC;
     // Arguments from this call instruction
     u4       callargs = opB;
+    recordEvent(EV_CALL, callargs);
     // Total number of arguments, including PAP arguments.
     u4       nargs = callargs;
     Closure *fnode = (Closure *)base[opA];
@@ -1007,6 +1037,7 @@ int engine(Capability *cap)
     // B = first argument (function closure)
     u4 nargs = opC;
     u4 i;
+    recordEvent(EV_ALLOC, nargs);
 
     LC_ASSERT(nargs >= 1);
 

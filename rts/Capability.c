@@ -1,6 +1,7 @@
 #include "Capability.h"
 #include "MiscClosures.h"
 #include "Jit.h"
+#include "Stats.h"
 
 #include <stdlib.h>
 
@@ -20,16 +21,18 @@ initVM()
   }
 
   initAPClosures();
+  initEvents();
 }
 
 void
 initialiseCapability(Capability *cap)
 {
   int i;
+#if LC_HAS_JIT
   // Initialise hot counters.
   for (i = 0; i < HOTCOUNT_SIZE; i++)
     cap->hotcount[i] = HOTCOUNT_DEFAULT;
-#if LC_HAS_JIT
+
   initJitState(&cap->J);
 #endif
 }

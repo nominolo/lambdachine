@@ -116,6 +116,7 @@ printIR(Fragment *F, IRIns ir)
          irt_getphi(ir.t) ? "%" : " ",
          irt_getmark(ir.t) ? "*" : " ",
          ir_name[ir.o]);
+  fflush(stdout);
   switch (irm_op1(ir_mode[ir.o])) {
   case IRMref:
     printIRRef_(F, ir.op1, comment, &lencomment, MAX_COMMENT);
