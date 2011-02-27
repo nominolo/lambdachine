@@ -44,7 +44,7 @@ irEngine(Capability *cap, Fragment *F)
     switch (IR(ref)->o) {
     case IR_KINT:   vals[ref] = (Word)IR(ref)->i; break;
     case IR_KBASEO: vals[ref] = (Word)(T->base + IR(ref)->i); break;
-    case IR_KWORD:  vals[ref] = (Word)(cap->J.kwords[IR(ref)->u]); break;
+    case IR_KWORD:  vals[ref] = (Word)(F->kwords[IR(ref)->u]); break;
     default:
       LC_ASSERT(0); break;
     }
@@ -63,7 +63,7 @@ irEngine(Capability *cap, Fragment *F)
   ++pc; ++pcref; \
   if (LC_UNLIKELY(pc >= pcmax)) { pc = pcloop; pcref = F->nloop + 1; } \
   printf("[%d] ", pcref - REF_BIAS); \
-  printIR(&cap->J, *pc); \
+  printIR(F, *pc); \
   goto *disp[pc->o]
 
  op_NOP:
@@ -205,7 +205,7 @@ irEngine(Capability *cap, Fragment *F)
           DBG_PR("(alloc[%lu])", wordsof(ClosureHeader) + hp->nfields);
           setInfo(cl, (InfoTable*)vals[ir->op1]);
           for (j = 0; j < hp->nfields; j++) {
-            cl->payload[j] = vals[getHeapInfoField(&cap->J, hp, j)];
+            cl->payload[j] = vals[getHeapInfoField(F, hp, j)];
           }
           base[s] = (Word)cl;
         } else 

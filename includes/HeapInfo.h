@@ -27,9 +27,9 @@ INLINE_HEADER void growHeapInfoMapBuffer(JitState *J, Word needed)
 }
 
 INLINE_HEADER IRRef
-getHeapInfoField(JitState *J, HeapInfo *hp, u4 field)
+getHeapInfoField(Fragment *F, HeapInfo *hp, u4 field)
 {
-  HeapEntry *he = &J->cur.heapmap[hp->mapofs + (field >> 1)];
+  HeapEntry *he = &F->heapmap[hp->mapofs + (field >> 1)];
   if (field & 1)
     return (IRRef)(u2)(*he >> 16);
   else
@@ -37,10 +37,10 @@ getHeapInfoField(JitState *J, HeapInfo *hp, u4 field)
 }
 
 INLINE_HEADER void
-setHeapInfoField(JitState *J, HeapInfo *hp, u4 field, TRef tr)
+setHeapInfoField(Fragment *F, HeapInfo *hp, u4 field, TRef tr)
 {
   //  printf("")
-  HeapEntry *he = &J->cur.heapmap[hp->mapofs + (field >> 1)];
+  HeapEntry *he = &F->heapmap[hp->mapofs + (field >> 1)];
   if (field & 1) // set high part
     *he = (*he & 0xffff) | ((HeapEntry)tref_ref(tr) << 16);
   else

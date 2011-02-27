@@ -45,18 +45,18 @@ INLINE_HEADER const char *irt_str(IRType irt)
 }
 
 void
-printIRRef_(JitState *J, IRRef1 ref, char *comment, int *lencomment, int maxlen)
+printIRRef_(Fragment *F, IRRef1 ref, char *comment, int *lencomment, int maxlen)
 {
   if (ref < REF_BIAS) {
     printf("K%03d ", REF_BIAS - ref);
     // Add a comment describing the value of the literal
-    IRIns *ir = IR(ref);
+    IRIns *ir = &F->ir[ref];
     if (ir->o == IR_KWORD && comment != NULL) {
       int n;
       switch (ir->t) {
       case IRT_CLOS:
         {
-          Closure *cl = (Closure*)J->kwords[ir->u];
+          Closure *cl = (Closure*)F->kwords[ir->u];
           n = snprintf(comment + *lencomment, maxlen - *lencomment,
                        "%s  ", getFInfo(cl)->name);
           *lencomment += n;
@@ -66,7 +66,7 @@ printIRRef_(JitState *J, IRRef1 ref, char *comment, int *lencomment, int maxlen)
       case IRT_INFO:
         {
           //printInfoTable((InfoTable*)J->kwords[ir->u]);
-          FuncInfoTable *info = (FuncInfoTable*)J->kwords[ir->u];
+          FuncInfoTable *info = (FuncInfoTable*)F->kwords[ir->u];
           LC_ASSERT(info != NULL && info->name != NULL);
           n = snprintf(comment + *lencomment, maxlen - *lencomment,
                        "%s  ", info->name);
@@ -76,7 +76,7 @@ printIRRef_(JitState *J, IRRef1 ref, char *comment, int *lencomment, int maxlen)
 
       case IRT_I32:
         n = snprintf(comment + *lencomment, maxlen - *lencomment,
-                     "%" FMT_Int "  ", (WordInt)J->kwords[ir->u]);
+                     "%" FMT_Int "  ", (WordInt)F->kwords[ir->u]);
         *lencomment += n;
         break;
 
@@ -89,7 +89,7 @@ printIRRef_(JitState *J, IRRef1 ref, char *comment, int *lencomment, int maxlen)
 }
 
 void
-printIRRef(JitState *J, IRRef1 ref)
+printIRRef(Fragment *F, IRRef1 ref)
 {
   if (ref == 0)
     printf("---- ");
@@ -102,7 +102,7 @@ printIRRef(JitState *J, IRRef1 ref)
 #define MAX_COMMENT 100
 
 void
-printIR(JitState *J, IRIns ir)
+printIR(Fragment *F, IRIns ir)
 {
   char comment[MAX_COMMENT];
   int  lencomment = 0;
@@ -118,17 +118,17 @@ printIR(JitState *J, IRIns ir)
          ir_name[ir.o]);
   switch (irm_op1(ir_mode[ir.o])) {
   case IRMref:
-    printIRRef_(J, ir.op1, comment, &lencomment, MAX_COMMENT);
+    printIRRef_(F, ir.op1, comment, &lencomment, MAX_COMMENT);
     break;
   case IRMlit:
     if (ir.o == IR_SLOAD)
-      printf("%4d ", (IRRef1)ir.op1 - J->baseslot);
+      printf("%4d ", (IRRef1)ir.op1 - 1);
     else
       printf("%4d ", (IRRef1)ir.op1);
     break;
   case IRMcst:
     if (ir.o == IR_KWORD) {
-      printf("  0x%08" FMT_WordX, J->kwords[ir.u]);
+      printf("  0x%08" FMT_WordX, F->kwords[ir.u]);
     } else
       printf(" %11d", ir.i);
     break;
@@ -137,7 +137,7 @@ printIR(JitState *J, IRIns ir)
 
   switch (irm_op2(ir_mode[ir.o])) {
   case IRMref:
-    printIRRef_(J, ir.op2, comment, &lencomment, MAX_COMMENT);
+    printIRRef_(F, ir.op2, comment, &lencomment, MAX_COMMENT);
     break;
   case IRMlit: printf("%4d ", (IRRef1)ir.op2); break;
   case IRMcst: printf("%11d ", ir.i); break;

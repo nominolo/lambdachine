@@ -109,12 +109,12 @@ printHeapInfo(JitState *J)
     HeapInfo *hp = &J->cur.heap[i];
     printf("  [%d,%d] %s ", hp->mapofs, hp->scc,
            (hp->loop & 1) ? "L" : " ");
-    printIRRef(J, hp->ref);
+    printIRRef(&J->cur, hp->ref);
     printf("=> ");
     for (j = 0; j < hp->nfields; j++) {
       HeapEntry *he = &J->cur.heapmap[hp->mapofs + (j >> 1)];
       IRRef1 ref = j & 1 ? *he >> 16 : *he & 0xffff;
-      printIRRef(J, ref);
+      printIRRef(&J->cur, ref);
     }
     printf("\n");
   }
@@ -218,7 +218,7 @@ dfs1(JitState *J, SccData *D, u2 n)
 
   // Traverse all children (may already be marked)
   for (i = 0; i < hp->nfields; i++) {
-    IRRef ref = getHeapInfoField(J, hp, i);
+    IRRef ref = getHeapInfoField(&J->cur, hp, i);
     IRIns *ir;
     //printf("..%d -> %d?\n", n, ref - REF_BIAS);
     if (ref == 0) continue;
@@ -292,7 +292,7 @@ markUnsinkable(JitState *J, u2 hi, u1 mode)
     int i;
     for (i = 0; i < hp->nfields; i++) {
       // Follow children
-      IRRef twin, ref = getHeapInfoField(J, hp, i);
+      IRRef twin, ref = getHeapInfoField(&J->cur, hp, i);
       IRIns *ir;
 
       if (ref == 0)

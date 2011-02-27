@@ -18,6 +18,7 @@
 
 // -- Forward Declarations -------------------------------------------
 
+FragmentId registerCurrentFragment(JitState *J);
 
 
 // -- Convenience macros.  Undefined at end of file. -----------------
@@ -71,7 +72,7 @@ emitIR(JitState *J)
   ir->op1 = foldIns->op1;
   ir->op2 = foldIns->op2;
   printf("emitted: %5d ", ref - REF_BIAS);
-  printIR(J, *ir);
+  printIR(&J->cur, *ir);
 
   return TREF(ref, ir->t);
 }
@@ -188,9 +189,9 @@ recordSetup(JitState *J, Thread *T)
   J->last_result = 0;
   J->framedepth = 0;
 
-  J->maxkwords = 16;
-  J->kwords = xmalloc(J->maxkwords * sizeof(Word));
-  J->nextkword = 0;
+  J->sizekwords = 16;
+  J->cur.kwords = J->kwordsbuf = xmalloc(J->sizekwords * sizeof(Word));
+  J->cur.nkwords = 0;
 
   J->needsnap = 0;
   J->mergesnap = 1;
@@ -233,7 +234,7 @@ emitKInt(JitState *J, i4 k)
   ir->prev = J->chain[IR_KINT];
   J->chain[IR_KINT] = (IRRef1)ref;
   printf("emitted: %5d ", (IRRef1)ref - REF_BIAS);
-  printIR(J, *ir);
+  printIR(&J->cur, *ir);
  found:
   return TREF(ref, IRT_I32);
 }
@@ -259,7 +260,7 @@ TRef
 emitKWord(JitState *J, Word w, LitType lt)
 {
   IRIns *ir, *cir = J->cur.ir;
-  Word *kword = J->kwords;
+  Word *kword = J->cur.kwords;
   IRRef ref;
   IRType t = litTypeToIRType(lt);
 
@@ -267,22 +268,22 @@ emitKWord(JitState *J, Word w, LitType lt)
     if (cir[ref].t == t && kword[cir[ref].u] == w)
       goto found;
 
-  if (LC_UNLIKELY(J->nextkword >= J->maxkwords)) {
-    J->maxkwords *= 2;
-    J->kwords = realloc(J->kwords, J->maxkwords);
+  if (LC_UNLIKELY(J->cur.nkwords >= J->sizekwords)) {
+    J->sizekwords *= 2;
+    J->kwordsbuf = realloc(J->kwordsbuf, J->sizekwords);
+    kword = J->cur.kwords = J->kwordsbuf;
   }
 
   ref = nextLit(J);
   ir = IR(ref);
-  ir->u = J->nextkword;
-  J->kwords[J->nextkword] = w;
-  J->nextkword++;
+  ir->u = J->cur.nkwords;
+  J->kwordsbuf[J->cur.nkwords++] = w;
   ir->t = t;
   ir->o = IR_KWORD;
   ir->prev = J->chain[IR_KWORD];
   J->chain[IR_KWORD] = (IRRef1)ref;
   printf("emitted: %5d ", (IRRef1)ref - REF_BIAS);
-  printIR(J, *ir);
+  printIR(&J->cur, *ir);
  found:
   return TREF(ref, t);
 }
@@ -320,7 +321,7 @@ emitKBaseOffset(JitState *J, i4 offs)
   ir->prev = J->chain[IR_KBASEO];
   J->chain[IR_KBASEO] = ir->prev;
   printf("emitted: %5d ", (IRRef1)ref - REF_BIAS);
-  printIR(J, *ir);
+  printIR(&J->cur, *ir);
  found:
   return TREF(ref, ir->t);
 }
@@ -389,8 +390,8 @@ printIRBuffer(JitState *J)
       } else 
         nextsnap = snap->ref;
     }
-    printIRRef(J, ref);
-    printIR(J, *IR(ref));
+    printIRRef(&J->cur, ref);
+    printIR(&J->cur, *IR(ref));
   }
 }
 
@@ -661,7 +662,7 @@ recordIns(JitState *J)
       setSlot(J, bc_a(ins), rnew);
       u4 h = newHeapInfo(J, rnew, info);
       IR(tref_ref(rnew))->op2 = h;
-      setHeapInfoField(J, &J->cur.heap[h], 0, rc);
+      setHeapInfoField(&J->cur, &J->cur.heap[h], 0, rc);
       //printSlots(J);
     }
     break;
@@ -686,7 +687,7 @@ recordIns(JitState *J)
       HeapInfo *hp = &J->cur.heap[h];
       for (i = 1; i <= size; i++, arg++) {
         rc = getSlot(J, *arg);
-        setHeapInfoField(J, hp, i - 1, rc);
+        setHeapInfoField(&J->cur, hp, i - 1, rc);
       }
       setSlot(J, bc_a(ins), rnew);
       //printSlots(J);
@@ -757,8 +758,7 @@ finishRecording(JitState *J)
 
   J->cur.orig = *J->startpc;
   *J->startpc = BCINS_AD(BC_JFUNC, J->nfragments, 0);
-  J->fragment[J->nfragments] = &J->cur;
-  return J->nfragments++;
+  return registerCurrentFragment(J);
 }
 
 // Perform store->load forwarding on the current foldIns.
@@ -777,7 +777,7 @@ optForward(JitState *J)
       if (cl_ir->o == IR_NEW) {
         printf("ref = %d, new = %d\n", fref - REF_BIAS,
                IR(fref)->op1 - REF_BIAS);
-        IRRef1 src = getHeapInfoField(J, &J->cur.heap[cl_ir->op2],
+        IRRef1 src = getHeapInfoField(&J->cur, &J->cur.heap[cl_ir->op2],
                                       IR(fref)->op2 - 1);
         LC_ASSERT(src != 0);
         printf("FWD: Forwarding load: %d (%d, %d)\n",
@@ -815,7 +815,7 @@ foldIR(JitState *J)
     if (irref_islit(foldIns->op1)) {
       IRIns ir = J->cur.ir[foldIns->op1];
       LC_ASSERT(ir.o == IR_KWORD);
-      Closure *c = (Closure*)J->kwords[ir.u];
+      Closure *c = (Closure*)J->cur.kwords[ir.u];
       printf("FOLD: ILOAD for static closure\n");
       return emitKWord(J, (Word)getFInfo(c), LIT_INFO);
     } else {
@@ -870,7 +870,7 @@ optUnrollLoop(JitState *J)
       tref_ref(renaming[(r)]) : (r))
 
     DBG_LVL(2, "UNROLL: %s", "");
-    IF_DBG_LVL(2, printIR(J, *ir));
+    IF_DBG_LVL(2, printIR(&J->cur, *ir));
 
     // If there is a snapshot at the current instruction we need to
     // "replay" it first.  Simply loop over the elements in the
@@ -927,8 +927,8 @@ optUnrollLoop(JitState *J)
         IRIns *ir2 = IR(tref_ref(renaming[ref]));
         u2 i;
         for (i = 0; i < hpnew->nfields; i++) {
-          IRRef r = getHeapInfoField(J, hpold, i);
-          setHeapInfoField(J, hpnew, i, RENAME(r));
+          IRRef r = getHeapInfoField(&J->cur, hpold, i);
+          setHeapInfoField(&J->cur, hpnew, i, RENAME(r));
         }
         ir2->op2 = entry;
       }
@@ -937,7 +937,7 @@ optUnrollLoop(JitState *J)
     }
 
     DBG_LVL(2, "   %d => ", ref - REF_BIAS);
-    IF_DBG_LVL(2, printIRRef(J, tref_ref(renaming[ref])));
+    IF_DBG_LVL(2, printIRRef(&J->cur, tref_ref(renaming[ref])));
     DBG_LVL(2, "\n%s", "");
 # undef RENAME
   }
@@ -1062,7 +1062,6 @@ optDeadCodeElim(JitState *J)
   // [markIRIns].
   int snapidx = J->cur.nsnap - 1;
   IRRef ref;
-  int i;
 
   // Mark unrolled loop
   for ( ; snapidx >= 0 && J->cur.snap[snapidx].ref > J->cur.nloop;
@@ -1122,7 +1121,7 @@ INLINE_HEADER void markIRIns(JitState *J, IRRef ref)
     if (ir->o == IR_NEW) {
       HeapInfo *h = &J->cur.heap[ir->op2];
       for (i = 0; i < h->nfields; i++) {
-        markIRRef(J, getHeapInfoField(J, h, i), ref);
+        markIRRef(J, getHeapInfoField(&J->cur, h, i), ref);
       }
     }
   }
@@ -1179,7 +1178,7 @@ optDeadAssignElim(JitState *J)
       ir = IR(ref);
       if (ir->o == IR_UPDATE) {
         printf("Found UPDATE: \n");
-        printIR(J, *ir);
+        printIR(&J->cur, *ir);
         if (!getBit(lives, ir->op1 - REF_BIAS)) {
           ir->o = IR_NOP;
           // Update prev pointer.
@@ -1209,6 +1208,76 @@ optDeadAssignElim(JitState *J)
       }
     }
   }
+}
+
+void
+recordCleanup(JitState *J)
+{
+  xfree(J->irbuf + J->irmin);
+  J->irbuf = J->cur.ir = NULL;
+  J->irmin = J->irmax = 0;
+
+  xfree(J->snapbuf);
+  xfree(J->snapmapbuf);
+  J->snapbuf = J->cur.snap = NULL;
+  J->sizesnap = 0;
+  J->snapmapbuf = J->cur.snapmap = NULL;
+  J->sizesnapmap = 0;
+
+  xfree(J->heapbuf);
+  xfree(J->heapmapbuf);
+  J->heapbuf = J->cur.heap = NULL;
+  J->heapmapbuf = J->cur.heapmap = NULL;
+  J->sizeheap = 0;
+  J->sizeheapmap = 0;
+
+  xfree(J->kwordsbuf);
+  J->kwordsbuf = J->cur.kwords = NULL;
+  J->sizekwords = J->cur.nkwords = 0;
+}
+
+FragmentId
+registerCurrentFragment(JitState *J)
+{
+  Fragment *F = xmalloc(sizeof(Fragment));
+
+  F->startpc = J->cur.startpc;
+  F->orig = J->cur.orig;
+
+  F->nk = J->cur.nk;
+  F->nins = J->cur.nins;  // TODO: remove NOPs
+  F->nloop = J->cur.nloop;
+  F->ir = xmalloc((F->nins - F->nk) * sizeof(IRIns));
+  F->ir = F->ir + F->nk - REF_BIAS;
+  memcpy(F->ir + F->nk, J->cur.ir + J->cur.nk,
+         (F->nins - F->nk) * sizeof(IRIns));
+
+  F->nkwords = J->cur.nkwords;
+  F->kwords = xmalloc(F->nkwords * sizeof(Word));
+  memcpy(F->kwords, J->cur.kwords, F->nkwords * sizeof(Word));
+
+  F->nsnap = J->cur.nsnap;
+  F->nsnapmap = J->cur.nsnapmap;
+  F->snap = xmalloc(F->nsnap * sizeof(SnapShot));
+  memcpy(F->snap, J->cur.snap, F->nsnap * sizeof(SnapShot));
+  F->snapmap = xmalloc(F->nsnapmap * sizeof(SnapEntry));
+  memcpy(F->snapmap, J->cur.snapmap, F->nsnapmap * sizeof(SnapEntry));
+
+  F->nheap = J->cur.nheap;
+  F->nheapmap = J->cur.nheapmap;
+  F->heap = xmalloc(F->nheap * sizeof(HeapInfo));
+  memcpy(F->heap, J->cur.heap, F->nheap * sizeof(HeapInfo));
+  F->heapmap = xmalloc(F->nheapmap * sizeof(HeapEntry));
+  memcpy(F->heapmap, J->cur.heapmap, F->nheapmap * sizeof(HeapEntry));
+
+  recordCleanup(J);
+
+  if (LC_UNLIKELY(J->nfragments >= J->sizefragment)) {
+    fprintf(stderr, "FATAL: Too many fragments.\n");
+    exit(1);
+  }
+  J->fragment[J->nfragments] = F;
+  return J->nfragments++;
 }
 
 #undef IR

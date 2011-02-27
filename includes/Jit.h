@@ -72,6 +72,9 @@ typedef struct _Fragment {
   IRRef nk;    // Lowest IR literal
   IRRef nloop; // Reference to LOOP instruction (if any)
 
+  Word *kwords; // Constant words
+  u4 nkwords;
+
   u2 nsnap;    // Number of snapshots
   u2 nsnapmap; // Number of snapshot map elements
   SnapShot *snap;    // Snapshot array.
@@ -118,9 +121,9 @@ typedef struct _JitState {
   IRIns *irbuf;
   IRRef irmin;
   IRRef irmax;
-  Word *kwords;
-  u4 maxkwords;
-  u4 nextkword;
+
+  u4 sizekwords;
+  Word *kwordsbuf;
 
   u1 needsnap;
   u1 mergesnap;
