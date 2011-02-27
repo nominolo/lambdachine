@@ -21,19 +21,23 @@ struct Capability_ {
 
 extern Capability* G_cap0;
 
+#define hotcount_hash(pc) \
+  (((u4ptr(pc)>>12) ^ (u4ptr(pc)>>4)) & (HOTCOUNT_SIZE - 1))
+
 #define hotcount_get(cap, pc) \
-  (cap)->hotcount[(u4ptr(pc) >> 2) & (HOTCOUNT_SIZE - 1)]
+  (cap)->hotcount[hotcount_hash(pc)]
 #define hotcount_set(J, pc, val) \
   (hotcount_get((cap), (pc)) = (HotCount)(val))
 
 INLINE_HEADER int
-hotcountTick(Capability *cap, const BCIns *pc, Word *base)
+hotcountTick(Capability *cap, BCIns *pc, Word *base)
 {
   JitState *J = &cap->J;
   if (LC_UNLIKELY(J->mode != 0))
     return 0;
 
-  HotCount c = --cap->hotcount[(u4ptr(pc) >> 2) & (HOTCOUNT_SIZE - 1)];
+  HotCount c = --cap->hotcount[hotcount_hash(pc)];
+  DBG_PR("HOT_TICK: [%d] = %d\n", hotcount_hash(pc), c);
   if (LC_UNLIKELY(c == 0)) {
     // Target has become hot.
 
