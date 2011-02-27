@@ -38,12 +38,12 @@ irEngine(Capability *cap, Fragment *F)
          "***   pc    = %p\n"
          "***   pcmax = %p (%d)\n"
          "***   loop  = %p (%d)\n",
-         base, pc, pcmax, pcmax - pc, pcloop, pcloop - pc);
+         base, pc, pcmax, (int)(pcmax - pc), pcloop, (int)(pcloop - pc));
 
   for (ref = F->nk; ref < REF_BIAS; ref++) {
     switch (IR(ref)->o) {
     case IR_KINT:   vals[ref] = (Word)IR(ref)->i; break;
-    case IR_KBASEO: vals[ref] = (Word)(base + IR(ref)->i); break;
+    case IR_KBASEO: vals[ref] = (Word)(T->base + IR(ref)->i); break;
     case IR_KWORD:  vals[ref] = (Word)(cap->J.kwords[IR(ref)->u]); break;
     default:
       LC_ASSERT(0); break;
@@ -217,6 +217,7 @@ irEngine(Capability *cap, Fragment *F)
     }
     DBG_PR("Base slot: %d\n", se[1]);
     //    se[1] = 
+    T->pc = (BCIns *)F->startpc + (int)se[0];
     T->base = base + se[1];
     T->top = base + snap->nslots;
     printFrame(T->base, T->top);

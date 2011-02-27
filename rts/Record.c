@@ -414,7 +414,7 @@ abortRecording(JitState *J)
   LC_ASSERT(0); // TODO: Implement
 }
 
-int
+RecordResult
 recordIns(JitState *J)
 {
   const BCIns *pc;
@@ -426,11 +426,10 @@ recordIns(JitState *J)
   if (LC_UNLIKELY(J->pc == J->startpc)) {
     if (J->mode == 1) J->mode = 2;
     else {
-      finishRecording(J);
-      return 0;
+      FragmentId id = finishRecording(J);
+      return (u4)REC_LOOP | ((u4)id << 8);
     }
   }
-
 
   if (J->needsnap) {
     J->needsnap = 0;
@@ -711,7 +710,7 @@ recordIns(JitState *J)
     break;
   }
 
-  return 1;
+  return REC_CONT;
 }
 
 void
@@ -719,20 +718,26 @@ initJitState(JitState *J)
 {
   J->mode = 0;
   J->startpc = 0;
+
+  J->sizefragment = 256;
+  //  J->maskfragment = J->sizefragment - 1;
+  J->fragment = xmalloc(J->sizefragment * sizeof(*J->fragment));
+  J->nfragments = 0;
 }
 
 LC_FASTCALL void
-startRecording(JitState *J, const BCIns *startpc, Thread *T, Word *base)
+startRecording(JitState *J, BCIns *startpc, Thread *T, Word *base)
 {
   printf("start recording: %p\n", T);
   T->base = base;
-  J->startpc = J->cur.startpc = startpc;
+  J->startpc = startpc;
+  J->cur.startpc = startpc;
   J->mode = 1;
   recordSetup(J, T);
   printf("*** Starting to record at: %p\n", startpc);
 }
 
-void
+FragmentId
 finishRecording(JitState *J)
 {
   // int i;
@@ -750,7 +755,10 @@ finishRecording(JitState *J)
   printIRBuffer(J);
   printHeapInfo(J);
 
-  irEngine(G_cap0, &J->cur);
+  J->cur.orig = *J->startpc;
+  *J->startpc = BCINS_AD(BC_JFUNC, J->nfragments, 0);
+  J->fragment[J->nfragments] = &J->cur;
+  return J->nfragments++;
 }
 
 // Perform store->load forwarding on the current foldIns.

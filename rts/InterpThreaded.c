@@ -180,9 +180,31 @@ int engine(Capability *cap)
     T->base = base;
     J->pc = T->pc = pc - 1;
     J->func = getFInfo((Closure*)base[-1]);
-    if (!recordIns(J)) {
+    u4 recstatus = recordIns(J);
+    if (recstatus != REC_CONT) {
+      DBG_PR("Recording finished: %x\n", recstatus);
       disp = disp1;
-      return INTERP_UNIMPLEMENTED; // TODO:
+      switch (recstatus & REC_MASK) {
+      case REC_ABORT:
+      case REC_DONE:
+        break; // Do Nothing, just continue interpreting
+      case REC_LOOP:
+        // We found a loop and want to immediately execute it.
+        {
+          Fragment *F = J->fragment[getFragmentId(recstatus)];
+          Closure *cl;
+          LC_ASSERT(F != NULL);
+          irEngine(cap, F);
+          DBG_PR("*** Continuing at: pc = %p, base = %p\n",
+                 T->pc, T->base);
+          //LC_ASSERT(0);
+          pc = T->pc;
+          base = T->base;
+          cl = (Closure*)base[-1];
+          code = &getFInfo(cl)->code;
+          DISPATCH_NEXT;
+        }
+      }
     }
     // Continue interpreting
     goto *disp1[opcode];

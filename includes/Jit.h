@@ -64,6 +64,7 @@ typedef struct _HeapInfo {
   u2 scc;
 } HeapInfo;
 
+typedef u2 FragmentId;
 
 typedef struct _Fragment {
   IRIns *ir;
@@ -75,7 +76,10 @@ typedef struct _Fragment {
   u2 nsnapmap; // Number of snapshot map elements
   SnapShot *snap;    // Snapshot array.
   SnapEntry *snapmap; // Snapshot map array.
+
   const BCIns *startpc; // needed for snapshot decoding
+  BCIns orig;  // Original instruction at trace start
+
   u2 nheap;
   u2 nheapmap;
   HeapInfo *heap;
@@ -138,16 +142,39 @@ typedef struct _JitState {
   HeapInfo *heapbuf;
   HeapEntry *heapmapbuf;
 
-  const BCIns *startpc; // Address where recording was started.
+  BCIns *startpc; // Address where recording was started.
 
   FoldState fold;
   IRRef1 chain[IR__MAX];
+
+  // Code cache
+  Fragment **fragment;
+  u4 nfragments;       // number of entries used
+  u4 sizefragment;     // total size of table, power of 2
+  //  u4 maskframent;  // mask used by hash function (= size - 1)
 } JitState;
 
+typedef struct _FragmentEntry {
+  u2 unused;
+  u2 chain;
+  const BCIns *pc;
+  Fragment *code;
+} FragmentEnty;
+
+typedef enum {
+  REC_ABORT = 0,  // Recording has been aborted
+  REC_CONT  = 1,  // Continue recording
+  REC_LOOP  = 2,  // Loop detected, continue at trace in higher bits
+  REC_DONE  = 3,  // Recording finished but not with a loop.
+  REC_MASK  = 0xff
+} RecordResult;
+
+INLINE_HEADER FragmentId getFragmentId(RecordResult r) { return (u4)r >> 8; }
+
 void initJitState(JitState *J);
-LC_FASTCALL void startRecording(JitState *J, const BCIns *, Thread *, Word *base);
+LC_FASTCALL void startRecording(JitState *J, BCIns *, Thread *, Word *base);
 void recordSetup(JitState *J, Thread *T);
-void finishRecording(JitState *J);
+FragmentId finishRecording(JitState *J);
 TRef LC_FASTCALL emitIR(JitState *J);
 TRef foldIR(JitState *J);
 LC_FASTCALL TRef optCSE(JitState *);
@@ -156,7 +183,7 @@ LC_FASTCALL void optDeadCodeElim(JitState *J);
 LC_FASTCALL void optDeadAssignElim(JitState *J);
 void growIRBufferTop(JitState *J);
 TRef emitLoadSlot(JitState *J, i4 slot);
-int recordIns(JitState *J);
+RecordResult recordIns(JitState *J);
 LC_FASTCALL IRRef findPhiTwin(JitState *J, IRRef ref);
 
 int irEngine(Capability *cap, Fragment *F);
