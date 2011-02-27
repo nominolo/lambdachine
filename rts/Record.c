@@ -1019,15 +1019,15 @@ markIRRef(JitState *J, IRRef ref, IRRef site)
     IRRef phiref = tref_ref(J->chain[IR_PHI]);
     while (phiref) {
       if (IR(phiref)->op1 == ref) {
-        DBG_PR("Setting mark for PHI: %d\n", phiref - REF_BIAS);
+        //DBG_PR("Setting mark for PHI: %d\n", phiref - REF_BIAS);
         irt_setmark(IR(phiref)->t);
         break;
       }
       phiref = IR(phiref)->prev;
     }
   }
-  DBG_PR("Setting mark for: %d from %d\n", ref - REF_BIAS,
-         site - REF_BIAS);
+  //DBG_PR("Setting mark for: %d from %d\n", ref - REF_BIAS,
+  //       site - REF_BIAS);
   irt_setmark(ir->t);
 }
 
@@ -1151,7 +1151,7 @@ optDeadAssignElim(JitState *J)
   IRRef nextsnap = 0;
   SnapShot *snap = NULL;
   clearBitset(lives, bsize);
-  printBitset(lives, bsize);
+  //printBitset(lives, bsize);
 
   if (J->cur.nloop && J->chain[IR_UPDATE]) {
     IRIns *ir;
@@ -1173,8 +1173,8 @@ optDeadAssignElim(JitState *J)
 
     IRRef prev_upd = J->chain[IR_UPDATE];
     for ( ; ref > J->cur.nloop; ref--) {
-      printf("%d: ", ref - REF_BIAS);
-      printBitset(lives, bsize);
+      //printf("%d: ", ref - REF_BIAS);
+      //printBitset(lives, bsize);
       ir = IR(ref);
       if (ir->o == IR_UPDATE) {
         printf("Found UPDATE: \n");
