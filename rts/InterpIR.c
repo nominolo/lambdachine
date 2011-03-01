@@ -56,11 +56,11 @@ irEngine(Capability *cap, Fragment *F)
   goto *disp[pc->o];
 
 # define DISPATCH_NEXT \
-  if (irt_type(pc->t) != IRT_VOID && pc->o != IR_PHI) \
+  if (irt_type(pc->t) != IRT_VOID && pc->o != IR_PHI) { \
     if (irt_type(pc->t) == IRT_I32) \
       DBG_LVL(2, "         ===> %" FMT_Int "\n", vals[pcref]); \
     else \
-      DBG_LVL(2, "         ===> 0x%" FMT_WordX "\n", vals[pcref]); \
+      DBG_LVL(2, "         ===> 0x%" FMT_WordX "\n", vals[pcref]); } \
   ++pc; ++pcref; \
   if (LC_UNLIKELY(pc >= pcmax)) { pc = pcloop; pcref = F->nloop + 1; } \
   if (pc->o != IR_NOP) { \
