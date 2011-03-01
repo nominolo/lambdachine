@@ -26,7 +26,7 @@ irEngine(Capability *cap, Fragment *F)
   Word *base = T->base - 1;
   Word szins = F->nins - F->nk;
   Word vals_[szins];
-  Word *vals = &vals_[F->nk] - REF_BIAS;
+  Word *vals = vals_ - (int)F->nk;
   IRIns *pc = F->ir + REF_FIRST;
   IRRef pcref = REF_FIRST;
   IRRef ref;
