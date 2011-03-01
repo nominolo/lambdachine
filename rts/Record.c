@@ -433,6 +433,13 @@ recordIns(JitState *J)
   if (LC_UNLIKELY(J->pc == J->startpc)) {
     if (J->mode == 1) J->mode = 2;
     else {
+      // We're back at the point where we started recording from.
+      // 
+      // TODO: If the stack-level is not the one that we started with,
+      // we currently simply abort.  This needs to change.
+      if (J->framedepth != 0)
+	return REC_ABORT;
+
       FragmentId id = finishRecording(J);
       return (u4)REC_LOOP | ((u4)id << 8);
     }
