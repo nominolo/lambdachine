@@ -132,9 +132,10 @@ tests/base/%.lcbc: tests/base/%.hs
 tests/%.lcbc: tests/%.hs
 	cd tests && $(LCC) $(LCCFLAGS) $(patsubst tests/%, %, $<)
 
-PRIM_MODULES_ghc-prim = GHC/Bool GHC/Types GHC/Ordering
+PRIM_MODULES_ghc-prim = GHC/Bool GHC/Types GHC/Ordering GHC/Tuple
 PRIM_MODULES_integer-gmp = GHC/Integer/Type GHC/Integer
-PRIM_MODULES_base = GHC/Base GHC/Classes GHC/Num
+PRIM_MODULES_base = GHC/Base GHC/Classes GHC/Num GHC/List \
+	Control/Exception/Base
 
 PRIM_MODULES = \
 	$(patsubst %,tests/ghc-prim/%.lcbc,$(PRIM_MODULES_ghc-prim)) \
