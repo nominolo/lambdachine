@@ -151,9 +151,16 @@ irEngine(Capability *cap, Fragment *F)
 
  op_NEW:
   if (F->heap[pc->op2].loop & 1) {
-    // TODO: do actual allocation on trace
-    LC_ASSERT(0);
-    //recordEvent(EV_ALLOC, 0);
+    // do actual allocation on trace
+    HeapInfo *hp = &F->heap[pc->op2];
+    int j;
+    recordEvent(EV_ALLOC, hp->nfields + 1);
+    Closure *cl = allocClosure(wordsof(ClosureHeader) + hp->nfields);
+    setInfo(cl, (InfoTable*)vals[pc->op1]);
+    for (j = 0; j < hp->nfields; j++) {
+      cl->payload[j] = vals[getHeapInfoField(F, hp, j)];
+    }
+    vals[pcref] = (Word)cl;
   } else {
     vals[pcref] = 0;  // to trigger an error if accessed
   }
