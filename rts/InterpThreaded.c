@@ -682,8 +682,48 @@ int engine(Capability *cap)
     case FUN:
       info = getFInfo(fnode);
       break;
+    case CAF:
+    case THUNK:
+      {
+        // Turn current stack frame into an APK frame and build the
+        // EVAL and UPDATE stack frames on top.
+
+        // Arguments are already in place, so we can just move `top`
+        // to point above the arguments.
+        Word *top = base + callargs;
+        ThunkInfoTable *info = (ThunkInfoTable*)getInfo(fnode);
+        recordEvent(EV_EVAL_THUNK, 0);
+
+        BCIns *ap_return_pc;
+        Closure *ap_closure;
+        getAPKClosure(&ap_closure, &ap_return_pc, callargs);
+        
+        u4 framesize = info->code.framesize;
+        DBG_ENTER(info);
+        DBG_STACK;
+
+        if (stackOverflow(T, top, STACK_FRAME_SIZEW + UPDATE_FRAME_SIZEW +
+                          framesize)) {
+          return INTERP_STACK_OVERFLOW;
+        }
+        
+        base[-1] = (Word)ap_closure;
+        top[0] = (Word)base;
+        top[1] = (Word)ap_return_pc;
+        top[2] = (Word)&stg_UPD_closure;
+        top[3] = (Word)fnode;
+        top[4] = 0;
+        top[5] = (Word)&top[3];
+        top[6] = (Word)stg_UPD_return_pc;
+        top[7] = (Word)fnode;
+
+        base = top + STACK_FRAME_SIZEW + UPDATE_FRAME_SIZEW;
+        T->top = base + framesize;
+        code = &info->code;
+        pc = info->code.code;
+        DISPATCH_NEXT;
+      }
     default:
-      // TODO: should we do an automatic EVAL here?
       fprintf(stderr, "FATAL: Function argument to CALLT not FUN or PAP.\n");
       exit(1);
     }
@@ -889,6 +929,50 @@ int engine(Capability *cap)
     case FUN:
       info = getFInfo(fnode);
       break;
+    case CAF:
+    case THUNK:
+      // If the function is a thunk:
+      //
+      // 1. push application continuation,
+      // 2. Put EVAL and UPDATE frames on top.
+      {
+        ThunkInfoTable *info = (ThunkInfoTable*)getInfo(fnode);
+	u4 framesize = info->code.framesize;;
+        BCIns *ap_return_pc;
+        Closure *ap_closure;
+	int i;
+	u1 *args = (u1*)pc;
+
+        recordEvent(EV_EVAL_THUNK, 0);
+        DBG_ENTER(info);
+        DBG_STACK;
+
+        getAPKClosure(&ap_closure, &ap_return_pc, callargs);
+
+	// Build APK frame
+	top[0] = (Word)base;
+	top[1] = (Word)(pc + BC_ROUND(nargs - 1) + 1);
+	top[2] = (Word)ap_closure;
+	top[3] = arg0;
+	for (i = 1; i < nargs; i++, args++)
+	  top[3 + i] = *args;
+
+	// Put UPDATE and EVAL frames on top
+	top[3 + nargs + 0] = (Word)&top[3];
+	top[3 + nargs + 1] = (Word)ap_return_pc;
+	top[3 + nargs + 2] = (Word)&stg_UPD_closure;
+	top[3 + nargs + 3] = (Word)fnode; // reg0
+	top[3 + nargs + 4] = 0;           // reg1
+	top[3 + nargs + 5] = (Word)&top[3 + nargs + 3];
+	top[3 + nargs + 6] = (Word)stg_UPD_return_pc;
+	top[3 + nargs + 7] = (Word)fnode;
+
+	base = &top[3 + nargs + 8];
+	T->top = base + framesize;
+	code = &info->code;
+	pc = info->code.code;
+	DISPATCH_NEXT;
+      }
     default:
       fprintf(stderr, "ERROR: CALL function argument not a PAP or FUN.\n");
       exit(1);
