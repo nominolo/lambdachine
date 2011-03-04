@@ -172,6 +172,9 @@ test11: tests/Bc0011.lcbc  $(PRIM_MODULES)
 test12: tests/Bc0012.lcbc  $(PRIM_MODULES)
 	./interp --print-loader-state Bc0012
 
+test13: tests/Bc0013.lcbc $(PRIM_MODULES)
+	./interp Bc0013
+
 bench1: tests/Bench/Append.lcbc $(PRIM_MODULES)
 	./interp Bench.Append
 

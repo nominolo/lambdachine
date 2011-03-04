@@ -1,3 +1,5 @@
+{-# LANGUAGE PatternGuards, TypeSynonymInstances,
+             FlexibleInstances, MultiParamTypeClasses #-}
 module Lambdachine.Ghc.Pipeline where
 
 import DynFlags
@@ -5,11 +7,16 @@ import HscTypes
 import MonadUtils ( MonadIO(..) )
 import CoreSyn
 import CorePrep
-import GHC
+import GHC hiding ( exprType )
 import HscMain ( hscSimplify, hscParse, hscTypecheck, hscDesugar )
 import TidyPgm ( tidyProgram )
 import TyCon ( isDataTyCon )
 import Data.List ( find )
+import qualified IdInfo as Ghc
+import qualified Id as Ghc
+import CoreUtils ( exprType )
+
+import Data.Generics.Uniplate.Direct
 
 io :: MonadIO m => IO a -> m a
 io = liftIO
@@ -47,6 +54,40 @@ prepareCore mod_summary mod_guts0 = do
   let dflags = hsc_dflags hsc_env
       core_binds = cg_binds cg_guts
       data_tycons = filter isDataTyCon (cg_tycons cg_guts)
-  binds <- io $ corePrepPgm dflags core_binds data_tycons
+  binds0 <- io $ corePrepPgm dflags core_binds data_tycons
+  let binds = map removeSpeculation binds0
   return (this_mod, binds, data_tycons, imports)
 
+-- TODO: Move someplace else.  Separate package?
+
+instance Uniplate CoreExpr where
+  uniplate (App e1 e2)       = plate App |* e1 |* e2
+  uniplate (Lam b e1)        = plate (Lam b) |* e1
+  uniplate (Let b e1)        = plate Let |+ b |* e1
+  uniplate (Case e b t alts) = plate Case |* e |- b |- t ||+ alts
+  uniplate (Cast e c)        = plate Cast |* e |- c
+  uniplate (Note n e)        = plate (Note n) |* e
+  uniplate e                 = plate e
+
+instance Biplate CoreExpr CoreExpr where biplate = plateSelf
+
+instance Biplate CoreAlt CoreExpr where
+  biplate (con, bs, e) = plate ((,,) con bs) |* e
+
+instance Biplate CoreBind CoreExpr where
+  biplate (NonRec x e) = plate (NonRec x) |* e
+  biplate (Rec bs) = plate Rec ||+ bs
+
+instance Biplate (CoreBndr, CoreExpr) CoreExpr where
+  biplate (x, e) = plate ((,) x) |* e
+
+removeSpeculation :: CoreBind -> CoreBind
+removeSpeculation bind = transformBi ubx_let_to_case bind
+  where
+    ubx_let_to_case :: CoreExpr -> CoreExpr
+    --ubx_let_to_case e | trace ("ubx: " ++ showPpr e) False = undefined
+    ubx_let_to_case (Let (NonRec x app@(App _ _)) body)
+      | (Var f, args) <- collectArgs app,
+        Ghc.PrimOpId _ <- Ghc.idDetails f
+      = Case app x (exprType body) [(DEFAULT, [], body)]
+    ubx_let_to_case e = e

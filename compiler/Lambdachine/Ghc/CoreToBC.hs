@@ -58,7 +58,7 @@ import qualified IdInfo as Ghc
 import qualified Id as Ghc
 import qualified Type as Ghc
 import qualified DataCon as Ghc
-import qualified CoreSyn as Ghc ( Expr(..) )
+import qualified CoreSyn as Ghc ( Expr(..), mkConApp )
 import qualified PrimOp as Ghc
 import qualified TysWiredIn as Ghc
 import qualified TysPrim as Ghc
@@ -327,11 +327,13 @@ build_bind_code fwd_env env fvi closures locs0 = do
  where
    -- TODO: Do we need to accumulate the environment?
    go bcis locs fvs [] = return (bcis, locs, fvs)
+
    go bcis locs0 fvs ((x, ConObj dcon fields) : objs) = do
      (bcis1, locs1, fvs1, Just r)
        <- transStore dcon fields env fvi locs0 (BindC Nothing)
      let locs2 = updateLoc locs1 x (InVar r)
      go (bcis <*> bcis1 <*> add_fw_refs x r locs2) locs2 (fvs `mappend` fvs1) objs
+
    go bcis locs0 fvs ((x, AppObj f args) : objs) = do
      (bcis1, locs1, fvs1, (freg:regs))
        <- transArgs (Ghc.Var f : args) env fvi locs0
@@ -340,6 +342,7 @@ build_bind_code fwd_env env fvi closures locs0 = do
          locs2 = updateLoc locs1 x (InVar rslt)
          bcis3 = bcis2 <*> add_fw_refs x rslt locs2
      go bcis3 locs2 (fvs `mappend` fvs1) objs
+
    go bcis locs0 fvs ((x, FunObj _arity info_tbl0 args) : objs) = do
      let info_tbl = mkInfoTableId (idName info_tbl0)
      (bcis1, locs1, fvs1, regs)
@@ -367,6 +370,8 @@ transBind :: CoreBndr -- ^ The binder name ...
 transBind x (viewGhcApp -> Just (f, args)) _env0
  | isGhcConWorkId f
  = return (ConObj f args)
+ | Just _ <- isGhcPrimOpId f
+ = error $ "Primop in let: " ++ showPpr x
  | otherwise
  = return (AppObj f args)
 transBind x (viewGhcLam -> (bndrs, body)) env0 = do
@@ -641,11 +646,23 @@ transBody expr@(Ghc.App _ _) env fvi locs0 ctxt
 
 -- Special case for primitive conditions, i.e., (case x #< y of ...)
 -- and such.
-transBody (Ghc.Case scrut@(Ghc.App _ _) bndr _ty alts) env0 fvi locs0 ctxt
+transBody (Ghc.Case scrut@(Ghc.App _ _) bndr ty alts) env0 fvi locs0 ctxt
   | Just (f, args) <- viewGhcApp scrut,
     Just (cond, ty) <- isCondPrimOp =<< isGhcPrimOpId f,
     isLength 2 args
-  = transBinaryCase cond ty args bndr alts env0 fvi locs0 ctxt
+  = case alts of
+      [_,_] -> transBinaryCase cond ty args bndr alts env0 fvi locs0 ctxt
+      [_] ->
+        transBody build_bool_expr env0 fvi locs0 ctxt
+ where
+   build_bool_expr =
+     Ghc.Case
+       (Ghc.Case scrut bndr Ghc.boolTy
+          [(DataAlt Ghc.trueDataCon,  [], Ghc.mkConApp Ghc.trueDataCon [])
+          ,(DataAlt Ghc.falseDataCon, [], Ghc.mkConApp Ghc.falseDataCon [])])
+       bndr
+       ty
+       alts
  
 transBody (Ghc.Case scrut bndr _ty alts) env0 fvi locs0 ctxt =
   transCase scrut bndr alts env0 fvi locs0 ctxt
@@ -805,6 +822,8 @@ transApp f args env fvi locs0 ctxt
                                   <*> insGoto l3]
                    |*><*| mkLabel l3
              maybeAddRet ctxt is1 locs1 fvs rslt
+         _ | otherwise ->
+             error $ "Unknown primop: " ++ showPpr p
 
   | isGhcConWorkId f  -- allocation
   = transStore f args env fvi locs0 ctxt
@@ -1037,12 +1056,13 @@ transCaseAlts alts match_var env fvi locs0 ctxt = do
       return ((dataConTag altcon, l), mkLabel l <*> bcis, fvs))
   return (targets, bcis, mconcat fvss)
 
+-- | Translate a binary case (i.e., a two-arm branch).
 transBinaryCase :: forall x.
                    BinOp -> OpTy -> [CoreArg] -> CoreBndr
                 -> [CoreAlt] -> LocalEnv -> FreeVarsIndex
                 -> KnownLocs -> Context x
                 -> Trans (Bcis x, KnownLocs, FreeVars, Maybe BcVar)
-transBinaryCase cond ty args bndr alts env0 fvi locs0 ctxt = do
+transBinaryCase cond ty args bndr alts@[_,_] env0 fvi locs0 ctxt = do
   -- TODO: We may want to get the result of the comparison as a
   -- Bool.  In the True branch we therefore want to have:
   --
@@ -1083,8 +1103,13 @@ transBinaryCase cond ty args bndr alts env0 fvi locs0 ctxt = do
       return (bcis <*> insBranch cond ty r1 r2 tLabel fLabel
                    |*><*| tBcis |*><*| fBcis,
               locs1, mconcat [fvs, tFvs, fFvs], Nothing)
-    BindC (Just r) ->
-      error "UNIMPLEMENTED: if-then-else in non-return context"
+    BindC (Just r) -> do
+      l <- freshLabel
+      return (bcis <*> insBranch cond ty r1 r2 tLabel fLabel
+                |*><*| tBcis <*> insGoto l
+                |*><*| fBcis <*> insGoto l
+                |*><*| mkLabel l,
+              locs1, mconcat [fvs, tFvs, fFvs], Just r)
 
 addMatchLocs :: KnownLocs -> BcVar -> AltCon -> [CoreBndr] -> KnownLocs
 addMatchLocs locs _base_reg DEFAULT [] = locs
