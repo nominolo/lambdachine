@@ -742,6 +742,12 @@ recordIns(JitState *J)
     }
     break;
 
+  case BC_LOADSLF:
+    {
+      setSlot(J, bc_a(ins), getSlot(J, -1));
+    }
+    break;
+
   default:
     DBG_PR("record: Ignoring %s\n", ins_name[op]);
     LC_ASSERT(0);
