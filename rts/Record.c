@@ -645,6 +645,7 @@ recordIns(JitState *J)
       int i;
 
       J->framedepth--;
+      if (J->framedepth < 0) goto abort_recording;
 
       guardEqualKWord(J, getSlot(J, -2), return_pc, LIT_PC);
 
@@ -653,6 +654,8 @@ recordIns(JitState *J)
 
       // TODO: Do something with slot(-3)?
       J->baseslot -= basediff;
+      DBG_LVL(2, "baseslot = %d\n", J->baseslot);
+      if (J->baseslot < 1) goto abort_recording;
       J->base = J->slot + J->baseslot;
       J->maxslot = basediff - 3;
       emit_raw(J, IRT(IR_RET, IRT_VOID), basediff, 0);

@@ -402,6 +402,7 @@ int engine(Capability *cap)
     recordEvent(EV_LOAD, 0);
     u4 offset = (u2)opC;
     Closure *node = (Closure*)base[-1];
+    LC_ASSERT(looksLikeClosure(node));
     base[opA] = node->payload[offset - 1];
     DISPATCH_NEXT;
   }
@@ -1121,7 +1122,7 @@ int engine(Capability *cap)
     // B = first argument (function closure)
     u4 nargs = opC;
     u4 i;
-    recordEvent(EV_ALLOC, nargs);
+    recordEvent(EV_ALLOC, nargs + 1);
 
     LC_ASSERT(nargs >= 1);
 
