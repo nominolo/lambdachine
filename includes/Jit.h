@@ -11,6 +11,7 @@
 #include <stdlib.h>
 
 #define MAX_SLOTS    100
+#define MAX_TRACE_LENGTH 2000
 
 // -- Hot counters ---------------------------------------------------
 // Hot counters are stored in a Capability, not globally, to avoid

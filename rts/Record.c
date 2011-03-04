@@ -756,6 +756,10 @@ recordIns(JitState *J)
     LC_ASSERT(0);
     break;
   }
+
+  if (J->cur.nins >= REF_BIAS + MAX_TRACE_LENGTH)
+    goto abort_recording;
+
   return REC_CONT;
 
  abort_recording:
