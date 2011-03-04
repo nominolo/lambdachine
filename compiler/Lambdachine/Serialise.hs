@@ -296,7 +296,8 @@ encodeInstructions lits code = do
   if L.length bs /= fromIntegral (len * 4) then
     error $ "Size mismatch. expected: " ++ show (len * 4) ++ " got: "
             ++ show (L.length bs) ++ "\n" 
-            ++ show (L.unpack bs)
+            ++ show (L.unpack bs) ++ "\n"
+            ++ pretty code
    else do
      emit $ fromLazyByteString bs
      return len
@@ -571,13 +572,16 @@ putWord8s ws = go 0 ws 0
    go !shift [] !acc
      | shift == 0 = return ()
      | otherwise  = putIns acc
-   go !shift (b:bs) !acc
+   go !shift bs0@(b:bs) !acc
      | shift < 32 = 
        go (shift + 8) bs (acc .|. (b2w b `shiftL` shift))
      | otherwise =
-       putIns acc >> go 0 bs 0
+       putIns acc >> go 0 bs0 0
 
-         
+test_putArgs =
+  let (_, _, b) =  runBuildM $ runInsBuildM $ putArgs (map BcReg [1..6]) in
+  L.unpack (toLazyByteString b) == [4,3,2,1,0,0,6,5]
+
 --putCase 
 
 b2w :: Word8 -> Word32
