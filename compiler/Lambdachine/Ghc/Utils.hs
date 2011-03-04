@@ -1,3 +1,4 @@
+{-# LANGUAGE PatternGuards #-}
 module Lambdachine.Ghc.Utils where
 
 import Lambdachine.Id as N
@@ -18,8 +19,13 @@ toplevelId :: Ghc.ModuleName -> Ghc.Id -> Id
 toplevelId mdl x = --  | Ghc.VanillaId <- Ghc.idDetails x =
   mkTopLevelId $
     N.mkBuiltinName (fromGhcUnique x) $
-      mdl_str ++ "." ++ showSDocForUser alwaysQualify (Ghc.ppr (Ghc.getOccName name))
+      mdl_str ++ "." ++ occ_part
  where
+   occ_part0 = showSDocForUser alwaysQualify (Ghc.ppr (Ghc.getOccName name))
+   occ_part
+     -- FIXME: Dirty, dirty hack.
+     | occ_part0 == "sat" = showSDocForUser alwaysQualify (Ghc.ppr name)
+     | otherwise = occ_part0
    name = Ghc.getName x
    mdl_str
      | Just m <- Ghc.nameModule_maybe name
