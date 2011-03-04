@@ -686,25 +686,48 @@ recordIns(JitState *J)
       InfoTable *info = (InfoTable*)tbase[bc_b(ins)];
       TRef rinfo, rnew;
       u4 size = bc_c(ins);
-      ConInfoTable *cinfo;
       u1 *arg = (u1*)(pc + 1);
       u4 i;
       rinfo = emitKWord(J, (Word)info, LIT_INFO);
       rb = getSlot(J, bc_b(ins));
       emit(J, IRT(IR_EQ, IRT_VOID), rb, rinfo);
-      cinfo = (ConInfoTable*)info;
-      rnew = emit(J, IRT(IR_NEW, IRT_CLOS), rinfo,
-                  cinfo->i.layout.payload.ptrs +
-                  cinfo->i.layout.payload.nptrs + 1);
       u4 h = newHeapInfo(J, rnew, info);
-      IR(tref_ref(rnew))->op2 = h;
       HeapInfo *hp = &J->cur.heap[h];
-      for (i = 1; i <= size; i++, arg++) {
+      for (i = 0; i < size; i++, arg++) {
         rc = getSlot(J, *arg);
-        setHeapInfoField(&J->cur, hp, i - 1, rc);
+        setHeapInfoField(&J->cur, hp, i, rc);
       }
+      rnew = emit(J, IRT(IR_NEW, IRT_CLOS), rinfo, h);
+      hp->ref = rnew;
       setSlot(J, bc_a(ins), rnew);
       //printSlots(J);
+    }
+    break;
+
+  case BC_ALLOCAP:
+    {
+      u4 nargs = bc_c(ins);
+      u4 h, i;
+      TRef rinfo, rnew, rarg0;
+      InfoTable *info = getAPInfoTable(nargs);
+      HeapInfo *hp;
+      u1 *arg = (u1*)(pc + 1);
+
+      rarg0 = getSlot(J, bc_b(ins));
+      rinfo = emitKWord(J, (Word)info, LIT_INFO);
+      h = newHeapInfo(J, 0, info);
+      // We currently assume that a NEW is never optimised away
+      //IR(tref_ref(rnew))->op2 = h;
+      hp = &J->cur.heap[h];
+      setHeapInfoField(&J->cur, hp, 0, rarg0);
+      for (i = 0; i < nargs; i++, arg++) {
+        rc = getSlot(J, *arg);
+        setHeapInfoField(&J->cur, hp, i + 1, rc);
+      }
+      //LC_ASSERT(J->cur.nins - 1 == tref_ref(rnew));
+      rnew = emit(J, IRT(IR_NEW, IRT_CLOS), rinfo, h);
+      hp->ref = rnew;
+      setSlot(J, bc_a(ins), rnew);
     }
     break;
 
