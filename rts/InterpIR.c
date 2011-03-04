@@ -12,6 +12,9 @@ typedef void* Inst;
 
 #define IR(ref)     (&F->ir[(ref)])
 
+Word restoreValue(Fragment *F, Word *vals, IRRef ref);
+
+
 int
 irEngine(Capability *cap, Fragment *F)
 {
@@ -230,28 +233,10 @@ irEngine(Capability *cap, Fragment *F)
     for (i = 0; i < snap->nent; i++, se++) {
       BCReg s = snap_slot(*se);
       IRRef r = snap_ref(*se);
-      IRIns *ir = IR(r);
-      DBG_PR("base[%d] = ", s - 1);
 
-      if (irref_islit(r) || ir->o != IR_NEW)
-        base[s] = vals[r];
-      else { // ir->o == IR_NEW
-        if (!(F->heap[ir->op2].loop & 1)) {
-          // Need to allocate closure now.
-          HeapInfo *hp = &F->heap[ir->op2];
-          Closure *cl = allocClosure(wordsof(ClosureHeader) + hp->nfields);
-          recordEvent(EV_ALLOC, 1 + hp->nfields);
-          int j;
-          DBG_PR("(alloc[%lu])", wordsof(ClosureHeader) + hp->nfields);
-          setInfo(cl, (InfoTable*)vals[ir->op1]);
-          for (j = 0; j < hp->nfields; j++) {
-            cl->payload[j] = vals[getHeapInfoField(F, hp, j)];
-          }
-          base[s] = (Word)cl;
-        } else 
-          // Closure has been allocated on trace
-          base[s] = vals[r];
-      }
+      DBG_PR("base[%d] = ", s - 1);
+      base[s] = restoreValue(F, vals, r);
+
       IF_DBG_LVL(1, printSlot(base + s); printf("\n"));
       //DBG_PR("0x%" FMT_WordX "\n", base[s]);
     }
@@ -266,6 +251,37 @@ irEngine(Capability *cap, Fragment *F)
 
  stop:
   return 1;
+}
+
+Word
+restoreValue(Fragment *F, Word *vals, IRRef ref)
+{
+  IRIns *ir = IR(ref);
+  HeapInfo *hp;
+  Closure *cl;
+  int j;
+
+  // We only need to treat allocations specially.
+  if (ir->o != IR_NEW)
+    return vals[ref];
+
+  hp = &F->heap[ir->op2];
+  // Store has *not* been sunken, i.e., allocation occurred on-trace
+  if (hp->loop & 1)
+    return vals[ref];
+
+  // Otherwise we need to do the allocation now, possibly recursively
+  //
+  // TODO: Can we have mutually recursive sunken refs?
+  recordEvent(EV_ALLOC, 1 + hp->nfields);
+  cl = allocClosure(wordsof(ClosureHeader) + hp->nfields);
+  setInfo(cl, (InfoTable*)vals[ir->op1]);
+  DBG_PR("(alloc[%lu])", wordsof(ClosureHeader) + hp->nfields);
+
+  for (j = 0; j < hp->nfields; j++)
+    cl->payload[j] = restoreValue(F, vals, getHeapInfoField(F, hp, j));
+
+  return (Word)cl;
 }
 
 #undef IR
