@@ -105,6 +105,7 @@ interpreter, and all bytecode files.
   _(SUBRR,   RRR) \
   _(MULRR,   RRR) \
   _(DIVRR,   RRR) \
+  _(REMRR,   RRR) \
   /* Constants */ \
   _(LOADK,   RN) \
   _(KINT,    RS) \

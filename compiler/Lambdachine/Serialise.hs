@@ -458,6 +458,7 @@ putLinearIns lit_ids new_addrs ins_id ins = case ins of
    binOpOpcode IntTy OpSub = opc_SUBRR
    binOpOpcode IntTy OpMul = opc_MULRR
    binOpOpcode IntTy OpDiv = opc_DIVRR
+   binOpOpcode IntTy OpRem = opc_REMRR
 
 -- | Encode a case instruction.
 --

@@ -1138,7 +1138,7 @@ primOpToBinOp primop =
     Ghc.IntSubOp -> Just (OpSub, IntTy)
     Ghc.IntMulOp -> Just (OpMul, IntTy)
     Ghc.IntQuotOp -> Just (OpDiv, IntTy)
-
+    Ghc.IntRemOp  -> Just (OpRem, IntTy)
     _ -> Nothing
 
 isCondPrimOp :: Ghc.PrimOp -> Maybe (BinOp, OpTy)

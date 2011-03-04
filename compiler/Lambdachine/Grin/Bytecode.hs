@@ -98,7 +98,7 @@ data CompOp
   deriving (Eq, Ord)
 -}
 data BinOp
-  = OpAdd | OpSub | OpMul | OpDiv
+  = OpAdd | OpSub | OpMul | OpDiv | OpRem
   | CmpGt | CmpLe | CmpGe | CmpLt | CmpEq | CmpNe
   deriving (Eq, Ord, Show)
 
@@ -160,6 +160,7 @@ instance Pretty BinOp where
   ppr OpSub = char '-'
   ppr OpMul = char '*'
   ppr OpDiv = char '/'
+  ppr OpRem = char '%'
   ppr CmpGt = char '>'
   ppr CmpLe = text "<="
   ppr CmpGe = text ">="

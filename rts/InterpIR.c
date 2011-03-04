@@ -127,7 +127,23 @@ irEngine(Capability *cap, Fragment *F)
 
  op_MUL:
   recordEvent(EV_MUL, 0);
-  vals[pcref] = vals[pc->op1] * vals[pc->op2];
+  vals[pcref] = (WordInt)vals[pc->op1] * (WordInt)vals[pc->op2];
+  DISPATCH_NEXT;
+
+ op_DIV:
+  recordEvent(EV_REMDIV, 0);
+  if (LC_LIKELY(vals[pc->op2] != 0))
+    vals[pcref] = (WordInt)vals[pc->op1] / (WordInt)vals[pc->op2];
+  else
+    LC_ASSERT(0);
+  DISPATCH_NEXT;
+
+ op_REM:
+  recordEvent(EV_REMDIV, 0);
+  if (LC_LIKELY(vals[pc->op2] != 0))
+    vals[pcref] = (WordInt)vals[pc->op1] % (WordInt)vals[pc->op2];
+  else
+    LC_ASSERT(0);
   DISPATCH_NEXT;
 
  op_FREF:
@@ -184,7 +200,6 @@ irEngine(Capability *cap, Fragment *F)
  op_BNOT: op_BAND: op_BOR: op_BXOR:
  op_BSHL: op_BSHR: op_BSAR:
  op_BROL: op_BROR:
- op_DIV:
 
   // These should never be executed.
  op_BASE:

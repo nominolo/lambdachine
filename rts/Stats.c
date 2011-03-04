@@ -28,6 +28,7 @@ printEvents()
   printf("-- Stats --------------------------------------\n");
   printf("ALU ops:           %9" FMT_Word64 "\n", G_events.counters[EV_ALU]);
   printf("Multiplications:   %9" FMT_Word64 "\n", G_events.counters[EV_MUL]);
+  printf("Divisions:         %9" FMT_Word64 "\n", G_events.counters[EV_REMDIV]);
   printf("Comparisions:      %9" FMT_Word64 "\n", G_events.counters[EV_CMP]);
   printf("Loads:             %9" FMT_Word64 "\n", G_events.counters[EV_LOAD]);
   printf("Updates:           %9" FMT_Word64 "\n", G_events.counters[EV_UPDATE]);

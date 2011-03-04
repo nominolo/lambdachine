@@ -7,6 +7,7 @@ typedef enum {
   EV_ALU = 1,
   EV_CMP,
   EV_MUL,
+  EV_REMDIV,
   EV_LOAD,
   EV_UPDATE,
   EV_EVAL_HNF,

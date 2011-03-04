@@ -243,12 +243,21 @@ int engine(Capability *cap)
 
  op_DIVRR:
   DECODE_BC;
-  if ((WordInt)base[opC] != 0)
+  recordEvent(EV_REMDIV, 0);
+  if (LC_LIKELY((WordInt)base[opC] != 0))
     base[opA] = (WordInt)base[opB] / (WordInt)base[opC];
   else
-    ; // TODO: Throw exception
+    LC_ASSERT(0); // TODO: Throw exception
   DISPATCH_NEXT;
 
+ op_REMRR:
+  DECODE_BC;
+  recordEvent(EV_REMDIV, 0);
+  if (LC_LIKELY((WordInt)base[opC] != 0))
+    base[opA] = (WordInt)base[opB] % (WordInt)base[opC];
+  else
+    LC_ASSERT(0);
+  DISPATCH_NEXT;
 
  op_JMP:
   DECODE_AD;

@@ -110,6 +110,7 @@ typedef union IRIns {
   _(SUB,     N,   ref, ref) \
   _(MUL,     C,   ref, ref) \
   _(DIV,     N,   ref, ref) \
+  _(REM,     N,   ref, ref) \
   \
   _(FREF,    R,   ref, lit) \
   _(FLOAD,   L,   ref, ___) \
