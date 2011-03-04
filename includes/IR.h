@@ -194,6 +194,7 @@ typedef enum {
 #define irt_clearmark(irt)  ((irt) &= ~IRT_MARK)
 #define irt_setphi(irt)  ((irt) |= IRT_ISPHI)
 #define irt_getphi(irt)  ((irt) & IRT_ISPHI)
+#define irt_clearphi(irt)   ((irt) &= ~IRT_ISPHI)
 #define irt_type(irt)    ((irt) & IRT_TYPE)
 
 enum {

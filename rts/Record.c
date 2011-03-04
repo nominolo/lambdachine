@@ -1037,6 +1037,8 @@ findPhiTwin(JitState *J, IRRef ref)
     }
     // We must have a matching PHI node if the IRT_PHI flag is set.
     // So we should never reach this point.
+    fprintf(stderr, "Could not find PHI twin for: %d\n", 
+            ref - REF_BIAS);
     LC_ASSERT(0);
     return 0;
   } else
@@ -1127,6 +1129,12 @@ optDeadCodeElim(JitState *J)
   for (ref = REF_FIRST; ref < J->cur.nins; ref++) {
     IRIns *ir = IR(ref);
     if (!irt_getmark(ir->t) && ir->o != IR_LOOP) {
+      // Remove PHI tag from arguments if we're deleting a PHI node.
+      if (ir->o == IR_PHI) {
+	printf("Deleting PHI for %d, %d\n", ir->op1 - REF_BIAS, ir->op2 - REF_BIAS);
+        irt_clearphi(IR(ir->op1)->t);
+        irt_clearphi(IR(ir->op2)->t);
+      }
       ir->o = IR_NOP;
       ir->t = IRT_VOID;
       ir->prev = J->chain[IR_NOP];
