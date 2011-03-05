@@ -131,7 +131,7 @@ int engine(Capability *cap)
   Word callt_temp[BCMAX_CALL_ARGS];
   LcCode *code = NULL;
 
-#if (LC_DEBUG_LEVEL > 1)
+#if (LC_DEBUG_LEVEL >= 1)
 # define DBG_IND(stmt) \
   do { printIndent(base - T->stack, '.'); stmt;} while (0)
 # define DBG_ENTER(info) \
@@ -158,8 +158,12 @@ int engine(Capability *cap)
   */
 # define DISPATCH_NEXT \
     opcode = bc_op(*pc); \
-    DBG_IND(printf("    "); printFrame(base, T->top));   \
-    DBG_IND(printInstructionOneLine(pc)); \
+    if (LC_DEBUG_LEVEL >= 2) { \
+      printf(COL_YELLOW); \
+      DBG_IND(printf("    "); printFrame(base, T->top));   \
+      DBG_IND(printInstructionOneLine(pc)); \
+      printf(COL_RESET); \
+    } \
     maxsteps--;  if (maxsteps == 0) return INTERP_OUT_OF_STEPS; \
     recordEvent(EV_DISPATCH, 0); \
     opA = bc_a(*pc); \
@@ -187,11 +191,10 @@ int engine(Capability *cap)
     J->func = getFInfo((Closure*)base[-1]);
     u4 recstatus = recordIns(J);
     if (recstatus != REC_CONT) {
-      DBG_PR("Recording finished: %x\n", recstatus);
+      printf(COL_RED "Recording finished: %x\n" COL_RESET, recstatus);
       disp = disp1;
       switch (recstatus & REC_MASK) {
       case REC_ABORT:
-        recordEvent(EV_ABORT_TRACE, 0);
       case REC_DONE:
         break; // Do Nothing, just continue interpreting
       case REC_LOOP:

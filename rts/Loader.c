@@ -1,3 +1,4 @@
+#include "Config.h"
 #include "Loader.h"
 #include "HashTable.h"
 #include "InfoTables.h"
@@ -15,6 +16,13 @@
 #define VERSION_MINOR  1
 
 #define BUFSIZE 512
+
+/* Debug message if debugging loader and minimum debug level. */
+#ifdef LC_DEBUG_LOADER
+#define LD_DBG_PR(lvl, fmt, ...) DBG_LVL(lvl, fmt, __VA_ARGS__)
+#else
+#define LD_DBG_PR(lvl, fmt, ...) do {} while (0)
+#endif
 
 //--------------------------------------------------------------------
 // Global variables
@@ -440,7 +448,7 @@ loadId(FILE *f, const StringTabEntry *strings, const char* sep)
     }
   }
   *p = '\0';
-  //printf("loadId: %lx, %s\n", ftell(f), ident);
+  LD_DBG_PR(3, "loadId: %lx, %s, %p\n", ftell(f), ident, ident);
   return ident;
 }
 
@@ -513,7 +521,7 @@ loadInfoTable(const char *filename,
   // new_itbl is the new info table.  There may have been forward
   // references (even during loading the code for this info table).
   if (old_itbl != NULL) {
-    //printf("Forward reference for: %s\n", itbl_name);
+    LD_DBG_PR(1, "Fixing itable forward reference for: %s, %p\n", itbl_name, new_itbl);
     void **p, *next;
     LC_ASSERT(old_itbl->i.type == INVALID_OBJECT);
 
@@ -567,9 +575,13 @@ loadLiteral(const char *filename,
         setInfo(cl, NULL);
         cl->payload[0] = (Word)literal;
         *literal = (Word)NULL;
+        LD_DBG_PR(2, "Creating forward reference %p for `%s', %p\n",
+                  cl, clname, literal);
         HashTable_insert(closures, clname, cl);
       } else if (getInfo(cl) == NULL) {
         // forward ref (not the first), insert into linked list
+        LD_DBG_PR(2, "Linking forward reference %p (%s, target: %p)\n",
+                  cl, clname, literal);
         *literal = (Word)cl->payload[0];
         cl->payload[0] = (Word)literal;
         xfree(clname);
@@ -638,7 +650,7 @@ loadClosure(const char *filename,
 
   fwd_ref = HashTable_lookup(closures, clos_name);
   if (fwd_ref != NULL) {
-
+    LD_DBG_PR(2, "Fixing closure forward ref: %s, %p -> %p\n", clos_name, fwd_ref, cl);
     // fixup forward refs
     void **p, *next;
     for (p = (void**)fwd_ref->payload[0]; p != NULL; p = next) {

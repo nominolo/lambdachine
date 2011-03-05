@@ -4,6 +4,11 @@
 #define LC_HAS_JIT      1
 
 #define NDEBUG
-/* #define LC_DEBUG_LEVEL  2 */
+
+#ifdef NDEBUG
+#define LC_DEBUG_LEVEL  0
+#else
+#define LC_DEBUG_LEVEL  1
+#endif
 
 #endif
