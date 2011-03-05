@@ -12,6 +12,7 @@
 #include "Snapshot.h"
 #include "HeapInfo.h"
 #include "Bitset.h"
+#include "Stats.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -421,6 +422,42 @@ abortRecording(JitState *J)
   exit(111);
 }
 
+// Record the construction of a stack frame.
+LC_FASTCALL int
+recordBuildEvalFrame(JitState *J, TRef node, ThunkInfoTable *info,
+                     const BCIns *return_pc)
+{
+  Word *top = J->T->top;
+  u4 framesize = info->code.framesize;
+  u4 t = top - J->T->base;
+  u4 i;
+  u4 b = J->T->base - J->startbase;
+
+  if (LC_UNLIKELY(stackOverflow(J->T, top, 8 + framesize)))
+    return 0;
+
+  setSlot(J, t + 0, emitKBaseOffset(J, b));
+  setSlot(J, t + 1, emitKWord(J, (Word)return_pc, LIT_PC));
+  setSlot(J, t + 2, emitKWord(J, (Word)&stg_UPD_closure, LIT_CLOSURE));
+  setSlot(J, t + 3, node); // the thing to update
+  setSlot(J, t + 4, 0); // undefined
+  setSlot(J, t + 5, emitKBaseOffset(J, b + t + 3));
+  setSlot(J, t + 6, emitKWord(J, (Word)stg_UPD_return_pc, LIT_PC));
+  setSlot(J, t + 7, node);
+
+  DBG_PR("baseslot %d => %d (top = %d, frame = %d)\n",
+         J->baseslot, J->baseslot + t + 8, t, framesize);
+  J->baseslot += t + 8;
+  J->base = J->slot + J->baseslot;
+  J->maxslot = framesize;
+  emit_raw(J, IRT(IR_FRAME, IRT_VOID), t + 8, framesize);
+  for (i = 0; i < J->maxslot; i++) setSlot(J, i, 0); // clear slots
+  J->framedepth += 2;
+  IF_DBG_LVL(1, printSlots(J));
+
+  return 1;
+}
+
 RecordResult
 recordIns(JitState *J)
 {
@@ -564,31 +601,9 @@ recordIns(JitState *J)
       } else {
         //printSlots(J);
         // Setup stack frame for evaluation.
-        Word *top = J->T->top;
-        ThunkInfoTable *info = (ThunkInfoTable*)ninfo;
-        u4 framesize = info->code.framesize;
-        if (LC_UNLIKELY(stackOverflow(J->T, top, 8 + framesize)))
+        if (!recordBuildEvalFrame(J, ra, (ThunkInfoTable*)ninfo, J->pc + 2))
           goto abort_recording;
-        u4 t = top - J->T->base; // Slot name of *top
-        u4 i;
-        const BCIns *return_pc = J->pc + 2;
-        // TODO: undefine local slots that are not live-out
-        setSlot(J, t + 0, emitKBaseOffset(J, 0));
-        setSlot(J, t + 1, emitKWord(J, (Word)return_pc, LIT_PC));
-        setSlot(J, t + 2, emitKWord(J, (Word)&stg_UPD_closure, LIT_CLOSURE));
-        setSlot(J, t + 3, ra); // the thing to update
-        setSlot(J, t + 4, 0); // undefined
-        setSlot(J, t + 5, emitKBaseOffset(J, t + 3));
-        setSlot(J, t + 6, emitKWord(J, (Word)stg_UPD_return_pc, LIT_PC));
-        setSlot(J, t + 7, ra);
-        DBG_PR("baseslot %d => %d (top = %d, frame = %d)\n",
-               J->baseslot, J->baseslot + t + 8, t, framesize);
-        J->baseslot += t + 8;
-        J->base = J->slot + J->baseslot;
-        J->maxslot = framesize;
-        emit_raw(J, IRT(IR_FRAME, IRT_VOID), t + 8, framesize);
-        for (i = 0; i < J->maxslot; i++) setSlot(J, i, 0); // clear slots
-        J->framedepth += 2;
+
         IF_DBG_LVL(1, printSlots(J));
       }
     }
@@ -620,6 +635,48 @@ recordIns(JitState *J)
       emit_raw(J, IRT(IR_FRAME, IRT_VOID), 0, J->maxslot);
 
       IF_DBG_LVL(1, printSlots(J));
+    }
+    break;
+
+  case BC_CALL:
+    {
+      u4 callargs = bc_b(ins);
+      Closure *fnode = (Closure*)tbase[bc_a(ins)];
+      if (getInfo(fnode)->type != FUN ||
+          getFInfo(fnode)->code.arity != callargs)
+        goto abort_recording;
+
+      FuncInfoTable *info = getFInfo(fnode);
+      u4 topslot = J->T->top - J->T->base;
+      u4 framesize = info->code.framesize;
+      u4 baseslot = J->T->base - J->startbase;
+      const BCIns *return_pc = J->pc + BC_ROUND(callargs - 1) + 2;
+      int i;
+      u1 *arg = (u1*)(J->pc + 1);
+
+      if (LC_UNLIKELY(stackOverflow(J->T, J->T->top, 3 + framesize)))
+        goto abort_recording;
+
+      ra = getSlot(J, bc_a(ins));  // The function
+
+      setSlot(J, topslot + 0, emitKBaseOffset(J, baseslot));
+      setSlot(J, topslot + 1, emitKWord(J, (Word)return_pc, LIT_PC));
+      setSlot(J, topslot + 2, ra);
+      setSlot(J, topslot + 3, getSlot(J, bc_c(ins)));
+      for (i = 1; i < callargs; i++, arg++)
+        setSlot(J, topslot + 3 + i, getSlot(J, *arg));
+
+      DBG_PR("baseslot %d => %d (top = %d, frame = %d)\n",
+             J->baseslot, J->baseslot + topslot + 3, topslot, framesize);
+      J->baseslot += topslot + 3;
+      J->base = J->slot + J->baseslot;
+      J->maxslot = framesize;
+      emit_raw(J, IRT(IR_FRAME, IRT_VOID), topslot + 3, framesize);
+      for (i = callargs; i < J->maxslot; i++)
+        setSlot(J, i, 0); // clear slots
+      J->framedepth ++;
+      //      printf("exact CALL detected\n");
+      //      LC_ASSERT(0);
     }
     break;
 
@@ -767,6 +824,7 @@ recordIns(JitState *J)
 
  abort_recording:
   recordCleanup(J);
+  recordEvent(EV_ABORT_TRACE, 0);
   return REC_ABORT;
 }
 
@@ -788,6 +846,7 @@ startRecording(JitState *J, BCIns *startpc, Thread *T, Word *base)
   DBG_PR("start recording: %p\n", T);
   T->base = base;
   J->startpc = startpc;
+  J->startbase = base;
   J->cur.startpc = startpc;
   J->mode = 1;
   recordSetup(J, T);

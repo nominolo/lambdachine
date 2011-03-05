@@ -147,6 +147,7 @@ typedef struct _JitState {
   HeapEntry *heapmapbuf;
 
   BCIns *startpc; // Address where recording was started.
+  const Word *startbase;
 
   FoldState fold;
   IRRef1 chain[IR__MAX];
