@@ -88,22 +88,30 @@ compareInt# x# y#
 {-# INLINE timesInt #-}
 {-# INLINE negateInt #-}
 
-plusInt, minusInt, timesInt:: Int -> Int -> Int
+plusInt, minusInt, timesInt, modInt :: Int -> Int -> Int
 (I# x) `plusInt`  (I# y) = I# (x +# y)
 (I# x) `minusInt` (I# y) = I# (x -# y)
 (I# x) `timesInt` (I# y) = I# (x *# y)
+(I# x) `modInt`   (I# y) = I# (x `modInt#` y)
 
 -- XXX: Not quite correct, might overflow
 negateInt :: Int -> Int
 negateInt (I# n) = I# (0# -# n)
 
+modInt# :: Int# -> Int# -> Int#
+x# `modInt#` y#
+  | (x# ># 0#) && (y# <# 0#) ||
+    (x# <# 0#) && (y# ># 0#)    = if r# /=# 0# then r# +# y# else 0#
+  | otherwise                   = r#
+ where
+   !r# = x# `remInt#` y#
+
 
 {-
-quotInt, remInt, divInt, modInt :: Int -> Int -> Int
+quotInt, remInt, divInt :: Int -> Int -> Int
 (I# x) `quotInt`  (I# y) = I# (x `quotInt#` y)
 (I# x) `remInt`   (I# y) = I# (x `remInt#`  y)
 (I# x) `divInt`   (I# y) = I# (x `divInt#`  y)
-(I# x) `modInt`   (I# y) = I# (x `modInt#`  y)
 -}
 
 (++) :: [a] -> [a] -> [a]
@@ -117,3 +125,7 @@ quotInt, remInt, divInt, modInt :: Int -> Int -> Int
 -- >      | otherwise = ...
 otherwise               :: Bool
 otherwise               =  True
+
+map :: (a -> b) -> [a] -> [b]
+map _ []     = []
+map f (x:xs) = f x : map f xs
