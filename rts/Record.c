@@ -437,8 +437,10 @@ recordIns(JitState *J)
       // 
       // TODO: If the stack-level is not the one that we started with,
       // we currently simply abort.  This needs to change.
-      if (J->framedepth != 0)
-	return REC_ABORT;
+      if (J->framedepth != 0) {
+        printf("ABORT: Non-constant stack loop: %d\n.", J->framedepth);
+        goto abort_recording;
+      }
 
       FragmentId id = finishRecording(J);
       return (u4)REC_LOOP | ((u4)id << 8);
