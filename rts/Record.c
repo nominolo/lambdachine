@@ -499,6 +499,7 @@ recordIns(JitState *J)
     break;
 
   case BC_ADDRR: case BC_SUBRR: case BC_MULRR:
+  case BC_DIVRR: case BC_REMRR:
     {
       rb = getSlot(J, bc_b(ins));
       rc = getSlot(J, bc_c(ins));
