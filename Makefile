@@ -185,6 +185,9 @@ bench2: tests/Bench/SumFromTo1.lcbc $(PRIM_MODULES)
 bench2a: tests/Bench/SumFromTo2.lcbc $(PRIM_MODULES)
 	./interp Bench.SumFromTo2
 
+bench2b: tests/Bench/SumFromTo3.lcbc $(PRIM_MODULES)
+	./interp Bench.SumFromTo3
+
 bench3: tests/Bench/Tak.lcbc  $(PRIM_MODULES)
 	./interp Bench.Tak
 
