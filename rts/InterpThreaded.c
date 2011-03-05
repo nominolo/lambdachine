@@ -616,6 +616,10 @@ int engine(Capability *cap)
       T->top = base + framesize;
       code = &info->code;
       pc = info->code.code;
+
+      if (hotcountTick(cap, pc, base))
+        disp = disp_record;
+
       DISPATCH_NEXT;
     }
 
@@ -865,6 +869,10 @@ int engine(Capability *cap)
       T->top = base + framesize;
       code = &info->code;
       pc = info->code.code;
+
+      if (hotcountTick(cap, pc, base))
+        disp = disp_record;
+
       DBG_STACK;
       DISPATCH_NEXT;
 
@@ -981,6 +989,10 @@ int engine(Capability *cap)
 	T->top = base + framesize;
 	code = &info->code;
 	pc = info->code.code;
+
+        if (hotcountTick(cap, pc, base))
+          disp = disp_record;
+
 	DISPATCH_NEXT;
       }
     default:
@@ -1111,6 +1123,10 @@ int engine(Capability *cap)
     T->top = base + framesize;
     code = &info->code;
     pc = info->code.code;
+
+    if (hotcountTick(cap, pc, base))
+      disp = disp_record;
+
     DISPATCH_NEXT;
   }
 
