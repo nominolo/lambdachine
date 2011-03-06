@@ -18,6 +18,7 @@ typedef enum {
   EV_RECORD,
   EV_TRACE,
   EV_ABORT_TRACE,
+  EV_TICK,
 
   // With additional info counters
   EV_CALL,

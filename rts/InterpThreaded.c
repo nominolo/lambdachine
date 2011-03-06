@@ -462,8 +462,33 @@ int engine(Capability *cap)
   DISPATCH_NEXT;
 #endif
 
- op_IFUNC:
  op_FUNC:
+#if LC_HAS_JIT
+  recordEvent(EV_TICK, 0);
+  {
+    // Ignore if we're already recording.
+    if (LC_UNLIKELY(J->mode != 0)) {
+      DISPATCH_NEXT;
+    }
+
+    // Decrement hot counter for this PC
+    //
+    // We take the PC of this instruction to be the start of trace,
+    // but we start recording with the next instruction.  This is fine
+    // since from the trace recorder's point of view FUNC is a NOP.
+    //
+    HotCount c = --cap->hotcount[hotcount_hash(pc-1)];
+    DBG_PR("HOT_TICK: [%d] = %d\n", hotcount_hash(pc-1), c);
+    if (LC_UNLIKELY(c == 0)) {   // Target has become hot.
+      hotcount_set(cap, pc-1, HOTCOUNT_DEFAULT); // Reset hotcount
+      startRecording(J, pc-1, cap->T, base);
+      disp = disp_record;
+    }
+  }
+#endif
+  DISPATCH_NEXT;
+    
+ op_IFUNC:
   // ignore
   DISPATCH_NEXT;
 
@@ -647,9 +672,6 @@ int engine(Capability *cap)
       T->top = base + framesize;
       code = &info->code;
       pc = info->code.code;
-
-      if (hotcountTick(cap, pc, base))
-        disp = disp_record;
 
       DISPATCH_NEXT;
     }
@@ -901,9 +923,6 @@ int engine(Capability *cap)
       code = &info->code;
       pc = info->code.code;
 
-      if (hotcountTick(cap, pc, base))
-        disp = disp_record;
-
       DBG_STACK;
       DISPATCH_NEXT;
 
@@ -935,9 +954,6 @@ int engine(Capability *cap)
       base[-1] = (Word)fnode;
       code = &info->code;
       pc = info->code.code;
-
-      if (hotcountTick(cap, pc, base))
-        disp = disp_record;
 
       DBG_STACK;
       DISPATCH_NEXT;
@@ -1020,9 +1036,6 @@ int engine(Capability *cap)
 	T->top = base + framesize;
 	code = &info->code;
 	pc = info->code.code;
-
-        if (hotcountTick(cap, pc, base))
-          disp = disp_record;
 
 	DISPATCH_NEXT;
       }
@@ -1154,9 +1167,6 @@ int engine(Capability *cap)
     T->top = base + framesize;
     code = &info->code;
     pc = info->code.code;
-
-    if (hotcountTick(cap, pc, base))
-      disp = disp_record;
 
     DISPATCH_NEXT;
   }

@@ -51,6 +51,7 @@ printEvents()
   printBuckets(G_events.exitwork);
   printf("Traces aborted:    %9" FMT_Word64 "\n", G_events.counters[EV_ABORT_TRACE]);
   printf("-----------------------------------------------\n");
+  printf("Ticks:             %9" FMT_Word64 "\n", G_events.counters[EV_TICK]);
 }
 
 LC_FASTCALL void

@@ -388,13 +388,21 @@ printIRBuffer(JitState *J)
          J->cur.nins - REF_BIAS);
 
   for (ref = J->cur.nk; ref < J->cur.nins; ref++) {
+
+    // Don't print boring instructions unless we're debugging.
+#if LC_DEBUG_LEVEL < 2
+    if (IR(ref)->o == IR_NOP ||
+	IR(ref)->o == IR_FRAME || IR(ref)->o == IR_RET)
+      continue;
+#endif
+
     if (ref == nextsnap) {
       printf("          ");
       printSnapshot(J, snap, J->cur.snapmap);
       ++snap;
       if (snap >= J->cur.snap + J->cur.nsnap) {
         snap = NULL; nextsnap = 0;
-      } else 
+      } else
         nextsnap = snap->ref;
     }
     printIRRef(&J->cur, ref);
@@ -468,8 +476,6 @@ recordIns(JitState *J)
   TRef ra, rb, rc;
 
   if (LC_UNLIKELY(J->pc == J->startpc)) {
-    if (J->mode == 1) J->mode = 2;
-    else {
       // We're back at the point where we started recording from.
       // 
       // TODO: If the stack-level is not the one that we started with,
@@ -481,7 +487,6 @@ recordIns(JitState *J)
 
       FragmentId id = finishRecording(J);
       return (u4)REC_LOOP | ((u4)id << 8);
-    }
   }
 
   if (J->needsnap) {
@@ -914,14 +919,13 @@ initJitState(JitState *J)
 LC_FASTCALL void
 startRecording(JitState *J, BCIns *startpc, Thread *T, Word *base)
 {
-  DBG_PR("start recording: %p\n", T);
   T->base = base;
   J->startpc = startpc;
   J->startbase = base;
   J->cur.startpc = startpc;
   J->mode = 1;
   recordSetup(J, T);
-  DBG_PR("*** Starting to record at: %p\n", startpc);
+  DBG_PR("*** Starting to record at: %p, base = %p\n", startpc, base);
 }
 
 FragmentId

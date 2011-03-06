@@ -227,7 +227,7 @@ getAPKClosure(Closure **res_clos, BCIns **res_pc, int nargs)
     info->code.framesize = nargs + 1;
     info->code.arity = nargs;
     info->code.sizelits = 0;
-    info->code.sizecode = 4;
+    info->code.sizecode = 5;
     info->code.lits = NULL;
     info->code.littypes = NULL;
     info->code.code = xmalloc(info->code.sizecode * sizeof(BCIns));
@@ -237,10 +237,11 @@ getAPKClosure(Closure **res_clos, BCIns **res_pc, int nargs)
     // The EVAL at the beginning is never executed.  It is only a place to
     // attach the liveness mask and to make sure the closure code can be
     // printed.
-    code[0] = BCINS_AD(BC_EVAL, nargs, 0);
-    code[1] = cast(BCIns, (1 << nargs) - 1); // liveness mask
-    code[2] = BCINS_AD(BC_MOV_RES, nargs, 0); // rN = result
-    code[3] = BCINS_AD(BC_CALLT, nargs, nargs);
+    code[0] = BCINS_AD(BC_FUNC, nargs + 1, 0);
+    code[1] = BCINS_AD(BC_EVAL, nargs, 0);
+    code[2] = cast(BCIns, (1 << nargs) - 1); // liveness mask
+    code[3] = BCINS_AD(BC_MOV_RES, nargs, 0); // rN = result
+    code[4] = BCINS_AD(BC_CALLT, nargs, nargs);
 
     Closure *cl = allocStaticClosure(wordsof(ClosureHeader));  // no payload
     setInfo(cl, (InfoTable*)info);
@@ -250,7 +251,7 @@ getAPKClosure(Closure **res_clos, BCIns **res_pc, int nargs)
     //printf("\033[0m");
 
     apk_closures[nargs - 1] = cl;
-    apk_return_pcs[nargs - 1] = &code[2];
+    apk_return_pcs[nargs - 1] = &code[3];
   }
 
   *res_clos = apk_closures[nargs - 1];
@@ -268,19 +269,21 @@ getAPInfoTable(int nargs)
     return ap_infos[nargs - 1];
 
   int codesize =
+    1 +     // FUNC
     4 +     // load and evaluate function
     nargs + // load arguments
     1;      // CALLT
   BCIns *code = xmalloc(sizeof(BCIns) * codesize);
-  code[0] = BCINS_AD(BC_LOADFV, nargs, 1); // load function ...
-  code[1] = BCINS_AD(BC_EVAL, nargs, 0);   // and evaluate it
-  code[2] = nargs << 1; // liveness mask
-  code[3] = BCINS_AD(BC_MOV_RES, nargs, 0);
+  code[0] = BCINS_AD(BC_FUNC, nargs + 1, 0);
+  code[1] = BCINS_AD(BC_LOADFV, nargs, 1); // load function ...
+  code[2] = BCINS_AD(BC_EVAL, nargs, 0);   // and evaluate it
+  code[3] = nargs << 1; // liveness mask
+  code[4] = BCINS_AD(BC_MOV_RES, nargs, 0);
   int i;
   for (i = 0; i < nargs; i++)
-    code[i + 4] = BCINS_AD(BC_LOADFV, i, i + 2); // load each argument
+    code[i + 5] = BCINS_AD(BC_LOADFV, i, i + 2); // load each argument
   // finally, tailcall rN(r0, ..., r{N-1})
-  code[nargs + 4] = BCINS_AD(BC_CALLT, nargs, nargs);
+  code[nargs + 5] = BCINS_AD(BC_CALLT, nargs, nargs);
 
   ThunkInfoTable *info = allocInfoTable(wordsof(ThunkInfoTable));
   info->i.type = THUNK;
