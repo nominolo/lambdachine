@@ -434,6 +434,25 @@ int engine(Capability *cap)
   }
 
  op_JFUNC:
+  {
+    u4 frag_id = opC;
+    Fragment *F = J->fragment[frag_id];
+    Closure *cl;
+
+    printf("re-entering trace: %d\n", frag_id);
+
+    LC_ASSERT(F != NULL);
+    recordEvent(EV_TRACE, 0);
+    irEngine(cap, F);
+    DBG_PR("*** Continuing at: pc = %p, base = %p\n", T->pc, T->base);
+
+    pc = T->pc;
+    base = T->base;
+    cl = (Closure*)base[-1];
+    code = &getFInfo(cl)->code;
+    DISPATCH_NEXT;
+  }
+
  op_IFUNC:
  op_FUNC:
   // ignore

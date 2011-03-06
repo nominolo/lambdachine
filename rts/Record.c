@@ -872,7 +872,9 @@ finishRecording(JitState *J)
   printHeapInfo(J);
 
   J->cur.orig = *J->startpc;
-  *J->startpc = BCINS_AD(BC_JFUNC, J->nfragments, 0);
+  *J->startpc = BCINS_AD(BC_JFUNC, 0, J->nfragments);
+  DBG_PR("Overwriting startpc = %p, with: %x\n",
+         J->startpc, *J->startpc);
   return registerCurrentFragment(J);
 }
 
