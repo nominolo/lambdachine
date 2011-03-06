@@ -615,26 +615,86 @@ recordIns(JitState *J)
       u4 nargs = bc_d(ins);
       Closure *fnode = (Closure*)tbase[bc_a(ins)];
       FuncInfoTable *info;
+      u4 farity;
 
-      if (getInfo(fnode)->type != FUN ||
-          getFInfo(fnode)->code.arity != nargs)
+      if (getInfo(fnode)->type != FUN) {
+        printf("ABORT: CALLT with non-FUN.\n");
         goto abort_recording;
+      }
 
       info = getFInfo(fnode);
-      // Guard for info table, as usual
-      TRef rinfo = emitKWord(J, (Word)info, LIT_INFO);
-      ra = getSlot(J, bc_a(ins));
-      rb = emit(J, IRT(IR_ILOAD, IRT_INFO), ra, 0);
-      emit(J, IRT(IR_EQ, IRT_VOID), rb, rinfo);
-      setSlot(J, -1, ra);
+      farity = info->code.arity;
 
-      J->maxslot = info->code.framesize;
-      // Invalidate non-argument slots:
-      u4 i;
-      for (i = nargs; i < J->maxslot; i++) setSlot(J, i, 0);
-      emit_raw(J, IRT(IR_FRAME, IRT_VOID), 0, J->maxslot);
+      if (farity == nargs) {
+        // Exact application
 
-      IF_DBG_LVL(1, printSlots(J));
+        // Guard for info table, as usual
+        TRef rinfo = emitKWord(J, (Word)info, LIT_INFO);
+        ra = getSlot(J, bc_a(ins));
+        rb = emit(J, IRT(IR_ILOAD, IRT_INFO), ra, 0);
+        emit(J, IRT(IR_EQ, IRT_VOID), rb, rinfo);
+        setSlot(J, -1, ra);
+
+        J->maxslot = info->code.framesize;
+        // Invalidate non-argument slots:
+        u4 i;
+        for (i = nargs; i < J->maxslot; i++) setSlot(J, i, 0);
+        emit_raw(J, IRT(IR_FRAME, IRT_VOID), 0, J->maxslot);
+
+        IF_DBG_LVL(1, printSlots(J));
+
+      } else if (farity < nargs) {
+        // Overapplication
+        u4 extra_args = nargs - farity;
+        TRef extras[extra_args];
+        int i;
+        u4 topslot = extra_args + 1;
+        u4 baseslot = J->T->base - J->startbase;
+        u4 framesize = info->code.framesize;
+        BCIns *ap_return_pc;
+        Closure *ap_closure;
+        getAPKClosure(&ap_closure, &ap_return_pc, extra_args);
+
+        // First the guard
+        TRef rinfo = emitKWord(J, (Word)info, LIT_INFO);
+        ra = getSlot(J, bc_a(ins));
+        rb = emit(J, IRT(IR_ILOAD, IRT_INFO), ra, 0);
+        emit(J, IRT(IR_EQ, IRT_VOID), rb, rinfo);
+
+        // Save references of extra args.
+        for (i = 0; i < extra_args; i++)
+          extras[i] = getSlot(J, farity + i);
+
+        // Set stack frame info
+        setSlot(J, -1, emitKWord(J, (Word)ap_closure, LIT_CLOSURE));
+        setSlot(J, topslot + 0, emitKBaseOffset(J, baseslot));
+        setSlot(J, topslot + 1, emitKWord(J, (Word)ap_return_pc, LIT_PC));
+        setSlot(J, topslot + 2, ra); // The function
+
+        // Copy immediate arguments
+        for (i = 0; i < nargs; i++)
+          setSlot(J, topslot + 3 + i, getSlot(J, i));
+
+        // Fill in AP continuation frame
+        for (i = 0; i < extra_args; i++)
+          setSlot(J, i, extras[i]);
+        setSlot(J, extra_args, 0); // Clear slot, used for result
+
+        // Finally, update meta info
+        J->baseslot += topslot + 3;
+        J->base = J->slot + J->baseslot;
+        J->maxslot = framesize;
+        emit_raw(J, IRT(IR_FRAME, IRT_VOID), topslot + 3, framesize);
+        for (i = nargs; i < framesize; i++)
+          setSlot(J, i, 0); // clear other slots
+        J->framedepth++;
+
+      } else {
+        // Partial Application
+
+        printf("ABORT: CALLT partial application.\n");
+        goto abort_recording;
+      }
     }
     break;
 
