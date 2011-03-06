@@ -1305,7 +1305,7 @@ optDeadAssignElim(JitState *J)
       if (ir->o == IR_UPDATE) {
         printf("Found UPDATE: \n");
         printIR(&J->cur, *ir);
-        if (!getBit(lives, ir->op1 - REF_BIAS)) {
+        if (!irref_islit(ir->op1) && !getBit(lives, ir->op1 - REF_BIAS)) {
           ir->o = IR_NOP;
           // Update prev pointer.
           if (ref == prev_upd)
