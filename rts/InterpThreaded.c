@@ -434,10 +434,16 @@ int engine(Capability *cap)
   }
 
  op_JFUNC:
+
+#if LC_HAS_JIT
   {
     u4 frag_id = opC;
     Fragment *F = J->fragment[frag_id];
     Closure *cl;
+
+    // Make sure thread data is consistent.
+    T->base = base;
+    T->pc = pc - 1;
 
     printf("re-entering trace: %d\n", frag_id);
 
@@ -452,6 +458,9 @@ int engine(Capability *cap)
     code = &getFInfo(cl)->code;
     DISPATCH_NEXT;
   }
+#else
+  DISPATCH_NEXT;
+#endif
 
  op_IFUNC:
  op_FUNC:

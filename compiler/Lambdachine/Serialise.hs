@@ -230,8 +230,10 @@ encodeModule mdl = toLazyByteString builder
          lit_ids = M.fromAscList (zip (S.toList literals) [0..])
      emit $ varUInt (fromIntegral (M.size lit_ids))
      let (codesize, _) = newAddresses code
-     emit $ varUInt (i2w codesize)
+     emit $ varUInt (i2w (codesize + 1))
      encodeLiterals lit_ids
+     emit $ fromWrite $ writeWord32be $
+       insAD opc_FUNC (i2b (fc_framesize code)) 0
      encodeInstructions lit_ids code
      return ()
      --putLinearIns lit_ids (Lst Stop)  -- bytecode dummy

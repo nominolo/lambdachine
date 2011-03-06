@@ -811,6 +811,17 @@ recordIns(JitState *J)
     }
     break;
 
+  case BC_FUNC:
+    break;
+
+  case BC_IFUNC:
+    // TODO: Should we abort tracing here?
+    break;
+
+  case BC_JFUNC:
+    // TODO: Should we link traces here?
+    break;
+
   default:
     DBG_PR("record: Ignoring %s\n", ins_name[op]);
     LC_ASSERT(0);
