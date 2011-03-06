@@ -1,4 +1,4 @@
-{-# LANGUAGE MagicHash, NoImplicitPrelude #-}
+{-# LANGUAGE MagicHash, NoImplicitPrelude, Rank2Types #-}
 module GHC.Base
   ( module GHC.Base
   , module GHC.Bool
@@ -129,3 +129,12 @@ otherwise               =  True
 map :: (a -> b) -> [a] -> [b]
 map _ []     = []
 map f (x:xs) = f x : map f xs
+
+foldr :: (a -> b -> b) -> b -> [a] -> b
+foldr k z = go
+  where
+    go []     = z
+    go (y:ys) = y `k` go ys
+
+build :: (forall b. (a -> b -> b) -> b -> b) -> [a]
+build g = g (:) []

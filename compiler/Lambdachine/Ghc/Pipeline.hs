@@ -30,7 +30,7 @@ compileToCore file = do
   case find ((== file) . msHsFilePath) mod_graph of
     Just mod_summary -> 
       withTempSession (\env ->
-                         env{ hsc_dflags = updOptLevel 1 $ ms_hspp_opts mod_summary }) $
+                         env{ hsc_dflags = updOptLevel 0 $ ms_hspp_opts mod_summary }) $
         hscParse mod_summary >>=
           hscTypecheck mod_summary >>=
             hscDesugar mod_summary >>=

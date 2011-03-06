@@ -194,6 +194,9 @@ bench3: tests/Bench/Tak.lcbc  $(PRIM_MODULES)
 bench4: tests/Bench/Primes.lcbc $(PRIM_MODULES)
 	./interp Bench.Primes
 
+bench5: tests/Bench/SumSquare1.lcbc $(PRIM_MODULES)
+	./interp Bench.SumSquare1
+
 pr:
 	@echo $(PRIM_MODULES)
 
