@@ -61,7 +61,7 @@ recordEvent_(EventType ev, u4 data)
   switch (ev) {
   case EV_CALL: G_events.callargs[data - 1]++; break;
   case EV_CASE: G_events.caseargs[data - 1]++; break;
-  case EV_EXIT: G_events.exitwork[data - 1]++; break;
+  case EV_EXIT: if (data > 0) G_events.exitwork[data - 1]++; break;
   case EV_ALLOC: G_events.allocsize[data - 1]++; break;
   default: LC_ASSERT(0); break;
   }
