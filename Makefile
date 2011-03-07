@@ -176,26 +176,38 @@ test12: tests/Bc0012.lcbc  $(PRIM_MODULES)
 test13: tests/Bc0013.lcbc $(PRIM_MODULES)
 	./interp Bc0013
 
+#
+# To run benchmark without the JIT enabled:
+#
+# $ make bench<n> NOJIT=1
+#
+
+ifeq ($(NOJIT),)
+BENCH_FLAGS ?=
+else
+BENCH_FLAGS = --no-jit
+endif
+
 bench1: tests/Bench/Append.lcbc $(PRIM_MODULES)
-	./interp Bench.Append
+	./interp $(BENCH_FLAGS) Bench.Append
 
 bench2: tests/Bench/SumFromTo1.lcbc $(PRIM_MODULES)
-	./interp Bench.SumFromTo1
+	./interp $(BENCH_FLAGS) Bench.SumFromTo1
 
 bench2a: tests/Bench/SumFromTo2.lcbc $(PRIM_MODULES)
-	./interp Bench.SumFromTo2
+	./interp $(BENCH_FLAGS) Bench.SumFromTo2
 
 bench2b: tests/Bench/SumFromTo3.lcbc $(PRIM_MODULES)
-	./interp Bench.SumFromTo3
+	./interp $(BENCH_FLAGS) Bench.SumFromTo3
 
 bench3: tests/Bench/Tak.lcbc  $(PRIM_MODULES)
-	./interp Bench.Tak
+	./interp $(BENCH_FLAGS) Bench.Tak
 
 bench4: tests/Bench/Primes.lcbc $(PRIM_MODULES)
-	./interp Bench.Primes
+	./interp $(BENCH_FLAGS) Bench.Primes
 
 bench5: tests/Bench/SumSquare1.lcbc $(PRIM_MODULES)
-	./interp Bench.SumSquare1
+	./interp $(BENCH_FLAGS) Bench.SumSquare1
 
 pr:
 	@echo $(PRIM_MODULES)
