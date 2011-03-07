@@ -121,6 +121,13 @@ int engine(Capability *cap)
     for (i = 0; i < countof(disp1); i++)
       disp_record[i] = &&recording;
   }
+
+  if (cap->flags & CF_NO_JIT) {
+    // Disable the JIT by overriding the places where a new trace may
+    // be started.
+    disp1[BC_FUNC] = disp1[BC_IFUNC];
+  }
+
 #endif
   Word *base = T->base;
   // The program counter always points to the *next* instruction to be

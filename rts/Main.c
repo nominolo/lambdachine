@@ -13,6 +13,7 @@ typedef struct {
   const char  *input_file;
   const char  *main_closure;
   int          print_loader_state;
+  int          disable_jit;
 } Opts;
 
 #define MAX_CLOSURE_NAME_LEN 512
@@ -20,7 +21,8 @@ typedef struct {
 static Opts opts = {
   .input_file = "Bc0005",
   .main_closure = "test",
-  .print_loader_state = 0
+  .print_loader_state = 0,
+  .disable_jit = 0
 };
 
 int
@@ -34,6 +36,7 @@ main(int argc, char *argv[])
 
   static struct option long_options[] = {
     {"print-loader-state", no_argument, &opts.print_loader_state, 1},
+    {"no-jit",             no_argument, &opts.disable_jit, 1},
     {"no-run",             no_argument, 0, 'l'},
     {"entry",              required_argument, 0, 'e'},
     {"help",               no_argument, 0, 'h'},
@@ -70,6 +73,7 @@ main(int argc, char *argv[])
              "     --no-run     Load module only.\n"
              "     --print-loader-state\n"
              "                  Print static closures and info tables after loading.\n"
+             "     --no-jit     Don't enable JIT.\n"
              "\n",
              argv[0]);
       exit(0);
@@ -127,6 +131,9 @@ main(int argc, char *argv[])
     fprintf(stderr, "ERROR: Closure not found: %s\n", opts.main_closure);
     exit(1);
   }
+
+  if (opts.disable_jit)
+    G_cap0->flags |= CF_NO_JIT;
 
   T0 = createThread(G_cap0, 1024);
   clos0 = startThread(T0, clos0);

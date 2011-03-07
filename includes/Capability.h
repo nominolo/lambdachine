@@ -10,9 +10,14 @@ typedef int AsmFunction;
 
 #define DISPATCH_TABLE_LEN   64
 
+typedef enum {
+  CF_NO_JIT = 1
+} CapabilityFlag;
+
 /* The VM state associated with an OS thread. */
 struct Capability_ {
   Thread   *T;                 /* Currently running thread. */
+  u4        flags;
 #if LC_HAS_JIT
   JitState  J;
   HotCount  hotcount[HOTCOUNT_SIZE]; /* Hot counters. */

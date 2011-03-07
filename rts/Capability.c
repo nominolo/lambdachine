@@ -28,6 +28,9 @@ void
 initialiseCapability(Capability *cap)
 {
   int i;
+
+  cap->flags = 0;
+
 #if LC_HAS_JIT
   // Initialise hot counters.
   for (i = 0; i < HOTCOUNT_SIZE; i++)
