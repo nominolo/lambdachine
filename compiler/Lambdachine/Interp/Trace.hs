@@ -453,6 +453,7 @@ record1 root env heap args itbl pc ins rs = do
      emitRaw rs (UpdateR old_ptr new_ptr)
      record_return 1
 
+   record_case :: BcVar -> [(BcTag, S.Set BcVar, label)] -> IO Bool
    record_case bc@(BcReg reg) alts = do
      -- We don't actually need to look at the alternatives, because
      -- the interpreter will do the selection and then call record

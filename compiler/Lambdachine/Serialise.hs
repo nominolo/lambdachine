@@ -326,8 +326,11 @@ insLength' ins = case ins of
   Mid _ -> 1
  where
    ceilDiv4 x = (x + 3) `div` 4
+
+   arg_len :: [a] -> Int
    arg_len args = ceilDiv4 (length args)
 
+   alt_len :: CaseType -> [(BcTag, a, label)] -> Int
    alt_len casetype alts =
      let (_,_,_,len) = viewCaseAlts casetype alts in len
 
@@ -457,6 +460,7 @@ putLinearIns lit_ids new_addrs ins_id ins = case ins of
   Mid m -> error $ pretty m
   
  where
+   binOpOpcode :: OpTy -> BinOp -> Word8
    binOpOpcode IntTy OpAdd = opc_ADDRR
    binOpOpcode IntTy OpSub = opc_SUBRR
    binOpOpcode IntTy OpMul = opc_MULRR
