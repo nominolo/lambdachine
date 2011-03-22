@@ -8,6 +8,7 @@ ifeq ($(DIST),)
 DIST := $(shell pwd)/dist
 endif
 
+HC ?= ghc
 CC ?= gcc
 
 HSBUILDDIR = $(DIST)/build
@@ -81,7 +82,7 @@ HSFLAGS = -package ghc -icompiler -hide-package mtl \
           -odir $(HSBUILDDIR) -hidir $(HSBUILDDIR)
 
 $(HSDEPFILE):
-	ghc -M $(HSFLAGS) compiler/Main.hs -dep-makefile $(HSDEPFILE)
+	$(HC) -M $(HSFLAGS) compiler/Main.hs -dep-makefile $(HSDEPFILE)
 
 # include $(HSDEPFILE)
 
@@ -89,7 +90,7 @@ $(HSDEPFILE):
 	@:
 
 %.o: %.hs
-	ghc -c $< $(HSFLAGS)
+	$(HC) -c $< $(HSFLAGS)
 
 HSSRCS := $(shell find compiler -name '*.hs')
 
@@ -103,7 +104,7 @@ HSSRCS := $(shell find compiler -name '*.hs')
 # .PHONY:
 $(LCC): $(HSSRCS) compiler/Opcodes.h
 	@mkdir -p $(HSBUILDDIR)
-	ghc --make $(HSFLAGS)  compiler/Main.hs -o $@
+	$(HC) --make $(HSFLAGS)  compiler/Main.hs -o $@
 
 .PHONY: clean
 clean:
