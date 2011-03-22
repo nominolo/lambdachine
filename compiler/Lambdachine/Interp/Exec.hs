@@ -380,6 +380,7 @@ interp1 vm0@VMState{ vm_env = env } heap
          --pprint $ text "Found tag:" <+> ppr tag <+> text "->" <+> ppr pc'
          k vm heap bco pc' args
     where
+      find_alt :: Int -> [(BcTag, S.Set BcVar, Int)] -> Int
       find_alt tag ((DefaultTag, _, offs) : alts') = find_alt' tag alts' offs
       find_alt tag alts' = find_alt' tag alts' (error "Unmatched pattern")
 
