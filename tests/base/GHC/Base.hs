@@ -106,6 +106,20 @@ x# `modInt#` y#
  where
    !r# = x# `remInt#` y#
 
+divInt :: Int -> Int -> Int
+(I# x) `divInt`   (I# y) = I# (x `divInt#`  y)
+
+divInt# :: Int# -> Int# -> Int#
+x# `divInt#` y#
+        -- Be careful NOT to overflow if we do any additional arithmetic
+        -- on the arguments...  the following  previous version of this
+        -- code has problems with overflow:
+--    | (x# ># 0#) && (y# <# 0#) = ((x# -# y#) -# 1#) `quotInt#` y#
+--    | (x# <# 0#) && (y# ># 0#) = ((x# -# y#) +# 1#) `quotInt#` y#
+    | (x# ># 0#) && (y# <# 0#) = ((x# -# 1#) `quotInt#` y#) -# 1#
+    | (x# <# 0#) && (y# ># 0#) = ((x# +# 1#) `quotInt#` y#) -# 1#
+    | otherwise                = x# `quotInt#` y#
+
 
 {-
 quotInt, remInt, divInt :: Int -> Int -> Int
@@ -137,4 +151,6 @@ foldr k z = go
     go (y:ys) = y `k` go ys
 
 build :: (forall b. (a -> b -> b) -> b -> b) -> [a]
-build g = g (:) []
+build g = g k []
+ where k x xs = x : xs
+       {-# NOINLINE k #-}

@@ -128,8 +128,14 @@ drop (I# n#) ls
         drop# 0# xs      = xs
         drop# _  xs@[]   = xs
         drop# m# (_:xs)  = drop# (m# -# 1#) xs
-
+{-
 splitAt                :: Int -> [a] -> ([a],[a])
+splitAt (I# n#) ls@(x:xs)
+  | n# <=# 0# = ([], ls)
+  | otherwise = let (xs', xs'') = splitAt (I# (n# -# 1#)) xs in
+                (x:xs', xs'')
+-}
+{-
 splitAt (I# n#) ls
   | n# <# 0#    = ([], ls)
   | otherwise   = splitAt# n# ls
@@ -140,13 +146,14 @@ splitAt (I# n#) ls
         splitAt# m# (x:xs) = (x:xs', xs'')
           where
             (xs', xs'') = splitAt# (m# -# 1#) xs
-
+-}
+{-
 span                    :: (a -> Bool) -> [a] -> ([a],[a])
 span _ xs@[]            =  (xs, xs)
 span p xs@(x:xs')
          | p x          =  let (ys,zs) = span p xs' in (x:ys,zs)
          | otherwise    =  ([],xs)
-
+-}
 (!!)                    :: [a] -> Int -> a
 xs !! (I# n0)
   | n0 <# 0# = undef
