@@ -55,7 +55,7 @@ data LinearIns' b
 type LinearIns = LinearIns' BlockId
 type BcIns = BcIns' Label
 
-instance Biplate LinearIns BcVar where
+instance Biplate (LinearIns' x) BcVar where
   biplate (Fst ins) = plate Fst |+ ins
   biplate (Mid ins) = plate Mid |+ ins
   biplate (Lst ins) = plate Lst |+ ins

@@ -68,7 +68,16 @@ finaliseCode :: Int -> LinearCode -> FinalCode
 finaliseCode arity (LinearCode code0 lives labels) =
   FinalCode framesize code
  where
-   framesize = arity `max` Vec.maximum (Vec.map S.size lives)
+   -- Frame size is determined by the largest register used by the
+   -- register allocator.
+   framesize = arity `max` (maxreg + 1)
+
+   BcReg maxreg =
+     Vec.maximum (Vec.map (maximumDflt (BcReg 0) . universeBi) code)
+
+   maximumDflt n [] = n
+   maximumDflt _ xs = maximum xs
+
    code1 = Vec.imap (\offs ins -> (ins, keep offs ins)) code0
    code = Vec.imap (adjust_idx new_labels0) 
         . Vec.map fst
