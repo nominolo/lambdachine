@@ -196,7 +196,7 @@ recordSetup(JitState *J, Thread *T)
   J->last_result = 0;
   J->framedepth = 0;
 
-  J->sizekwords = 16;
+  J->sizekwords = 500;
   J->cur.kwords = J->kwordsbuf = xmalloc(J->sizekwords * sizeof(Word));
   J->cur.nkwords = 0;
 
