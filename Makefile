@@ -13,6 +13,7 @@ CC ?= gcc
 
 HSBUILDDIR = $(DIST)/build
 LCC = $(HSBUILDDIR)/lcc
+CABAL ?= cabal
 
 DEPDIR = $(DIST)/.deps
 DEPDIRS = $(DEPDIR) $(DEPDIR)/rts
@@ -78,7 +79,7 @@ compiler/Opcodes.h: utils/genopcodes
 
 HSDEPFILE = compiler/.depend
 
-HSFLAGS = -package ghc -icompiler -hide-package mtl \
+HSFLAGS = -package ghc -icompiler \
           -odir $(HSBUILDDIR) -hidir $(HSBUILDDIR)
 
 $(HSDEPFILE):
@@ -111,11 +112,20 @@ clean:
 	rm -f $(SRCS:%.c=%.o) utils/*.o interp compiler/.depend \
 		compiler/lcc
 	rm -rf $(HSBUILDDIR)
+
+.PHONY: install-deps
+install-deps:
+	$(CABAL) install 'ghc-paths ==0.1.*' 'cmdargs == 0.6.*' \
+	 'mtl == 2.*' 'blaze-builder ==0.3.*' 'vector == 0.7.*' \
+	 'utf8-string == 0.3.*' 'ansi-wl-pprint == 0.6.*' \
+         'binary == 0.5.*' 'uniplate == 1.6.*' 'hoopl >= 3.8.6.1' \
+	 'value-supply == 0.6.*'
+	
 # find compiler -name "*.hi" -delete
 
 # Rules for building built-in packages
 
-LCCFLAGS = --dump-bytecode
+LCCFLAGS = --dump-bytecode --dump-core-binds
 
 tests/ghc-prim/%.lcbc: tests/ghc-prim/%.hs
 	cd tests/ghc-prim && \

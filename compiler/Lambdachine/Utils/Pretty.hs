@@ -34,9 +34,11 @@ import Debug.Trace
 class Pretty a where
   ppr :: a -> PDoc
 
+{-
 instance Monoid P.Doc where
   mempty = P.empty
   mappend = (P.<>)
+-}
 
 type PDoc = PrettyStyle -> P.Doc
 

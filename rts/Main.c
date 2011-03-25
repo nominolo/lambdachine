@@ -25,6 +25,8 @@ static Opts opts = {
   .disable_jit = 0
 };
 
+void loadWiredInModules();
+
 int
 main(int argc, char *argv[])
 {
@@ -111,8 +113,9 @@ main(int argc, char *argv[])
   }
 
   initVM();
-  initLoader();
   initStorageManager();
+  initLoader();
+  loadWiredInModules();
   loadModule(opts.input_file);
 
   if (opts.print_loader_state) {
@@ -141,4 +144,9 @@ main(int argc, char *argv[])
   printEvents();
 
   return 0;
+}
+
+void loadWiredInModules()
+{
+  loadModule("Control.Exception.Base");
 }
