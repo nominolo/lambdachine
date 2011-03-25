@@ -37,7 +37,7 @@ SRCS = rts/Bytecode.c rts/Capability.c rts/ClosureFlags.c \
        rts/Loader.c rts/MiscClosures.c rts/PrintClosure.c \
        rts/Thread.c rts/StorageManager.c \
        rts/Main.c \
-       rts/Record.c rts/PrintIR.c \
+       rts/Record.c rts/PrintIR.c rts/OptimiseIR.c \
        rts/Snapshot.c rts/HeapInfo.c rts/Bitset.c \
        rts/InterpIR.c rts/Stats.c
 

@@ -180,16 +180,20 @@ void initJitState(JitState *J);
 LC_FASTCALL void startRecording(JitState *J, BCIns *, Thread *, Word *base);
 void recordSetup(JitState *J, Thread *T);
 FragmentId finishRecording(JitState *J);
-TRef LC_FASTCALL emitIR(JitState *J);
-TRef foldIR(JitState *J);
+LC_FASTCALL TRef emitIR(JitState *J);
+LC_FASTCALL TRef emitLoadSlot(JitState *J, i4 slot);
+LC_FASTCALL TRef emitKWord(JitState *J, Word w, LitType lt);
+RecordResult recordIns(JitState *J);
+
+LC_FASTCALL TRef optFold(JitState *J);
 LC_FASTCALL TRef optCSE(JitState *);
-void optUnrollLoop(JitState *J);
+LC_FASTCALL void optUnrollLoop(JitState *J);
 LC_FASTCALL void optDeadCodeElim(JitState *J);
 LC_FASTCALL void optDeadAssignElim(JitState *J);
-void growIRBufferTop(JitState *J);
-TRef emitLoadSlot(JitState *J, i4 slot);
-RecordResult recordIns(JitState *J);
+LC_FASTCALL TRef optForward(JitState *J);
+
 LC_FASTCALL IRRef findPhiTwin(JitState *J, IRRef ref);
+void growIRBufferTop(JitState *J);
 
 int irEngine(Capability *cap, Fragment *F);
 
@@ -223,7 +227,7 @@ INLINE_HEADER TRef emit_raw(JitState *J, u2 ot, IRRef1 a, IRRef1 b)
 INLINE_HEADER TRef emit(JitState *J, u2 ot, IRRef1 a, IRRef1 b)
 {
   setFoldIR(J, ot, a, b);
-  return foldIR(J);
+  return optFold(J);
 }
 
 INLINE_HEADER void traceError(JitState *J, int n)
