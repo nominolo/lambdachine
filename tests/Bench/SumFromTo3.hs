@@ -49,4 +49,4 @@ root upper =
   let upper' = succInt upper in
   (l `plusInt` l) `eqInt` (upper' `timesInt` (succInt upper'))
 
-test = root (I# 10#)
+test = root (I# 100#)

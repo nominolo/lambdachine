@@ -42,4 +42,4 @@ root upper =
   let !l = sum (enumFromTo one upper) in
   (l `plusInt` l) `eqInt` (upper `timesInt` (succInt upper))
 
-test = root (I# 20#)
+test = root (I# 100#)
