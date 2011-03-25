@@ -7,4 +7,6 @@
 void printIR(Fragment *, IRIns ir);
 void printIRRef(Fragment *, IRRef1 ref);
 
+void printPrettyIR(Fragment *F, int fragment_id);
+
 #endif

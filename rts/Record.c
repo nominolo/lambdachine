@@ -917,9 +917,12 @@ finishRecording(JitState *J)
   //    heapSCCs(J, i);
 
   printf("*** Stopping to record.\n");
+
+  printPrettyIR(&J->cur, J->nfragments);
+#ifndef NDEBUG
   printIRBuffer(J);
   printHeapInfo(J);
-
+#endif
   J->cur.orig = *J->startpc;
   *J->startpc = BCINS_AD(BC_JFUNC, 0, J->nfragments);
   DBG_PR("Overwriting startpc = %p, with: %x\n",
