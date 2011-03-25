@@ -46,13 +46,21 @@ typedef u4 SnapEntry;
 #define snap_ref(sn)            ((sn) & 0xffff)
 #define snap_slot(sn)           (cast(BCReg, ((sn) >> 24)))
 
+/* 
+ * Heap Info
+ * ---------
+ *
+ * The heap info is an abstraction for the contents of the heap.  Heap
+ * info entries are initialised when an object is allocated and will
+ * not be modified after that.  To support UPDATE operations, a special field 
+ * is reserved to point to the new new value if needed.
+ *
+ * 
+ */
 
-typedef u4 HeapEntry;
+typedef IRRef1 HeapEntry;
 
-#define HEAP_TR(offs, tr) \
-  (((HeapEntry)(offs) << 24) | ((HeapEntry)tref_ref(tr)))
-
-#define heap_ref(hr)            ((hr) & 0xffff)
+#define heap_ref(hr)            (hr)
 
 typedef struct _HeapInfo {
   u2 mapofs;
@@ -61,6 +69,7 @@ typedef struct _HeapInfo {
   u1 nent;    // Number of `HeapEntry`s used
   u1 compact; // non-zero if fields are in order.
   u1 loop;
+  IRRef1 ind; // Points to the new object after an UPDATE.
   u2 dfs;
   u2 scc;
 } HeapInfo;

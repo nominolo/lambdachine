@@ -62,7 +62,7 @@ newHeapInfo(JitState *J, IRRef1 ref, InfoTable *info)
   hp->mapofs = J->cur.nheapmap;
   hp->ref = ref;
   hp->nfields = nfields;
-  hp->nent = (nfields + 1) / 2;
+  hp->nent = nfields;
   hp->dfs = hp->scc = 0;
   hp->loop = 0;
   growHeapInfoMapBuffer(J, J->cur.nheapmap + hp->nent);
@@ -116,9 +116,7 @@ printHeapInfo(JitState *J)
     printIRRef(&J->cur, hp->ref);
     printf("=> ");
     for (j = 0; j < hp->nfields; j++) {
-      HeapEntry *he = &J->cur.heapmap[hp->mapofs + (j >> 1)];
-      IRRef1 ref = j & 1 ? *he >> 16 : *he & 0xffff;
-      printIRRef(&J->cur, ref);
+      printIRRef(&J->cur, getHeapInfoField(&J->cur, hp, j));
     }
     printf("\n");
   }
