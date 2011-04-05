@@ -20,7 +20,7 @@ LuaJIT.  The problem it is trying to solve is this:
 
     This can help to avoid errors.
 
-LuaJIT uses *biased references* for this purpose:
+LuaJIT uses **biased references** for this purpose:
 
     typedef uint16_t Ref;  // The type of references
 
@@ -39,19 +39,19 @@ therefore have a value range of
 
     { NULL } + { -32767 ... +32767 }
 
-And we have `NULL = 0`.  To avoid errors when using a buffer which is
+and we have `NULL = 0`.  To avoid errors when using a buffer which is
 indexed by such references, the buffer is biased as well.  To create a
 buffer with the range `ref_lo` to `ref_hi`, we use this function:
 
     thing_t *allocBuffer(Ref ref_lo, Ref ref_hi)
     {
         assert(ref_lo < ref_hi);
-	uint32_t size = (uint32_t)ref_hi - (uint32_t)ref_hi + 1;
-	thing_t *buf = malloc(size * sizeof(thing_t));
+        uint32_t size = (uint32_t)ref_hi - (uint32_t)ref_hi + 1;
+        thing_t *buf = malloc(size * sizeof(thing_t));
 
-	// Return the biased buffer.  The intuition is that we want
-	// &biased_buf[ref_lo] == &buf[0];
-	return (buf - ref_lo);
+        // Return the biased buffer.  The intuition is that we want
+        // &biased_buf[ref_lo] == &buf[0];
+        return (buf - ref_lo);
     }
 
 Naturally, we should keep `ref_lo` and `ref_hi` around for bounds
