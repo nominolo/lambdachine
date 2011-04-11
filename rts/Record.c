@@ -418,6 +418,9 @@ recordBuildEvalFrame(JitState *J, TRef node, ThunkInfoTable *info,
   if (LC_UNLIKELY(stackOverflow(J->T, top, 8 + framesize)))
     return 0;
 
+  u4 liveouts = (u4)return_pc[-1];
+  printf("LIVES: %p %x\n", return_pc, (int)liveouts);
+
   setSlot(J, t + 0, emitKBaseOffset(J, b));
   setSlot(J, t + 1, emitKWord(J, (Word)return_pc, LIT_PC));
   setSlot(J, t + 2, emitKWord(J, (Word)&stg_UPD_closure, LIT_CLOSURE));
@@ -426,6 +429,13 @@ recordBuildEvalFrame(JitState *J, TRef node, ThunkInfoTable *info,
   setSlot(J, t + 5, emitKBaseOffset(J, b + t + 3));
   setSlot(J, t + 6, emitKWord(J, (Word)stg_UPD_return_pc, LIT_PC));
   setSlot(J, t + 7, node);
+
+  // Clear slots that aren't live-out.
+  for (i = 0; i < t; i++) {
+    if (!(liveouts & 1))
+      setSlot(J, i, 0);
+    liveouts = liveouts >> 1;
+  }
 
   DBG_PR("baseslot %d => %d (top = %d, frame = %d)\n",
          J->baseslot, J->baseslot + t + 8, t, framesize);
