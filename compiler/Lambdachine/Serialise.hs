@@ -154,7 +154,7 @@ encodeModule mdl = toLazyByteString builder
             emit $ fromString "ITBL"
             encodeId itblName
             emit $ varUInt cltype_THUNK
-            emit $ varUInt (i2w (bcoFreeVars bco)) -- TODO: ptrs
+            emit $ varUInt (i2w (M.size $ bcoFreeVars bco)) -- TODO: ptrs
             emit $ varUInt 0 -- TODO: nptrs
             encodeId itblName
             encodeCode 0 (bcoCode bco)
@@ -183,7 +183,7 @@ encodeModule mdl = toLazyByteString builder
          encodeId (mkInfoTableId (idName name)) -- info table
          -- no payload, hence no literals
          return 1
-       BcObject{ bcoType = CAF, bcoFreeVars = fvs } | fvs == 0 -> do
+       BcObject{ bcoType = CAF, bcoFreeVars = fvs } | M.size fvs == 0 -> do
          emit $ fromString "CLOS"
          encodeId name
          emit $ varUInt 1  -- one word for the indirection

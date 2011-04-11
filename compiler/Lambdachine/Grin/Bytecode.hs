@@ -380,7 +380,7 @@ data BytecodeObject' g
     , bcoCode :: g
     , bcoGlobalRefs :: [Id]
     , bcoConstants :: [BcConst]
-    , bcoFreeVars  :: Int
+    , bcoFreeVars  :: M.Map Int OpTy
     }
   | BcoCon
     { bcoType :: BcoType -- ^ Always 'Con'.  Only for completeness.
@@ -477,7 +477,8 @@ instance Pretty BcoType where
 
 instance Pretty g => Pretty (BytecodeObject' g) where
   ppr bco@BcObject{} =
-    align $ ppr (bcoType bco) <> char ':' <> int (bcoFreeVars bco) $+$
+    align $ ppr (bcoType bco) <> char ':' <>
+              int (M.size (bcoFreeVars bco)) $+$
             text "gbl: " <> align (ppr (bcoGlobalRefs bco)) $+$
             (indent 2 $ ppr (bcoCode bco))
              -- pprGraph ppr (\l -> ppr l <> colon) (bcoCode bco))

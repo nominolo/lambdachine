@@ -8,7 +8,7 @@ import Lambdachine.Ghc.CoreToBC
 import Lambdachine.Grin.Bytecode
 import Lambdachine.Grin.Analyse
 import Lambdachine.Grin.RegAlloc
-import Lambdachine.Interp.Exec
+--import Lambdachine.Interp.Exec
 import Lambdachine.Interp.Trace
 import Lambdachine.Serialise
 import qualified Lambdachine.Options as Cli

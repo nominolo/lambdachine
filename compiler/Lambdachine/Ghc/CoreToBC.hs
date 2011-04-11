@@ -158,7 +158,7 @@ transTopLevelBind f (viewGhcLam -> (params, body)) = do
                          , bcoCode = g
                          , bcoGlobalRefs = toList (globalVars fvs)
                          , bcoConstants = []
-                         , bcoFreeVars = 0
+                         , bcoFreeVars = M.empty
                          }
       return (M.singleton f' bco)
 
@@ -316,7 +316,7 @@ transBinds bind env fvi locs0 = do
      trans_binds_rec fwds' binds env fix_acc'
                      ((f, closure_info) : ci_acc)
 
--- Creates the actual code sequence (including fixup of forward references).
+-- | Creates the actual code sequence (including fixup of forward references).
 build_bind_code :: Ghc.VarEnv [(Int, Ghc.Id)]
                 -> LocalEnv -> FreeVarsIndex
                 -> [(Ghc.Id, ClosureInfo)] -> KnownLocs
@@ -390,11 +390,13 @@ transBind x (viewGhcLam -> (bndrs, body)) env0 = do
   x' <- freshVar (showPpr this_mdl ++ ".cl_" ++ Ghc.getOccString x) mkTopLevelId
   g <- finaliseBcGraph bcis
   let arity = length bndrs
+      free_vars = M.fromList [ (n, transType (Ghc.varType v))
+                              | (n, v) <- zip [1..] vars ]
   let bco = BcObject { bcoType = if arity > 0 then BcoFun arity else Thunk
                      , bcoCode = g
                      , bcoConstants = []
                      , bcoGlobalRefs = toList gbls
-                     , bcoFreeVars = length vars }
+                     , bcoFreeVars = free_vars }
   addBCO x' bco
   return (FunObj arity x' vars)
 
