@@ -79,7 +79,12 @@ compiler/Opcodes.h: utils/genopcodes
 
 HSDEPFILE = compiler/.depend
 
-HSFLAGS = -package ghc -icompiler \
+HSFLAGS = -hide-all-packages \
+          -package ghc -package base -package filepath -package process -package directory -package containers \
+          -package ghc-paths -package cmdargs -package mtl -package blaze-builder -package vector \
+          -package utf8-string -package bytestring -package array -package ansi-wl-pprint -package binary \
+          -package uniplate -package hoopl -package value-supply \
+          -icompiler \
           -odir $(HSBUILDDIR) -hidir $(HSBUILDDIR)
 
 $(HSDEPFILE):
@@ -106,6 +111,10 @@ HSSRCS := $(shell find compiler -name '*.hs')
 $(LCC): $(HSSRCS) compiler/Opcodes.h
 	@mkdir -p $(HSBUILDDIR)
 	$(HC) --make $(HSFLAGS)  compiler/Main.hs -o $@
+
+.PHONY: clean-interp
+clean-interp:
+	rm -f $(SRCS:%.c=%.o) utils/*.o interp
 
 .PHONY: clean
 clean:
