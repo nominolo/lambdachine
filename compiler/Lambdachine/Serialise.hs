@@ -388,7 +388,7 @@ putLinearIns lit_ids new_addrs ins_id ins = case ins of
   Lst (Ret1 (BcReg x)) ->
     putIns (insAD opc_RET1 (i2b x) 0)
   Lst (Eval _ lives (BcReg r))
-    | Just bitset <- regsToBits lives -> do
+    | Just bitset <- regsToBits (S.delete (BcReg r) lives) -> do
     putIns (insAD opc_EVAL (i2b r) 0)
     putIns bitset
     putIns (insAD opc_MOV_RES (i2b r) 0)
@@ -396,7 +396,7 @@ putLinearIns lit_ids new_addrs ins_id ins = case ins of
     assert (args == map BcReg [0 .. length args - 1]) $
     putIns (insAD opc_CALLT (i2b f) (i2h (length args)))
   Lst (Call (Just (BcReg rslt, _, lives)) (BcReg f) (BcReg arg0:args)) 
-    | Just bitset <- regsToBits lives -> do
+    | Just bitset <- regsToBits (S.delete (BcReg rslt) lives) -> do
       putIns (insABC opc_CALL (i2b f) (i2b $ 1 + length args) (i2b arg0))
       putArgs args
       putIns bitset
