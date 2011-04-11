@@ -152,7 +152,7 @@ transTopLevelBind f (viewGhcLam -> (params, body)) = do
       let env0 = mkLocalEnv [(x, undefined) | x <- params]
           locs0 = mkLocs [ (b, InReg n) | (b, n) <- zip params [0..] ]
           fvi0 = Ghc.emptyVarEnv
-      (bcis, _, fvs, Nothing) <- transBody body env0 fvi0 locs0 RetC
+      (bcis, _, fvs, Nothing) <- withParentFun f $ transBody body env0 fvi0 locs0 RetC
       g <- finaliseBcGraph bcis
       let bco = BcObject { bcoType = bco_type
                          , bcoCode = g
@@ -380,14 +380,18 @@ transBind x (viewGhcLam -> (bndrs, body)) env0 = do
 
   -- Here comes the magic:
   (bcis, vars, gbls, _) <- mfix $ \ ~(_bcis, _vars, _gbls, fvis) -> do
-    (bcis, locs', fvs, Nothing) <- transBody body env fvis locs0 RetC
+    (bcis, locs', fvs, Nothing) <- withParentFun x $ transBody body env fvis locs0 RetC
     let closure_vars = Ghc.varSetElems (closureVars fvs)
         -- maps from closure variable to its index
         cv_indices = Ghc.mkVarEnv (zip closure_vars [(1::Int)..])
     return (bcis, closure_vars, globalVars fvs, cv_indices)
 
   this_mdl <- getThisModule
-  x' <- freshVar (showPpr this_mdl ++ ".cl_" ++ Ghc.getOccString x) mkTopLevelId
+  parent <- getParentFun
+  let cl_prefix | Nothing <- parent = ".cl_"
+                | Just s  <- parent = ".cl_" ++ s ++ "_"
+  x' <- freshVar (showPpr this_mdl ++ cl_prefix ++ Ghc.getOccString x) mkTopLevelId
+  trace ("DBG: " ++ show parent ++ "=>" ++ show x') $ do
   g <- finaliseBcGraph bcis
   let arity = length bndrs
       free_vars = M.fromList [ (n, transType (Ghc.varType v))
@@ -414,7 +418,7 @@ transFields f args = map to_field args
 
 -- -------------------------------------------------------------------
 
-newtype Trans a = Trans (State TransState a)
+newtype Trans a = Trans { unTrans :: State TransState a }
   deriving (Functor, Applicative, Monad, MonadFix)
 
 -- transFix :: (a -> Trans a) -> Trans a
@@ -423,14 +427,17 @@ newtype Trans a = Trans (State TransState a)
 data TransState = TransState
   { tsUniques :: Supply Unique
   , tsLocalBCOs :: BCOs
-  , tsModuleName :: Ghc.ModuleName }
+  , tsModuleName :: Ghc.ModuleName
+  , tsParentFun :: Maybe String
+  }
 
 runTrans :: Ghc.ModuleName -> Supply Unique -> Trans a -> a
 runTrans mdl us (Trans m) = evalState m s0
  where
    s0 = TransState { tsUniques = us
                    , tsLocalBCOs = M.empty
-                   , tsModuleName = mdl }
+                   , tsModuleName = mdl
+                   , tsParentFun = Nothing }
 
 genUnique :: Trans (Supply Unique)
 genUnique = Trans $ do
@@ -442,6 +449,24 @@ genUnique = Trans $ do
 
 getThisModule :: Trans Ghc.ModuleName
 getThisModule = Trans $ gets tsModuleName
+
+withParentFun :: Ghc.Id -> Trans a -> Trans a
+withParentFun x (Trans act) = Trans $ do
+  s <- get
+  let x_occ = showSDocForUser Ghc.neverQualify (Ghc.ppr (Ghc.getOccName x))
+      pfun = tsParentFun s
+  put $! (case pfun of
+           Nothing ->
+             s{ tsParentFun = Just x_occ }
+           Just p ->
+             s{ tsParentFun = Just (p ++ "_" ++ x_occ) })
+  r <- act
+  s' <- get
+  put $! s'{ tsParentFun = pfun }
+  return r
+
+getParentFun :: Trans (Maybe String)
+getParentFun = Trans (gets tsParentFun)
 
 instance UniqueMonad Trans where
   freshUnique = hooplUniqueFromUniqueSupply `fmap` genUnique
@@ -676,7 +701,7 @@ transBody (Ghc.Let (NonRec x (viewGhcApp -> Just (f, args@(_:_)))) body)
          <- transStore f args env fvi locs0 (BindC Nothing)
        let locs2 = updateLoc locs1 x (InVar r)
            env' = extendLocalEnv env x undefined
-       (bcis1, locs3, fvs1, mb_r) <- transBody body env' fvi locs2 ctxt
+       (bcis1, locs3, fvs1, mb_r) <- withParentFun x $ transBody body env' fvi locs2 ctxt
        return (bcis0 <*> bcis1, locs3, fvs0 `mappend` fvs1, mb_r)
 
 transBody (Ghc.Let bind body) env fvi locs0 ctxt = do
