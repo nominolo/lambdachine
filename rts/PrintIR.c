@@ -330,7 +330,7 @@ printPrettyIRIns(Fragment *F, IRRef ref)
       for (phiref = firstphi; phiref < F->nins; phiref++) {
         IRIns *phi = IR(phiref);
         if (phi->o == IR_PHI && printedByPretty(F, phi->op1)
-	    && printedByPretty(F, phi->op2)) {
+            && printedByPretty(F, phi->op2)) {
           printf("\n| ");
           printPrettyIRRef(F, phi->op1);
           printf(" = phi(");
@@ -385,13 +385,13 @@ printPrettyIR(Fragment *F, int fragment_id)
       printf("|          " COL_YELLOW "{");
       SnapEntry *se = &F->snapmap[F->snap[s].mapofs];
       for (i = 0; i < F->snap[s].nent; i++, se++) {
-	IRRef r = snap_ref(*se);
-	if (!irref_islit(r)) {
-	  printf(COL_YELLOW);
-	  if (fst) fst = 0; else printf(", ");
-	  printf("%d:", snap_slot(*se) - 1);
-	  printPrettyIRRef(F, r);
-	}
+        IRRef r = snap_ref(*se);
+        if (!irref_islit(r)) {
+          printf(COL_YELLOW);
+          if (fst) fst = 0; else printf(", ");
+          printf("%d:", snap_slot(*se) - 1);
+          printPrettyIRRef(F, r);
+        }
       }
       printf(COL_YELLOW "}" COL_RESET "\n");
       s++;
