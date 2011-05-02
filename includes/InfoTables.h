@@ -76,7 +76,8 @@ typedef union {
 
 struct _InfoTable {
   ClosureInfo layout;
-  u2 type;       // closure type
+  u1 type;       // closure type
+  u1 size;
   u2 tagOrBitmap; // type == CONSTR_*: constructor tag
                   // type == FUN/THUNK: srt_bitmap
 };

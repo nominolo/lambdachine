@@ -129,13 +129,13 @@ encodeModule mdl = toLazyByteString builder
                 -> BuildM Word
    encodeInfoTable name bco =
      case bco of
-       BcConInfo tag fields ty -> do
+       BcConInfo tag fields tys -> do
          emit $ fromString "ITBL"
          encodeId name
          emit $ varUInt cltype_CONSTR
          emit $ varUInt (fromIntegral tag)
-         emit $ varUInt (fromIntegral fields) -- TODO: ptrs
-         emit $ varUInt 0 -- TODO: nptrs
+         assert (fields == length tys) $ do
+         encodePointerMask tys
          encodeId name
          return 1
        BcObject{ bcoType = ty }
@@ -144,8 +144,7 @@ encodeModule mdl = toLazyByteString builder
             emit $ fromString "ITBL"
             encodeId itblName
             emit $ varUInt cltype_FUN
-            emit $ varUInt 0 -- TODO: ptrs
-            emit $ varUInt 0 -- TODO: nptrs
+            encodePointerMask (map snd (M.toList (bcoFreeVars bco)))
             encodeId itblName
             encodeCode arity (bcoCode bco)
             return 1
@@ -154,8 +153,7 @@ encodeModule mdl = toLazyByteString builder
             emit $ fromString "ITBL"
             encodeId itblName
             emit $ varUInt cltype_THUNK
-            emit $ varUInt (i2w (M.size $ bcoFreeVars bco)) -- TODO: ptrs
-            emit $ varUInt 0 -- TODO: nptrs
+            encodePointerMask (map snd (M.toList (bcoFreeVars bco)))
             encodeId itblName
             encodeCode 0 (bcoCode bco)
             return 1
@@ -176,13 +174,18 @@ encodeModule mdl = toLazyByteString builder
          encodeId con_id
          mapM_ encodeField fields
          return 1
-       BcObject{ bcoType = BcoFun arity } -> do
-         emit $ fromString "CLOS"
-         encodeId name
-         emit $ varUInt 0  -- no payload
-         encodeId (mkInfoTableId (idName name)) -- info table
-         -- no payload, hence no literals
-         return 1
+       BcObject{ bcoType = BcoFun arity, bcoFreeVars = fvs }
+         | M.size fvs == 0 -> do
+           emit $ fromString "CLOS"
+           encodeId name
+           emit $ varUInt 0  -- no payload
+           encodeId (mkInfoTableId (idName name)) -- info table
+           -- no payload, hence no literals
+           return 1
+         | otherwise ->
+           -- A function with free variables need not have a static
+           -- closure.
+           return 0
        BcObject{ bcoType = CAF, bcoFreeVars = fvs } | M.size fvs == 0 -> do
          emit $ fromString "CLOS"
          encodeId name
@@ -303,6 +306,33 @@ encodeInstructions lits code = do
    else do
      emit $ fromLazyByteString bs
      return len
+
+-- | Encode a pointer bitmap for use by the garbage collector.
+-- Prefixed by the total size of the object (length of the input
+-- list).
+encodePointerMask :: [OpTy] -> BuildM ()
+encodePointerMask ops = do
+  emit (varUInt (fromIntegral (length ops)))
+  emit (fromWord32sbe (pointer_bitmap 0 0 ops))
+ where
+   pointer_bitmap :: Word32 -> Int -> [OpTy] -> [Word32]
+   pointer_bitmap !acc !shift []
+     | shift == 0 = []
+     | otherwise  = [acc]
+   pointer_bitmap !acc !shift ts0@(t:ts)
+     | shift > 31 = acc : pointer_bitmap 0 0 ts0
+     | otherwise =
+       let acc' | isGCPointer t = acc .|. (1 `shiftL` shift)
+                | otherwise     = acc
+       in pointer_bitmap acc' (shift + 1) ts
+
+test_encodePointerMask1 =
+  let (_, _, b) = runBuildM (encodePointerMask [PtrTy, IntTy, FloatTy, PtrTy, FunTy [IntTy] IntTy])
+  in L.unpack (toLazyByteString b) == [5, 0,0,0,25]
+
+test_encodePointerMask2 =
+  let (_, _, b) = runBuildM (encodePointerMask [])
+  in L.unpack (toLazyByteString b) -- == [5, 0,0,0,25]
 
 -- IMPORTANT: must match implementation of putLinearIns
 insLength :: FinalIns -> Int

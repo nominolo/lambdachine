@@ -62,6 +62,11 @@ int looksLikeClosure(void *p)
     || p == &stg_UPD_closure;
 }
 
+int looksLikeStaticClosure(void *p)
+{
+  return isInRegion(G_storage.staticClosures, p);
+}
+
 int isClosure(void *p)
 {
   return looksLikeClosure(p)

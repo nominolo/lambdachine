@@ -11,6 +11,7 @@ void* allocClosure(u4 nwords);
 
 int looksLikeInfoTable(void *);
 int looksLikeClosure(void *);
+int looksLikeStaticClosure(void *);
 int isClosure(void *p);
 
 #endif

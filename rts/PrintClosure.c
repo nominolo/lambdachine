@@ -2,6 +2,7 @@
 #include "InfoTables.h"
 #include "PrintClosure.h"
 #include "Bytecode.h"
+#include "StorageManager.h"
 
 void
 printClosure(Closure* cl)
@@ -30,13 +31,22 @@ printClosure(Closure* cl)
     printf("%s ", cast(ThunkInfoTable*,info)->name);
     break;
   }
-    
+
   int n, p = 0;
+  u4 bitmap = info->layout.bitmap;
+  for (n = info->size; n > 0; p++, n--, bitmap = bitmap >> 1) {
+    if (bitmap & 1)
+      printf("0x%0" FMT_WordLen FMT_WordX " ", cl->payload[p]);
+    else
+      printf("%" FMT_Int " ", cl->payload[p]);
+  }
+
+  /* For when are we going to use ptr/nptr layout
   for (n = info->layout.payload.ptrs; n > 0; p++, n--)
     printf("%0" FMT_WordLen FMT_WordX " ", cl->payload[p]);
   for (n = info->layout.payload.nptrs; n > 0; p++, n--)
     printf("%" FMT_Int " ", cl->payload[p]);
-  
+  */
   printf("\n");
   
 }
@@ -146,6 +156,32 @@ printInstruction_aux(const BCIns *ins /*in*/, int oneline)
 }
 
 void
+printPointerBitmap(InfoTable *info)
+{
+  int i; u4 bitmap;
+  i = info->size;
+  if (i <= 32) {
+    bitmap = info->layout.bitmap;
+    printf("  pointers: (%d) ", (int)i);
+    while (i > 0) {
+      if (bitmap & 1) putchar('*'); else putchar('-');
+      i--;
+      bitmap = bitmap >> 1;
+    }
+  } else {
+    printf("  pointers: ?");
+  }
+  putchar('\n');
+}
+
+void
+printPtrNPtr(InfoTable *info)
+{
+  printf("  ptrs/nptrs: %d/%d\n",
+         info->layout.payload.ptrs, info->layout.payload.nptrs);
+}
+
+void
 printInfoTable(InfoTable* info0)
 {
   switch (info0->type) {
@@ -154,16 +190,14 @@ printInfoTable(InfoTable* info0)
       ConInfoTable* info = (ConInfoTable*)info0;
       printf("Constructor: %s, (%p)\n", info->name, info);
       printf("  tag: %d\n", info->i.tagOrBitmap);
-      printf("  ptrs/nptrs: %d/%d\n",
-             info->i.layout.payload.ptrs, info->i.layout.payload.nptrs);
+      printPointerBitmap(info0);
     }
     break;
   case FUN:
     {
       FuncInfoTable *info = (FuncInfoTable*)info0;
       printf("Function: %s (%p)\n", info->name, info);
-      printf("  ptrs/nptrs: %d/%d\n",
-             info->i.layout.payload.ptrs, info->i.layout.payload.nptrs);
+      printPointerBitmap(info0);
       printCode(&info->code);
     }
     break;
@@ -171,8 +205,7 @@ printInfoTable(InfoTable* info0)
     {
       ThunkInfoTable *info = (ThunkInfoTable*)info0;
       printf("Thunk: %s (%p)\n", info->name, info);
-      printf("  ptrs/nptrs: %d/%d\n",
-             info->i.layout.payload.ptrs, info->i.layout.payload.nptrs);
+      printPointerBitmap(info0);
       printCode(&info->code);
     }
     break;
