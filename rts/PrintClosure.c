@@ -117,9 +117,14 @@ printInstruction_aux(const BCIns *ins /*in*/, int oneline)
       printf("CASE_S\tr%d ...TODO...\n", bc_a(i));
       ins += bc_d(i);
       break;
+    case BC_ALLOC1:
+      printf("ALLOC1\tr%d, r%d, r%d\n", bc_a(i), bc_b(i), bc_c(i));
+      ins += 1;
+      break;
+
     case BC_ALLOC:
       {
-        u1 *arg = (u1*)ins; ins += BC_ROUND(bc_c(i) - 1);
+        u1 *arg = (u1*)ins; ins += 1 + BC_ROUND(bc_c(i) - 1);
         printf("ALLOC\tr%d, r%d", bc_a(i), bc_b(i));
         for (j = 0; j < bc_c(i); j++, arg++)
           printf(", r%d", *arg);
@@ -128,7 +133,7 @@ printInstruction_aux(const BCIns *ins /*in*/, int oneline)
       break;
     case BC_ALLOCAP:
       {
-        u1 *arg = (u1*)ins; ins += BC_ROUND(bc_c(i));
+        u1 *arg = (u1*)ins; ins += 1 + BC_ROUND(bc_c(i));
         printf("ALLOCAP\tr%d, r%d", bc_a(i), bc_b(i));
         for (j = 0; j < bc_c(i); j++, arg++)
           printf(", r%d", *arg);

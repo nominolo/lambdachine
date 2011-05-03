@@ -378,6 +378,7 @@ int engine(Capability *cap)
     setInfo(cl, (InfoTable*)base[opB]);
     cl->payload[0] = base[opC];
     base[opA] = (Word)cl;
+    ++pc;
     DISPATCH_NEXT;
   }
 
@@ -397,7 +398,7 @@ int engine(Capability *cap)
     for (i = 0; i < sz; i++)
       cl->payload[i] = base[*arg++];
     base[opA] = (Word)cl;
-    pc += (sz + 3) / sizeof(BCIns);
+    pc += 1 + ((sz + 3) / sizeof(BCIns));
     DISPATCH_NEXT;
   }
 
@@ -1205,7 +1206,7 @@ int engine(Capability *cap)
 
     cl->payload[0] = base[opB];
     u1 *args = (u1 *)pc;
-    pc += BC_ROUND(nargs);
+    pc += 1 + BC_ROUND(nargs);
     for (i = 0; i < nargs; i++, args++)
       cl->payload[i + 1] = base[*args];
 

@@ -127,10 +127,11 @@ instance Pretty LinearCode where
 
 lineariseCode :: FactBase LiveVars -> Graph BcIns O C -> LinearCode
 lineariseCode live_facts g@(GMany (JustO entry) body NothingO) =
-   LinearCode lin_code (liveIns live_facts lin_code) labels
+   LinearCode (annotateWithLiveouts live_ins lin_code) live_ins labels
  where
    lin_code = Vec.fromList $ concat $ 
                 lineariseBlock live_facts entry : map (lineariseBlock live_facts) body_blocks
+   live_ins = liveIns live_facts lin_code
    body_blocks = postorder_dfs g  -- excludes entry sequence
    labels = Vec.ifoldl' ins_if_label M.empty lin_code
    ins_if_label :: M.Map Label Int -> Int -> LinearIns -> M.Map Label Int
@@ -140,7 +141,7 @@ lineariseCode live_facts g@(GMany (JustO entry) body NothingO) =
 
 -- | Turn a block into a linear list of instructions.
 --
--- Annotates @Case@ expressions with the live variables for each branch.
+-- Annotates various instructions with the live variables.
 --
 lineariseBlock :: FactBase LiveVars -> Block BcIns e x -> [LinearIns]
 lineariseBlock live_facts blk = entry_ins (map Mid middles ++ tail_ins)
@@ -171,6 +172,15 @@ liveIns global_live_outs inss =
    calcLives (Lst ins) live_out = live ins global_live_outs
    calcLives (Mid ins) live_out = live ins live_out
    calcLives (Fst ins) live_out = live ins live_out
+
+annotateWithLiveouts :: Vector LiveVars -> Vector LinearIns -> Vector LinearIns
+annotateWithLiveouts lives inss = Vec.imap annotate inss
+ where
+   annotate n (Mid (Assign d (Alloc t args _))) =
+     Mid (Assign d (Alloc t args (lives Vec.! (n + 1))))
+   annotate n (Mid (Assign d (AllocAp args _))) =
+     Mid (Assign d (AllocAp args (lives Vec.! (n + 1))))
+   annotate n i = i
 
 allRegs :: S.Set BcVar
 allRegs = S.fromList $ map BcReg [0..255]

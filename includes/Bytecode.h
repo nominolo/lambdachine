@@ -111,7 +111,7 @@ interpreter, and all bytecode files.
   _(KINT,    RS) \
   _(NEW_INT, RS) \
   /* Allocation */ \
-  _(ALLOC1,  RRR) \
+  _(ALLOC1,  ___) \
   _(ALLOC,   ___) \
   _(ALLOCAP, ___) \
   /* Calls and jumps */ \

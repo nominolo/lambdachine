@@ -27,6 +27,8 @@ import Data.Binary
 
 type BlockId = Label
 
+type LiveSet = S.Set BcVar
+
 data BcIns' b e x where
   Label  :: b -> BcIns' b C O
   -- O/O stuff
@@ -38,11 +40,11 @@ data BcIns' b e x where
   CondBranch :: BinOp -> OpTy -> BcVar -> BcVar
              -> b -> b            -> BcIns' b O C
   Case :: CaseType -> BcVar 
-       -> [(BcTag, S.Set BcVar, b)]            -> BcIns' b O C
-  Call :: Maybe (BcVar, b, S.Set BcVar)
+       -> [(BcTag, LiveSet, b)]   -> BcIns' b O C
+  Call :: Maybe (BcVar, b, LiveSet)
        -> BcVar -> [BcVar]        -> BcIns' b O C
   Ret1 :: BcVar                   -> BcIns' b O C
-  Eval   :: b -> S.Set BcVar -> BcVar            -> BcIns' b O C
+  Eval   :: b -> LiveSet -> BcVar -> BcIns' b O C
   -- only used by the interpreter / RTS
   Update ::                          BcIns' b O C
   Stop   ::                          BcIns' b O C
@@ -81,8 +83,8 @@ data BcRhs
   | Load BcLoadOperand
   | BinOp BinOp OpTy BcVar BcVar
   | Fetch BcVar Int
-  | Alloc BcVar [BcVar]
-  | AllocAp [BcVar]
+  | Alloc BcVar [BcVar] LiveSet
+  | AllocAp [BcVar] LiveSet
   deriving (Eq, Ord)
 
 data BcLoadOperand
@@ -155,6 +157,9 @@ instance Pretty Label where
 
 --instance Pretty CompOp where
 
+pprLives :: LiveSet -> PDoc
+pprLives lives = braces (hsep (commaSep (map ppr (S.toList lives))))
+
 instance Pretty BinOp where
   ppr OpAdd = char '+'
   ppr OpSub = char '-'
@@ -173,8 +178,7 @@ instance Pretty b => Pretty (BcIns' b e x) where
   ppr (Assign d (Move s)) | d == s = text "---"
   ppr (Assign r rhs) = ppr r <+> char '=' <+> ppr rhs
   ppr (Eval _ lives r) =
-    text "eval" <+> ppr r <+> 
-         braces (hsep (commaSep (map ppr (S.toList lives))))
+    text "eval" <+> ppr r <+> pprLives lives
   ppr (Store base offs val) =
     text "Mem[" <> ppr base <+> char '+' <+> int offs <> text "] = " <> ppr val
   ppr (Goto bid) = text "goto" <+> ppr bid
@@ -187,8 +191,7 @@ instance Pretty b => Pretty (BcIns' b e x) where
     indent 2 (vcat (map ppr_target targets))
    where
      ppr_target (tag, lives, target) = 
-       ppr tag <> colon <+> ppr target
-         <+> braces (hsep (commaSep (map ppr (S.toList lives))))
+       ppr tag <> colon <+> ppr target <+> pprLives lives
   ppr (Call rslt f args) =
     align $
       (case rslt of
@@ -206,10 +209,12 @@ instance Pretty BcRhs where
     ppr src1 <+> ppr op <+> ppr src2 <+> char '<' <> (ppr ty) <> char '>'
   ppr (Fetch r offs) =
     text "Mem[" <> ppr r <+> char '+' <+> int offs <> char ']'
-  ppr (Alloc ctor args) =
+  ppr (Alloc ctor args lives) =
     text "alloc(" <> hsep (commaSep (map ppr (ctor:args))) <> char ')'
-  ppr (AllocAp args) =
+      <+> pprLives lives
+  ppr (AllocAp args lives) =
     text "alloc_ap(" <> hsep (commaSep (map ppr args)) <> char ')'
+      <+> pprLives lives
 
 instance Pretty OpTy where
   ppr IntTy = text "i"
@@ -332,13 +337,13 @@ insLoadBlackhole :: BcVar -> BcGraph O O
 insLoadBlackhole r = mkMiddle $ Assign r (Load LoadBlackhole)
 
 insMkAp :: BcVar -> [BcVar] -> BcGraph O O
-insMkAp r args = mkMiddle $ Assign r (AllocAp args)
+insMkAp r args = mkMiddle $ Assign r (AllocAp args S.empty)
 
 insMove :: BcVar -> BcVar -> BcGraph O O
 insMove dst src = mkMiddle $ Assign dst (Move src)
 
 insAlloc :: BcVar -> BcVar -> [BcVar] -> BcGraph O O
-insAlloc r dcon args = mkMiddle $ Assign r (Alloc dcon args)
+insAlloc r dcon args = mkMiddle $ Assign r (Alloc dcon args S.empty)
 
 insStore :: BcVar -> Int -> BcVar -> BcGraph O O
 insStore base offs val = mkMiddle $ Store base offs val
@@ -611,8 +616,8 @@ instance Biplate BcRhs BcVar where
   biplate (Move r) = plate Move |* r
   biplate (BinOp op ty r1 r2) = plate (BinOp op ty) |* r1 |* r2
   biplate (Fetch r n) = plate Fetch |* r |- n
-  biplate (Alloc rt rs) = plate Alloc |* rt ||* rs
-  biplate (AllocAp rs) = plate AllocAp ||* rs
+  biplate (Alloc rt rs lv) = plate Alloc |* rt ||* rs |+ lv
+  biplate (AllocAp rs lv) = plate AllocAp ||* rs |+ lv
   biplate rhs = plate rhs
 
 invertCondition :: CmpOp -> CmpOp
@@ -623,3 +628,11 @@ invertCondition cond = case cond of
   CmpLt -> CmpGe
   CmpEq -> CmpNe
   CmpNe -> CmpEq
+
+-- | Is this type represented as a pointer that needs to be followed
+-- by the GC?
+isGCPointer :: OpTy -> Bool
+isGCPointer (FunTy _ _) = True
+isGCPointer (AlgTy _)   = True
+isGCPointer PtrTy       = True
+isGCPointer _           = False

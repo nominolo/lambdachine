@@ -338,7 +338,7 @@ test_encodePointerMask2 =
 insLength :: FinalIns -> Int
 insLength ins = 
   let l = insLength' ins in l
---  trace ("insLength " ++ pretty ins ++ " => " ++ show l) l
+  --trace ("insLength " ++ pretty ins ++ " => " ++ show l) l
 insLength' :: FinalIns -> Int
 insLength' ins = case ins of
   Lst Stop -> 1
@@ -351,8 +351,9 @@ insLength' ins = case ins of
   Lst Update -> 1
   Lst (Case casetype _ alts) -> alt_len casetype alts
   Mid (Assign d (Move s)) | d == s -> 0
-  Mid (Assign _ (Alloc _ args@(x1:x2:_))) -> 1 + arg_len args
-  Mid (Assign _ (AllocAp (_:args))) -> 1 + arg_len args
+  Mid (Assign _ (Alloc _ [_] _)) -> 2
+  Mid (Assign _ (Alloc _ args _)) -> 2 + arg_len args
+  Mid (Assign _ (AllocAp (_:args) _)) -> 2 + arg_len args
   Mid _ -> 1
  where
    ceilDiv4 x = (x + 3) `div` 4
@@ -473,16 +474,20 @@ putLinearIns lit_ids new_addrs ins_id ins = case ins of
     putIns $ insAD opc_LOADFV (i2b d) (i2h idx)
   Mid (Assign (BcReg d) (Load LoadSelf)) ->
     putIns $ insAD opc_LOADSLF (i2b d) 0
-  Mid (Assign (BcReg d) (Alloc (BcReg i) args)) ->
+  Mid (Assign (BcReg d) (Alloc (BcReg i) args lives)) 
+    | Just bitset <- regsToBits lives -> do
     case args of
       [BcReg a] -> 
         putIns $ insABC opc_ALLOC1 (i2b d) (i2b i) (i2b a)
       _ -> do
         putIns $ insABC opc_ALLOC (i2b d) (i2b i) (i2b (length args))
         putArgs args
-  Mid (Assign (BcReg d) (AllocAp (BcReg a0:args))) -> do
+    putIns bitset
+  Mid (Assign (BcReg d) (AllocAp (BcReg a0:args) lives)) 
+    | Just bitset <- regsToBits lives -> do
     putIns $ insABC opc_ALLOCAP (i2b d) (i2b a0) (i2b (length args))
     putArgs args
+    putIns bitset
   Mid (Assign (BcReg d) (Fetch (BcReg n) fld)) ->
     putIns $ insABC opc_LOADF (i2b d) (i2b n) (i2b fld)
   Mid (Store (BcReg ptr) offs (BcReg src)) | offs <= 255 ->
