@@ -82,7 +82,7 @@ import Control.Monad.State
 import Control.Monad.Reader
 --import Control.Monad.Fix
 import Data.Foldable ( toList )
-import Data.List ( foldl', sortBy )
+import Data.List ( foldl', sortBy, partition )
 import Data.Ord ( comparing )
 import Data.Monoid
 import Data.Maybe ( fromMaybe )
@@ -403,6 +403,12 @@ transBind x (viewGhcLam -> (bndrs, body)) env0 = do
                      , bcoFreeVars = free_vars }
   addBCO x' bco
   return (FunObj arity x' vars)
+
+-- | Split a list of variables into pointers and non-pointers.
+splitPtrNonPtr :: [Ghc.Id] -> ([Ghc.Id], [Ghc.Id])
+splitPtrNonPtr =
+  -- assumes that 'partition' preserves the input ordering
+  partition (isGCPointer . transType . Ghc.varType)
 
 transFields :: (Ghc.Id -> a) -> [CoreArg] -> [Either BcConst a]
 transFields f args = map to_field args
@@ -802,11 +808,7 @@ transVar x env fvi locs0 mr =
 
       | otherwise -> do  -- global variable
           this_mdl <- getThisModule
-          let x' | isGhcConWorkId x,
-                   not (Ghc.isNullarySrcDataCon (ghcIdDataCon x))
-                 = dataConInfoTableId (ghcIdDataCon x)
-                 | otherwise
-                 = toplevelId this_mdl x
+          let x' = toplevelId this_mdl x
           r <- mbFreshLocal mr
           return (insLoadGbl r x', r, isGhcConWorkId x,  -- TODO: only if CAF
                   updateLoc locs0 x (InVar r), globalVar x')
@@ -905,13 +907,40 @@ transArgs args0 env fvi locs0 = go args0 emptyGraph locs0 mempty []
 transStore :: CoreBndr -> [CoreArg] -> LocalEnv -> FreeVarsIndex
            -> KnownLocs -> Context x
            -> Trans (Bcis x, KnownLocs, FreeVars, Maybe BcVar)
+transStore dcon [] env fvi locs0 ctxt = -- bloody hack Since we only
+  -- have saturated DataCon applications this must be a zero-arity
+  -- constructor (e.g., Nil).  These don't require any allocation,
+  -- they're basically distinguished pointers.
+  transBody (Ghc.Var dcon) env fvi locs0 ctxt
+
 transStore dcon args env fvi locs0 ctxt = do
   (bcis0, locs1, fvs, regs) <- transArgs args env fvi locs0
-  (bcis1, con_reg, _, locs2, fvs')
-    <- transVar dcon env fvi locs1 (contextVar ctxt)  -- XXX: loadDataCon or sth.
+  
+  (bcis1, con_reg, locs2, fvs')
+    <- loadDataCon dcon env fvi locs1 (contextVar ctxt)
   rslt <- mbFreshLocal (contextVar ctxt)
   let bcis = (bcis0 <*> bcis1) <*> insAlloc rslt con_reg regs
   maybeAddRet ctxt bcis locs2 (fvs `mappend` fvs') rslt
+
+loadDataCon :: CoreBndr -> LocalEnv -> FreeVarsIndex -> KnownLocs -> Maybe BcVar
+            -> Trans (Bcis O, BcVar, KnownLocs, FreeVars)
+loadDataCon x env fvi locs0 mr = do
+  case lookupLoc locs0 x of
+    Just (InVar x') -> -- trace "inVAR" $
+      return (mbMove mr x', fromMaybe x' mr, locs0, mempty)
+    Just (InReg r) -> do -- trace "inREG" $
+      x' <- mbFreshLocal mr
+      return (insMove x' (BcReg r), x',
+              updateLoc locs0 x (InVar x'), mempty)
+    Nothing -> do
+      this_mdl <- getThisModule
+      let x' | Ghc.isNullarySrcDataCon (ghcIdDataCon x)
+             = toplevelId this_mdl x
+             | otherwise
+             = dataConInfoTableId (ghcIdDataCon x)
+      r <- mbFreshLocal mr
+      return (insLoadGbl r x', r, -- TODO: only if CAF
+                  updateLoc locs0 x (InVar r), globalVar x')
 
 transCase :: forall x.
              CoreExpr -> CoreBndr -> [CoreAlt]
@@ -1169,6 +1198,11 @@ mbMove (Just r) r'
 isGhcConWorkId :: CoreBndr -> Bool
 isGhcConWorkId x
   | Ghc.DataConWorkId _ <- Ghc.idDetails x = True
+  | otherwise                              = False
+
+isGhcConWrapId :: CoreBndr -> Bool
+isGhcConWrapId x
+  | Ghc.DataConWrapId _ <- Ghc.idDetails x = True
   | otherwise                              = False
 
 ghcIdDataCon :: CoreBndr -> Ghc.DataCon
