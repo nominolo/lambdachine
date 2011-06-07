@@ -151,11 +151,13 @@ recordSetup(JitState *J, Thread *T)
   memset(J->slot, 0, sizeof(J->slot));
   memset(J->chain, 0, sizeof(J->chain));
 
-  J->baseslot = 1;  // baseslot[0] == base[-1] == Node
+  J->baseslot = 1;  // base[baseslot] == r0, base[-1] == Node
   J->base = J->slot + J->baseslot;
   J->maxslot = T->top - T->base;
 
   J->T = T;
+
+  // J->{pc,func} is set by recording code
 
   J->flags = 0; // TODO: Default flags
 
@@ -185,6 +187,8 @@ recordSetup(JitState *J, Thread *T)
   J->cur.nheapmap = J->sizeheapmap = 0;
   J->cur.heap = J->heapbuf = NULL;
   J->cur.heapmap = J->heapmapbuf = NULL;
+
+  // J->cur.{startpc,orig} is initialised by startRecording
 
   J->needsnap = 0;
 }
