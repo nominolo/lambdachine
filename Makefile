@@ -84,6 +84,7 @@ HSFLAGS = -hide-all-packages \
           -package ghc-paths -package cmdargs -package mtl -package blaze-builder -package vector \
           -package utf8-string -package bytestring -package array -package ansi-wl-pprint -package binary \
           -package uniplate -package hoopl -package value-supply \
+          -package graph-serialize -package temporary \
           -icompiler \
           -odir $(HSBUILDDIR) -hidir $(HSBUILDDIR)
 
@@ -128,8 +129,9 @@ install-deps:
 	 'mtl == 2.*' 'blaze-builder ==0.3.*' 'vector == 0.7.*' \
 	 'utf8-string == 0.3.*' 'ansi-wl-pprint == 0.6.*' \
          'binary == 0.5.*' 'uniplate == 1.6.*' 'hoopl >= 3.8.6.1' \
-	 'value-supply == 0.6.*'
-	
+	 'value-supply == 0.6.*' 'graph-serialize >= 0.1.5' \
+	 'temporary == 1.1.*'
+
 # find compiler -name "*.hi" -delete
 
 # Rules for building built-in packages

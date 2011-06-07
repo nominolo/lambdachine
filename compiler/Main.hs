@@ -20,12 +20,14 @@ import Outputable
 import MonadUtils ( liftIO )
 import qualified Data.Map as M
 
+import Control.Exception ( onException )
 import Control.Monad ( when )
 import System.Environment ( getArgs )
-import System.Directory ( getTemporaryDirectory )
+import System.Directory ( getTemporaryDirectory, renameFile, removeFile )
 import System.IO ( openTempFile, hPutStr, hFlush, hClose )
 import System.Cmd ( rawSystem )
 import System.FilePath ( replaceExtension )
+import System.IO.Temp
 
 main :: IO ()
 main = do
@@ -61,7 +63,15 @@ main = do
 
       let ofile = file `replaceExtension` ".lcbc"
 --      putStrLn $ "Writing output to: " ++ show ofile
-      writeModule ofile bco_mdl
+
+      tmpdir <- getTemporaryDirectory
+      (tmpfile, hdl) <- openBinaryTempFile tmpdir "lcc.lcbc"
+      (`onException` (hClose hdl >> removeFile tmpfile)) $ do
+        hWriteModule hdl bco_mdl
+        hFlush hdl  -- just to be sure
+        hClose hdl
+        renameFile tmpfile ofile
+
 {-
 --     tmp <- getTemporaryDirectory
 --     (file, hdl) <- openTempFile tmp "trace.html"

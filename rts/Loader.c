@@ -727,7 +727,7 @@ loadCode(const char *filename,
   code->framesize = fget_varuint(f);
   code->arity = fget_varuint(f);
   code->sizelits = fget_varuint(f);
-  code->sizecode = fget_varuint(f);
+  code->sizecode = fget_u2(f);
   printf("loading code: frame:%d, arity:%d, lits:%d, code:%d\n",
          code->framesize, code->arity, code->sizelits, code->sizecode);
 

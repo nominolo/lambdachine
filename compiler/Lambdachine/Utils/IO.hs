@@ -11,26 +11,31 @@ import Data.Monoid
 import Data.Word
 import Data.Bits
 
-varUInt :: Word -> Builder
-varUInt w
-  | w < 128 = fromWrite $ writeWord8 (w2b w)
-  | otherwise = 
-    fromWrite (writeWord8 (w2b w .|. 0x80)) 
-      `mappend` go (w `shiftR` 7)
+varUIntBytes :: Word -> [Word8]
+varUIntBytes w
+  | w < 128 = [w2b w]
+  | otherwise =
+    (w2b w .|. 0x80) : go (w `shiftR` 7)
  where
-   go w | w < 128 = fromWrite $ writeWord8 (w2b w)
-   go w = fromWrite (writeWord8 (w2b w .|. 0x80)) 
-            `mappend` go (w `shiftR` 7)
+   go w | w < 128 = [w2b w]
+   go w = (w2b w .|. 0x80) : go (w `shiftR` 7)
+{-# INLINE varUIntBytes #-}
+
+varUInt :: Word -> Builder
+varUInt w = fromWord8s (varUIntBytes w)
 {-# INLINE varUInt #-}
 
 w2b :: Word -> Word8
 w2b = fromIntegral
+{-# INLINE w2b #-}
 
 i2w :: Int -> Word
 i2w = fromIntegral
+{-# INLINE i2w #-}
 
 w2i :: Word -> Int
 w2i = fromIntegral
+{-# INLINE w2i #-}
 
 varSInt :: Int -> Builder
 varSInt n = varUInt (zigZagEncode n)
