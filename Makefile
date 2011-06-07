@@ -11,6 +11,18 @@ endif
 HC ?= ghc
 CC ?= gcc
 
+ifeq "$(strip $(PerformanceBuild))" "Yes"
+EXTRA_CFLAGS := $(EXTRA_CFLAGS) -DNDEBUG
+endif
+
+ifeq "$(strip $(DisableJit))" "Yes"
+EXTRA_CFLAGS := $(EXTRA_CFLAGS) -DLC_HAS_JIT=0
+endif
+
+ifneq ($(DebugLevel),)
+EXTRA_CFLAGS := $(EXTRA_CFLAGS) -DLC_DEBUG_LEVEL=$(DebugLevel)
+endif
+
 HSBUILDDIR = $(DIST)/build
 LCC = $(HSBUILDDIR)/lcc
 CABAL ?= cabal
@@ -28,7 +40,7 @@ boot:
 	mkdir -p $(DEPDIR)/utils
 
 INCLUDES = -Iincludes -Irts
-CFLAGS = -Wall -g
+CFLAGS = -Wall -g $(EXTRA_CFLAGS)
 
 df = $(DEPDIR)/$(*D)/$(*F)
 
@@ -57,7 +69,7 @@ interp: $(SRCS:.c=.o)
 #
 # The dependency file for `rts/Foo.c' lives at `.deps/rts/Foo.c'.
 #
-%.o: %.c
+%.o: %.c mk/build.mk
 	@echo "CC $(CFLAGS) $< => $@"
 	@$(CC) -c $(INCLUDES) -MD -MF $(patsubst %.c,$(DEPDIR)/%.d,$<) $(CFLAGS) -o $@ $<
 	@cp $(df).d $(df).P; \
