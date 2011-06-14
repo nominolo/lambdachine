@@ -443,14 +443,14 @@ instance Pretty BytecodeModule where
          ppr (bcm_bcos mdl)]
 
 data BcoType
-  = BcoFun Int  -- arity
+  = BcoFun Int [OpTy]  -- arity and argument types
   | Thunk
   | CAF
   | Con
   deriving Eq
 
 bcoArity :: BytecodeObject' g -> Int
-bcoArity BcObject{ bcoType = BcoFun n } = n
+bcoArity BcObject{ bcoType = BcoFun n _ } = n
 bcoArity _ = 0
 
 
@@ -499,7 +499,8 @@ instance Pretty BcConst where
   ppr (CDouble r) = text (show (fromRational r :: Double)) <> char 'd'
 
 instance Pretty BcoType where
-  ppr (BcoFun n) = text "FUN_" <> int n
+  ppr (BcoFun n ts) =
+    text "FUN_" <> int n <> char '_' <> hcat (map ppr ts)
   ppr Thunk = text "THUNK"
   ppr CAF = text "CAF"
   ppr Con = text "CON"

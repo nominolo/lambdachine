@@ -156,7 +156,9 @@ transTopLevelBind :: CoreBndr -> CoreExpr -> Trans BCOs
 transTopLevelBind f (viewGhcLam -> (params, body)) = do
   this_mdl <- getThisModule
   let !f' = toplevelId this_mdl f
-  let bco_type | (_:_) <- params = BcoFun (length params)
+  let bco_type | (_:_) <- params =
+                 BcoFun (length params)
+                        (map (transType . Ghc.repType . Ghc.varType) params)
                | looksLikeCon body = Con
                | isGhcConWorkId f = Con
                | otherwise = CAF
@@ -418,9 +420,12 @@ transBind x (viewGhcLam -> (bndrs, body)) env0 = do
   --trace ("DBG: " ++ show parent ++ "=>" ++ show x') $ do
   g <- finaliseBcGraph bcis
   let arity = length bndrs
+      arg_types = map (transType . Ghc.repType . Ghc.varType) bndrs
       free_vars = M.fromList [ (n, transType (Ghc.varType v))
                               | (n, v) <- zip [1..] vars ]
-  let bco = BcObject { bcoType = if arity > 0 then BcoFun arity else Thunk
+  let bco = BcObject { bcoType = if arity > 0 then
+                                   BcoFun arity arg_types
+                                  else Thunk
                      , bcoCode = g
                      , bcoConstants = []
                      , bcoGlobalRefs = toList gbls
@@ -810,6 +815,7 @@ transVar ::
      -- * Updated 'KnownLocs'
      --
      -- * TODO
+
 -- transVar x _ _ _ _ | trace ("transVar: " ++ showPpr x ++ " : "
 --                            ++ showPpr (Ghc.idType x) ++ " / "
 --                            ++ show (not (Ghc.isUnLiftedType (Ghc.idType x))))
@@ -836,7 +842,7 @@ transVar x env fvi locs0 mr =
     Just Self -> do
       -- TODO: Find out the real type of Self closure?  It's always a
       -- pointer so (Any :: *) should be fine for now.
-      r <- mbFreshLocal (Ghc.anyTypeOfKind Ghc.liftedTypeKind) mr
+      r <- mbFreshLocal ghcAnyType mr
       return (insLoadSelf r, r, True, locs0, mempty)
     Nothing
       | Just x' <- lookupLocalEnv env x -> do
@@ -995,7 +1001,7 @@ loadDataCon x env fvi locs0 mr = do
              = toplevelId this_mdl x
              | otherwise
              = dataConInfoTableId (ghcIdDataCon x)
-      r <- mbFreshLocal (Ghc.anyTypeOfKind Ghc.liftedTypeKind) mr
+      r <- mbFreshLocal ghcAnyType mr
       return (insLoadGbl r x', r, -- TODO: only if CAF
                   updateLoc locs0 x (InVar r), globalVar x')
 

@@ -1131,12 +1131,12 @@ encodeModule' mdl =
          emitId r name
          return 1
        BcObject{ bcoType = ty }
-         | BcoFun arity <- ty -> do
+         | BcoFun arity arg_tys <- ty -> do
             emitInfoTable_ (mkInfoTableId (idName name)) cltype_FUN
-                           arity bco
+                           arity arg_tys bco
          | ty `elem` [Thunk, CAF] -> do
             emitInfoTable_ (mkInfoTableId (idName name)) cltype_THUNK
-                           0 bco
+                           0 [] bco
 
        BcoCon{ } ->
          return 0
@@ -1144,14 +1144,14 @@ encodeModule' mdl =
        BcTyConInfo{ } -> return 0
 
    --emitInfoTable_ :: Id -> Word8 -> Int -> BCO -> ...
-   emitInfoTable_ name cltype arity bco = do
+   emitInfoTable_ name cltype arity arg_tys bco = do
      r <- liftR R.newRegion
      magic r "ITBL"
      emitId r name
      emitVarUInt r cltype
      emitPointerMask r (map snd (M.toList (bcoFreeVars bco)))
      emitId r name
-     emitCode arity (bcoCode bco)
+     emitCode arity arg_tys (bcoCode bco)
      return 1
 
 
@@ -1168,7 +1168,7 @@ encodeModule' mdl =
          emitId r con_id
          mapM_ (emitField r) fields
          return 1
-       BcObject{ bcoType = BcoFun arity, bcoFreeVars = fvs }
+       BcObject{ bcoType = BcoFun arity _, bcoFreeVars = fvs }
          | M.size fvs == 0 -> do
            magic r "CLOS"
            emitId r name
@@ -1221,27 +1221,38 @@ encodeModule' mdl =
          _ -> emitVarUInt r littype_CLOSURE
        emitId r x
 
-   emitCode :: Int -> FinalCode -> Build ()
-   emitCode arity code = do
+   emitCode :: Int -> [OpTy] -> FinalCode -> Build ()
+   emitCode arity arg_tys code = 
+     assert (arity == length arg_tys) $ do
+
      r <- liftR R.newRegion
+     rcode <- liftR R.newRegion
+     rbitsets <- liftR R.newRegion
+
+     code_start <- liftR R.makeLabel
+     code_end <- liftR R.makeLabel
+     bitset_start <- liftR R.makeLabel
+     bitset_end <- liftR R.makeLabel
+     liftR $ R.placeLabel rcode code_start
+     liftR $ R.placeLabel rbitsets bitset_start
+
      emitVarUInt r (fromIntegral (fc_framesize code))
      emitVarUInt r (fromIntegral arity)
      let literals = collectLiterals code
          lit_ids = M.fromAscList (zip (S.toList literals) [0..])
      emitVarUInt r (fromIntegral (M.size lit_ids))
-     code_start <- liftR R.makeLabel
-     code_end <- liftR R.makeLabel
      liftR $ R.offset' R.S2 R.BE (`shiftR` 2) r code_start code_end
-     bitset_start <- liftR R.makeLabel
-     bitset_end <- liftR R.makeLabel
      liftR $ R.offset' R.S2 R.BE (`shiftR` 1) r bitset_start bitset_end
      emitLiterals r lit_ids
 
-     rcode <- liftR R.newRegion     
-     liftR $ R.placeLabel r code_start
-
-     rbitsets <- liftR R.newRegion
-     liftR $ R.placeLabel rbitsets bitset_start
+     -- If arity > 0, then the first bitmap is the function pointer bitmap
+     case arg_tys of
+       [] -> return ()
+       tys -> do
+         let ptr_arg_regs =
+               S.fromList [ BcReg n t | (n, t) <- zip [0..] tys,
+                                        isGCPointer t ]
+         emitWord16s rbitsets (regsToBits16 ptr_arg_regs)
      
      emitInsAD rcode opc_FUNC (i2b (fc_framesize code)) 0
      emitInstructions rbitsets rcode lit_ids code
