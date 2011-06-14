@@ -166,15 +166,14 @@ printInstruction_aux(const BCIns *ins /*in*/, int oneline)
   return (u4)(ins - ins0);
 }
 
-void
-printInlineBitmap(const BCIns *p0)
+const u2 *
+printInlineBitmap_(const u2 *p)
 {
-  u2 *p = (u2*)((u1*)p0 + (u4)(*p0));
   u2 bitmap;
   int min = 0;
   int i;
   // Live pointers
-  printf("\t{ ");
+  printf("{ ");
   do {
     bitmap = *p;
     for (i = 0; i < 15 && bitmap != 0; i++) {
@@ -184,18 +183,19 @@ printInlineBitmap(const BCIns *p0)
     }
     ++p;
   } while (bitmap != 0);
-  printf("} / { ");
-  // Live-out variables
-  do {
-    bitmap = *p;
-    for (i = 0; i < 15 && bitmap != 0; i++) {
-      if (bitmap & 1)
-        printf("r%d ", min + i);
-      bitmap = bitmap >> 1;
-    }
-    ++p;
-  } while (bitmap != 0);
-  printf("}\n");
+  printf("}");
+  return p;
+}
+
+void
+printInlineBitmap(const BCIns *p0)
+{
+  const u2 *p = (const u2*)((u1*)p0 + (u4)(*p0));
+  putchar('\t');
+  p = printInlineBitmap_(p);
+  printf(" / ");
+  printInlineBitmap_(p);   // Live-out variables
+  putchar('\n');
 }
 
 void
@@ -262,7 +262,12 @@ void
 printCode(LcCode *code)
 {
   u4 i; u4 nc = 0; BCIns *c = code->code;
-  printf("  arity: %d\n", code->arity);
+  if (code->arity > 0) {
+    printf("  arity: %d, ptrs: ", code->arity);
+    // First bitmap is the function pointer map
+    printInlineBitmap_((const u2 *)&code->code[code->sizecode]);
+    putchar('\n');
+  }
   printf("  frame: %d\n", code->framesize);
   printf("  literals:\n");
   for (i = 0; i < code->sizelits; i++) {
