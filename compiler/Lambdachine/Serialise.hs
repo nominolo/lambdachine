@@ -134,7 +134,8 @@ hWriteModule :: Handle -> BytecodeModule -> IO ()
 hWriteModule hdl bcos = L.hPut hdl (encodeModule bcos)
 
 encodeModule :: BytecodeModule -> L.ByteString
-encodeModule mdl =
+encodeModule mdl = encodeModule' mdl
+{-
    let out = toLazyByteString builder
        out' = encodeModule' mdl
    in assertEqualLBS out out' out
@@ -287,7 +288,7 @@ encodeModule mdl =
 
    encodeLiterals lit_ids = do
      forM_ (M.keys lit_ids) encodeField
-
+-}
 encodeId :: Id -> BuildM ()
 encodeId the_id =
   encodeIdString (show the_id ++ type_suffix the_id)
@@ -460,18 +461,18 @@ putLinearIns lit_ids new_addrs ins_id ins = case ins of
   -- TODO: Where to put liveness info in CASE instructions?
   Lst Stop ->
     putIns (insAD opc_STOP 0 0)
-  Lst (Ret1 (BcReg x)) ->
+  Lst (Ret1 (BcReg x _)) ->
     putIns (insAD opc_RET1 (i2b x) 0)
-  Lst (Eval _ lives (BcReg r))
-    | Just bitset <- regsToBits (S.delete (BcReg r) lives) -> do
+  Lst (Eval _ lives (BcReg r _))
+    | Just bitset <- regsToBits (S.delete (BcReg r VoidTy) lives) -> do
     putIns (insAD opc_EVAL (i2b r) 0)
     putIns bitset
     putIns (insAD opc_MOV_RES (i2b r) 0)
-  Lst (Call Nothing (BcReg f) args) ->
-    assert (args == map BcReg [0 .. length args - 1]) $
+  Lst (Call Nothing (BcReg f _) args) ->
+    assert (args == map (\n -> BcReg n VoidTy) [0 .. length args - 1]) $
     putIns (insAD opc_CALLT (i2b f) (i2h (length args)))
-  Lst (Call (Just (BcReg rslt, _, lives)) (BcReg f) (BcReg arg0:args))
-    | Just bitset <- regsToBits (S.delete (BcReg rslt) lives) -> do
+  Lst (Call (Just (BcReg rslt _, _, lives)) (BcReg f _) (BcReg arg0 _:args))
+    | Just bitset <- regsToBits (S.delete (BcReg rslt VoidTy) lives) -> do
       putIns (insABC opc_CALL (i2b f) (i2b $ 1 + length args) (i2b arg0))
       putArgs args
       putIns bitset
@@ -482,7 +483,7 @@ putLinearIns lit_ids new_addrs ins_id ins = case ins of
     putIns $ insAJ opc_JMP 0 (new_addrs IM.! tgt - new_addrs IM.! ins_id - 1)
   Lst Update ->
     putIns (insAD opc_UPDATE 0 1)
-  Lst (CondBranch cond ty (BcReg r1) (BcReg r2) t1 t2)
+  Lst (CondBranch cond ty (BcReg r1 _) (BcReg r2 _) t1 t2)
    | ty == IntTy || ty == CharTy
    -> do
     let (swap_targets, target)
@@ -502,39 +503,39 @@ putLinearIns lit_ids new_addrs ins_id ins = case ins of
         offs = (new_addrs IM.! target) - next_ins_addr
     putIns $ insAD (condOpcode cond') (i2b r1) (i2h r2)
     putIns $ insAJ opc_JMP 0 offs
-  Mid (Assign (BcReg d) (Move (BcReg s))) | d == s ->
+  Mid (Assign (BcReg d _) (Move (BcReg s _))) | d == s ->
     return () -- redundant move instruction
-  Mid (Assign (BcReg d) (Move (BcReg s))) ->
+  Mid (Assign (BcReg d _) (Move (BcReg s _))) ->
     putIns $ insAD opc_MOV (i2b d) (i2h s)
-  Mid (Assign (BcReg d) (BinOp op ty (BcReg a) (BcReg b))) ->
+  Mid (Assign (BcReg d _) (BinOp op ty (BcReg a _) (BcReg b _))) ->
     putIns $ insABC (binOpOpcode ty op) (i2b d) (i2b a) (i2b b)
-  Mid (Assign (BcReg d) (Load (LoadGlobal x))) ->
+  Mid (Assign (BcReg d _) (Load (LoadGlobal x))) ->
     putIns $ insAD opc_LOADK (i2b d) (lit_ids M.! Right x)
-  Mid (Assign (BcReg d) (Load (LoadLit l))) ->
+  Mid (Assign (BcReg d _) (Load (LoadLit l))) ->
     putIns $ insAD opc_LOADK (i2b d) (lit_ids M.! Left l)
-  Mid (Assign (BcReg d) (Load LoadBlackhole)) ->
+  Mid (Assign (BcReg d _) (Load LoadBlackhole)) ->
     putIns $ insAD opc_LOADBH (i2b d) 0
-  Mid (Assign (BcReg d) (Load (LoadClosureVar idx))) ->
+  Mid (Assign (BcReg d _) (Load (LoadClosureVar idx))) ->
     putIns $ insAD opc_LOADFV (i2b d) (i2h idx)
-  Mid (Assign (BcReg d) (Load LoadSelf)) ->
+  Mid (Assign (BcReg d _) (Load LoadSelf)) ->
     putIns $ insAD opc_LOADSLF (i2b d) 0
-  Mid (Assign (BcReg d) (Alloc (BcReg i) args lives))
+  Mid (Assign (BcReg d _) (Alloc (BcReg i _) args lives))
     | Just bitset <- regsToBits lives -> do
     case args of
-      [BcReg a] ->
+      [BcReg a _] ->
         putIns $ insABC opc_ALLOC1 (i2b d) (i2b i) (i2b a)
       _ -> do
         putIns $ insABC opc_ALLOC (i2b d) (i2b i) (i2b (length args))
         putArgs args
     putIns bitset
-  Mid (Assign (BcReg d) (AllocAp (BcReg a0:args) lives))
+  Mid (Assign (BcReg d _) (AllocAp (BcReg a0 _:args) lives))
     | Just bitset <- regsToBits lives -> do
     putIns $ insABC opc_ALLOCAP (i2b d) (i2b a0) (i2b (length args))
     putArgs args
     putIns bitset
-  Mid (Assign (BcReg d) (Fetch (BcReg n) fld)) ->
+  Mid (Assign (BcReg d _) (Fetch (BcReg n _) fld)) ->
     putIns $ insABC opc_LOADF (i2b d) (i2b n) (i2b fld)
-  Mid (Store (BcReg ptr) offs (BcReg src)) | offs <= 255 ->
+  Mid (Store (BcReg ptr _) offs (BcReg src _)) | offs <= 255 ->
     putIns $ insABC opc_INITF (i2b ptr) (i2b src) (i2b offs)
   Mid m -> error $ pretty m
 
@@ -562,7 +563,7 @@ putLinearIns lit_ids new_addrs ins_id ins = case ins of
 putCase :: Int -> CaseType -> BcVar -> [(BcTag, a, Int)]
         -> NewAddresses
         -> InsBuildM ()
-putCase this_id casetype (BcReg r) alts0 new_addrs =
+putCase this_id casetype (BcReg r _) alts0 new_addrs =
   case enc of
     UseDenseCase -> do
       putIns $ insAD opc_CASE (i2b r) (fromIntegral (length alts))
@@ -649,7 +650,7 @@ runInsBuildM (InsBuildM sm) = evalStateT sm (InsState IM.empty 0)
 -- the first argument, the next byte the second argument, etc.
 putArgs :: [BcVar] -> InsBuildM ()
 putArgs regs_ =
-  putWord8s [ i2b r | reg <- regs_, let BcReg r = reg ]
+  putWord8s [ i2b r | reg <- regs_, let BcReg r _ = reg ]
 
 putWord8s :: [Word8] -> InsBuildM ()
 putWord8s ws = go 0 ws 0
@@ -664,7 +665,8 @@ putWord8s ws = go 0 ws 0
        putIns acc >> go 0 bs0 0
 
 test_putArgs =
-  let (_, _, b) =  runBuildM $ runInsBuildM $ putArgs (map BcReg [1..6]) in
+  let (_, _, b) =  runBuildM $ runInsBuildM $
+                     putArgs (map (\n -> BcReg n VoidTy) [1..6]) in
   L.unpack (toLazyByteString b) == [4,3,2,1,0,0,6,5]
 
 --putCase
@@ -707,7 +709,7 @@ regsToBits :: S.Set BcVar -> Maybe Word32
 regsToBits regs_ = go 0 (S.toList regs_)
  where
    go !bitset [] = Just bitset
-   go !bitset (BcReg n : rs)
+   go !bitset (BcReg n _ : rs)
      | n > 30 = Nothing
      | otherwise = go (bitset .|. (1 `shiftL` n)) rs
 
@@ -721,14 +723,16 @@ regsToBits16 :: S.Set BcVar -> [Word16]
 regsToBits16 regs_ = go 0 0 (S.toList regs_)
  where
    go !bitset !offset [] = [bitset]
-   go !bitset !offset rs@(BcReg n : rs')
+   go !bitset !offset rs@(BcReg n _ : rs')
      | n - offset > 15 =
        (0x8000 .|. bitset) : go 0 (offset + 15) rs
      | otherwise =
        go (bitset .|. (1 `shiftL` (n - offset))) offset rs'
 
 test_regsToBits16 =
-  regsToBits16 (S.fromList [BcReg 5, BcReg 13, BcReg 17]) == [40992,4]
+  regsToBits16
+    (S.fromList [BcReg 5 VoidTy, BcReg 13 VoidTy, BcReg 17 VoidTy])
+    == [40992,4]
 
 bitsToWord32s :: [Bool] -> [Word32]
 bitsToWord32s bits_ = go 0 1 bits_
@@ -862,6 +866,34 @@ mkTargetLabels code =
  where
    mkLbl i = (,) i <$> liftBuildM R.makeLabel
 
+-- | Emit the bit sets corresponding to the given 'LiveSet'.
+--
+-- We actually store the bit set in a different region and just emit
+-- an offset to that location in the code.  In the region we emit
+-- first the pointer information followed by the liveness info.  The
+-- reasoning is that GC info is needed more frequently than JIT
+-- compilation info.
+--
+emitBitSets :: R.Region -- ^ Bitset region
+            -> LiveSet  -- ^ Liveset to be emitted
+            -> R.Region -- ^ Target region
+            -> Build ()
+emitBitSets rbitsets lives r = do
+  let livebits = regsToBits16 lives
+  let pointerbits = regsToBits16 (S.filter isPtrReg lives)
+  l <- liftBuildM (R.label rbitsets)
+  emitWord16s rbitsets pointerbits
+  emitWord16s rbitsets livebits
+  liftBuildM (R.reference R.S4 R.BE r l)
+
+-- | Does this register contain a pointer.
+isPtrReg :: BcVar -> Bool
+isPtrReg (BcReg _ t) = isGCPointer t
+
+emitWord16s :: R.Region -> [Word16] -> Build ()
+emitWord16s _ []     = return ()
+emitWord16s r (w:ws) = liftBuildM (R.emitWord16be r w) >> emitWord16s r ws
+
 emitLinearIns :: R.Region -- ^ Region containing bit masks.
               -> LiteralIds
               -> TargetLabels
@@ -876,21 +908,20 @@ emitLinearIns bit_r lit_ids tgt_labels r ins_id ins = do
   case ins of
     Lst Stop ->
       emitInsAD r opc_STOP 0 0
-    Lst (Ret1 (BcReg x)) ->
+    Lst (Ret1 (BcReg x _)) ->
       emitInsAD r opc_RET1 (i2b x) 0
-    Lst (Eval _ lives (BcReg reg))
-      | Just bitset <- regsToBits (S.delete (BcReg reg) lives) -> do
+    Lst (Eval _ lives (BcReg reg _)) -> do
       emitInsAD r opc_EVAL (i2b reg) 0
-      emitWord32be r bitset
+      emitBitSets bit_r (S.delete (BcReg reg VoidTy) lives) r
       emitInsAD r opc_MOV_RES (i2b reg) 0
-    Lst (Call Nothing (BcReg f) args) ->
-      assert (args == map BcReg [0 .. length args - 1]) $
+    Lst (Call Nothing (BcReg f _) args) ->
+      assert (args == map (\n -> BcReg n VoidTy) [0 .. length args - 1]) $ do
       emitInsAD r opc_CALLT (i2b f) (i2h (length args))
-    Lst (Call (Just (BcReg rslt, _, lives)) (BcReg f) (BcReg arg0:args))
-      | Just bitset <- regsToBits (S.delete (BcReg rslt) lives) -> do
+      --emitBitSets bit_r (S.fromList args) r
+    Lst (Call (Just (BcReg rslt _, _, lives)) (BcReg f _) (BcReg arg0 _:args))      -> do
         emitInsABC r opc_CALL (i2b f) (i2b $ 1 + length args) (i2b arg0)
         emitArgs r args
-        emitWord32be r bitset
+        emitBitSets bit_r (S.delete (BcReg rslt VoidTy) lives) r
         emitInsAD r opc_MOV_RES (i2b rslt) 0
     Lst (Case casetype x alts) ->
       emitCase r casetype x alts tgt_labels
@@ -898,7 +929,7 @@ emitLinearIns bit_r lit_ids tgt_labels r ins_id ins = do
       emitInsAJ r opc_JMP 0 (tgt_labels IM.! tgt)
     Lst Update ->
       emitInsAD r opc_UPDATE 0 1
-    Lst (CondBranch cond ty (BcReg r1) (BcReg r2) t1 t2)
+    Lst (CondBranch cond ty (BcReg r1 _) (BcReg r2 _) t1 t2)
      | ty == IntTy || ty == CharTy
      -> do
       let (swap_targets, target)
@@ -917,39 +948,37 @@ emitLinearIns bit_r lit_ids tgt_labels r ins_id ins = do
             CmpNe -> opc_ISNE
       emitInsAD r (condOpcode cond') (i2b r1) (i2h r2)
       emitInsAJ r opc_JMP 0 (tgt_labels IM.! target)
-    Mid (Assign (BcReg d) (Move (BcReg s))) | d == s ->
+    Mid (Assign (BcReg d _) (Move (BcReg s _))) | d == s ->
       return () -- redundant move instruction
-    Mid (Assign (BcReg d) (Move (BcReg s))) ->
+    Mid (Assign (BcReg d _) (Move (BcReg s _))) ->
       emitInsAD r opc_MOV (i2b d) (i2h s)
-    Mid (Assign (BcReg d) (BinOp op ty (BcReg a) (BcReg b))) ->
+    Mid (Assign (BcReg d _) (BinOp op ty (BcReg a _) (BcReg b _))) ->
       emitInsABC r (binOpOpcode ty op) (i2b d) (i2b a) (i2b b)
-    Mid (Assign (BcReg d) (Load (LoadGlobal x))) ->
+    Mid (Assign (BcReg d _) (Load (LoadGlobal x))) ->
       emitInsAD r opc_LOADK (i2b d) (lit_ids M.! Right x)
-    Mid (Assign (BcReg d) (Load (LoadLit l))) ->
+    Mid (Assign (BcReg d _) (Load (LoadLit l))) ->
       emitInsAD r opc_LOADK (i2b d) (lit_ids M.! Left l)
-    Mid (Assign (BcReg d) (Load LoadBlackhole)) ->
+    Mid (Assign (BcReg d _) (Load LoadBlackhole)) ->
       emitInsAD r opc_LOADBH (i2b d) 0
-    Mid (Assign (BcReg d) (Load (LoadClosureVar idx))) ->
+    Mid (Assign (BcReg d _) (Load (LoadClosureVar idx))) ->
       emitInsAD r opc_LOADFV (i2b d) (i2h idx)
-    Mid (Assign (BcReg d) (Load LoadSelf)) ->
+    Mid (Assign (BcReg d _) (Load LoadSelf)) ->
       emitInsAD r opc_LOADSLF (i2b d) 0
-    Mid (Assign (BcReg d) (Alloc (BcReg i) args lives))
-      | Just bitset <- regsToBits lives -> do
+    Mid (Assign (BcReg d _) (Alloc (BcReg i _) args lives)) -> do
       case args of
-        [BcReg a] ->
+        [BcReg a _] ->
           emitInsABC r opc_ALLOC1 (i2b d) (i2b i) (i2b a)
         _ -> do
           emitInsABC r opc_ALLOC (i2b d) (i2b i) (i2b (length args))
           emitArgs r args
-      emitWord32be r bitset
-    Mid (Assign (BcReg d) (AllocAp (BcReg a0:args) lives))
-      | Just bitset <- regsToBits lives -> do
+      emitBitSets bit_r lives r
+    Mid (Assign (BcReg d _) (AllocAp (BcReg a0 _:args) lives)) -> do
       emitInsABC r opc_ALLOCAP (i2b d) (i2b a0) (i2b (length args))
       emitArgs r args
-      emitWord32be r bitset
-    Mid (Assign (BcReg d) (Fetch (BcReg n) fld)) ->
+      emitBitSets bit_r lives r
+    Mid (Assign (BcReg d _) (Fetch (BcReg n _) fld)) ->
       emitInsABC r opc_LOADF (i2b d) (i2b n) (i2b fld)
-    Mid (Store (BcReg ptr) offs (BcReg src)) | offs <= 255 ->
+    Mid (Store (BcReg ptr _) offs (BcReg src _)) | offs <= 255 ->
       emitInsABC r opc_INITF (i2b ptr) (i2b src) (i2b offs)
     Mid m -> error $ pretty m
 
@@ -974,11 +1003,11 @@ emitLinearIns bit_r lit_ids tgt_labels r ins_id ins = do
 emitArgs :: R.Region -> [BcVar] -> Build ()
 emitArgs rgn regs_ =
   emitWord32sbe rgn $
-    word8sToWord32s [ i2b r | reg <- regs_, let BcReg r = reg ]
+    word8sToWord32s [ i2b r | reg <- regs_, let BcReg r _ = reg ]
 
 emitCase :: R.Region -> CaseType -> BcVar -> [(BcTag, a, Int)]
          -> TargetLabels -> Build ()
-emitCase r casetype (BcReg reg) alts0 tgt_labels = do
+emitCase r casetype (BcReg reg _) alts0 tgt_labels = do
   dflt_label <- liftBuildM R.makeLabel
   case enc of
     UseDenseCase -> do
@@ -1202,14 +1231,22 @@ encodeModule' mdl =
      code_start <- liftR R.makeLabel
      code_end <- liftR R.makeLabel
      liftR $ R.offset' R.S2 R.BE (`shiftR` 2) r code_start code_end
+     bitset_start <- liftR R.makeLabel
+     bitset_end <- liftR R.makeLabel
+     liftR $ R.offset' R.S2 R.BE (`shiftR` 1) r bitset_start bitset_end
      emitLiterals r lit_ids
 
-     rbitsets <- liftR R.newRegion
-
+     rcode <- liftR R.newRegion     
      liftR $ R.placeLabel r code_start
-     emitInsAD r opc_FUNC (i2b (fc_framesize code)) 0
-     emitInstructions rbitsets r lit_ids code
-     liftR $ R.placeLabel r code_end
+
+     rbitsets <- liftR R.newRegion
+     liftR $ R.placeLabel rbitsets bitset_start
+     
+     emitInsAD rcode opc_FUNC (i2b (fc_framesize code)) 0
+     emitInstructions rbitsets rcode lit_ids code
+     liftR $ R.placeLabel rcode code_end
+     liftR $ R.padTo rbitsets 4 0
+     liftR $ R.placeLabel rbitsets bitset_end
      return ()
      --putLinearIns lit_ids (Lst Stop)  -- bytecode dummy
 

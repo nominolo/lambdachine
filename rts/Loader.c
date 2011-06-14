@@ -724,21 +724,30 @@ loadCode(const char *filename,
           HashTable *itbls, HashTable *closures)
 {
   u4 i;
+  u2 *bitmaps;
   code->framesize = fget_varuint(f);
   code->arity = fget_varuint(f);
   code->sizelits = fget_varuint(f);
   code->sizecode = fget_u2(f);
+  code->sizebitmaps = fget_u2(f);
   printf("loading code: frame:%d, arity:%d, lits:%d, code:%d\n",
          code->framesize, code->arity, code->sizelits, code->sizecode);
 
   code->lits = xmalloc(sizeof(*code->lits) * code->sizelits);
   code->littypes = xmalloc(sizeof(u1) * code->sizelits);
   for (i = 0; i < code->sizelits; ++i) {
-    loadLiteral(filename, f, &code->littypes[i], &code->lits[i], strings, itbls, closures);
+    loadLiteral(filename, f, &code->littypes[i], &code->lits[i],
+                strings, itbls, closures);
   }
-  code->code = xmalloc(sizeof(BCIns) * code->sizecode);
+  code->code = xmalloc(sizeof(BCIns) * code->sizecode +
+                       sizeof(u2) * code->sizebitmaps);
   for (i = 0; i < code->sizecode; i++) {
     code->code[i] = loadBCIns(f);
+  }
+  bitmaps = (u2*)&code->code[code->sizecode];
+  for (i = 0; i < code->sizebitmaps; i++) {
+    *bitmaps = fget_u2(f);
+    ++bitmaps;
   }
 }
 

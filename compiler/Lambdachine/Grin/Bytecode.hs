@@ -14,6 +14,9 @@ import Lambdachine.Utils.Pretty
 import Lambdachine.Utils ( second, snd3 )
 import qualified Lambdachine.Utils.Unique as U
 
+import qualified Type as Ghc
+import qualified Outputable as Ghc
+
 import Compiler.Hoopl
 import Control.Monad.State
 import Data.Maybe ( maybeToList, fromMaybe )
@@ -25,10 +28,16 @@ import Data.Bits ( (.&.) )
 import qualified Data.Vector as V
 import Data.Binary
 
+instance Show Ghc.Type where show = Ghc.showSDoc . Ghc.ppr
+
+instance Pretty Ghc.Type where ppr t = text (show t)
+
+
 type BlockId = Label
 
 type LiveSet = S.Set BcVar
 
+-- | A bytecode instruction.  Suitable for use with Hoopl.
 data BcIns' b e x where
   Label  :: b -> BcIns' b C O
   -- O/O stuff
@@ -49,6 +58,7 @@ data BcIns' b e x where
   Update ::                          BcIns' b O C
   Stop   ::                          BcIns' b O C
 
+-- | A linearised bytecode instruction.
 data LinearIns' b
   = Fst (BcIns' b C O)
   | Mid (BcIns' b O O)
@@ -117,17 +127,29 @@ data OpTy = IntTy
           | PtrTy
           | FunTy [OpTy] OpTy
           | AlgTy !Id
+          | VoidTy
   deriving (Eq, Ord)
 
-data BcVar = BcVar !Id
-           | BcReg {-# UNPACK #-} !Int
-  deriving (Eq, Ord)
+data BcVar = BcVar !Id Ghc.Type
+           | BcReg {-# UNPACK #-} !Int OpTy
+
+compareBcVar :: BcVar -> BcVar -> Ordering
+compareBcVar (BcVar n _) (BcVar m _) = compare n m
+compareBcVar (BcVar _ _) _           = LT
+compareBcVar (BcReg r _) (BcReg s _) = compare r s
+compareBcVar (BcReg _ _) (BcVar _ _) = GT
+
+instance Eq BcVar where
+  v == q = compareBcVar v q == EQ
+
+instance Ord BcVar where
+  compare = compareBcVar
 
 instance Show BcVar where show v = pretty v
 
 instance U.Uniquable BcVar where
-  getUnique (BcVar x) = U.getUnique x
-  getUnique (BcReg n) = U.unsafeMkUniqueNS 'R' n
+  getUnique (BcVar x _) = U.getUnique x
+  getUnique (BcReg n _) = U.unsafeMkUniqueNS 'R' n
 
 instance NonLocal (BcIns' Label) where
   entryLabel (Label l) = l
@@ -149,8 +171,8 @@ hooplUniqueFromUniqueSupply us =
 -- -------------------------------------------------------------------
 
 instance Pretty BcVar where
-  ppr (BcVar v) = ppr v
-  ppr (BcReg n) = char 'r' <> int n
+  ppr (BcVar v t) = ppr v <> brackets (ppr t)
+  ppr (BcReg n t) = char 'r' <> int n <> char '_' <> ppr t
   
 instance Pretty Label where
   ppr lbl = text (show lbl)
@@ -217,6 +239,7 @@ instance Pretty BcRhs where
       <+> pprLives lives
 
 instance Pretty OpTy where
+  ppr VoidTy = text "v"
   ppr IntTy = text "i"
   ppr Int64Ty = text "I"
   ppr WordTy = text "u"
@@ -229,7 +252,7 @@ instance Pretty OpTy where
   ppr (FunTy args res) =
     char '(' <> hcat (map ppr args) <> text "):" <> ppr res
   ppr (AlgTy n) =
-    char '[' <> ppr n <> char ']'
+    char '<' <> ppr n <> char '>'
 
 instance Pretty BcLoadOperand where
   ppr (LoadLit l) = ppr l
@@ -243,10 +266,11 @@ instance Pretty BcTag where
   ppr (Tag n) = int n
   ppr (LitT n) = char '#' <> text (show n)
 
+{-
 tst1 = do
-  pprint ((Assign (BcReg 1) (BinOp OpAdd IntTy (BcReg 2) (BcReg 3))) :: BcIns O O)
+  pprint ((Assign (BcReg 1 IntTy) (BinOp OpAdd IntTy (BcReg 2) (BcReg 3))) :: BcIns O O)
   pprint ((Assign (BcReg 2) (Fetch (BcReg 2) 42)) :: BcIns O O)
-
+-}
 -- -------------------------------------------------------------------
 
 mapLabels :: (l1 -> l2) -> BcIns' l1 e x -> BcIns' l2 e x

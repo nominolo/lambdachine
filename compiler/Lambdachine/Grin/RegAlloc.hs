@@ -1,6 +1,7 @@
 {-# LANGUAGE GADTs, MultiParamTypeClasses, PatternGuards, BangPatterns #-}
 module Lambdachine.Grin.RegAlloc where
 
+import Lambdachine.Ghc.Utils
 import Lambdachine.Grin.Bytecode
 import Lambdachine.Grin.Analyse
 import Lambdachine.Utils
@@ -72,8 +73,8 @@ finaliseCode arity (LinearCode code0 lives labels) =
    -- register allocator.
    framesize = arity `max` (maxreg + 1)
 
-   BcReg maxreg =
-     Vec.maximum (Vec.map (maximumDflt (BcReg 0) . universeBi) code)
+   BcReg maxreg _ =
+     Vec.maximum (Vec.map (maximumDflt (BcReg 0 VoidTy) . universeBi) code)
 
    maximumDflt n [] = n
    maximumDflt _ xs = maximum xs
@@ -183,7 +184,7 @@ annotateWithLiveouts lives inss = Vec.imap annotate inss
    annotate n i = i
 
 allRegs :: S.Set BcVar
-allRegs = S.fromList $ map BcReg [0..255]
+allRegs = S.fromList $ map (\n -> BcReg n VoidTy) [0..255]
 
 -- * Register Allocation
 
@@ -262,12 +263,18 @@ colourGraph igraph =
    triv Size1 neighbs excls = True
    spill gr = error "Cannot spill"
 
-   get_alloc ig co x =
+   get_alloc ig co x@(BcVar _ t) = get_alloc' ig co (transType t) x
+   get_alloc ig co x@(BcReg _ ot) = get_alloc' ig co ot x
+   get_alloc' ig co ot x =
      case Gr.lookupNode x ig of
        Just n | Just (R r) <- Gr.nodeColour n
-         -> BcReg (fromIntegral r)
+         -- We have a register assignment for this node.
+         -> BcReg (fromIntegral r) ot
+
        Nothing | Just y <- lookupUM x co
-         -> get_alloc ig co y
+         -- This node has been coalesced with another node.  We'll
+         -- have to use the right type, though.
+         -> get_alloc' ig co ot y
 
 buildInterferenceGraph :: LinearCode -> IGraph
 buildInterferenceGraph lc@(LinearCode code0 lives lbls) =
@@ -301,7 +308,7 @@ buildInterferenceGraph lc@(LinearCode code0 lives lbls) =
 
    fix_colour node =
      case Gr.nodeId node of
-       BcReg n -> node{ Gr.nodeColour = Just (R (fromIntegral n)) }
+       BcReg n _ -> node{ Gr.nodeColour = Just (R (fromIntegral n)) }
        _ -> node
 
 -- | The linear-scan register allocator.
@@ -330,7 +337,7 @@ mkAllocMap lc@(LinearCode code0 lives lbls) =
      | Just r <- M.lookup x alloc = (alloc, S.delete r avail)
      | otherwise =
        case x of
-         BcReg r -> (M.insert x x alloc, S.delete x avail)
+         BcReg r _ -> (M.insert x x alloc, S.delete x avail)
          _ ->
            let (reg, avail') = S.deleteFindMin avail in
            (M.insert x reg alloc, avail')

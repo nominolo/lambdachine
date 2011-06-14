@@ -52,7 +52,7 @@ main = do
         putStrLn $ showPpr core_binds
 
       let bcos = generateBytecode s this_mod core_binds data_tycons
-      --putStrLn $ pretty bcos
+      putStrLn $ pretty bcos
       let !bco_mdl =
             allocRegs (moduleNameString this_mod)
                       (map moduleNameString imports)

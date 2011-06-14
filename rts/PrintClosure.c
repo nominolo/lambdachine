@@ -4,6 +4,8 @@
 #include "Bytecode.h"
 #include "StorageManager.h"
 
+void printInlineBitmap(const BCIns *p0);
+
 void
 printClosure(Closure* cl)
 {
@@ -99,7 +101,9 @@ printInstruction_aux(const BCIns *ins /*in*/, int oneline)
   case IFM____:
     switch (bc_op(i)) {
     case BC_EVAL:
-      { printf("EVAL\tr%d\n", bc_a(i)); ins++; 
+      { printf("EVAL\tr%d", bc_a(i));
+        printInlineBitmap(ins);
+        ins++;
       }
       break;
     case BC_CASE:
@@ -118,17 +122,18 @@ printInstruction_aux(const BCIns *ins /*in*/, int oneline)
       ins += bc_d(i);
       break;
     case BC_ALLOC1:
-      printf("ALLOC1\tr%d, r%d, r%d\n", bc_a(i), bc_b(i), bc_c(i));
+      printf("ALLOC1\tr%d, r%d, r%d", bc_a(i), bc_b(i), bc_c(i));
+      printInlineBitmap(ins);
       ins += 1;
       break;
 
     case BC_ALLOC:
       {
-        u1 *arg = (u1*)ins; ins += 1 + BC_ROUND(bc_c(i) - 1);
+        u1 *arg = (u1*)ins; ins += 1 + BC_ROUND(bc_c(i));
         printf("ALLOC\tr%d, r%d", bc_a(i), bc_b(i));
         for (j = 0; j < bc_c(i); j++, arg++)
           printf(", r%d", *arg);
-        printf("\n");
+        printInlineBitmap(ins - 1);
       }
       break;
     case BC_ALLOCAP:
@@ -137,7 +142,7 @@ printInstruction_aux(const BCIns *ins /*in*/, int oneline)
         printf("ALLOCAP\tr%d, r%d", bc_a(i), bc_b(i));
         for (j = 0; j < bc_c(i); j++, arg++)
           printf(", r%d", *arg);
-        printf("\n");
+        printInlineBitmap(ins - 1);
       }
       break;
     case BC_CALL:
@@ -145,7 +150,8 @@ printInstruction_aux(const BCIns *ins /*in*/, int oneline)
         printf("%s\tr%d(r%d", name, bc_a(i), bc_c(i));
         for (j = 1; j < bc_b(i); j++, arg++)
           printf(", r%d", *arg);
-        printf(")\n");
+        printf(")");
+        printInlineBitmap(ins - 1);
       }
       break;
     default:
@@ -158,6 +164,38 @@ printInstruction_aux(const BCIns *ins /*in*/, int oneline)
   }
 
   return (u4)(ins - ins0);
+}
+
+void
+printInlineBitmap(const BCIns *p0)
+{
+  u2 *p = (u2*)((u1*)p0 + (u4)(*p0));
+  u2 bitmap;
+  int min = 0;
+  int i;
+  // Live pointers
+  printf("\t{ ");
+  do {
+    bitmap = *p;
+    for (i = 0; i < 15 && bitmap != 0; i++) {
+      if (bitmap & 1)
+        printf("r%d ", min + i);
+      bitmap = bitmap >> 1;
+    }
+    ++p;
+  } while (bitmap != 0);
+  printf("} / { ");
+  // Live-out variables
+  do {
+    bitmap = *p;
+    for (i = 0; i < 15 && bitmap != 0; i++) {
+      if (bitmap & 1)
+        printf("r%d ", min + i);
+      bitmap = bitmap >> 1;
+    }
+    ++p;
+  } while (bitmap != 0);
+  printf("}\n");
 }
 
 void

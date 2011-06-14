@@ -3,11 +3,18 @@ module Lambdachine.Ghc.Utils where
 
 import Lambdachine.Id as N
 import Lambdachine.Utils.Unique hiding ( Uniquable(..) )
+import Lambdachine.Grin.Bytecode as Grin
+import Lambdachine.Utils.Pretty
 
+import qualified TysWiredIn as Ghc
+import qualified TysPrim as Ghc
+import qualified TyCon as Ghc
+import qualified TypeRep as Ghc
 import qualified Id as Ghc
 import qualified Name as Ghc
 import qualified Module as Ghc
 import qualified Outputable as Ghc
+import qualified Type as Ghc
 import qualified DataCon as Ghc
 import Outputable ( Outputable, showPpr, alwaysQualify, showSDocForUser )
 import Unique ( Uniquable(..), getKey )
@@ -52,3 +59,45 @@ tyConId x =
 -- cannot possibly overlap.
 fromGhcUnique :: Uniquable a => a -> Unique
 fromGhcUnique x = fromExternalUnique (getKey (getUnique x))
+
+-- | Translate a GHC System FC type into runtime type info.
+--
+-- We currently look through type abstraction and application.  A
+-- polymorphic type (i.e., a type variable) is just represented as a
+-- pointer.  At runtime such a value must have an associated info
+-- table, so we can just look at that to figure out the type.
+--
+-- TODO: How to deal with 'void' types, like @State#@?
+--
+transType :: Ghc.Type -> OpTy
+transType (Ghc.TyConApp tycon _)
+  | Ghc.isPrimTyCon tycon =
+    case () of
+     _ | tycon == Ghc.intPrimTyCon   -> IntTy
+       | tycon == Ghc.charPrimTyCon  -> CharTy
+       | tycon == Ghc.floatPrimTyCon -> FloatTy
+       | tycon == Ghc.byteArrayPrimTyCon -> PtrTy
+       | tycon == Ghc.anyTyCon           -> PtrTy
+       | tycon == Ghc.bcoPrimTyCon       -> PtrTy
+       | tycon == Ghc.addrPrimTyCon      -> AddrTy
+       | otherwise ->
+         error $ "Unknown primitive type: " ++ showPpr tycon
+  | otherwise =
+    AlgTy (tyConId (Ghc.tyConName tycon))
+transType ty@(Ghc.FunTy _ _) | (args, res) <- Ghc.splitFunTys ty =
+  FunTy (map transType args) (transType res)
+-- Type abstraction stuff.  See documentation above.
+transType (Ghc.ForAllTy _ t) = transType t
+transType (Ghc.TyVarTy _) = PtrTy
+transType (Ghc.AppTy t _) = transType t
+-- Get the dictionary data type for predicates.
+-- TODO: I think this may cause a GHC panic under some circumstances.
+transType (Ghc.PredTy pred) =
+  transType (Ghc.predTypeRep pred)
+transType ty =
+  error $ "transType: Don't know how to translate type: "
+          ++ showPpr ty
+
+ghcPretty :: Ghc.Outputable a => a -> String
+ghcPretty = Ghc.showSDoc . Ghc.ppr
+
