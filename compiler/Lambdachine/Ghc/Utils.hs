@@ -1,4 +1,4 @@
-{-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE CPP, PatternGuards #-}
 module Lambdachine.Ghc.Utils where
 
 import Lambdachine.Id as N
@@ -60,6 +60,17 @@ tyConId x =
 fromGhcUnique :: Uniquable a => a -> Unique
 fromGhcUnique x = fromExternalUnique (getKey (getUnique x))
 
+ghcAnyTyCon :: Ghc.TyCon
+ghcAnyType :: Ghc.Type
+
+#if __GLASGOW_HASKELL__ >= 700
+ghcAnyTyCon = Ghc.anyTyCon
+ghcAnyType = Ghc.anyTypeOfKind Ghc.liftedTypeKind
+#elif __GLASGOW_HASKELL__ >= 612
+ghcAnyTyCon = Ghc.anyPrimTyCon
+ghcAnyType = Ghc.anyPrimTy
+#endif
+
 -- | Translate a GHC System FC type into runtime type info.
 --
 -- We currently look through type abstraction and application.  A
@@ -77,7 +88,7 @@ transType (Ghc.TyConApp tycon _)
        | tycon == Ghc.charPrimTyCon  -> CharTy
        | tycon == Ghc.floatPrimTyCon -> FloatTy
        | tycon == Ghc.byteArrayPrimTyCon -> PtrTy
-       | tycon == Ghc.anyTyCon           -> PtrTy
+       | tycon == ghcAnyTyCon           -> PtrTy
        | tycon == Ghc.bcoPrimTyCon       -> PtrTy
        | tycon == Ghc.addrPrimTyCon      -> AddrTy
        | otherwise ->

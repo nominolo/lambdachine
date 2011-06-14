@@ -855,6 +855,7 @@ type TargetLabels = IM.IntMap R.Label
 collectLabels :: FinalCode -> [Int]
 collectLabels code = V.foldr f [] (fc_code code)
  where
+   f :: (LinearIns' Int) -> [Int] -> [Int]
    f (Lst (Case _ _ alts))            rst = map thd3 alts ++ rst
    f (Lst (Goto l))                   rst = l : rst
    f (Lst (CondBranch _ _ _ _ l1 l2)) rst = l1 : l2 : rst

@@ -177,6 +177,7 @@ liveIns global_live_outs inss =
 annotateWithLiveouts :: Vector LiveVars -> Vector LinearIns -> Vector LinearIns
 annotateWithLiveouts lives inss = Vec.imap annotate inss
  where
+   annotate :: Int -> LinearIns -> LinearIns
    annotate n (Mid (Assign d (Alloc t args _))) =
      Mid (Assign d (Alloc t args (lives Vec.! (n + 1))))
    annotate n (Mid (Assign d (AllocAp args _))) =
