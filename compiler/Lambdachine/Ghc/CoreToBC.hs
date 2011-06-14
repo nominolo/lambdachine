@@ -102,7 +102,15 @@ tracePpr o exp = trace (">>> " ++ showPpr o) exp
 -- * Top-level Interface
 type Bcis x = BcGraph O x
 
-generateBytecode :: Supply Unique -> Ghc.ModuleName -> [CoreBind] -> [TyCon] -> BCOs
+-- | Generate bytecode for the given bindings and type constructors.
+--
+-- This is the main interface to the bytecode compiler.
+generateBytecode ::
+     Supply Unique  -- ^ Used for generating identifiers.
+  -> Ghc.ModuleName -- ^ The name of the module being compiled.
+  -> [CoreBind]  -- ^ Bindings defined in the module
+  -> [TyCon]     -- ^ Type constructors defined in this module.
+  -> BCOs -- ^ The bytecode objects for this module.
 generateBytecode us mdl bndrs0 data_tycons =
   runTrans mdl us $ do
     let dcon_bcos = M.unions $ map transTyCon data_tycons
@@ -122,6 +130,11 @@ generateBytecode us mdl bndrs0 data_tycons =
            go' fs' (M.union bcos acc')
      in go' fs acc
 
+-- | Translate a single type constructor into 'BCOs'.
+--
+-- This creates one object for describing the type itself and
+-- one object per data constructor of the type.
+--
 transTyCon :: TyCon -> BCOs
 transTyCon tycon = do
   let bcos0 =
@@ -138,6 +151,7 @@ transTyCon tycon = do
                         , bcoConArgTypes = arg_tys }
     in M.insert dcon_id bco bcos
 
+-- | Translate a top-level binding.
 transTopLevelBind :: CoreBndr -> CoreExpr -> Trans BCOs
 transTopLevelBind f (viewGhcLam -> (params, body)) = do
   this_mdl <- getThisModule
@@ -164,12 +178,18 @@ transTopLevelBind f (viewGhcLam -> (params, body)) = do
                          }
       return (M.singleton f' bco)
 
-
+-- | 'True' iff the input expression looks like a type constructor
+-- application with at least one argument.
+--
+-- Constructors with zero arguments are treated specially, so this
+-- function will return 'False' for them.
 looksLikeCon :: CoreExpr -> Bool
 looksLikeCon (viewGhcApp -> Just (f, args)) = 
   not (null args) && isGhcConWorkId f 
 looksLikeCon _ = False
 
+-- | Build the 'BCO' for a statically allocated constructor (i.e.,
+-- data).
 buildCon :: Id -> CoreExpr -> Trans BCOs
 buildCon f (viewGhcApp -> Just (dcon, args0)) = do
   this_mdl <- getThisModule
@@ -364,6 +384,7 @@ build_bind_code fwd_env env fvi closures locs0 = do
            [ insStore ry n r | (n, y) <- fixups,
                                let Just (InVar ry) = lookupLoc locs y ]
 
+-- | Translate a (non-toplevel) binding.
 transBind :: CoreBndr -- ^ The binder name ...
           -> CoreExpr -- ^ ... and its body.
           -> LocalEnv -- ^ The 'LocalEnv' at the binding site.
@@ -459,6 +480,15 @@ genUnique = Trans $ do
 getThisModule :: Trans Ghc.ModuleName
 getThisModule = Trans $ gets tsModuleName
 
+-- | Prefix newly generated names with the given 'Ghc.Id'.
+--
+-- This is used to give local closures more descriptive names.  For
+-- example the GHC Core code occurring in module @M@:
+--
+-- > foo x y = ... let bar z = ... (let quux a = ... in ...) in ...
+--
+-- will generate three closures named @M.foo@, @M.foo_bar@, and
+-- @M.foo_bar_quux@.
 withParentFun :: Ghc.Id -> Trans a -> Trans a
 withParentFun x (Trans act) = Trans $ do
   s <- get
@@ -499,11 +529,14 @@ data ValueLocation
   | InReg Int Ghc.Type
     -- ^ The value is in a specific register.
   | FreeVar Int
+    -- ^ The value is a free variable of the current closure at the
+    -- given offset.
   | Fwd
     -- ^ A forward reference.
   | Self
     -- ^ The value is the contents of the @Node@ pointer.
   | Global Id
+    -- ^ The value is a top-level ID.
   deriving Show
 
 -- | Maps GHC Ids to their (current) location in bytecode.
@@ -827,6 +860,8 @@ transVar x env fvi locs0 mr =
  where
    in_whnf = Ghc.isUnLiftedType (Ghc.idType x)
 
+-- | Return the (GHC) type of the given variable which must not be a
+-- register.
 bcVarType :: BcVar -> Ghc.Type
 bcVarType (BcVar _ t) = t
 bcVarType (BcReg _ _) = error "bcVarType: Not a variable but a register"
@@ -964,6 +999,22 @@ loadDataCon x env fvi locs0 mr = do
       return (insLoadGbl r x', r, -- TODO: only if CAF
                   updateLoc locs0 x (InVar r), globalVar x')
 
+-- | Translate a case expression.
+--
+-- The scrutinee must not be of the shape @x <# y@ or any other
+-- primitive binop.  These are handled by 'transBody'.
+--
+-- The translation is different depending on the form of the
+-- case branches.
+--
+-- /Single-constructor/.  If there is only one constructor, the case
+-- amounts to just loading one or more fields of the scrutinee.
+--
+-- /Literal patterns/.  A case matching on a number of literals is
+-- translated into a binary decision tree.  See 'buildCaseTree'.
+--
+-- Any other case expression is translated into the appropriate
+-- @CASE@ instruction.
 transCase :: forall x.
              CoreExpr -> CoreBndr -> Ghc.Type -> [CoreAlt]
           -> LocalEnv -> FreeVarsIndex -> KnownLocs
@@ -1134,7 +1185,8 @@ transCaseAlts alts match_var env fvi locs0 ctxt = do
       return ((dataConTag altcon, l), mkLabel l <*> bcis, fvs))
   return (targets, bcis, mconcat fvss)
 
--- | Translate a binary case (i.e., a two-arm branch).
+-- | Translate a binary case on a primop, i.e., a two-arm branch
+-- with alternatives @True@ or @False@.
 transBinaryCase :: forall x.
                    BinOp -> OpTy -> [CoreArg] -> CoreBndr
                 -> Ghc.Type -> [CoreAlt]
