@@ -294,11 +294,11 @@ encodeId the_id =
   encodeIdString (show the_id ++ type_suffix the_id)
  where
     type_suffix anId = case idDetails anId of
-      TopLevelId -> "!closure"
-      InfoTableId -> "!info"
-      DataConId -> "!con"
-      DataConInfoTableId -> "!con_info"
-      _ -> "!other"
+      TopLevelId -> "`closure"
+      InfoTableId -> "`info"
+      DataConId -> "`con"
+      DataConInfoTableId -> "`con_info"
+      _ -> "`other"
 
 encodeIdString :: String -> BuildM ()
 encodeIdString str = encodeId' (B.split dot (U.fromString str))
@@ -785,11 +785,11 @@ emitId r the_id =
   emitIdString r (show the_id ++ type_suffix the_id)
  where
     type_suffix anId = case idDetails anId of
-      TopLevelId -> "!closure"
-      InfoTableId -> "!info"
-      DataConId -> "!con"
-      DataConInfoTableId -> "!con_info"
-      _ -> "!other"
+      TopLevelId -> "`closure"
+      InfoTableId -> "`info"
+      DataConId -> "`con"
+      DataConInfoTableId -> "`con_info"
+      _ -> "`other"
 
 -- | Emit a fully quantified identifier.
 --

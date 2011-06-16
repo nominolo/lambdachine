@@ -102,7 +102,7 @@ main(int argc, char *argv[])
 
   if (opts.main_closure != NULL) {
     int n = snprintf(main_clos_name, MAX_CLOSURE_NAME_LEN,
-                     "%s.%s!closure", opts.input_file,
+                     "%s.%s`closure", opts.input_file,
                      opts.main_closure);
     if (n <= MAX_CLOSURE_NAME_LEN) {
       opts.main_closure = main_clos_name;

@@ -1328,7 +1328,7 @@ shortName(char *rslt, u4 maxlen, const char *str)
 {
   u4 i, n = 0, last_dot = 0;
   const char *p = str;
-  while (*p != 0 && *p != '!') {
+  while (*p != 0 && *p != '`') {
     if (*p == '.') last_dot = n + 1;
     p++; n++;
   }
