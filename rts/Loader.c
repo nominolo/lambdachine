@@ -730,9 +730,9 @@ loadCode(const char *filename,
   code->sizelits = fget_varuint(f);
   code->sizecode = fget_u2(f);
   code->sizebitmaps = fget_u2(f);
-  printf("loading code: frame:%d, arity:%d, lits:%d, code:%d, bitmaps:%d\n",
-         code->framesize, code->arity, code->sizelits, code->sizecode,
-         code->sizebitmaps);
+  //printf("loading code: frame:%d, arity:%d, lits:%d, code:%d, bitmaps:%d\n",
+  //       code->framesize, code->arity, code->sizelits, code->sizecode,
+  //       code->sizebitmaps);
 
   code->lits = xmalloc(sizeof(*code->lits) * code->sizelits);
   code->littypes = xmalloc(sizeof(u1) * code->sizelits);
