@@ -4,6 +4,7 @@
 #include "Common.h"
 
 void initStorageManager();
+void dumpStorageManagerState();
 
 void* allocInfoTable(u4 nwords);
 void* allocStaticClosure(u4 nwords);

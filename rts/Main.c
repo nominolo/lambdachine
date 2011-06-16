@@ -142,6 +142,7 @@ main(int argc, char *argv[])
   clos0 = startThread(T0, clos0);
   printClosure(clos0);
   printEvents();
+  dumpStorageManagerState();
 
   return 0;
 }
