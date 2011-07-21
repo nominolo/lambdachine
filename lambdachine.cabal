@@ -1,0 +1,31 @@
+Name:                lambdachine
+Version:             0.1
+Synopsis:            Trace-based Haskell compiler
+Homepage:            https://github.com/nominolo/lambdachine
+License:             BSD3
+License-file:        LICENSE
+Author:              Thomas Schilling
+Category:            Compiler
+Build-type:          Simple
+Cabal-version:       >=1.10
+
+Executable lambdachine
+  Build-depends:    ghc
+                  , base
+                  , filepath
+                  , process
+                  , directory
+                  , containers
+                  , ghc-paths       == 0.1.*
+                  , cmdargs         >= 0.6   && < 0.8
+                  , mtl             == 2.*
+                  , blaze-builder   >= 0.2   && < 0.4
+                  , vector          == 0.7.*
+                  , utf8-string     == 0.3.*
+                  , bytestring
+                  , array
+                  , ansi-wl-pprint  == 0.6.*
+                  , binary          == 0.5.*
+                  , uniplate        == 1.6.*
+                  , hoopl           >= 3.8.6.1
+                  , value-supply    == 0.6.*
