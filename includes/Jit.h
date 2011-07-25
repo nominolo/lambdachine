@@ -74,6 +74,15 @@ typedef struct _HeapInfo {
   u2 scc;
 } HeapInfo;
 
+/* Snapshot and exit numbers. */
+typedef u4 SnapNo; /* Snapshot numbers */
+typedef u4 ExitNo; /* Trace exit numbers */
+
+/* Machine code types. */
+typedef u8 MCode;  /* Type for storing Machine code */
+typedef u4 MSize;  /* Machine code size */
+
+/* Fragments */
 typedef u2 FragmentId;
 
 typedef struct _Fragment {
@@ -166,6 +175,7 @@ typedef struct _JitState {
   u4 nfragments;       // number of entries used
   u4 sizefragment;     // total size of table, power of 2
   //  u4 maskframent;  // mask used by hash function (= size - 1)
+  MCode *exitstubgroup[LC_MAX_EXITSTUBGR];  /* Exit stub group addresses. */
 } JitState;
 
 typedef struct _FragmentEntry {

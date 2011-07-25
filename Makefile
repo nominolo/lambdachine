@@ -27,7 +27,7 @@ boot:
 	mkdir -p $(DEPDIR)/rts
 	mkdir -p $(DEPDIR)/utils
 
-INCLUDES = -Iincludes -Irts
+INCLUDES = -Iincludes -Irts -Irts/codegen
 CFLAGS = -Wall -g
 
 df = $(DEPDIR)/$(*D)/$(*F)
@@ -40,7 +40,8 @@ SRCS = rts/Bytecode.c rts/Capability.c rts/ClosureFlags.c \
        rts/Main.c \
        rts/Record.c rts/PrintIR.c rts/OptimiseIR.c \
        rts/Snapshot.c rts/HeapInfo.c rts/Bitset.c \
-       rts/InterpIR.c rts/Stats.c
+       rts/InterpIR.c rts/Stats.c \
+       rts/codegen/CodeGen.c
 
 UTILSRCS = utils/genopcodes.c
 
