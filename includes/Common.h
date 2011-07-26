@@ -114,8 +114,8 @@ from separately compiled modules.
 
 # define INLINE_HEADER static inline
 # define LC_AINLINE inline __attribute__((always_inline))
-# define LC_NORET inline __attribute__((noreturn))
-# define LC_NOINLINE inline __attribute__((noinline))
+# define LC_NORET __attribute__((noreturn))
+# define LC_NOINLINE __attribute__((noinline))
 
 // Comment from GHC's Rts.h:
 // 
