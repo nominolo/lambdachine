@@ -5,6 +5,7 @@
 #include "VM.h"
 
 #include "Jit.h"
+#include "Opts.h"
 
 typedef int AsmFunction;
 
@@ -36,7 +37,7 @@ extern Capability* G_cap0;
 
 void *allocate(Capability *cap, u4 num_words);
 
-void initVM();
-void initialiseCapability(Capability *cap);
+void initVM(const Opts* opts);
+void initialiseCapability(Capability *cap, const Opts* opts);
 
 #endif

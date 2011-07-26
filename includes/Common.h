@@ -240,5 +240,6 @@ INLINE_HEADER void xfree(void *p)
 #define checki32(x)	((x) == (int32_t)(x))
 #define checku32(x)	((x) == (uint32_t)(x))
 #define checkptr32(x)	((uintptr_t)(x) == (uint32_t)(uintptr_t)(x))
+#define UNUSED(x)  ((void)(x))  /* to avoid warnings */
 
 #endif

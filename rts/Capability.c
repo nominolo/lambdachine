@@ -2,18 +2,19 @@
 #include "MiscClosures.h"
 #include "Jit.h"
 #include "Stats.h"
+#include "Opts.h"
 
 #include <stdlib.h>
 
 Capability *G_cap0;
 
 void
-initVM()
+initVM(const Opts* opts)
 {
   int i;
   G_cap0 = xmalloc(sizeof(Capability));
 
-  initialiseCapability(G_cap0);
+  initialiseCapability(G_cap0, opts);
 
   for (i = -128; i < 128; i++) {
     smallInt(i).info = &stg_Izh_con_info;
@@ -25,7 +26,7 @@ initVM()
 }
 
 void
-initialiseCapability(Capability *cap)
+initialiseCapability(Capability *cap, const Opts* opts)
 {
   int i;
 
@@ -36,7 +37,7 @@ initialiseCapability(Capability *cap)
   for (i = 0; i < HOTCOUNT_SIZE; i++)
     cap->hotcount[i] = HOTCOUNT_DEFAULT;
 
-  initJitState(&cap->J);
+  initJitState(&cap->J, opts);
 #endif
 }
 

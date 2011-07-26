@@ -4,7 +4,4 @@
 typedef struct Thread_ Thread;
 typedef struct Capability_ Capability;
 
-
-
-
 #endif

@@ -13,6 +13,7 @@
 #include "HeapInfo.h"
 #include "Bitset.h"
 #include "Stats.h"
+#include "Opts.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -888,8 +889,16 @@ recordIns(JitState *J)
   return REC_ABORT;
 }
 
+/* Default values for JIT parameters. */
+static const int32_t jit_param_default[JIT_P__MAX+1] = {
+#define JIT_PARAMINIT(len, name, value)	(value),
+JIT_PARAMDEF(JIT_PARAMINIT)
+#undef JIT_PARAMINIT
+  0
+};
+
 void
-initJitState(JitState *J)
+initJitState(JitState *J, const Opts* opts)
 {
   J->mode = 0;
   J->startpc = 0;
@@ -898,6 +907,8 @@ initJitState(JitState *J)
   //  J->maskfragment = J->sizefragment - 1;
   J->fragment = xmalloc(J->sizefragment * sizeof(*J->fragment));
   J->nfragments = 0;
+  memcpy(J->param, jit_param_default, sizeof(J->param));
+  J->param[JIT_P_enableasm] = opts->enable_asm;
 }
 
 LC_FASTCALL void

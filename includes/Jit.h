@@ -6,6 +6,7 @@
 #include "IR.h"
 #include "Bytecode.h"
 #include "InfoTables.h"
+#include "Opts.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -108,12 +109,32 @@ typedef struct _Fragment {
   HeapEntry *heapmap;
 } Fragment;
 
+/* Fold state is used to fold instructions on-the-fly. */
 typedef struct _FoldState {
   IRIns ins;
   IRIns left;
   IRIns right;
 } FoldState;
 
+/* Optimization parameters and their defaults. Length is a char in octal! */
+#define JIT_PARAMDEF(_) \
+  _(\011, enableasm,	   0)	/* Generate machine code for traces. */ \
+  /* Size of each machine code area (in KBytes). */ \
+  _(\011, sizemcode,	64) \
+  /* Max. total size of all machine code areas (in KBytes). */ \
+  _(\010, maxmcode,	512) \
+  /* End of list. */
+
+enum {
+#define JIT_PARAMENUM(len, name, value)	JIT_P_##name,
+JIT_PARAMDEF(JIT_PARAMENUM)
+#undef JIT_PARAMENUM
+  JIT_P__MAX
+};
+#define JIT_PARAMSTR(len, name, value)	#len #name
+#define JIT_P_STRING	JIT_PARAMDEF(JIT_PARAMSTR)
+
+/* JIT compiler state. */
 typedef struct _JitState {
   Fragment cur;
 
@@ -174,9 +195,29 @@ typedef struct _JitState {
   Fragment **fragment;
   u4 nfragments;       // number of entries used
   u4 sizefragment;     // total size of table, power of 2
-  //  u4 maskframent;  // mask used by hash function (= size - 1)
+
   MCode *exitstubgroup[LC_MAX_EXITSTUBGR];  /* Exit stub group addresses. */
+
+  int mcprot;		/* Protection of current mcode area. */
+  MCode *mcarea;	/* Base of current mcode area. */
+  MCode *mctop;		/* Top of current mcode area. */
+  MCode *mcbot;		/* Bottom of current mcode area. */
+  size_t szmcarea;	/* Size of current mcode area. */
+  size_t szallmcarea;	/* Total size of all allocated mcode areas. */
+
+  uint32_t prngstate;	/* PRNG state. */
+
+  int32_t param[JIT_P__MAX];  /* JIT engine parameters. */
 } JitState;
+
+
+/* Trivial PRNG e.g. used for penalty randomization. */
+static LC_AINLINE uint32_t LC_PRNG_BITS(JitState *J, int bits)
+{
+  /* Yes, this LCG is very weak, but that doesn't matter for our use case. */
+  J->prngstate = J->prngstate * 1103515245 + 12345;
+  return J->prngstate >> (32-bits);
+}
 
 typedef struct _FragmentEntry {
   u2 unused;
@@ -195,7 +236,7 @@ typedef enum {
 
 INLINE_HEADER FragmentId getFragmentId(RecordResult r) { return (u4)r >> 8; }
 
-void initJitState(JitState *J);
+void initJitState(JitState *J, const Opts* opts);
 LC_FASTCALL void startRecording(JitState *J, BCIns *, Thread *, Word *base);
 void recordSetup(JitState *J, Thread *T);
 FragmentId finishRecording(JitState *J);
