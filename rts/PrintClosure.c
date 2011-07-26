@@ -138,20 +138,39 @@ printInstruction_aux(const BCIns *ins /*in*/, int oneline)
       break;
     case BC_ALLOCAP:
       {
-        u1 *arg = (u1*)ins; ins += 1 + BC_ROUND(bc_c(i));
-        printf("ALLOCAP\tr%d, r%d", bc_a(i), bc_b(i));
-        for (j = 0; j < bc_c(i); j++, arg++)
-          printf(", r%d", *arg);
+        u1 *arg = (u1*)ins; ins += 1 + BC_ROUND(bc_c(i) + 1);
+        printf("ALLOCAP\tr%d", bc_a(i));
+        u1 ptrmask = bc_b(i);
+        printf(", r%d", *arg++);
+        for (j = 1; j < bc_c(i); j++, arg++) {
+          printf(", r%d%c", *arg, ptrmask & 1 ? '*' : ' ');
+          ptrmask >>= 1;
+        }
         printInlineBitmap(ins - 1);
       }
       break;
     case BC_CALL:
-      { u1 *arg = (u1*)ins; ins += BC_ROUND(bc_b(i) - 1) + 1;
-        printf("%s\tr%d(r%d", name, bc_a(i), bc_c(i));
-        for (j = 1; j < bc_b(i); j++, arg++)
-          printf(", r%d", *arg);
-        printf(")");
+      { u1 *arg = (u1*)ins; ins += BC_ROUND(bc_c(i)) + 1;
+        printf("%s\tr%d(", name, bc_a(i));
+        char comma = '(';
+        for (j = 1; j < bc_c(i); j++, arg++) {
+          printf("%cr%d", comma, *arg);
+          comma = ',';
+        }
+        printf(") [%x]", bc_b(i));
         printInlineBitmap(ins - 1);
+      }
+      break;
+    case BC_CALLT:
+      { 
+        int j;
+        u1 bitmask = bc_b(i);
+        printf("CALLT r%d", bc_a(i));
+        for (j = 0; j < bc_c(i); j++) {
+          printf("%cr%d%c", j == 0 ? '(' : ',', j, bitmask & 1 ? '*' : ' ');
+          bitmask >>= 1;
+        }
+        printf(")\n");
       }
       break;
     default:
@@ -173,7 +192,7 @@ printInlineBitmap_(const u2 *p)
   int min = 0;
   int i;
   // Live pointers
-  printf("{ ");
+  printf("(%p) { ", p);
   do {
     bitmap = *p;
     for (i = 0; i < 15 && bitmap != 0; i++) {
@@ -190,12 +209,15 @@ printInlineBitmap_(const u2 *p)
 void
 printInlineBitmap(const BCIns *p0)
 {
-  const u2 *p = (const u2*)((u1*)p0 + (u4)(*p0));
-  putchar('\t');
-  p = printInlineBitmap_(p);
-  printf(" / ");
-  printInlineBitmap_(p);   // Live-out variables
-  putchar('\n');
+  u4 offset = (u4)(*p0);
+  if (offset != 0) {
+    const u2 *p = (const u2*)((u1*)p0 + offset);
+    putchar('\t');
+    p = printInlineBitmap_(p);
+    printf(" / ");
+    printInlineBitmap_(p);   // Live-out variables
+    putchar('\n');
+  }
 }
 
 void

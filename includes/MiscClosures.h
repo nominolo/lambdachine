@@ -19,13 +19,15 @@ extern ThunkInfoTable stg_BLACKHOLE_info;
 extern Closure stg_BLACKHOLE_closure;
 extern PapInfoTable stg_PAP_info;
 
-#define MAX_APK_ARITY           (BCMAX_CALL_ARGS - 1)
+#define MAX_APK_ARITY           BCMAX_CALL_ARGS
 
-#define MAX_AP_ARGS             16
+#define MAX_AP_ARGS             BCMAX_CALL_ARGS
 
-void initAPClosures();
-void getAPKClosure(Closure **/*out*/, BCIns**/*out*/, int nargs);
-InfoTable* getAPInfoTable(int nargs);
+void initMiscClosures(void);
+void getApContClosure(Closure **res_clos /*out*/, BCIns **res_pc  /*out*/,
+                      int nargs, u4 pointer_mask);
+InfoTable *getApInfoTable(int nargs, u4 pointer_mask);
+void dumpApClosures(void);
 
 #define smallInt(i) (the_smallInt[(i)+128])
 

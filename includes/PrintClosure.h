@@ -12,5 +12,6 @@ void printInfoTable(InfoTable* info0);
 u4 printInstruction(const BCIns *ins);
 u4 printInstructionOneLine(const BCIns *ins);
 void printCode(LcCode *code);
+void printInlineBitmap(const BCIns *p0);
 
 #endif

@@ -29,7 +29,7 @@ and C.  We write SD when treating D as a signed field.
 
 /* Calls with more arguments have to be translated into multiple calls
    (where the first ones are partial applications). */
-#define BCMAX_CALL_ARGS  9
+#define BCMAX_CALL_ARGS  8
 
 typedef u4 BCIns; /* A byte code instruction */
 typedef u4 BCReg; /* Bytecode register. */
@@ -116,7 +116,7 @@ interpreter, and all bytecode files.
   _(ALLOCAP, ___) \
   /* Calls and jumps */ \
   _(CALL,    ___) \
-  _(CALLT,   RN) \
+  _(CALLT,   ___) \
   _(RET1,    R) \
   _(JMP,     J) \
   _(EVAL,    ___) \

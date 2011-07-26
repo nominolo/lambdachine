@@ -1,26 +1,13 @@
 #include "StorageManager.h"
 #include "MiscClosures.h"
+#include "Capability.h"
+#include "Thread.h"
 
 #include <sys/mman.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <stdio.h>
 
-
-#define BLOCK_SIZE              (1ul << 15)
-
-// Block Flags
-#define BF_UNINITIALIZED        0x0000
-#define BF_CLOSURES             0x0001
-#define BF_INFO_TABLES          0x0002
-#define BF_STATIC_CLOSURES      0x0003
-#define BF_CONTENTS_MASK        0x000f
-
-#define ROUND_UP_TO_BLOCK_SIZE(x) \
-  (((Word)(x) + BLOCK_SIZE - 1) & ~(BLOCK_SIZE - 1))
-
-#define BLOCK_ALIGNED(x) \
-  (((Word)(x) & (BLOCK_SIZE - 1)) == 0)
 
 /* mmap-related stuff */
 
@@ -38,56 +25,10 @@
 # define MMAP_REGION_END        ((char*)(1ul << 40))
 #endif
 
-typedef struct _BlockDescr {
-  char               *start;    /* Start of allocatable data. */
-  char               *free;     /* Next free byte */
-  struct _BlockDescr *link;     /* Link to next block. */
-  u2                  flags;
-  u2                  unused;
-#if LC_ARCH_BITS == 64
-  u4                  pad;
-#endif
-} BlockDescr;
-
-// Tests whether x's size is a multiple of the size of a word.
-#define WORD_ALIGNED_SIZE(x) \
-  ((sizeof(x) & ((1 << (LC_ARCH_BITS_LOG2 - 3)) - 1)) == 0)
-
-LC_STATIC_ASSERT(WORD_ALIGNED_SIZE(BlockDescr));
-
-/* For debug output. */
-typedef struct _RegionInfo {
-  void               *start, *end;
-  struct _RegionInfo *next;
-} RegionInfo;
-
-/* Memory manager state */
-typedef struct _StorageManagerState {
-  BlockDescr *empty;		/* Linked list of empty blocks */
-  BlockDescr *full;		/* Linked list of full blocks */
-  BlockDescr *current;     	/* Pointer to current closure
-				   allocation block */
-  BlockDescr *infoTables;	/* Linked list of info table blocks */
-  BlockDescr *staticClosures;	/* Linked list of static closures */
-
-  /* State concerning the dynamic region of the heap. */
-  u4 nfull;                     /* Number of full blocks. */
-  u4 ntotal;                    /* Total number of blocks (full and empty) */
-  u4 nextgc;                    /* Do next GC when nfull reaches this
-                                   value. */
-  Word *hp;                     /* Next location to allocate */
-  Word *limit;                  /* Upper bound for current allocation
-                                   buffer. */
-  u8 allocated;                 /* Words allocated */
-
-  /* Debug info. */
-  RegionInfo *regions;
-} StorageManagerState;
 
 StorageManagerState G_storage;
 
 void initStorageManager();
-void makeCurrent(StorageManagerState *M, BlockDescr *blk);
 BlockDescr *allocBlock(StorageManagerState *M);
 void addInfoTableBlock(StorageManagerState *M);
 void addStaticClosuresBlock(StorageManagerState *M);
@@ -104,7 +45,8 @@ initStorageManager()
 
   G_storage.nfull = 0;
   G_storage.ntotal = 0;
-  G_storage.nextgc = 32;
+  G_storage.nextgc = 2;
+  G_storage.gc_inprogress = 0;
   G_storage.hp = NULL;
   G_storage.limit = NULL;
   G_storage.allocated = 0;
@@ -229,8 +171,9 @@ currentBlockFull(StorageManagerState *M)
   M->full = blk;
   M->nfull++;
 
-  if (M->nfull >= M->nextgc) {
-    printf("TODO: PerformGC\n");
+  if (M->nfull >= M->nextgc && !M->gc_inprogress) {
+    performGC(G_cap0);
+    //    printf("TODO: PerformGC\n");
   }
 
   makeCurrent(M, getEmptyBlock(M));
@@ -254,8 +197,13 @@ addStaticClosuresBlock(StorageManagerState *M)
   M->staticClosures = blk;
 }
 
-void* allocClosure(u4 nwords)
+// Used by the interpreter.  Ensures thread state is in sync with
+// interpreter state when GC is triggered.
+//
+// pc points *after* the allocation instruction
+void* allocClosure_(u4 nwords, Thread *T, BCIns *pc, Word *base)
 {
+  if (nwords == 1) nwords = 2;  // Silly hack
   // printf(">> allocClosure(%d)\n", nwords);
  retry:
   if (LC_LIKELY(G_storage.hp + nwords <= G_storage.limit)) {
@@ -263,10 +211,60 @@ void* allocClosure(u4 nwords)
     G_storage.hp += nwords;
     //printf(">> Allocated closure: %p-%p (%u)\n",
     //	   p, G_storage.hp, nwords);
+    DBG_PR("allocClosure_(%d,...) => %p\n", nwords, p);
+    return p;
+  }
+
+  // state in T must be up to date because we may have to do GC
+  T->pc = pc;
+  T->base = base;
+  currentBlockFull(&G_storage);
+  goto retry;
+
+}
+
+void* allocClosure(u4 nwords)
+{
+  if (nwords == 1) nwords = 2;  // Silly hack
+  // printf(">> allocClosure(%d)\n", nwords);
+ retry:
+  if (LC_LIKELY(G_storage.hp + nwords <= G_storage.limit)) {
+    void *p = G_storage.hp;
+    G_storage.hp += nwords;
+    //printf(">> Allocated closure: %p-%p (%u)\n",
+    //	   p, G_storage.hp, nwords);
+    DBG_PR("allocClosure(%d) => %p\n", nwords, p);
     return p;
   }
 
   currentBlockFull(&G_storage);
+  goto retry;
+}
+
+void *allocClosureDuringGC(u4 nwords)
+{
+  if (nwords == 1) nwords = 2;
+ retry:
+  if (LC_LIKELY((Word*)G_storage.current->free + nwords
+                <= (Word*)((char*)G_storage.current + BLOCK_SIZE))) {
+    void *p = G_storage.current->free;
+    G_storage.current->free += nwords * sizeof(Word);
+    G_storage.allocated += nwords;
+    DBG_PR("allocClosureDuringGC(%d) => %p\n", nwords, p);
+    return p;
+  }
+  
+  // Block full
+  BlockDescr *blk = G_storage.current;
+  G_storage.current = NULL;
+
+  // All GC'd blocks have been unlinked from the full list, so it's
+  // fine to link them here.
+  blk->link = G_storage.full;
+  G_storage.full = blk;
+  G_storage.nfull++;
+
+  makeCurrent(&G_storage, getEmptyBlock(&G_storage));
   goto retry;
 }
 
@@ -290,6 +288,7 @@ allocInfoTable(u4 nwords)
 
 void* allocStaticClosure(u4 nwords)
 {
+  if (nwords == 1) nwords = 2; // Silly hack
   BlockDescr *blk;
  retry:
   blk = G_storage.staticClosures;
@@ -379,27 +378,31 @@ dumpStorageManagerState()
   d = M->current;
   formatWithThousands(str, M->allocated * (LC_ARCH_BITS / 8) +
          ((char*)M->hp - d->free));
-  printf("**********************************************\n"
-         "Bytes allocated:    %20s bytes\n", str);
+  printf("************************************************************\n"
+         "Bytes allocated:                  %20s bytes\n", str);
 
-  printf("Alloc:       hp=%p, limit=%p\n", M->hp, M->limit);
-  printf("Blocks:      %u full, %u total\n", M->nfull, M->ntotal);
+  printf("Alloc:            hp=%p, limit=%p\n", M->hp, M->limit);
+  printf("Blocks:           %u full, %u total\n", M->nfull, M->ntotal);
 
   u8 block_capacity = ((char*)d + BLOCK_SIZE) - d->start;
   u8 block_full = (char*)M->hp - d->start;
 
-  printf("Current:     %p-%p, %" FMT_Word64 "%% full\n",
+  printf("Current:          %p-%p, %" FMT_Word64 "%% full\n",
          d->start, (char*)d + BLOCK_SIZE,
          (100 * block_full) / block_capacity );
 
-  /*
-  for (d = M->empty; d != NULL; d = d->link) {
-    printf("Empty block: %p-%p\n",  d->start, (char*)d + BLOCK_SIZE);
-  }
+  // for (d = M->empty; d != NULL; d = d->link) {
+  //   printf("Empty block: %p-%p\n",  d->start, (char*)d + BLOCK_SIZE);
+  // }
   for (d = M->full; d != NULL; d = d->link) {
     printf("Full block:  %p-%p\n",  d->start, (char*)d + BLOCK_SIZE);
   }
-  */
+  for (d = M->infoTables; d != NULL; d = d->link) {
+    printf("Itbl block:  %p-%p\n",  d->start, (char*)d + BLOCK_SIZE);
+  }
+  for (d = M->staticClosures; d != NULL; d = d->link) {
+    printf("Static block:  %p-%p\n",  d->start, (char*)d + BLOCK_SIZE);
+  }
 }
 
 void
@@ -407,4 +410,11 @@ outOfMemory()
 {
   fprintf(stderr, "FATAL: Out of memory\n");
   exit(1);
+}
+
+char *
+allocString(u4 len)
+{
+  // TODO: Alloc into special block?
+  return xmalloc(len + 1);
 }

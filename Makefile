@@ -52,7 +52,7 @@ SRCS = rts/Bytecode.c rts/Capability.c rts/ClosureFlags.c \
        rts/Main.c \
        rts/Record.c rts/PrintIR.c rts/OptimiseIR.c \
        rts/Snapshot.c rts/HeapInfo.c rts/Bitset.c \
-       rts/InterpIR.c rts/Stats.c
+       rts/InterpIR.c rts/Stats.c rts/GC.c
 
 UTILSRCS = utils/genopcodes.c
 

@@ -51,6 +51,11 @@ typedef struct _PapClosure {
   Word          payload[FLEXIBLE_ARRAY];
 } PapClosure;
 
+typedef struct _IndClosure {
+  ClosureHeader header;
+  Closure      *indirectee;
+} IndClosure;
+
 /*  
 inline InfoTable *getInfo(Closure *cl) { return cl->header.info; }
 */
@@ -97,6 +102,8 @@ typedef struct _FuncInfoTable {
 } FuncInfoTable;
 
 typedef FuncInfoTable ThunkInfoTable;
+typedef FuncInfoTable ApContInfoTable;
+typedef FuncInfoTable ApInfoTable;
 
 typedef struct _ConInfoTable {
   InfoTable i;
@@ -128,6 +135,7 @@ typedef struct _FwdRefInfoTable {
   _(IND,            IND) \
   _(CAF,            THU) \
   _(PAP,            HNF) \
+  _(AP_CONT,        HNF) \
   _(STATIC_IND,     IND) \
   _(UPDATE_FRAME,   ___) \
   _(BLACKHOLE,      ___)

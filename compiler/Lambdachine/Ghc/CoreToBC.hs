@@ -997,11 +997,12 @@ loadDataCon x env fvi locs0 mr = do
               updateLoc locs0 x (InVar x'), mempty)
     Nothing -> do
       this_mdl <- getThisModule
-      let x' | Ghc.isNullarySrcDataCon (ghcIdDataCon x)
-             = toplevelId this_mdl x
-             | otherwise
-             = dataConInfoTableId (ghcIdDataCon x)
-      r <- mbFreshLocal ghcAnyType mr
+      let is_nullary = Ghc.isNullarySrcDataCon (ghcIdDataCon x)
+      let x' | is_nullary = toplevelId this_mdl x
+             | otherwise  = dataConInfoTableId (ghcIdDataCon x)
+      let ty | is_nullary = ghcAnyType
+             | otherwise  = Ghc.bcoPrimTy
+      r <- mbFreshLocal ty mr
       return (insLoadGbl r x', r, -- TODO: only if CAF
                   updateLoc locs0 x (InVar r), globalVar x')
 

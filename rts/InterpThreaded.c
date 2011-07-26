@@ -373,8 +373,9 @@ int engine(Capability *cap)
   // C = payload[0]
   {
     DECODE_BC;
+    DBG_PR("ALLOC%d\n", 1);
     recordEvent(EV_ALLOC, 2);
-    Closure *cl = allocClosure(wordsof(ClosureHeader) + 1);
+    Closure *cl = allocClosure_(wordsof(ClosureHeader) + 1, T, pc + 1, base);
     setInfo(cl, (InfoTable*)base[opB]);
     cl->payload[0] = base[opC];
     base[opA] = (Word)cl;
@@ -390,15 +391,18 @@ int engine(Capability *cap)
   {
     DECODE_BC;
     u4 sz = opC;
+    DBG_PR("ALLOC_%d  ; ", sz);
+    if (sz == 0) { printInfoTable((InfoTable*)base[opB]); } else { printf("\n"); }
     recordEvent(EV_ALLOC, 1 + sz);
     u4 i;
     u1 *arg = (u1 *)pc;
-    Closure *cl = allocClosure(wordsof(ClosureHeader) + sz);
+    BCIns *new_pc = pc + 1 + ((sz + 3) / sizeof(BCIns));
+    Closure *cl = allocClosure_(wordsof(ClosureHeader) + sz, T, new_pc, base);
     setInfo(cl, (InfoTable*)base[opB]);
     for (i = 0; i < sz; i++)
       cl->payload[i] = base[*arg++];
     base[opA] = (Word)cl;
-    pc += 1 + ((sz + 3) / sizeof(BCIns));
+    pc = new_pc;
     DISPATCH_NEXT;
   }
 
@@ -695,12 +699,15 @@ int engine(Capability *cap)
   {
     Closure *oldnode = (Closure *)base[opA];
     Closure *newnode = (Closure *)base[opC];
+    LC_ASSERT(newnode != 0);
     recordEvent(EV_UPDATE, 0);
 
     DBG_IND(printf("... updating: %p with %p\n", oldnode, newnode));
     setInfo(oldnode, (InfoTable*)&stg_IND_info);
-    // TODO: Enforce invariant: *newcode is never an indirection.
+    // TODO: Enforce invariant: *newnode is never an indirection.
+    DBG_IND(printf("... writing to mem loc: %p\n", &oldnode->payload[0]));
     oldnode->payload[0] = (Word)newnode;
+    
     T->last_result = (Word)newnode;
     goto do_return;
   }
@@ -714,6 +721,7 @@ int engine(Capability *cap)
   T->top = base - 3;
   pc = (BCIns*)base[-2];
   base = (Word*)base[-3];
+  //printf("new base=%p, Node=%p\n", base, (void*)base[-1]);
   { FuncInfoTable *info = getFInfo((Closure*)base[-1]);
     DBG_RETURN(info, pc);
     code = &info->code;
@@ -729,16 +737,19 @@ int engine(Capability *cap)
 
  op_CALLT:
   {
+    DECODE_BC;
     // opA = function
-    // opC/D = no of args
+    // opC = no of args
+    // opB = argument pointer mask
     u4 callargs = opC; // arguments from this call
-    u4 nargs = callargs;
+    u4 pointer_mask = opB; // pointer mask for callargs
+    u4 nargs = callargs; // arguments including PAP arguments
     Closure *fnode = (Closure *)base[opA];
     u4 i;
     recordEvent(EV_CALL, callargs);
 
     LC_ASSERT(fnode != NULL);
-    LC_ASSERT(callargs <= 16);
+    LC_ASSERT(callargs <= BCMAX_CALL_ARGS);
 
     FuncInfoTable *info;
     PapClosure *pap = NULL;
@@ -771,7 +782,8 @@ int engine(Capability *cap)
 
         BCIns *ap_return_pc;
         Closure *ap_closure;
-        getAPKClosure(&ap_closure, &ap_return_pc, callargs);
+        getApContClosure(&ap_closure, &ap_return_pc, callargs, pointer_mask);
+        //getAPKClosure(&ap_closure, &ap_return_pc, callargs);
         
         u4 framesize = info->code.framesize;
         DBG_ENTER(info);
@@ -819,16 +831,18 @@ int engine(Capability *cap)
       DBG_IND(printf("Creating PAP = %s, nargs = %d, arity = %d\n",
 		     info->name, new_pap->nargs, new_pap->arity));
 
-      if (pap != NULL) {
+
+      if (pap != NULL) { // Some arguments come from an existing PAP
 	for (i = 0; i < pap->nargs; i++)
 	  new_pap->payload[i] = pap->payload[i];
-
-	// Copy rest (registers r0 ... r{callargs-1})
-	for (i = 0; i < callargs; i++)
-	  new_pap->payload[i + pap->nargs] = base[i];
       }
 
-      // return pointer to pap
+      int papargs = pap != NULL ? pap->nargs : 0;
+      // Copy rest (registers r0 ... r{callargs-1})
+      for (i = 0; i < callargs; i++)
+        new_pap->payload[i + papargs] = base[i];
+
+      // return pointer to new pap
       T->last_result = (Word)new_pap;
       T->top = base - 3;
       pc = (BCIns*)base[-2];
@@ -845,6 +859,9 @@ int engine(Capability *cap)
       u4 immediate_args = info->code.arity;
       u4 extra_args = nargs - immediate_args;
       Word *top = T->top;
+
+      // Adjust pointer mask to match extra_args.
+      pointer_mask >>= callargs - extra_args;
 
       DBG_IND(printf(" ... overapplication: %d + %d\n",
 		     immediate_args, extra_args));
@@ -916,7 +933,7 @@ int engine(Capability *cap)
       // 3. Fill in rest of stack frame.
       BCIns *ap_return_pc;
       Closure *ap_closure;
-      getAPKClosure(&ap_closure, &ap_return_pc, extra_args);
+      getApContClosure(&ap_closure, &ap_return_pc, extra_args, pointer_mask);
       base[-1] = (Word)ap_closure;
 
       top[0] = (Word)base;
@@ -951,6 +968,7 @@ int engine(Capability *cap)
       if (!pap) {
 	// Arguments already in place.
       } else {
+        int i;
 	// Copy up arguments (stack check already done above)
 	for (i = callargs - 1; i >= 0; i --)
 	  base[pap->nargs + i] = base[i];
@@ -971,21 +989,22 @@ int engine(Capability *cap)
  op_CALL:
   {
     // opA = function
-    // opB = no of args
-    // opC = first argument reg
-    // following bytes: argument regs, live regs
+    // opB = argument pointer mask
+    // opC = no of argumenst
+    // following bytes: argument regs, bitmask
     DECODE_BC;
     // Arguments from this call instruction
-    u4       callargs = opB;
+    u4       callargs = opC;
+    u4       pointer_mask = opB;  // of the remaining args
     recordEvent(EV_CALL, callargs);
     // Total number of arguments, including PAP arguments.
     u4       nargs = callargs;
     Closure *fnode = (Closure *)base[opA];
-    Word     arg0  = base[opC];
     Word    *top   = T->top;
     u4 i;
 
     LC_ASSERT(fnode != NULL);
+    LC_ASSERT(callargs < BCMAX_CALL_ARGS);
 
     FuncInfoTable *info;
     PapClosure *pap = NULL;
@@ -1020,14 +1039,13 @@ int engine(Capability *cap)
         DBG_ENTER(info);
         DBG_STACK;
 
-        getAPKClosure(&ap_closure, &ap_return_pc, callargs);
+        getApContClosure(&ap_closure, &ap_return_pc, callargs, pointer_mask);
 
 	// Build APK frame
 	top[0] = (Word)base;
 	top[1] = (Word)(pc + BC_ROUND(nargs - 1) + 1);
 	top[2] = (Word)ap_closure;
-	top[3] = arg0;
-	for (i = 1; i < nargs; i++, args++)
+	for (i = 0; i < nargs; i++, args++)
 	  top[3 + i] = *args;
 
 	// Put UPDATE and EVAL frames on top
@@ -1078,8 +1096,7 @@ int engine(Capability *cap)
         // Copy rest
         u1 *args = (u1*)pc;
         LC_ASSERT(LC_ARCH_ENDIAN == LAMBDACHINE_LE);
-        new_pap->payload[pap->nargs] = arg0;
-        for (i = pap->nargs + 1; i < nargs; i++, args++)
+        for (i = pap->nargs; i < nargs; i++, args++)
           new_pap->payload[i] = base[*args];
       }
 
@@ -1101,7 +1118,7 @@ int engine(Capability *cap)
     // each additional argument requires 1 byte,
     // we pad to multiples of an instruction
     // the liveness mask follows (one instruction)
-    BCIns *return_pc = pc + BC_ROUND(nargs - 1) + 1;
+    BCIns *return_pc = pc + BC_ROUND(nargs) + 1;
     u4     framesize = info->code.framesize;
     Word  *saved_base;
 
@@ -1114,6 +1131,7 @@ int engine(Capability *cap)
 
       u4 immediate_args = info->code.arity;
       u4 extra_args = nargs - immediate_args;
+      pointer_mask >>= callargs - extra_args;  // now matches extra_args
 
       DBG_IND(printf(" ... overapplication: %d + %d\n",
 		     immediate_args, extra_args));
@@ -1128,7 +1146,7 @@ int engine(Capability *cap)
       top[1] = (Word)return_pc;
       Closure *ap_closure;
       // Note the modification of `return_pc`.
-      getAPKClosure(&ap_closure, &return_pc, extra_args);
+      getApContClosure(&ap_closure, &return_pc, extra_args, pointer_mask);
       top[2] = (Word)ap_closure;
       saved_base = &top[3];
 
@@ -1141,6 +1159,7 @@ int engine(Capability *cap)
       }
       // Move `top`, so the code below allocates on top of it.
       top += ap_frame_size;
+
       // Fall through to exact arity case
 
     } else {
@@ -1165,9 +1184,8 @@ int engine(Capability *cap)
     }
 
     // copy arguments
-    top[arg0pos] = arg0;
     u1 *arg = (u1*)pc;
-    for (i = 1; i < callargs; i++, arg++) {
+    for (i = 0; i < callargs; i++, arg++) {
       top[arg0pos + i] = base[*arg];
     }
 
@@ -1193,22 +1211,22 @@ int engine(Capability *cap)
     DECODE_BC;
     // A = result register
     // C = number of arguments (*excluding* function), always >= 1
-    // B = first argument (function closure)
+    // B = pointer mask for arguments
     u4 nargs = opC;
+    u4 pointer_mask = opB;
     u4 i;
     recordEvent(EV_ALLOC, nargs + 1);
 
     LC_ASSERT(nargs >= 1);
 
     Closure *cl = allocClosure(wordsof(ClosureHeader) + nargs + 1);
-    InfoTable *info = getAPInfoTable(nargs);
+    InfoTable *info = getApInfoTable(nargs, pointer_mask);
     setInfo(cl, info);
 
-    cl->payload[0] = base[opB];
     u1 *args = (u1 *)pc;
-    pc += 1 + BC_ROUND(nargs);
-    for (i = 0; i < nargs; i++, args++)
-      cl->payload[i + 1] = base[*args];
+    pc += 1 + BC_ROUND(nargs + 1);
+    for (i = 0; i < nargs + 1; i++, args++)
+      cl->payload[i] = base[*args];
 
     base[opA] = (Word)cl;
     DISPATCH_NEXT;
@@ -1288,8 +1306,9 @@ void printSlot(Word *slot);
 void
 printFrame(Word *base, Word *top)
 {
-  u4 i = 0;
+  u4 i = -1;
   printf("[%p]", base);
+  base--;
   while (base < top) {
     printf(" %d:", i);
     printSlot(base);

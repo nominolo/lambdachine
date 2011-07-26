@@ -20,7 +20,7 @@ initVM()
     smallInt(i).val = i;
   }
 
-  initAPClosures();
+  initMiscClosures();
   initEvents();
 }
 

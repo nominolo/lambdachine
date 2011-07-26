@@ -52,6 +52,8 @@ typedef int64_t  WordInt;
 #error "Only 32 bit and 64 bit architectures supported."
 #endif
 
+#define LC_ARCH_BYTES_LOG2 (LC_ARCH_BITS_LOG2 - 3)
+
 /* LC_STATIC_ASSERT(sizeof(void*) == sizeof(Word)); */
 
 typedef uint8_t  u1;
@@ -91,6 +93,8 @@ enum { false = 0, true = 1 };
 #define wordsof(x)  ((sizeof(x) + sizeof(Word)-1) / sizeof(Word))
 #define countof(x)  (sizeof(x) / sizeof(*x))
 
+#define byte_offset(from, to)  (cast(u1*, (to)) - cast(u1*, (from)))
+
 #if __GNUC__ >= 3
 /* Assume that a flexible array member at the end of a struct
  * can be defined thus: T arr[]; */
@@ -100,8 +104,7 @@ enum { false = 0, true = 1 };
 #define FLEXIBLE_ARRAY 0
 #endif
 
-/* 
-
+/*  
 Inlining 
 --------
 

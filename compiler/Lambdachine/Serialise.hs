@@ -916,11 +916,14 @@ emitLinearIns bit_r lit_ids tgt_labels r ins_id ins = do
       emitBitSets bit_r (S.delete (BcReg reg VoidTy) lives) r
       emitInsAD r opc_MOV_RES (i2b reg) 0
     Lst (Call Nothing (BcReg f _) args) ->
+      assert (length args <= cMAX_CALL_ARGS) $ do
       assert (args == map (\n -> BcReg n VoidTy) [0 .. length args - 1]) $ do
-      emitInsAD r opc_CALLT (i2b f) (i2h (length args))
+      let [ptrs] = bitsToWord32s (map isPtrReg args)
+      emitInsABC r opc_CALLT (i2b f) (fromIntegral ptrs) (i2b (length args))
       --emitBitSets bit_r (S.fromList args) r
-    Lst (Call (Just (BcReg rslt _, _, lives)) (BcReg f _) (BcReg arg0 _:args))      -> do
-        emitInsABC r opc_CALL (i2b f) (i2b $ 1 + length args) (i2b arg0)
+    Lst (Call (Just (BcReg rslt _, _, lives)) (BcReg f _) args)      -> do
+        let [ptrs] = bitsToWord32s (map isPtrReg args)
+        emitInsABC r opc_CALL (i2b f) (fromIntegral ptrs) (i2b $ length args)
         emitArgs r args
         emitBitSets bit_r (S.delete (BcReg rslt VoidTy) lives) r
         emitInsAD r opc_MOV_RES (i2b rslt) 0
@@ -973,8 +976,12 @@ emitLinearIns bit_r lit_ids tgt_labels r ins_id ins = do
           emitInsABC r opc_ALLOC (i2b d) (i2b i) (i2b (length args))
           emitArgs r args
       emitBitSets bit_r lives r
-    Mid (Assign (BcReg d _) (AllocAp (BcReg a0 _:args) lives)) -> do
-      emitInsABC r opc_ALLOCAP (i2b d) (i2b a0) (i2b (length args))
+    Mid (Assign (BcReg d _) (AllocAp args lives)) -> 
+      assert (length args - 1 <= cMAX_CALL_ARGS) $ do
+      -- the pointer mask excludes the first argument (because it's
+      -- always a pointer)
+      let [ptrs] = bitsToWord32s (map isPtrReg (tail args))
+      emitInsABC r opc_ALLOCAP (i2b d) (fromIntegral ptrs) (i2b (length args - 1))
       emitArgs r args
       emitBitSets bit_r lives r
     Mid (Assign (BcReg d _) (Fetch (BcReg n _) fld)) ->

@@ -3,6 +3,7 @@
 #include "HashTable.h"
 #include "PrintClosure.h"
 #include "StorageManager.h"
+#include "MiscClosures.h"
 #include "Stats.h"
 
 #include <stdio.h>
@@ -112,8 +113,8 @@ main(int argc, char *argv[])
     }
   }
 
-  initVM();
   initStorageManager();
+  initVM();
   initLoader();
   loadWiredInModules();
   loadModule(opts.input_file);
@@ -143,6 +144,7 @@ main(int argc, char *argv[])
   printClosure(clos0);
   printEvents();
   dumpStorageManagerState();
+  dumpApClosures();
 
   return 0;
 }
