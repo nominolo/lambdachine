@@ -18,3 +18,4 @@ utils/print_config
 compiler/Opcodes.h
 interp
 dist/
+.DS_Store
