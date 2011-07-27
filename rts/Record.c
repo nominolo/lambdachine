@@ -1014,6 +1014,8 @@ registerCurrentFragment(JitState *J)
   F->heapmap = xmalloc(F->nheapmap * sizeof(HeapEntry));
   memcpy(F->heapmap, J->cur.heapmap, F->nheapmap * sizeof(HeapEntry));
 
+  F->framesize = MAX_SLOTS; //TODO: compute the actual framsize of a trace
+
   recordCleanup(J);
 
   if (LC_UNLIKELY(J->nfragments >= J->sizefragment)) {

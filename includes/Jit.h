@@ -107,6 +107,7 @@ typedef struct _Fragment {
   u2 nheapmap;
   HeapInfo *heap;
   HeapEntry *heapmap;
+  u4 framesize; // Total size of frame used by this fragment
 } Fragment;
 
 /* Fold state is used to fold instructions on-the-fly. */
