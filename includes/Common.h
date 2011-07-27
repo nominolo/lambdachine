@@ -241,5 +241,11 @@ INLINE_HEADER void xfree(void *p)
 #define checku32(x)	((x) == (uint32_t)(x))
 #define checkptr32(x)	((uintptr_t)(x) == (uint32_t)(uintptr_t)(x))
 #define UNUSED(x)  ((void)(x))  /* to avoid warnings */
+#define lc_fls(x)  ((uint32_t)(__builtin_clz(x)^31))  /* position of first bit */
+#define lc_ffs(x)  ((uint32_t)__builtin_ctz(x))       /* position of last bit */
+static LC_AINLINE uint32_t lj_bswap(uint32_t x)
+{
+  uint32_t r; __asm__("bswap %0" : "=r" (r) : "0" (x)); return r;
+}
 
 #endif

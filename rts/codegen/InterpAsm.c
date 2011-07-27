@@ -2,12 +2,29 @@
 #include "Capability.h"
 #include "Jit.h"
 #include "InterpAsm.h"
+#include "AsmCodeGen.h"
 
 static void runTrace(JitState *J, Fragment *F);
 static void asmEnter(MCode* code);
+static void dumpAsm(MCode* mcode, MSize sz);
 
 void asmEngine(Capability *cap, Fragment *F) {
+  JitState *J = &cap->J;
+
+  genAsm(J, F);
+  dumpAsm(F->mcode, F->szmcode);
+  LC_ASSERT(0 && "STOP HERE");
   runTrace(&cap->J, F);
+}
+
+static void dumpAsm(MCode* mcode, MSize sz) {
+  MSize i;
+  FILE* out = fopen("dump.s", "w");
+  fprintf(out, ".text\n");
+  for(i = 0; i < sz; i++) {
+    fprintf(out, "\t.byte 0x%x\n", mcode[i]);
+  }
+  fprintf(out, "\n");
 }
 
 static void runTrace(JitState *J, Fragment *F) {

@@ -80,7 +80,7 @@ typedef u4 SnapNo; /* Snapshot numbers */
 typedef u4 ExitNo; /* Trace exit numbers */
 
 /* Machine code types. */
-typedef u8 MCode;  /* Type for storing Machine code */
+typedef u1 MCode;  /* Type for storing Machine code */
 typedef u4 MSize;  /* Machine code size */
 
 /* Fragments */
@@ -108,6 +108,9 @@ typedef struct _Fragment {
   HeapInfo *heap;
   HeapEntry *heapmap;
   u4 framesize; // Total size of frame used by this fragment
+
+  MCode *mcode;  // Machine code for the trace
+  MSize szmcode; // Size of machine code
 } Fragment;
 
 /* Fold state is used to fold instructions on-the-fly. */

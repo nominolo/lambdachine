@@ -19,3 +19,4 @@ compiler/Opcodes.h
 interp
 dist/
 .DS_Store
+dump.s

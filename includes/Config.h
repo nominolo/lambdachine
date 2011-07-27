@@ -3,7 +3,8 @@
 
 #define LC_HAS_JIT      1
 
-#define NDEBUG
+#undef NDEBUG
+#define DEBUG
 
 #ifdef NDEBUG
 #define LC_DEBUG_LEVEL  0
