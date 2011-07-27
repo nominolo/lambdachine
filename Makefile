@@ -25,6 +25,7 @@ all: interp compiler/Opcodes.h $(LCC)
 boot:
 	mkdir -p $(HSBUILDDIR)
 	mkdir -p $(DEPDIR)/rts
+	mkdir -p $(DEPDIR)/rts/codegen
 	mkdir -p $(DEPDIR)/utils
 
 INCLUDES = -Iincludes -Irts -Irts/codegen
@@ -41,7 +42,7 @@ SRCS = rts/Bytecode.c rts/Capability.c rts/ClosureFlags.c \
        rts/Record.c rts/PrintIR.c rts/OptimiseIR.c \
        rts/Snapshot.c rts/HeapInfo.c rts/Bitset.c \
        rts/InterpIR.c rts/Stats.c \
-       rts/codegen/CodeGen.c
+       rts/codegen/MCode.c rts/codegen/InterpAsm.c
 
 UTILSRCS = utils/genopcodes.c
 
