@@ -67,10 +67,7 @@ void genAsm(JitState *J, Fragment *T) {
   as->ir = T->ir;
   as->curins = T->nins;
 
-  size_t mcode_size = 1024;
-  MCode *mcode_area = xmalloc(mcode_size * sizeof(MCode));
-  as->mctop = mcode_area + mcode_size;
-  as->mcbot = mcode_area;
+  as->mctop = reserveMCode(J, &as->mcbot);
   as->mcp   = as->mctop;
   as->mclim = as->mcbot + MCLIM_REDZONE;
 
