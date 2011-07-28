@@ -31,7 +31,7 @@ extern Capability* G_cap0;
 
 #define hotcount_get(cap, pc) \
   (cap)->hotcount[hotcount_hash(pc)]
-#define hotcount_set(J, pc, val) \
+#define hotcount_set(cap, pc, val) \
   (hotcount_get((cap), (pc)) = (HotCount)(val))
 
 void *allocate(Capability *cap, u4 num_words);
