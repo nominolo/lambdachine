@@ -4,6 +4,9 @@
 #include "Jit.h"
 
 MCode *reserveMCode(JitState *J, MCode **lim);
+
+#define mcodeCommitBot(J, m)	(J->mcbot = (m))
+
 #endif
 
 

@@ -88,7 +88,17 @@ typedef struct {
   int32_t spill[256];		/* Spill slots. */
 } ExitState;
 
-/* Limited by the range of a short fwd jump (127): (2+2)*(32-1)-2 = 122. */
+/* Limited by the range of a short fwd jump (127): (2+2)*(32-1)-2 = 122.
+    The first exit stub in the group has to jump forward 122 bytes
+
+    EXITSTUB_SPACING == size of an individual exit stub
+      2 bytes for the push of high byte of exit number
+      2 bytes for the relative jump to the end of the exit stub
+      = 4 bytes per exit stub
+
+    EXITSTUBS_PER_GROUP == number of exitstubs we can fit in one group
+      Exit stubs are created in groups that can be reused by all traces
+*/
 #define EXITSTUB_SPACING	(2+2)
 #define EXITSTUBS_PER_GROUP	32
 

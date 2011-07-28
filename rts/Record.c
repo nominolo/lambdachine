@@ -907,8 +907,13 @@ initJitState(JitState *J, const Opts* opts)
   //  J->maskfragment = J->sizefragment - 1;
   J->fragment = xmalloc(J->sizefragment * sizeof(*J->fragment));
   J->nfragments = 0;
+
+  // Initialize jit parameters
   memcpy(J->param, jit_param_default, sizeof(J->param));
   J->param[JIT_P_enableasm] = opts->enable_asm;
+
+  // Initialize exit stubs
+  memset(J->exitstubgroup, 0, sizeof(J->exitstubgroup));
 }
 
 LC_FASTCALL void

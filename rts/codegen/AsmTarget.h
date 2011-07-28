@@ -69,7 +69,7 @@ typedef uint32_t RegSet;
 #endif
 
 /* Return the address of an exit stub. */
-LC_AINLINE MCode *exitstub_addr(JitState *J, ExitNo exitno)
+static LC_AINLINE MCode *exitstub_addr(JitState *J, ExitNo exitno)
 {
   LC_ASSERT(J->exitstubgroup[exitno / EXITSTUBS_PER_GROUP] != NULL);
   return (MCode *)((char *)J->exitstubgroup[exitno / EXITSTUBS_PER_GROUP] +

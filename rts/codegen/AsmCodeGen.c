@@ -9,6 +9,7 @@
 #include "IR.h"
 #include "Jit.h"
 #include "MCode.h"
+#include "InterpAsm.h" // to see asmExit function
 
 #include <string.h> // for memset
 
@@ -54,9 +55,101 @@ static LC_NORET LC_NOINLINE void asm_mclimit(ASMState *as)
   exit(1);
 }
 
-/* -- Target-specific instruction emitter --------------------------------- */
-#include "Emit_x64.h"
+#include "Emit_x64.h"  // Target specific instruction emitter
 
+/* -- Exit stubs ---------------------------------------------------------- */
+/* Generate an exit stub group at the bottom of the reserved MCode memory.
+
+    Machine code state before. The address values are just to orient the
+    picture. Remeber that mctop grows down during code generation.
+
+    0x00000 ----------- <- mcbot
+            | REDZONE |
+    0x00040 ----------- <- mclim
+            |         |
+            |         |
+            |         |
+            |         |
+            |         |
+    0x10000 ----------- <- mctop
+
+    After generating th exit stubs the machine code area looks like the picture
+    below further calls to exitstub_gen will and a new exit stub group at the
+    location pointed to by mcbot.
+
+            ----------- <- asm_exitstub_gen return value points here
+            | EXITGRP0|
+            ----------- <- mcbot
+            | REDZONE |
+            ----------- <- mclim
+            |         |
+            |         |
+            |         |
+            |         |
+            |         |
+            ----------- <- mctop
+
+    Each exit stub group contains a number of exit stubs controlled by the
+    EXITSTUBS_PER_GROUP constant. An exit stub is responsible for indicating
+    which gaurd failed so that the correct snapshot can be restored when
+    returning to the interpreter. A exit stub is setup as follows. Assume that
+    we are generating exit stubs for group number 1
+
+    push $0  #first push is the exit number in the group
+    jmp  END
+    push $1
+    jmp  END
+    ...
+    push $31
+    jmp  END
+
+    END:
+    push $1 # second push is the exit group number
+    jmp asmExit # The exit routine that will restore the interpreter
+                # state according to the exit number pushed on the stack
+
+    To keep the exit stubs a consistent size, we use two 2-byte opcodes to
+    implement each exit stub. The first opcode pushes a byte sized value onto
+    the c-stack. The second is a relative jump to the end of the exit group.
+
+*/
+static MCode *asm_exitstub_gen(ASMState *as, ExitNo group)
+{
+  ExitNo i, groupofs = (group*EXITSTUBS_PER_GROUP) & 0xff;
+  MCode *mxp = as->mcbot;
+  MCode *mxpstart = mxp;
+  if (mxp + (2+2)*EXITSTUBS_PER_GROUP+8+5 >= as->mctop)
+    asm_mclimit(as);
+  /* Push low byte of exitno for each exit stub. */
+  *mxp++ = XI_PUSHi8; *mxp++ = (MCode)groupofs;
+  for (i = 1; i < EXITSTUBS_PER_GROUP; i++) {
+    *mxp++ = XI_JMPs; *mxp++ = (MCode)((2+2)*(EXITSTUBS_PER_GROUP - i) - 2);
+    *mxp++ = XI_PUSHi8; *mxp++ = (MCode)(groupofs + i);
+  }
+  /* Push the high byte of the exitno for each exit stub group. */
+  *mxp++ = XI_PUSHi8; *mxp++ = (MCode)((group*EXITSTUBS_PER_GROUP)>>8);
+  /* Jump to exit handler which fills in the ExitState. */
+  *mxp++ = XI_JMP; mxp += 4;
+  *((int32_t *)(mxp-4)) = jmprel(mxp, (MCode *)(void *)asmExit);
+  /* Commit the code for this group (even if assembly fails later on). */
+  mcodeCommitBot(as->J, mxp);
+  as->mcbot = mxp;
+  as->mclim = as->mcbot + MCLIM_REDZONE;
+  return mxpstart;
+}
+
+static void asm_exitstub_setup(ASMState *as, ExitNo nexits) {
+  ExitNo i;
+  if (nexits >= EXITSTUBS_PER_GROUP*LC_MAX_EXITSTUBGR) {
+    LC_ASSERT(0 && "Too many exit stubs!");
+    traceError(as->J, 1);
+  }
+  for (i = 0; i < (nexits+EXITSTUBS_PER_GROUP-1)/EXITSTUBS_PER_GROUP; i++)
+    if (as->J->exitstubgroup[i] == NULL)
+      as->J->exitstubgroup[i] = asm_exitstub_gen(as, i);
+}
+
+/* -- Main assembler routine ---------------------------------------------- */
 void genAsm(JitState *J, Fragment *T) {
   ASMState as_;
   ASMState *as = &as_;
@@ -70,6 +163,10 @@ void genAsm(JitState *J, Fragment *T) {
   as->mctop = reserveMCode(J, &as->mcbot);
   as->mcp   = as->mctop;
   as->mclim = as->mcbot + MCLIM_REDZONE;
+
+
+  /* generate the exit stubs we need */
+  asm_exitstub_setup(as, T->nsnap);
 
   emit_movrr(as, IR(--as->curins), RID_EAX, RID_ECX);
   emit_movrr(as, IR(--as->curins), RID_EAX, RID_R12D);
