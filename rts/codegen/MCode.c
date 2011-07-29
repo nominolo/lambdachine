@@ -170,7 +170,7 @@ MCode *reserveMCode(JitState *J, MCode **lim)
 }
 
 /* Commit the top part of the current MCode area. */
-void lj_mcode_commit(JitState *J, MCode *top)
+void mcodeCommit(JitState *J, MCode *top)
 {
   J->mctop = top;
   mcode_protect(J, MCPROT_RUN);

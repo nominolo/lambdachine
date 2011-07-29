@@ -116,6 +116,7 @@ from separately compiled modules.
 # define LC_AINLINE inline __attribute__((always_inline))
 # define LC_NORET __attribute__((noreturn))
 # define LC_NOINLINE __attribute__((noinline))
+# define LC_USED     __attribute__((used))
 
 // Comment from GHC's Rts.h:
 // 

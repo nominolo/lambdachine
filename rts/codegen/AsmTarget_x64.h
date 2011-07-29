@@ -81,11 +81,13 @@ enum {
 
 /* -- Exit state ---------------------------------------------------------- */
 
-/* This definition must match with the asmExit function */
+/* This definition must match with the asmEnter/asmExit functions */
 typedef struct {
   double   fpr[RID_NUM_FPR];	/* Floating-point registers. */
   intptr_t gpr[RID_NUM_GPR];	/* General-purpose registers. */
-  int32_t spill[256];		/* Spill slots. */
+  int64_t *spill;		/* Spill slots. */
+  Thread   *T;                  /* Currently executing thread */
+  Fragment *F;                  /* Fragment under execution */
 } ExitState;
 
 /* Limited by the range of a short fwd jump (127): (2+2)*(32-1)-2 = 122.

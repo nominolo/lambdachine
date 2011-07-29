@@ -26,6 +26,8 @@ typedef struct ASMState {
 
   x86ModRM mrm;		/* Fused x86 address operand. */
 
+  SnapNo snapno;	/* Current snapshot number. */
+
   RegSet freeset;	/* Set of free registers. */
 
   i4 spill;	        /* Next spill slot. */
@@ -149,6 +151,16 @@ static void asm_exitstub_setup(ASMState *as, ExitNo nexits) {
       as->J->exitstubgroup[i] = asm_exitstub_gen(as, i);
 }
 
+/* Emit conditional branch to exit for guard.
+** It's important to emit this *after* all registers have been allocated,
+** because rematerializations may invalidate the flags.
+*/
+static void asm_guardcc(ASMState *as, int cc)
+{
+  MCode *target = exitstub_addr(as->J, as->snapno);
+  emit_jcc(as, cc, target);
+}
+
 /* -- Main assembler routine ---------------------------------------------- */
 void genAsm(JitState *J, Fragment *T) {
   ASMState as_;
@@ -168,11 +180,17 @@ void genAsm(JitState *J, Fragment *T) {
   /* generate the exit stubs we need */
   asm_exitstub_setup(as, T->nsnap);
 
+
+  /* generate some test code */
+  as->snapno = 1;
+  asm_guardcc(as, CC_E);
+  emit_rr(as, XO_TEST, RID_ECX, RID_R12D);
   emit_movrr(as, IR(--as->curins), RID_EAX, RID_ECX);
   emit_movrr(as, IR(--as->curins), RID_EAX, RID_R12D);
 
   T->mcode = as->mcp;
   T->szmcode = (MSize)((char *)as->mctop - (char *)as->mcp);
+  mcodeCommit(J, T->mcode);
 }
 
 #undef IR
