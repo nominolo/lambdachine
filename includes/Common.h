@@ -95,6 +95,10 @@ enum { false = 0, true = 1 };
 
 #define byte_offset(from, to)  (cast(u1*, (to)) - cast(u1*, (from)))
 
+// Tests whether x's size is a multiple of the size of a word.
+#define WORD_ALIGNED_SIZE(x) \
+  ((sizeof(x) & ((1 << LC_ARCH_BYTES_LOG2) - 1)) == 0)
+
 #if __GNUC__ >= 3
 /* Assume that a flexible array member at the end of a struct
  * can be defined thus: T arr[]; */
@@ -103,6 +107,13 @@ enum { false = 0, true = 1 };
 /* Assume that it must be defined thus: T arr[0]; */
 #define FLEXIBLE_ARRAY 0
 #endif
+
+// If multiple flags are specified, checks whether *all* flags are
+// set.
+#define TEST_FLAG(dst, f)  (((dst) & (f)) == (f))
+#define SET_FLAG(dst, f)   ((dst) |= (f))
+#define CLEAR_FLAG(dst, f) ((dst) &= ~(f))
+
 
 /*  
 Inlining 
@@ -210,17 +221,19 @@ INLINE_HEADER void xfree(void *p)
 
 #include <stdio.h>
 
-# define DBG_PR(fmt, ...)  fprintf(stderr, fmt, __VA_ARGS__)
-# define DBG_LVL(lvl, fmt, ...)  \
-  do { if ((lvl) <= LC_DEBUG_LEVEL) fprintf(stderr, fmt, __VA_ARGS__); } \
+# define DBG_PR(...)  fprintf(stderr, __VA_ARGS__)
+# define DBG_LVL(lvl, ...)  \
+  do { if ((lvl) <= LC_DEBUG_LEVEL) fprintf(stderr, __VA_ARGS__); } \
   while (0)
 # define IF_DBG_LVL(lvl, stmt)  if ((lvl) <= LC_DEBUG_LEVEL) { stmt; }
+# define IF_DBG(stmt)            IF_DBG_LVL(0, stmt)
 
 #else
 
-# define DBG_PR(fmt, ...)        do {} while (0)
-# define DBG_LVL(lvl, fmt, ...)  do {} while (0)
+# define DBG_PR(...)             do {} while (0)
+# define DBG_LVL(lvl, ...)       do {} while (0)
 # define IF_DBG_LVL(lvl, stmt)   if (0) { }
+# define IF_DBG(stmt)            do {} while (0)
 
 #endif
 

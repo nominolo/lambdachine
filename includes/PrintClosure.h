@@ -3,7 +3,12 @@
 
 #include "Bytecode.h"
 
-void printClosure(Closure* cl);
+#include <stdio.h>
+
+void printClosure_(FILE *f, Closure* cl, int add_newline);
+INLINE_HEADER void printClosure(Closure* cl) {
+  printClosure_(stdout, cl, 1);
+}
 void printInfoTable(InfoTable* info0);
 
 // Print a bytecode instruction.

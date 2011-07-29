@@ -35,8 +35,9 @@ this should be changed to tell the scheduler to kill the thread.
 
 static BCIns stop_code_insts[] =
   { BCINS_AD(BC_EVAL, 0, 0),   // eval r0 ; no lives
-    0,
-    BCINS_AD(BC__MAX, 0, 0)    // stop
+    8,
+    BCINS_AD(BC__MAX, 0, 0),    // stop
+    0x00010001  // r0 is live and a pointer
   };
 
 /* LcInfoTable stg_STOP_info = */
@@ -334,7 +335,7 @@ getApContClosure(Closure **res_clos, BCIns **res_pc,
     
     ApContInfoTable *info = allocInfoTable(wordsof(ApContInfoTable));
     info->i.type = AP_CONT;
-    info->i.size = nargs + 1;
+    info->i.size = nargs;
     info->i.tagOrBitmap = pointer_mask; // not sure what this is good for
     info->i.layout.bitmap = pointer_mask;
 
@@ -391,12 +392,12 @@ getApInfoTable(int nargs, u4 pointer_mask)
   if (LC_UNLIKELY(ap_itbls[idx] == NULL)) {
     ApInfoTable *info = allocInfoTable(wordsof(ApInfoTable));
     info->i.type = THUNK;
-    info->i.size = nargs + 1;
-    info->i.tagOrBitmap = pointer_mask;
-    info->i.layout.bitmap = pointer_mask;
+    info->i.size = 1 + nargs;
+    // pointer mask is for the arguments only
+    // the function itself is always a pointer.
+    info->i.tagOrBitmap = (pointer_mask << 1) | 1u;
+    info->i.layout.bitmap = (pointer_mask << 1) | 1u;
     
-    u4 livemask = 0;  // no live variables
-
     char *p = buf;
     p += sprintf(p, "stg_Ap%d_", nargs);
     p += formatBitmask(p, nargs, pointer_mask);
@@ -407,7 +408,7 @@ getApInfoTable(int nargs, u4 pointer_mask)
     info->code.arity = nargs;
     info->code.sizecode = nargs + 6;  // TODO
     info->code.sizelits = 0;
-    info->code.sizebitmaps = bitmapSize(pointer_mask) + bitmapSize(livemask);
+    info->code.sizebitmaps = bitmapSize(0) + bitmapSize(0);
     info->code.lits = NULL;
     info->code.littypes = NULL;
     info->code.code = xmalloc(info->code.sizecode * sizeof(BCIns) +
@@ -420,8 +421,8 @@ getApInfoTable(int nargs, u4 pointer_mask)
     code[1] = BCINS_AD(BC_LOADFV, nargs, 1);  // load function closure
     code[2] = BCINS_AD(BC_EVAL, nargs, 0);
     code[3] = cast(BCIns, byte_offset(&code[3], bitmasks));
-    bitmasks += encodeBitmask(bitmasks, pointer_mask);
-    bitmasks += encodeBitmask(bitmasks, livemask);   // no live variables
+    bitmasks += encodeBitmask(bitmasks, 0);  // no live pointers
+    bitmasks += encodeBitmask(bitmasks, 0);   // no live variables
     code[4] = BCINS_AD(BC_MOV_RES, nargs, 0);
     int i;
     for (i = 0; i < nargs; i++) {

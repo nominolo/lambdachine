@@ -25,10 +25,12 @@ createThread(Capability *cap, u4 size)
 
   T->header = 42;  // TODO
   T->stack_size = stack_size;
-  T->stack[0] = (Word)&stg_STOP_closure;
-  T->stack[1] = (Word)NULL;
-  T->base = &T->stack[1];
-  T->top = &T->stack[2];
+  T->stack[0] = (Word)NULL;  // previous base
+  T->stack[1] = (Word)NULL;  // previous PC
+  T->stack[2] = (Word)&stg_STOP_closure;
+  T->stack[3] = (Word)NULL;
+  T->base = &T->stack[3];
+  T->top = &T->stack[4];
   T->pc = getFInfo(&stg_STOP_closure)->code.code;
 
   return T;

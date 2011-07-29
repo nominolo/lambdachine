@@ -156,5 +156,29 @@ extern u2 closure_flags[];
 #define closure_IND(cl)    ( closureFlags(cl) & CF_IND )
 
 
+// --- Bitmasks -------------------------------------------
+
+// Return a pointer to the bitmask associated with the current PC.
+// May return NULL.  In that case, the bitmap is to be extracted from
+// the stack.
+INLINE_HEADER
+const u2 *
+getPointerMask(BCIns *next_pc)
+{
+  BCIns *p0 = &next_pc[-1];
+  u4 offset = (u4)(*p0);
+  if (offset != 0)
+    return (const u2*)((u1*)p0 + offset);
+  else
+    return NULL;
+}
+
+INLINE_HEADER
+const u2 *
+skipBitmap(const u2 *p)
+{
+  while (*p++ & 0x8000) ;
+  return p;
+}
 
 #endif /* LC_INFOTABLES_H */

@@ -58,6 +58,7 @@ as follows:
 int engine(Capability *);
 void printStack(Word *base, Word *bottom);
 void printFrame(Word *base, Word *top);
+void invalidateDeadSlots(Word *from, Word *to, BCIns *pc);
 
 enum {
   INTERP_OK = 0,
@@ -89,7 +90,7 @@ startThread(Thread *T, Closure *cl)
     }
     exit(1);
   }
-  return (Closure*)T->stack[1];
+  return (Closure*)T->stack[3];
 }
 
 #define STACK_FRAME_SIZEW   3
@@ -144,6 +145,7 @@ int engine(Capability *cap)
 # define DBG_ENTER(info) \
   do { printIndent(base - T->stack - 1, '='); \
     printf(" ENTER %s (%p)\n", (info)->name, (info)); \
+    printInfoTable((InfoTable*)(info));               \
     /* printFrame(base, T->top); */ } while (0)
 # define DBG_RETURN(info, pc) \
   DBG_IND(printf("Returning to: %s (%p), PC = %p\n", \
@@ -392,7 +394,7 @@ int engine(Capability *cap)
     DECODE_BC;
     u4 sz = opC;
     DBG_PR("ALLOC_%d  ; ", sz);
-    if (sz == 0) { printInfoTable((InfoTable*)base[opB]); } else { printf("\n"); }
+    IF_DBG(if (sz == 0) { printInfoTable((InfoTable*)base[opB]); } else { printf("\n"); });
     recordEvent(EV_ALLOC, 1 + sz);
     u4 i;
     u1 *arg = (u1 *)pc;
@@ -679,6 +681,8 @@ int engine(Capability *cap)
       top[5] = (Word)&top[3];
       top[6] = (Word)stg_UPD_return_pc;
       top[7] = (Word)tnode;
+
+      IF_DBG_LVL(0, invalidateDeadSlots(base, top, return_pc));
 
       base = top + STACK_FRAME_SIZEW + UPDATE_FRAME_SIZEW;
       T->top = base + framesize;
@@ -1001,7 +1005,7 @@ int engine(Capability *cap)
     DECODE_BC;
     // Arguments from this call instruction
     u4       callargs = opC;
-    u4       pointer_mask = opB;  // of the remaining args
+    u4       pointer_mask = opB;  // of the arguments
     recordEvent(EV_CALL, callargs);
     // Total number of arguments, including PAP arguments.
     u4       nargs = callargs;
@@ -1313,7 +1317,7 @@ void
 printFrame(Word *base, Word *top)
 {
   u4 i = -1;
-  printf("[%p]", base);
+  printf("[%p](%ld)", base, (long)(top - base));
   base--;
   while (base < top) {
     printf(" %d:", i);
@@ -1346,6 +1350,7 @@ printSlot(Word *slot)
   } else {
     printf("$%" FMT_WordX, *slot);
   }
+  fflush(stdout);
 }
 
 void
@@ -1369,5 +1374,43 @@ void printIndent(int i, char c)
 {
   while (i-- > 0) {
     putchar(c);
+  }
+}
+
+void
+printFullStack(Word *base, Word *top)
+{
+  while (base) {
+    printFrame(base, top);
+    top = (Word*)&base[-3];
+    base = (Word*)base[-3];
+  }
+}
+
+// Invalidate slots that won't be needed after execution returns to
+// this place.  Useful for debugging.
+//
+// If ret_pc != NULL, then the range is assumed to be a stack frame
+// and ret_pc is used to extract the associated liveness information.
+void
+invalidateDeadSlots(Word *from, Word *to, BCIns *ret_pc)
+{
+  DBG_PR("INVALIDATING: %p..%p", from, to);
+  IF_DBG_LVL(0,printInlineBitmap(ret_pc - 1));
+  const u2 *mask = ret_pc ? skipBitmap(getPointerMask(ret_pc)) : NULL;
+  u2 m = mask ? *mask++ : 0;
+  int vbits = 15; // valid mask bits left
+  while (from < to) {
+    if ((m & 1) == 0) { // not live
+      DBG_PR("INV: %p\n", from);
+      *from = 0;
+    }
+    from++;
+    m >>= 1;
+    vbits--;
+    if (vbits == 0) {
+      m = mask ? *mask++ : 0;
+      vbits = 15;
+    }
   }
 }

@@ -3,9 +3,39 @@
 #include "PrintClosure.h"
 #include "InfoTables.h"
 
+#include <string.h>
+
 /*
 
+How the GC works
+----------------
+
+We use a simple Cheney-style copying GC.  The two core operations are:
+
+  - Evacuate.  Copy a closure from from-space into to-space.  The info
+    table of the old object is overwritten with a forward reference, a
+    (tagged) pointer to the new closure.  Evacuating an object that
+    already resides in to-space is a no-op.
+
+  - Scavenge.  Traverse the pointer fields of an object and evacuate
+    each one.
+
+A GC therefore consists of two phases:
+
+ 1. Scan (scavenge) all roots.  Roots currently are all updated CAFs
+    and the stack.
+
+ 2. Scavenge all objects that were evacuated by the root scan.  This
+    may in turn cause more objects to be evacuated which are then
+    scavenged and may cause more objects to be evacuated, etc.  This
+    continues until all objects have been scavenged.
+
+The heap is allocated in blocks so after scavenged the roots, we
+scavenge whole blocks at a time.
+
+
 Where can GC happen?
+--------------------
 
  - At each allocation site.
 
@@ -115,31 +145,21 @@ If clos was not in HNF:
              :             :        info table
  */
 
-// Return a pointer to the bitmask associated with the current PC.
-// May return NULL.  In that case, the bitmap is to be extracted from
-// the stack.
-INLINE_HEADER const u2 *
-getPointerMask(BCIns *next_pc)
-{
-  BCIns *p0 = &next_pc[-1];
-  u4 offset = (u4)(*p0);
-  if (offset != 0)
-    return (const u2*)((u1*)p0 + offset);
-  else
-    return NULL;
-}
 
 void evacuate(Closure **p);
 void scavengeBlock(BlockDescr *bd);
 
 typedef struct _GCContext {
-  BlockDescr *todo;
+  BlockDescr *old_full;         /* Blocks that were full at the
+                                   beginning of GC. */
+  BlockDescr *scav_todo;        /* Worker queue for scavenge. */
+  BlockDescr *scav_done;        /* Output queue for scavenge. */
 } GCContext;
 
 GCContext G_gc;
 
 void
-evacuateFrame(Word *base, BCIns *pc)
+scavengeFrame(Word *base, BCIns *pc)
 {
   u2 bitmap;
   const u2 *bitmaps;
@@ -165,6 +185,40 @@ evacuateFrame(Word *base, BCIns *pc)
 }
 
 void
+scavengeStack(Word *base, Word *top, BCIns *pc)
+{
+  int i = 0;
+  Word *frame_top = top;  // just guessing
+
+  DBG_PR("\n--- Scavenging Stack -----------\n");
+
+  while (base) {
+    DBG_PR(" %2u: frame = %p..%p (%d)\n"
+           "     pc = %p, ",
+           i, base, frame_top, (int)(frame_top - base),
+           pc);
+    IF_DBG(printInlineBitmap(pc - 1));
+
+    scavengeFrame(base, pc);
+    
+    pc = (BCIns*)base[-2];
+    frame_top = (Word*)&base[-3];
+    base = (Word*)base[-3];
+    ++i;
+  }
+}
+
+void
+scavengeStaticRoots(Closure *r)
+{
+  DBG_PR("\n--- Traversing Static Roots -----------\n");
+  while (r) {
+    evacuate((Closure**)&r->payload[0]);
+    r = (Closure*)r->payload[1];
+  }
+}
+
+void
 performGC(Capability *cap)
 {
   Thread *T = cap->T;
@@ -176,46 +230,122 @@ performGC(Capability *cap)
   StorageManagerState *M = &G_storage;
   u2 bitmap, *bitmaps;
 
+  LC_ASSERT(M->current == NULL);
+
   M->gc_inprogress = 1;
   makeCurrent(M, getEmptyBlock(M));
 
-  dumpStorageManagerState();
+  IF_DBG(dumpStorageManagerState());
 
-  G_gc.todo = M->full;
+  G_gc.old_full = M->full; // These will become free at the end of GC
+  G_gc.scav_todo = NULL; // Work queue for scavenger
+  G_gc.scav_done = NULL; // Surviver blocks end up here
   M->full = NULL;
   M->nfull = 0;
   
   LC_ASSERT(lo <= base);
 
-  
+  DBG_PR("Garbage collecting...\n"
+         "stack = %p..%p (+ N)\n", lo, base);
 
-  printf("Garbage collecting...\n");
-  printf("stack = %p..%p (+ N)\n", lo, base);
-  printf("  0: frame = %p..?\n", base);
-  printf("     pc = %p, ", pc);
-  printInlineBitmap(pc - 1);
+  scavengeStaticRoots(cap->static_objs);
+  scavengeStack(base, T->top, pc);
 
-  evacuateFrame(base, pc);
+  while (1) {
+    // It's important to scavenge full blocks first.  Otherwise we may
+    // end up allocating into a block that's already been marked as
+    // scavenged.
 
-  // const u2 *live_ptr = getPointerMask(T->pc);
-  i = 1;
-  while (base >= lo) {
-    pc = (BCIns*)base[-2];
-    hi = &base[-3];
-    base = (Word*)base[-3];
-    if (base > hi || base < lo) break;
-    printf(" %2u: frame = %p..%p (%d)\n", i, base, hi, (int)(hi - base));
-    printf("     pc = %p, ", pc);
-    ++i;
-    printInlineBitmap(pc - 1);
-    evacuateFrame(base, pc);
-    //    print
+    while (M->full) {
+      BlockDescr *bd = M->full;
+      BlockDescr *tmp;
+      // Pop from M->full and push onto scav_todo.  This ensures that
+      // we scavenge things in the order in which blocks were filled
+      // (breadth-first).
+      while (bd) {
+        tmp = bd->link;
+        if (TEST_FLAG(bd->flags, BF_SCAVENGED)) {
+          LC_ASSERT(bd->link == NULL);
+          bd->link = G_gc.scav_done;
+          G_gc.scav_done = bd;
+          break;
+        }
+        bd->link = G_gc.scav_todo;
+        G_gc.scav_todo = bd;
+        bd = tmp;
+      }
+      M->full = NULL;
+    
+      while (G_gc.scav_todo) {
+        BlockDescr *bd = G_gc.scav_todo;
+        G_gc.scav_todo = bd->link;
+
+        scavengeBlock(bd);
+        bd->link = G_gc.scav_done;
+        G_gc.scav_done = bd;
+      }
+    }
+    
+    // All full blocks scavenged, need to scavenge current block.
+    {
+      BlockDescr *bd = M->current;
+      scavengeBlock(bd);
+      
+      // Scavenging may have filled more blocks.  In that case we have:
+      // 
+      //   - M->current is different from bd
+      // 
+      //   - bd must be full now but it is also linked into the
+      //     M->full list so we can't just unlink it here.
+      //
+      if (M->current == bd) {
+        break;
+      }
+    }
   }
-  scavengeBlock(M->current);
 
-  exit(1);
+  LC_ASSERT(M->full == NULL);
+  M->full = G_gc.scav_done;
+  M->nfull = 0;
+  // Remove BF_SCAVENGED flag
+  {
+    BlockDescr *bd;
+    for (bd = M->full; bd; bd = bd->link) {
+      M->nfull++;
+      LC_ASSERT(TEST_FLAG(bd->flags, BF_SCAVENGED));
+      CLEAR_FLAG(bd->flags, BF_SCAVENGED);
+    }
+  }
+  CLEAR_FLAG(M->current->flags, BF_SCAVENGED);
+
+  M->nextgc = 2 * M->nfull + 2;
+  
+  // Push now-dead blocks back onto free list.
+  {
+    BlockDescr *bd, *tmp;
+    bd = G_gc.old_full;
+    while (bd) {
+      bd->flags = 0;
+      bd->free = bd->start;
+#ifndef NDEBUG
+      // zero out contents to fail quickly in case of bugs
+      memset(bd->start, 0, bd->free - bd->start);
+#endif
+      tmp = bd->link;
+      bd->link = M->empty;
+      M->empty = bd;
+      bd = tmp;
+    }
+  }
+
+  M->hp = (Word*)M->current->free;
+  M->limit = (Word*)BLOCK_END(M->current);
+
+  IF_DBG(dumpStorageManagerState());
 
   G_storage.gc_inprogress = 0;
+
+  // exit(1);
 }
 
 #define MK_FORWARDING_PTR(info) ((Word)info | 1)
@@ -226,8 +356,9 @@ performGC(Capability *cap)
 
 #define TICK_GC_WORDS_COPIED(sz)  do {} while (0)
 
-#define CONSTR_SIZE(info)       ((info)->size + 1)
-#define THUNK_SIZE(info)       ((info)->size + 1)
+#define CONSTR_SIZE(info)       ((info)->size + wordsof(ClosureHeader))
+#define THUNK_SIZE(info)       ((info)->size + wordsof(ClosureHeader))
+#define FUN_SIZE(info)       ((info)->size + wordsof(ClosureHeader))
 
 Word *
 allocForCopy(u4 size)
@@ -243,6 +374,7 @@ copy(Closure **p, const InfoTable *info, Closure *src, u4 size)
   Word *to, *from;
   u4 i;
   to = allocForCopy(size);
+  DBG_LVL(2, " => " COLOURED(COL_GREEN, "%p") " / ", to);
   
   TICK_GC_WORDS_COPIED(size);
 
@@ -254,6 +386,15 @@ copy(Closure **p, const InfoTable *info, Closure *src, u4 size)
 
   src->header.info = (const InfoTable *)MK_FORWARDING_PTR(to);
   *p = (Closure*)to;
+
+  {
+    //DBG_LVL(2, "%d / ", looksLikeClosure(*p));
+    //const InfoTable* info = getInfo((Closure*)to);
+    //DBG_LVL(2, "%d / ", looksLikeInfoTable(info));
+    DBG_LVL(2, "%d / ", isClosure(*p));
+  }
+
+  IF_DBG_LVL(2,printClosure_(stderr, *p, 1));
 }
 
 void
@@ -268,25 +409,31 @@ evacuate(Closure **p)
 
   q = *p;
 
+  DBG_LVL(2, "~~ Evac: " COLOURED(COL_RED,"%p"), q);
+
  loop:
-  bd = bDescr(q);
-  if (!IS_HEAP(bd)) {
-    DBG_LVL(2, "~~ S: Skipping static object: %p\n", q);
-    // We don't collect static objects yet.
-    return;
-  }
-  
   info = q->header.info;
+
   if (IS_FORWARDING_PTR(info)) {
     *p = (Closure*)UN_FORWARDING_PTR(info);
-    DBG_LVL(2, "~~ F: FwdPtr found: %p -> %p\n", q, *p);
+    DBG_LVL(2, " -F-> " COLOURED(COL_YELLOW, "%p") "\n", *p);
     return;
   }
 
+  bd = bDescr(q);
+  if (!IS_HEAP(bd)) {
+    // We already traversed thunks.
+    DBG_LVL(2, " -S-> " COLOURED(COL_YELLOW, "static object") "\n");
+    // We don't collect static objects yet.
+    return;
+    // Indirections from the static heap may point into the live
+    // heap, so we must follow them as roots.
+  }
+  
   switch (info->type) {
   case CONSTR:
-    DBG_LVL(2, "~~ C: Evacuating CONSTR: %p, %d\n", q, CONSTR_SIZE(info));
-    printClosure(q);
+    DBG_LVL(2, " -C(%d)-> ", (int)CONSTR_SIZE(info));
+    IF_DBG_LVL(2,printClosure_(stderr, q, 0));
     copy(p, info, q, CONSTR_SIZE(info));
     return;
 
@@ -294,21 +441,27 @@ evacuate(Closure **p)
     //break;
 
   case THUNK:
-    DBG_LVL(2, "~~ T: Evacuating THUNK: %p, %d\n", q, THUNK_SIZE(info));
-    printClosure(q);
+    DBG_LVL(2, " -T(%d)-> ", (int)THUNK_SIZE(info));
+    IF_DBG_LVL(2,printClosure_(stderr, q, 0));
     copy(p, info, q, THUNK_SIZE(info));
     return;
 
+  case FUN:
+    DBG_LVL(2, " -F(%d)-> ", (int)FUN_SIZE(info));
+    IF_DBG_LVL(2,printClosure_(stderr, q, 0));
+    copy(p, info, q, FUN_SIZE(info));
+    return;
+
   case IND:
-    DBG_LVL(1, "~~ I: Following IND: %p ", q);
     q = cast(IndClosure*,q)->indirectee;
-    DBG_LVL(1, "-> %p\n", q);
+    DBG_LVL(2, " -I-> %p", q);
     LC_ASSERT(q != NULL);
     *p = q;
     goto loop;
 
   default:
-    DBG_LVL(2, "** Don't yet know how to evacuate closure type: %d\n", info->type);
+    fprintf(stderr, "** Don't yet know how to evacuate closure type: %d\n", info->type);
+    exit(2);
     return;
   }
 }
@@ -323,7 +476,9 @@ scavengeBlock(BlockDescr *bd)
   int i;
   u4 bitmap;
 
-  printf("Scavenging block:  %p-%p\n", bd->start, bd->free);
+  LC_ASSERT(!TEST_FLAG(bd->flags, BF_SCAVENGED));
+
+  DBG_LVL(1, "\n--- Scavenging block:  %p-%p -----------\n", bd->start, bd->free);
 
   p = (Word*)bd->start;
 
@@ -334,10 +489,12 @@ scavengeBlock(BlockDescr *bd)
     info = getInfo(p);
     q = p;
 
-    DBG_LVL(2, "~ Scavenging %p ", p);
-    printClosure((Closure*)p);
+    DBG_LVL(2, "~ Scav %p: ", p);
+    IF_DBG(printClosure_(stderr, (Closure*)p, 1));
     switch (info->type) {
     case CONSTR:
+    case THUNK:
+    case FUN:
       {
         Word *q = p + 1;
         bitmap = info->layout.bitmap;
@@ -345,13 +502,14 @@ scavengeBlock(BlockDescr *bd)
         for (i = info->size; i > 0 && bitmap != 0; i--, bitmap >>= 1) {
           j++;
           if (bitmap & 1) {
-            DBG_PR("Evacuating: %p[%d] / %p\n", p, j, q);
+            //DBG_PR("Evacuating: %p[%d] / %p\n", p, j, q);
             evacuate((Closure**)q);
           }
           q++;
         }
-        printClosure((Closure*)p);
+        //printClosure((Closure*)p);
         p += info->size + 1;
+        if (info->size == 0) p++;
       }
       break;
     default:
@@ -360,4 +518,6 @@ scavengeBlock(BlockDescr *bd)
       exit(2);
     }
   }
+
+  SET_FLAG(bd->flags, BF_SCAVENGED);
 }

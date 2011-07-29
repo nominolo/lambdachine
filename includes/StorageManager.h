@@ -15,7 +15,7 @@
 #define BF_INFO_TABLES          0x0002
 #define BF_STATIC_CLOSURES      0x0003
 #define BF_CONTENTS_MASK        0x000f
-#define BF_EVACUATED            0x0010
+#define BF_SCAVENGED            0x0010
 
 #define ROUND_UP_TO_BLOCK_SIZE(x) \
   (((Word)(x) + BLOCK_SIZE - 1) & ~(BLOCK_SIZE - 1))
@@ -34,15 +34,9 @@ typedef struct _BlockDescr {
 #endif
 } BlockDescr;
 
-
-
-
-// Tests whether x's size is a multiple of the size of a word.
-// The magic number "3" is there because 1 byte = 2^3 bits.
-#define WORD_ALIGNED_SIZE(x) \
-  ((sizeof(x) & ((1 << LC_ARCH_BYTES_LOG2) - 1)) == 0)
-
 LC_STATIC_ASSERT(WORD_ALIGNED_SIZE(BlockDescr));
+
+#define BLOCK_END(bd)  ((char*)(bd) + BLOCK_SIZE)
 
 /* For debug output. */
 typedef struct _RegionInfo {
@@ -70,6 +64,7 @@ typedef struct _StorageManagerState {
   Word *limit;                  /* Upper bound for current allocation
                                    buffer. */
   u8 allocated;                 /* Words allocated */
+  u8 copied;                    /* Words copied during GCs */
 
   /* Debug info. */
   RegionInfo *regions;
@@ -80,9 +75,11 @@ static inline BlockDescr *bDescr(void *p)
   return (BlockDescr*)((Word)p & ~BLOCK_MASK);
 }
 
+#define PTR_TO_BLOCK_DESCR(p) \
+  ((BlockDescr*)((Word)(p) & ~(BLOCK_SIZE - 1)))
 
-void initStorageManager();
-void dumpStorageManagerState();
+void initStorageManager(void);
+void dumpStorageManagerState(void);
 
 void* allocInfoTable(u4 nwords);
 void* allocStaticClosure(u4 nwords);
@@ -99,5 +96,8 @@ void performGC(Capability *C);
 
 void makeCurrent(StorageManagerState *M, BlockDescr *blk);
 BlockDescr *getEmptyBlock(StorageManagerState *M);
+
+// Debug stuff
+int isManagedMemory(void *p);
 
 #endif

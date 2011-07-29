@@ -7,30 +7,31 @@
 void printInlineBitmap(const BCIns *p0);
 
 void
-printClosure(Closure* cl)
+printClosure_(FILE *f, Closure* cl, int nl)
 {
   const InfoTable *info = getInfo(cl);
 
   if (info == NULL) {
-    printf("???\n");
+    fprintf(f, "???\n");
     return;
   }
 
   if (info->type == IND) {
     cl = (Closure*)cl->payload[0];
     info = getInfo(cl);
-    printf("IND -> ");
+    fprintf(f, "IND -> ");
   }
 
   switch (info->type) {
   case CONSTR:
-    printf("%s ", cast(ConInfoTable*,info)->name);
+    fprintf(f, "%s ", cast(ConInfoTable*,info)->name);
     break;
   case FUN:
-    printf("%s ", cast(FuncInfoTable*,info)->name);
+    fprintf(f, "%s ", cast(FuncInfoTable*,info)->name);
     break;
   case THUNK:
-    printf("%s ", cast(ThunkInfoTable*,info)->name);
+  case CAF:
+    fprintf(f, "%s ", cast(ThunkInfoTable*,info)->name);
     break;
   }
 
@@ -38,9 +39,9 @@ printClosure(Closure* cl)
   u4 bitmap = info->layout.bitmap;
   for (n = info->size; n > 0; p++, n--, bitmap = bitmap >> 1) {
     if (bitmap & 1)
-      printf("0x%0" FMT_WordLen FMT_WordX " ", cl->payload[p]);
+      fprintf(f, "%p ", (Word*)cl->payload[p]);
     else
-      printf("%" FMT_Int " ", cl->payload[p]);
+      fprintf(f, "%" FMT_Int " ", cl->payload[p]);
   }
 
   /* For when are we going to use ptr/nptr layout
@@ -49,7 +50,8 @@ printClosure(Closure* cl)
   for (n = info->layout.payload.nptrs; n > 0; p++, n--)
     printf("%" FMT_Int " ", cl->payload[p]);
   */
-  printf("\n");
+  if (nl) 
+    fprintf(f, "\n");
   
 }
 
@@ -151,9 +153,9 @@ printInstruction_aux(const BCIns *ins /*in*/, int oneline)
       break;
     case BC_CALL:
       { u1 *arg = (u1*)ins; ins += BC_ROUND(bc_c(i)) + 1;
-        printf("%s\tr%d(", name, bc_a(i));
+        printf("%s\tr%d", name, bc_a(i));
         char comma = '(';
-        for (j = 1; j < bc_c(i); j++, arg++) {
+        for (j = 0; j < bc_c(i); j++, arg++) {
           printf("%cr%d", comma, *arg);
           comma = ',';
         }
@@ -213,7 +215,7 @@ printInlineBitmap(const BCIns *p0)
   if (offset != 0) {
     const u2 *p = (const u2*)((u1*)p0 + offset);
     putchar('\t');
-    p = printInlineBitmap_(p);
+    p = printInlineBitmap_(p); // pointers
     printf(" / ");
     printInlineBitmap_(p);   // Live-out variables
     putchar('\n');

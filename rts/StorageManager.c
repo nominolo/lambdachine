@@ -50,6 +50,7 @@ initStorageManager()
   G_storage.hp = NULL;
   G_storage.limit = NULL;
   G_storage.allocated = 0;
+  G_storage.copied = 0;
 
   RegionInfo *ri = xmalloc(sizeof(RegionInfo));  // TODO: Don't use malloc
   ri->start = NULL;
@@ -92,7 +93,7 @@ allocBlock(StorageManagerState *M)
     alloc_hint += size;
   }
 
-  printf("> Allocated new block: %p-%p\n", ptr, ptr + size);
+  DBG_LVL(1, "> Allocated new block: %p-%p\n", ptr, ptr + size);
 
   if (M->regions->start == NULL) {
     M->regions->start = ptr;
@@ -137,7 +138,7 @@ makeCurrent(StorageManagerState *M, BlockDescr *blk)
   blk->flags = (blk->flags & ~BF_CONTENTS_MASK) | BF_CLOSURES;
   M->current = blk;
   M->hp = (Word*)blk->free;
-  M->limit = (Word*)((char*)blk + BLOCK_SIZE);
+  M->limit = (Word*)BLOCK_END(blk);
 }
 
 /* Unlink empty block or allocate a new one. */
@@ -174,9 +175,9 @@ currentBlockFull(StorageManagerState *M)
   if (M->nfull >= M->nextgc && !M->gc_inprogress) {
     performGC(G_cap0);
     //    printf("TODO: PerformGC\n");
+  } else {
+    makeCurrent(M, getEmptyBlock(M));
   }
-
-  makeCurrent(M, getEmptyBlock(M));
 }
 
 void
@@ -249,8 +250,8 @@ void *allocClosureDuringGC(u4 nwords)
                 <= (Word*)((char*)G_storage.current + BLOCK_SIZE))) {
     void *p = G_storage.current->free;
     G_storage.current->free += nwords * sizeof(Word);
-    G_storage.allocated += nwords;
-    DBG_PR("allocClosureDuringGC(%d) => %p\n", nwords, p);
+    G_storage.copied += nwords;
+    //DBG_PR("allocClosureDuringGC(%d) => %p\n", nwords, p);
     return p;
   }
   
@@ -316,9 +317,6 @@ isManagedMemory(void *p)
   return 0;
 }
 
-#define PTR_TO_BLOCK_DESCR(p) \
-  ((BlockDescr*)((Word)(p) & ~(BLOCK_SIZE - 1)))
-
 int looksLikeInfoTable(void *p) {
   return (isManagedMemory(p) &&
           (PTR_TO_BLOCK_DESCR(p)->flags & BF_CONTENTS_MASK) ==
@@ -377,31 +375,35 @@ dumpStorageManagerState()
 
   d = M->current;
   formatWithThousands(str, M->allocated * (LC_ARCH_BITS / 8) +
-         ((char*)M->hp - d->free));
+                      ((char*)M->hp - d->free));
   printf("************************************************************\n"
          "Bytes allocated:                  %20s bytes\n", str);
+  formatWithThousands(str, M->copied * (LC_ARCH_BITS / 8));
+  printf("Bytes copied:                     %20s bytes\n", str);
 
   printf("Alloc:            hp=%p, limit=%p\n", M->hp, M->limit);
-  printf("Blocks:           %u full, %u total\n", M->nfull, M->ntotal);
+  printf("Blocks:           %u full, %u total, next GC: %u full blocks\n",
+         M->nfull, M->ntotal, M->nextgc);
 
   u8 block_capacity = ((char*)d + BLOCK_SIZE) - d->start;
   u8 block_full = (char*)M->hp - d->start;
 
-  printf("Current:          %p-%p, %" FMT_Word64 "%% full\n",
-         d->start, (char*)d + BLOCK_SIZE,
-         (100 * block_full) / block_capacity );
+  printf("Current:          %p-%p, %" FMT_Word64 "%% full, flags = %x\n",
+         d->start, BLOCK_END(d),
+         (100 * block_full) / block_capacity,
+         d->flags);
 
   // for (d = M->empty; d != NULL; d = d->link) {
   //   printf("Empty block: %p-%p\n",  d->start, (char*)d + BLOCK_SIZE);
   // }
   for (d = M->full; d != NULL; d = d->link) {
-    printf("Full block:  %p-%p\n",  d->start, (char*)d + BLOCK_SIZE);
+    printf("Full block:  %p-%p\n",  d->start, BLOCK_END(d));
   }
   for (d = M->infoTables; d != NULL; d = d->link) {
-    printf("Itbl block:  %p-%p\n",  d->start, (char*)d + BLOCK_SIZE);
+    printf("Itbl block:  %p-%p\n",  d->start, BLOCK_END(d));
   }
   for (d = M->staticClosures; d != NULL; d = d->link) {
-    printf("Static block:  %p-%p\n",  d->start, (char*)d + BLOCK_SIZE);
+    printf("Static block:  %p-%p\n",  d->start, BLOCK_END(d));
   }
 }
 
