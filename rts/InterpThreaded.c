@@ -199,7 +199,8 @@ int engine(Capability *cap)
     J->func = getFInfo((Closure*)base[-1]);
     u4 recstatus = recordIns(J);
     if (recstatus != REC_CONT) {
-      printf(COL_RED "Recording finished: %x\n" COL_RESET, recstatus);
+      //printf(COL_RED "Recording finished: %x\n" COL_RESET, recstatus);
+      printf("Recording finished: %x\n", recstatus);
       disp = disp1;
       switch (recstatus & REC_MASK) {
       case REC_ABORT:
