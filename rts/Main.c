@@ -145,6 +145,7 @@ main(int argc, char *argv[])
   printEvents();
   dumpStorageManagerState();
   dumpApClosures();
+  printf("StaticRoots: %p\n", G_cap0->static_objs);
 
   return 0;
 }

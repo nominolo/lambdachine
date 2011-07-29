@@ -508,6 +508,7 @@ loadInfoTable(const char *filename,
       new_itbl = (InfoTable*)info;
     }
     break;
+  case CAF:
   case THUNK:
     {
       ThunkInfoTable *info = allocInfoTable(wordsof(ThunkInfoTable));

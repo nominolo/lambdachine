@@ -699,6 +699,7 @@ int engine(Capability *cap)
   {
     Closure *oldnode = (Closure *)base[opA];
     Closure *newnode = (Closure *)base[opC];
+    const InfoTable *info = getInfo(oldnode);
     LC_ASSERT(newnode != 0);
     recordEvent(EV_UPDATE, 0);
 
@@ -707,6 +708,11 @@ int engine(Capability *cap)
     // TODO: Enforce invariant: *newnode is never an indirection.
     DBG_IND(printf("... writing to mem loc: %p\n", &oldnode->payload[0]));
     oldnode->payload[0] = (Word)newnode;
+
+    if (info->type == CAF) {
+      oldnode->payload[1] = (Word)G_cap0->static_objs;
+      G_cap0->static_objs = oldnode;
+    }
     
     T->last_result = (Word)newnode;
     goto do_return;

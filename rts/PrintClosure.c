@@ -266,10 +266,13 @@ printInfoTable(InfoTable* info0)
       printCode(&info->code);
     }
     break;
+  case CAF:
   case THUNK:
     {
       ThunkInfoTable *info = (ThunkInfoTable*)info0;
-      printf("Thunk: %s (%p)\n", info->name, info);
+      printf("%s: %s (%p)\n",
+             info0->type == THUNK ? "Thunk" : "CAF",
+             info->name, info);
       printPointerBitmap(info0);
       printCode(&info->code);
     }

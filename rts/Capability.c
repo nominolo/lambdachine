@@ -30,6 +30,7 @@ initialiseCapability(Capability *cap)
   int i;
 
   cap->flags = 0;
+  cap->static_objs = NULL;
 
 #if LC_HAS_JIT
   // Initialise hot counters.

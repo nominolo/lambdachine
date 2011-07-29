@@ -1141,8 +1141,11 @@ encodeModule' mdl =
          | BcoFun arity arg_tys <- ty -> do
             emitInfoTable_ (mkInfoTableId (idName name)) cltype_FUN
                            arity arg_tys bco
-         | ty `elem` [Thunk, CAF] -> do
+         | ty == Thunk -> do
             emitInfoTable_ (mkInfoTableId (idName name)) cltype_THUNK
+                           0 [] bco
+         | ty == CAF -> do
+            emitInfoTable_ (mkInfoTableId (idName name)) cltype_CAF
                            0 [] bco
 
        BcoCon{ } ->
@@ -1190,9 +1193,9 @@ encodeModule' mdl =
        BcObject{ bcoType = CAF, bcoFreeVars = fvs } | M.size fvs == 0 -> do
          magic r "CLOS"
          emitId r name
-         emitVarUInt r 1  -- one word for the indirection
+         emitVarUInt r 2  -- one word for the indirection, one for linking
          emitId r (mkInfoTableId (idName name))  -- info table
-         emitField r (Left (CInt 0))
+         mapM_ (emitField r) [Left (CInt 0), Left (CInt 0)]
          return 1
        BcObject{ bcoType = Thunk } ->
          return 0  -- don't need a static closure
