@@ -42,7 +42,7 @@ static void dumpExitStubs(JitState *J) {
   for(i = 0; i < LC_MAX_EXITSTUBGR; i++) {
     if(J->exitstubgroup[i] != NULL) {
       MCode *code = exitstub_addr(J, i);
-      fprintf(out, "#Staring addr %lp\n", code);
+      fprintf(out, "#Staring addr %p\n", code);
       dumpAsm(code, EXITSTUB_SPACING * EXITSTUBS_PER_GROUP + 5, out);
         /* +5 for the jump to asmExit at the end of the exit group */
     }
