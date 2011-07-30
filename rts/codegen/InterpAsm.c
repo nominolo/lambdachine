@@ -156,8 +156,9 @@ asmExitIsImplementedInAssembly() {
     "push %%rax\n\t"
 
     /* reconstruct the exit number */
-    "movzx -8(%%rbp), %%edi\n\t" /* low byte is exit number */
-    "mov   -16(%%rbp), %%dh\n\t" /* high byte is exit group */
+    "movzx -8(%%rbp), %%eax\n\t" /* low byte is exit number */
+    "mov   -16(%%rbp), %%ah\n\t" /* high byte is exit group */
+    "mov   %%eax, %%edi\n\t"     /* pass as first param to exitTrace funciton */
 
     /* save remaining registers where the exit number was stored */
     "mov  %%r15, -8(%%rbp)\n\t"
