@@ -181,4 +181,11 @@ skipBitmap(const u2 *p)
   return p;
 }
 
+INLINE_HEADER
+const u2 *
+getLivenessMask(BCIns *next_pc)
+{
+  skipBitmap(getPointerMask(next_pc));
+}
+
 #endif /* LC_INFOTABLES_H */

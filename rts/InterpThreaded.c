@@ -1397,7 +1397,7 @@ invalidateDeadSlots(Word *from, Word *to, BCIns *ret_pc)
 {
   DBG_PR("INVALIDATING: %p..%p", from, to);
   IF_DBG_LVL(0,printInlineBitmap(ret_pc - 1));
-  const u2 *mask = ret_pc ? skipBitmap(getPointerMask(ret_pc)) : NULL;
+  const u2 *mask = ret_pc ? getLivenessMask(ret_pc) : NULL;
   u2 m = mask ? *mask++ : 0;
   int vbits = 15; // valid mask bits left
   while (from < to) {
