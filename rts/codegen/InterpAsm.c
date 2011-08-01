@@ -167,6 +167,12 @@ asmExitIsImplementedInAssembly() {
     /* save the xmm registers */
     "sub   $128, %%rsp\n\t"  /* make room for them on the stack */
     "add  $-128, %%rbp\n\t"  /* skip past the int regs */
+    /* For now, we don't actually save the xmm registers because
+     * we don't support floating point operations. We still need to
+     * make space for them on the stack so that the ExitState data
+     * structure is properly constructed. The ExitState has room for
+     * the xmm regs, but all the xmm reg data will be invalid. */
+#if 0
     "movsd %%xmm15, -8(%%rbp)\n\t"
     "movsd %%xmm14, -16(%%rbp)\n\t"
     "movsd %%xmm13, -24(%%rbp)\n\t"
@@ -182,8 +188,12 @@ asmExitIsImplementedInAssembly() {
     "movsd %%xmm3,  -104(%%rbp)\n\t"
     "movsd %%xmm2,  -112(%%rbp)\n\t"
     "movsd %%xmm1,  -120(%%rbp)\n\t"
+    "movsd %%xmm0,  -128(%%rbp)\n\t"
+#endif
 
-    /* call the generic restore routine exitTrace(ExitNo n, ExitState *s) */
+    /* call the generic restore routine exitTrace(ExitNo n, ExitState *s) 
+     * rdi = ExitNo
+     * rsi = ExitState* (stored on the c-stack */
     "movq %%rsp, %%rsi\n\t"
     "call _exitTrace\n\t"
 
