@@ -58,6 +58,69 @@ static LC_NORET LC_NOINLINE void asm_mclimit(ASMState *as)
 }
 
 #include "Emit_x64.h"  // Target specific instruction emitter
+/* -- Register Allocation ------------------------------------------------- */
+/* Register allocation overview
+ *  Allocation is performed during codegen in a backwards pass over the IR.
+ *
+ *  Each two operand instruction has the form
+ *
+ *  D = op L R
+ *
+ *  where D is the destination register L is the left operand and R is the
+ *  right operand.
+ *
+ *  When we go to allocate registers for the instruction we do
+ *  1. R - Make sure the right operand has a register.
+ *     If R already has a register allocated then simply use that register
+ *     If R does not have a register allocated we need to choose one
+ *       If there is a free register available then use it
+ *       If there are no more registers available then evict a register
+ *         Evicting a register will assign a spill slot to the IR that is spilled
+ *
+ *         Generate a load for the spilled instruction. We generate a load now
+ *         because we are allocating bottom up and we already generated
+ *         instructions that expected to find the spilled value in a particular
+ *         register. We will generate the store for the spilled value when we
+ *         get to its defition point which is earlier in the instruction
+ *         stream.
+ *  2. D - Make sure the destination has a register allocated
+ *       The D may already have a register allocated if it was referenced a an L
+ *       or R value in the instructions below.
+ *
+ *       If it has a register allocated then reuse it, Otherwise find a
+ *       register to use as for R
+ *
+ *       If D was assigned a spill slot earlier then generate a store to spill
+ *       the regsiter to its assigned slot. We do this so that the later load
+ *       will find the register in the right location.
+ *
+ *       Mark the register used by D as free. Since we going bottom up, the D
+ *       register will be free at all the instructions above the current op,
+ *       since D is defined in this instruction.
+ *
+ *  3. op - Generate the code for the operation using D = op D R
+ *
+ *  4. L - Now generate code to make sure that the L IRRef is in the same
+ *  register as D. We may need to generate a register-to-register copy here.
+ *  This is a required step for all of the x86 two operand machine
+ *  instructions.
+ *
+ *  Each one operand instruction has the form of
+ *
+ *  D = op R
+ *
+ *  Code is generated similarly for the two-operand case except that L is not
+ *  needed.
+ */
+
+/* Setup register allocator. */
+static void ra_setup(ASMState *as)
+{
+  /* Initially all regs (except the base and heap pointers) are free for use. */
+  as->freeset = RSET_INIT;
+}
+
+
 
 /* -- Exit stubs ---------------------------------------------------------- */
 /* Generate an exit stub group at the bottom of the reserved MCode memory.
@@ -162,6 +225,10 @@ static void asm_guardcc(ASMState *as, int cc)
 }
 
 /* -- Main assembler routine ---------------------------------------------- */
+void asm_ir(ASMState *as, IRIns *ir) {
+  emit_movrr(as, ir, RID_EAX, RID_ECX);
+}
+
 void genAsm(JitState *J, Fragment *T) {
   ASMState as_;
   ASMState *as = &as_;
@@ -170,23 +237,32 @@ void genAsm(JitState *J, Fragment *T) {
   as->J = J;
   as->T = T;
   as->ir = T->ir;
-  as->curins = T->nins;
 
   as->mctop = reserveMCode(J, &as->mcbot);
   as->mcp   = as->mctop;
   as->mclim = as->mcbot + MCLIM_REDZONE;
-
+  ra_setup(as);
 
   /* generate the exit stubs we need */
   asm_exitstub_setup(as, T->nsnap);
 
+  /* generate cod in linear backwards order need */
+  as->stopins = REF_BASE;
+  as->curins  = T->nins;
+  as->curins  = REF_FIRST + 1; // for testing
+  for(as->curins--; as->curins > as->stopins; as->curins--) {
+    IRIns *ir = IR(as->curins);
+    asm_ir(as, ir);
+  }
 
   /* generate some test code */
+  /*
   as->snapno = 1;
   asm_guardcc(as, CC_E);
   emit_rr(as, XO_TEST, RID_ECX, RID_R12D);
   emit_movrr(as, IR(--as->curins), RID_EAX, RID_ECX);
   emit_movrr(as, IR(--as->curins), RID_EAX, RID_R12D);
+  */
 
   T->mcode = as->mcp;
   T->szmcode = (MSize)((char *)as->mctop - (char *)as->mcp);

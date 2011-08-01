@@ -23,6 +23,10 @@ enum {
   RID_MAX,
   RID_MRM = RID_MAX,		/* Pseudo-id for ModRM operand. */
 
+  /* Fixed registers */
+  RID_BASE = RID_EBP,
+  RID_HP   = RID_R12D,
+
   /* Calling conventions. */
   RID_RET = RID_EAX,
   RID_FPRET = RID_XMM0,
@@ -39,7 +43,10 @@ enum {
 /* -- Register sets ------------------------------------------------------- */
 
 /* Make use of all registers, except the stack pointer. */
-#define RSET_GPR	(RSET_RANGE(RID_MIN_GPR, RID_MAX_GPR)-RID2RSET(RID_ESP))
+#define RSET_GPR	(RSET_RANGE(RID_MIN_GPR, RID_MAX_GPR)\
+                                  -RID2RSET(RID_ESP)\
+                                  -RID2RSET(RID_BASE)\
+                                  -RID2RSET(RID_HP))
 #define RSET_FPR	(RSET_RANGE(RID_MIN_FPR, RID_MAX_FPR))
 #define RSET_ALL	(RSET_GPR|RSET_FPR)
 #define RSET_INIT	RSET_ALL

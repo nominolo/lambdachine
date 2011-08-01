@@ -17,6 +17,7 @@ void asmEngine(Capability *cap, Fragment *F) {
 
   genAsm(J, F);
   dumpAsm(F->mcode, F->szmcode, NULL);
+  LC_ASSERT(0 && "STOPPING AFTER CODEGEN");
   dumpExitStubs(J);
   enterTrace(&cap->J, F);
 
