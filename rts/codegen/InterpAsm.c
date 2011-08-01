@@ -105,7 +105,7 @@ asmEnterIsImplementedInAssembly(Fragment *F, Thread *T, Word *spillArea, Word *b
      /* save %rbp and also makes %rsp 16-byte aligned */
     "push %%rbp\n\t"
 
-    /* save other caller saved regs */
+    /* save other callee saved regs */
     "movq %%rsp, %%rax\n\t"
     "subq %0, %%rsp\n\t"
     "movq %%rbx,-8(%%rax)\n\t"
