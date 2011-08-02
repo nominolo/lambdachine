@@ -370,7 +370,7 @@ static void asm_setup_regsp(ASMState *as)
   IRRef i, nins;
 
   ra_setup(as);
-  as->spill_offset = sizeof(Word) * T->framesize;
+  as->spill_offset = SLOT_SIZE * T->framesize;
 
   /* Clear reg/sp for constants. */
   for (i = T->nk; i < REF_BIAS; i++)
@@ -407,7 +407,8 @@ static void asm_setup_regsp(ASMState *as)
 /* -- Specific instructions  ---------------------------------------------- */
 static void asm_sload(ASMState *as, IRIns *ir)
 {
-  int32_t ofs = sizeof(Word) * ir->op1;
+  RA_DBGX((as, "SLOAD 0x$x", ir->op1));
+  int32_t ofs = SLOT_SIZE * ir->op1;
   Reg base = RID_BASE;
   RegSet allow = RSET_GPR;
   Reg dest = ra_dest(as, ir, allow);

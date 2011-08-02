@@ -7,6 +7,9 @@
 #define _LAMBDACHINE_ASMTARGET_X64_H
 
 /* -- Registers IDs ------------------------------------------------------- */
+#define SLOT_SIZE sizeof(Word) /* size of stack slots */
+
+/* -- Registers IDs ------------------------------------------------------- */
 
 #define GPRDEF(_) \
   _(EAX) _(ECX) _(EDX) _(EBX) _(ESP) _(EBP) _(ESI) _(EDI) \
