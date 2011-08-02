@@ -1,3 +1,32 @@
 # Using out-of-tree builds
 
 # DIST := $(HOME)/tmp/dist-devel/lambdachine
+
+# You can customise the version of GHC that is used to build the
+# bytecode compiler.
+#
+# HC=ghc-6.12.1
+# HC=ghc-7.0.1
+# HC=ghc
+
+# We currently only have one interpreter
+#
+# AsmInterpreter = No
+# AsmInterpreter = Yes
+
+######################################################################
+# Uncomment the features you need.
+
+# Disabling the JIT runs everything in the interpreter.
+#
+# DisableJit = Yes
+
+# A performance build does not execute assertions and disables
+# debug output.
+#
+# PerformanceBuild = Yes
+
+# The default debug level is 2.  Higher levels usually mean more debug
+# output.
+#
+# DebugLevel = 1

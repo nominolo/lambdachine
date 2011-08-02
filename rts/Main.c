@@ -3,6 +3,7 @@
 #include "HashTable.h"
 #include "PrintClosure.h"
 #include "StorageManager.h"
+#include "MiscClosures.h"
 #include "Stats.h"
 
 #include <stdio.h>
@@ -102,7 +103,7 @@ main(int argc, char *argv[])
 
   if (opts.main_closure != NULL) {
     int n = snprintf(main_clos_name, MAX_CLOSURE_NAME_LEN,
-                     "%s.%s!closure", opts.input_file,
+                     "%s.%s`closure", opts.input_file,
                      opts.main_closure);
     if (n <= MAX_CLOSURE_NAME_LEN) {
       opts.main_closure = main_clos_name;
@@ -112,8 +113,8 @@ main(int argc, char *argv[])
     }
   }
 
-  initVM();
   initStorageManager();
+  initVM();
   initLoader();
   loadWiredInModules();
   loadModule(opts.input_file);
@@ -142,6 +143,9 @@ main(int argc, char *argv[])
   clos0 = startThread(T0, clos0);
   printClosure(clos0);
   printEvents();
+  dumpStorageManagerState();
+  dumpApClosures();
+  printf("StaticRoots: %p\n", G_cap0->static_objs);
 
   return 0;
 }

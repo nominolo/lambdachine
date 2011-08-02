@@ -2,42 +2,56 @@
 #include "InfoTables.h"
 #include "PrintClosure.h"
 #include "Bytecode.h"
+#include "StorageManager.h"
+
+void printInlineBitmap(const BCIns *p0);
 
 void
-printClosure(Closure* cl)
+printClosure_(FILE *f, Closure* cl, int nl)
 {
   const InfoTable *info = getInfo(cl);
 
   if (info == NULL) {
-    printf("???\n");
+    fprintf(f, "???\n");
     return;
   }
 
   if (info->type == IND) {
     cl = (Closure*)cl->payload[0];
     info = getInfo(cl);
-    printf("IND -> ");
+    fprintf(f, "IND -> ");
   }
 
   switch (info->type) {
   case CONSTR:
-    printf("%s ", cast(ConInfoTable*,info)->name);
+    fprintf(f, "%s ", cast(ConInfoTable*,info)->name);
     break;
   case FUN:
-    printf("%s ", cast(FuncInfoTable*,info)->name);
+    fprintf(f, "%s ", cast(FuncInfoTable*,info)->name);
     break;
   case THUNK:
-    printf("%s ", cast(ThunkInfoTable*,info)->name);
+  case CAF:
+    fprintf(f, "%s ", cast(ThunkInfoTable*,info)->name);
     break;
   }
-    
+
   int n, p = 0;
+  u4 bitmap = info->layout.bitmap;
+  for (n = info->size; n > 0; p++, n--, bitmap = bitmap >> 1) {
+    if (bitmap & 1)
+      fprintf(f, "%p ", (Word*)cl->payload[p]);
+    else
+      fprintf(f, "%" FMT_Int " ", cl->payload[p]);
+  }
+
+  /* For when are we going to use ptr/nptr layout
   for (n = info->layout.payload.ptrs; n > 0; p++, n--)
     printf("%0" FMT_WordLen FMT_WordX " ", cl->payload[p]);
   for (n = info->layout.payload.nptrs; n > 0; p++, n--)
     printf("%" FMT_Int " ", cl->payload[p]);
-  
-  printf("\n");
+  */
+  if (nl) 
+    fprintf(f, "\n");
   
 }
 
@@ -89,7 +103,9 @@ printInstruction_aux(const BCIns *ins /*in*/, int oneline)
   case IFM____:
     switch (bc_op(i)) {
     case BC_EVAL:
-      { printf("EVAL\tr%d\n", bc_a(i)); ins++; 
+      { printf("EVAL\tr%d", bc_a(i));
+        printInlineBitmap(ins);
+        ins++;
       }
       break;
     case BC_CASE:
@@ -107,29 +123,55 @@ printInstruction_aux(const BCIns *ins /*in*/, int oneline)
       printf("CASE_S\tr%d ...TODO...\n", bc_a(i));
       ins += bc_d(i);
       break;
+    case BC_ALLOC1:
+      printf("ALLOC1\tr%d, r%d, r%d", bc_a(i), bc_b(i), bc_c(i));
+      printInlineBitmap(ins);
+      ins += 1;
+      break;
+
     case BC_ALLOC:
       {
-        u1 *arg = (u1*)ins; ins += BC_ROUND(bc_c(i) - 1);
+        u1 *arg = (u1*)ins; ins += 1 + BC_ROUND(bc_c(i));
         printf("ALLOC\tr%d, r%d", bc_a(i), bc_b(i));
         for (j = 0; j < bc_c(i); j++, arg++)
           printf(", r%d", *arg);
-        printf("\n");
+        printInlineBitmap(ins - 1);
       }
       break;
     case BC_ALLOCAP:
       {
-        u1 *arg = (u1*)ins; ins += BC_ROUND(bc_c(i));
-        printf("ALLOCAP\tr%d, r%d", bc_a(i), bc_b(i));
-        for (j = 0; j < bc_c(i); j++, arg++)
-          printf(", r%d", *arg);
-        printf("\n");
+        u1 *arg = (u1*)ins; ins += 1 + BC_ROUND(bc_c(i) + 1);
+        printf("ALLOCAP\tr%d", bc_a(i));
+        u1 ptrmask = bc_b(i);
+        printf(", r%d", *arg++);
+        for (j = 1; j < bc_c(i); j++, arg++) {
+          printf(", r%d%c", *arg, ptrmask & 1 ? '*' : ' ');
+          ptrmask >>= 1;
+        }
+        printInlineBitmap(ins - 1);
       }
       break;
     case BC_CALL:
-      { u1 *arg = (u1*)ins; ins += BC_ROUND(bc_b(i) - 1) + 1;
-        printf("%s\tr%d(r%d", name, bc_a(i), bc_c(i));
-        for (j = 1; j < bc_b(i); j++, arg++)
-          printf(", r%d", *arg);
+      { u1 *arg = (u1*)ins; ins += BC_ROUND(bc_c(i)) + 1;
+        printf("%s\tr%d", name, bc_a(i));
+        char comma = '(';
+        for (j = 0; j < bc_c(i); j++, arg++) {
+          printf("%cr%d", comma, *arg);
+          comma = ',';
+        }
+        printf(") [%x]", bc_b(i));
+        printInlineBitmap(ins - 1);
+      }
+      break;
+    case BC_CALLT:
+      { 
+        int j;
+        u1 bitmask = bc_b(i);
+        printf("CALLT r%d", bc_a(i));
+        for (j = 0; j < bc_c(i); j++) {
+          printf("%cr%d%c", j == 0 ? '(' : ',', j, bitmask & 1 ? '*' : ' ');
+          bitmask >>= 1;
+        }
         printf(")\n");
       }
       break;
@@ -145,6 +187,67 @@ printInstruction_aux(const BCIns *ins /*in*/, int oneline)
   return (u4)(ins - ins0);
 }
 
+const u2 *
+printInlineBitmap_(const u2 *p)
+{
+  u2 bitmap;
+  int min = 0;
+  int i;
+  // Live pointers
+  printf("(%p) { ", p);
+  do {
+    bitmap = *p;
+    for (i = 0; i < 15 && bitmap != 0; i++) {
+      if (bitmap & 1)
+        printf("r%d ", min + i);
+      bitmap = bitmap >> 1;
+    }
+    ++p;
+  } while (bitmap != 0);
+  printf("}");
+  return p;
+}
+
+void
+printInlineBitmap(const BCIns *p0)
+{
+  u4 offset = (u4)(*p0);
+  if (offset != 0) {
+    const u2 *p = (const u2*)((u1*)p0 + offset);
+    putchar('\t');
+    p = printInlineBitmap_(p); // pointers
+    printf(" / ");
+    printInlineBitmap_(p);   // Live-out variables
+    putchar('\n');
+  }
+}
+
+void
+printPointerBitmap(InfoTable *info)
+{
+  int i; u4 bitmap;
+  i = info->size;
+  if (i <= 32) {
+    bitmap = info->layout.bitmap;
+    printf("  pointers: (%d) ", (int)i);
+    while (i > 0) {
+      if (bitmap & 1) putchar('*'); else putchar('-');
+      i--;
+      bitmap = bitmap >> 1;
+    }
+  } else {
+    printf("  pointers: ?");
+  }
+  putchar('\n');
+}
+
+void
+printPtrNPtr(InfoTable *info)
+{
+  printf("  ptrs/nptrs: %d/%d\n",
+         info->layout.payload.ptrs, info->layout.payload.nptrs);
+}
+
 void
 printInfoTable(InfoTable* info0)
 {
@@ -154,25 +257,25 @@ printInfoTable(InfoTable* info0)
       ConInfoTable* info = (ConInfoTable*)info0;
       printf("Constructor: %s, (%p)\n", info->name, info);
       printf("  tag: %d\n", info->i.tagOrBitmap);
-      printf("  ptrs/nptrs: %d/%d\n",
-             info->i.layout.payload.ptrs, info->i.layout.payload.nptrs);
+      printPointerBitmap(info0);
     }
     break;
   case FUN:
     {
       FuncInfoTable *info = (FuncInfoTable*)info0;
       printf("Function: %s (%p)\n", info->name, info);
-      printf("  ptrs/nptrs: %d/%d\n",
-             info->i.layout.payload.ptrs, info->i.layout.payload.nptrs);
+      printPointerBitmap(info0);
       printCode(&info->code);
     }
     break;
+  case CAF:
   case THUNK:
     {
       ThunkInfoTable *info = (ThunkInfoTable*)info0;
-      printf("Thunk: %s (%p)\n", info->name, info);
-      printf("  ptrs/nptrs: %d/%d\n",
-             info->i.layout.payload.ptrs, info->i.layout.payload.nptrs);
+      printf("%s: %s (%p)\n",
+             info0->type == THUNK ? "Thunk" : "CAF",
+             info->name, info);
+      printPointerBitmap(info0);
       printCode(&info->code);
     }
     break;
@@ -186,7 +289,12 @@ void
 printCode(LcCode *code)
 {
   u4 i; u4 nc = 0; BCIns *c = code->code;
-  printf("  arity: %d\n", code->arity);
+  if (code->arity > 0) {
+    printf("  arity: %d, ptrs: ", code->arity);
+    // First bitmap is the function pointer map
+    printInlineBitmap_((const u2 *)&code->code[code->sizecode]);
+    putchar('\n');
+  }
   printf("  frame: %d\n", code->framesize);
   printf("  literals:\n");
   for (i = 0; i < code->sizelits; i++) {

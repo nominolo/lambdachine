@@ -1,6 +1,7 @@
 {-# LANGUAGE GADTs, MultiParamTypeClasses, PatternGuards, BangPatterns #-}
 module Lambdachine.Grin.RegAlloc where
 
+import Lambdachine.Ghc.Utils
 import Lambdachine.Grin.Bytecode
 import Lambdachine.Grin.Analyse
 import Lambdachine.Utils
@@ -72,8 +73,8 @@ finaliseCode arity (LinearCode code0 lives labels) =
    -- register allocator.
    framesize = arity `max` (maxreg + 1)
 
-   BcReg maxreg =
-     Vec.maximum (Vec.map (maximumDflt (BcReg 0) . universeBi) code)
+   BcReg maxreg _ =
+     Vec.maximum (Vec.map (maximumDflt (BcReg 0 VoidTy) . universeBi) code)
 
    maximumDflt n [] = n
    maximumDflt _ xs = maximum xs
@@ -127,10 +128,11 @@ instance Pretty LinearCode where
 
 lineariseCode :: FactBase LiveVars -> Graph BcIns O C -> LinearCode
 lineariseCode live_facts g@(GMany (JustO entry) body NothingO) =
-   LinearCode lin_code (liveIns live_facts lin_code) labels
+   LinearCode (annotateWithLiveouts live_ins lin_code) live_ins labels
  where
    lin_code = Vec.fromList $ concat $ 
                 lineariseBlock live_facts entry : map (lineariseBlock live_facts) body_blocks
+   live_ins = liveIns live_facts lin_code
    body_blocks = postorder_dfs g  -- excludes entry sequence
    labels = Vec.ifoldl' ins_if_label M.empty lin_code
    ins_if_label :: M.Map Label Int -> Int -> LinearIns -> M.Map Label Int
@@ -140,7 +142,7 @@ lineariseCode live_facts g@(GMany (JustO entry) body NothingO) =
 
 -- | Turn a block into a linear list of instructions.
 --
--- Annotates @Case@ expressions with the live variables for each branch.
+-- Annotates various instructions with the live variables.
 --
 lineariseBlock :: FactBase LiveVars -> Block BcIns e x -> [LinearIns]
 lineariseBlock live_facts blk = entry_ins (map Mid middles ++ tail_ins)
@@ -172,8 +174,18 @@ liveIns global_live_outs inss =
    calcLives (Mid ins) live_out = live ins live_out
    calcLives (Fst ins) live_out = live ins live_out
 
+annotateWithLiveouts :: Vector LiveVars -> Vector LinearIns -> Vector LinearIns
+annotateWithLiveouts lives inss = Vec.imap annotate inss
+ where
+   annotate :: Int -> LinearIns -> LinearIns
+   annotate n (Mid (Assign d (Alloc t args _))) =
+     Mid (Assign d (Alloc t args (lives Vec.! n)))
+   annotate n (Mid (Assign d (AllocAp args _))) =
+     Mid (Assign d (AllocAp args (lives Vec.! n)))
+   annotate n i = i
+
 allRegs :: S.Set BcVar
-allRegs = S.fromList $ map BcReg [0..255]
+allRegs = S.fromList $ map (\n -> BcReg n VoidTy) [0..255]
 
 -- * Register Allocation
 
@@ -252,12 +264,18 @@ colourGraph igraph =
    triv Size1 neighbs excls = True
    spill gr = error "Cannot spill"
 
-   get_alloc ig co x =
+   get_alloc ig co x@(BcVar _ t) = get_alloc' ig co (transType t) x
+   get_alloc ig co x@(BcReg _ ot) = get_alloc' ig co ot x
+   get_alloc' ig co ot x =
      case Gr.lookupNode x ig of
        Just n | Just (R r) <- Gr.nodeColour n
-         -> BcReg (fromIntegral r)
+         -- We have a register assignment for this node.
+         -> BcReg (fromIntegral r) ot
+
        Nothing | Just y <- lookupUM x co
-         -> get_alloc ig co y
+         -- This node has been coalesced with another node.  We'll
+         -- have to use the right type, though.
+         -> get_alloc' ig co ot y
 
 buildInterferenceGraph :: LinearCode -> IGraph
 buildInterferenceGraph lc@(LinearCode code0 lives lbls) =
@@ -291,7 +309,7 @@ buildInterferenceGraph lc@(LinearCode code0 lives lbls) =
 
    fix_colour node =
      case Gr.nodeId node of
-       BcReg n -> node{ Gr.nodeColour = Just (R (fromIntegral n)) }
+       BcReg n _ -> node{ Gr.nodeColour = Just (R (fromIntegral n)) }
        _ -> node
 
 -- | The linear-scan register allocator.
@@ -320,7 +338,7 @@ mkAllocMap lc@(LinearCode code0 lives lbls) =
      | Just r <- M.lookup x alloc = (alloc, S.delete r avail)
      | otherwise =
        case x of
-         BcReg r -> (M.insert x x alloc, S.delete x avail)
+         BcReg r _ -> (M.insert x x alloc, S.delete x avail)
          _ ->
            let (reg, avail') = S.deleteFindMin avail in
            (M.insert x reg alloc, avail')

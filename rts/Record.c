@@ -97,13 +97,13 @@ growIRBufferTop(JitState *J)
   if (szins != 0) {
     baseir = realloc(baseir, 2 * szins * sizeof(IRIns));
     J->irmax = J->irmin + 2 * szins;
-    DBG_PR(COLOURED(COL_BLUE, "Resizing IR buffer to: %d..%d\n"),
+    DBG_PR(COLOURED(COL_BLUE, "Resizing IR buffer to: %d..%d") "\n",
            J->irmin - REF_BIAS, J->irmax - REF_BIAS);
   } else {
     baseir = xmalloc(IR_INITIAL_BUF_SIZE * sizeof(IRIns));
     J->irmin = REF_BASE - IR_INITIAL_BUF_SIZE/4;
     J->irmax = J->irmin + IR_INITIAL_BUF_SIZE;
-    DBG_PR(COLOURED(COL_BLUE, "Alloc new IR buf: %d..%d\n"),
+    DBG_PR(COLOURED(COL_BLUE, "Alloc new IR buf: %d..%d") "\n",
            J->irmin - REF_BIAS, J->irmax - REF_BIAS);
   }
   J->cur.ir = J->irbuf = baseir - J->irmin;
@@ -123,7 +123,7 @@ growIRBufferBottom(JitState *J)
     // More than half of the buffer is free on top end.  Shift up by a
     // quarter.
     Word ofs = szins >> 2;
-    DBG_PR(COLOURED(COL_BLUE, "Shifting IRs up by %" FMT_Word "\n"),
+    DBG_PR(COLOURED(COL_BLUE, "Shifting IRs up by %" FMT_Word) "\n",
            ofs);
     memmove(baseir + ofs, baseir, (J->cur.nins - J->irmin) * sizeof(IRIns));
     J->irmin -= ofs;
@@ -151,11 +151,13 @@ recordSetup(JitState *J, Thread *T)
   memset(J->slot, 0, sizeof(J->slot));
   memset(J->chain, 0, sizeof(J->chain));
 
-  J->baseslot = 1;  // baseslot[0] == base[-1] == Node
+  J->baseslot = 1;  // base[baseslot] == r0, base[-1] == Node
   J->base = J->slot + J->baseslot;
   J->maxslot = T->top - T->base;
 
   J->T = T;
+
+  // J->{pc,func} is set by recording code
 
   J->flags = 0; // TODO: Default flags
 
@@ -185,6 +187,8 @@ recordSetup(JitState *J, Thread *T)
   J->cur.nheapmap = J->sizeheapmap = 0;
   J->cur.heap = J->heapbuf = NULL;
   J->cur.heapmap = J->heapmapbuf = NULL;
+
+  // J->cur.{startpc,orig} is initialised by startRecording
 
   J->needsnap = 0;
 }
@@ -412,13 +416,13 @@ recordBuildEvalFrame(JitState *J, TRef node, ThunkInfoTable *info,
   Word *top = J->T->top;
   u4 framesize = info->code.framesize;
   u4 t = top - J->T->base;
-  u4 i;
+  u4 i, j;
   u4 b = J->T->base - J->startbase;
 
   if (LC_UNLIKELY(stackOverflow(J->T, top, 8 + framesize)))
     return 0;
 
-  u4 liveouts = (u4)return_pc[-1];
+  const u2 *liveouts = getLivenessMask(return_pc);
   printf("LIVES: %p %x\n", return_pc, (int)liveouts);
 
   setSlot(J, t + 0, emitKBaseOffset(J, b));
@@ -430,11 +434,10 @@ recordBuildEvalFrame(JitState *J, TRef node, ThunkInfoTable *info,
   setSlot(J, t + 6, emitKWord(J, (Word)stg_UPD_return_pc, LIT_PC));
   setSlot(J, t + 7, node);
 
+  u2 mask; 
   // Clear slots that aren't live-out.
-  for (i = 0; i < t; i++) {
-    if (!(liveouts & 1))
-      setSlot(J, i, 0);
-    liveouts = liveouts >> 1;
+  FOR_MASK(liveouts, mask, j, i = 0, i < t, i++) {
+    if (!(mask & 1)) setSlot(J, i, 0);
   }
 
   DBG_PR("baseslot %d => %d (top = %d, frame = %d)\n",
@@ -600,8 +603,10 @@ recordIns(JitState *J)
 
   case BC_CALLT:
     {
-      // TODO: For now only supports exact calls.
-      u4 nargs = bc_d(ins);
+      // TODO: For now only supports exact calls and overapplication
+      // on FUN functions.
+      u4 nargs = bc_c(ins);
+      u4 pointer_mask = bc_b(ins);
       Closure *fnode = (Closure*)tbase[bc_a(ins)];
       FuncInfoTable *info;
       u4 farity;
@@ -642,7 +647,8 @@ recordIns(JitState *J)
         u4 framesize = info->code.framesize;
         BCIns *ap_return_pc;
         Closure *ap_closure;
-        getAPKClosure(&ap_closure, &ap_return_pc, extra_args);
+        getApContClosure(&ap_closure, &ap_return_pc, extra_args,
+                         pointer_mask >> (nargs - extra_args));
 
         // First the guard
         TRef rinfo = emitKWord(J, (Word)info, LIT_INFO);
@@ -689,7 +695,7 @@ recordIns(JitState *J)
 
   case BC_CALL:
     {
-      u4 callargs = bc_b(ins);
+      u4 callargs = bc_c(ins);
       Closure *fnode = (Closure*)tbase[bc_a(ins)];
       if (getInfo(fnode)->type != FUN ||
           getFInfo(fnode)->code.arity != callargs)
@@ -699,7 +705,7 @@ recordIns(JitState *J)
       u4 topslot = J->T->top - J->T->base;
       u4 framesize = info->code.framesize;
       u4 baseslot = J->T->base - J->startbase;
-      const BCIns *return_pc = J->pc + BC_ROUND(callargs - 1) + 2;
+      const BCIns *return_pc = J->pc + BC_ROUND(callargs) + 2;
       int i;
       u1 *arg = (u1*)(J->pc + 1);
 
@@ -711,8 +717,7 @@ recordIns(JitState *J)
       setSlot(J, topslot + 0, emitKBaseOffset(J, baseslot));
       setSlot(J, topslot + 1, emitKWord(J, (Word)return_pc, LIT_PC));
       setSlot(J, topslot + 2, ra);
-      setSlot(J, topslot + 3, getSlot(J, bc_c(ins)));
-      for (i = 1; i < callargs; i++, arg++)
+      for (i = 0; i < callargs; i++, arg++)
         setSlot(J, topslot + 3 + i, getSlot(J, *arg));
 
       DBG_PR("baseslot %d => %d (top = %d, frame = %d)\n",
@@ -819,22 +824,21 @@ recordIns(JitState *J)
   case BC_ALLOCAP:
     {
       u4 nargs = bc_c(ins);
+      u4 pointer_mask = bc_b(ins);
       u4 h, i;
-      TRef rinfo, rnew, rarg0;
-      InfoTable *info = getAPInfoTable(nargs);
+      TRef rinfo, rnew;
+      InfoTable *info = getApInfoTable(nargs, pointer_mask);
       HeapInfo *hp;
       u1 *arg = (u1*)(pc + 1);
 
-      rarg0 = getSlot(J, bc_b(ins));
       rinfo = emitKWord(J, (Word)info, LIT_INFO);
       h = newHeapInfo(J, 0, info);
       // We currently assume that a NEW is never optimised away
       //IR(tref_ref(rnew))->op2 = h;
       hp = &J->cur.heap[h];
-      setHeapInfoField(&J->cur, hp, 0, rarg0);
-      for (i = 0; i < nargs; i++, arg++) {
+      for (i = 0; i < nargs + 1; i++, arg++) {
         rc = getSlot(J, *arg);
-        setHeapInfoField(&J->cur, hp, i + 1, rc);
+        setHeapInfoField(&J->cur, hp, i, rc);
       }
       //LC_ASSERT(J->cur.nins - 1 == tref_ref(rnew));
       rnew = emit(J, IRT(IR_NEW, IRT_CLOS), rinfo, h);

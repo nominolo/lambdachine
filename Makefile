@@ -11,6 +11,18 @@ endif
 HC ?= ghc
 CC ?= gcc
 
+ifeq "$(strip $(PerformanceBuild))" "Yes"
+EXTRA_CFLAGS := $(EXTRA_CFLAGS) -DNDEBUG
+endif
+
+ifeq "$(strip $(DisableJit))" "Yes"
+EXTRA_CFLAGS := $(EXTRA_CFLAGS) -DLC_HAS_JIT=0
+endif
+
+ifneq ($(DebugLevel),)
+EXTRA_CFLAGS := $(EXTRA_CFLAGS) -DLC_DEBUG_LEVEL=$(DebugLevel)
+endif
+
 HSBUILDDIR = $(DIST)/build
 LCC = $(HSBUILDDIR)/lcc
 CABAL ?= cabal
@@ -28,7 +40,7 @@ boot:
 	mkdir -p $(DEPDIR)/utils
 
 INCLUDES = -Iincludes -Irts
-CFLAGS = -Wall -g
+CFLAGS = -Wall -g $(EXTRA_CFLAGS)
 
 df = $(DEPDIR)/$(*D)/$(*F)
 
@@ -40,7 +52,7 @@ SRCS = rts/Bytecode.c rts/Capability.c rts/ClosureFlags.c \
        rts/Main.c \
        rts/Record.c rts/PrintIR.c rts/OptimiseIR.c \
        rts/Snapshot.c rts/HeapInfo.c rts/Bitset.c \
-       rts/InterpIR.c rts/Stats.c
+       rts/InterpIR.c rts/Stats.c rts/GC.c
 
 UTILSRCS = utils/genopcodes.c
 
@@ -57,7 +69,7 @@ interp: $(SRCS:.c=.o)
 #
 # The dependency file for `rts/Foo.c' lives at `.deps/rts/Foo.c'.
 #
-%.o: %.c
+%.o: %.c mk/build.mk
 	@echo "CC $(CFLAGS) $< => $@"
 	@$(CC) -c $(INCLUDES) -MD -MF $(patsubst %.c,$(DEPDIR)/%.d,$<) $(CFLAGS) -o $@ $<
 	@cp $(df).d $(df).P; \
@@ -84,6 +96,7 @@ HSFLAGS = -hide-all-packages \
           -package ghc-paths -package cmdargs -package mtl -package blaze-builder -package vector \
           -package utf8-string -package bytestring -package array -package ansi-wl-pprint -package binary \
           -package uniplate -package hoopl -package value-supply \
+          -package graph-serialize -package temporary \
           -icompiler \
           -odir $(HSBUILDDIR) -hidir $(HSBUILDDIR)
 
@@ -128,8 +141,9 @@ install-deps:
 	 'mtl == 2.*' 'blaze-builder ==0.3.*' 'vector == 0.7.*' \
 	 'utf8-string == 0.3.*' 'ansi-wl-pprint == 0.6.*' \
          'binary == 0.5.*' 'uniplate == 1.6.*' 'hoopl >= 3.8.6.1' \
-	 'value-supply == 0.6.*'
-	
+	 'value-supply == 0.6.*' 'graph-serialize >= 0.1.5' \
+	 'temporary == 1.1.*'
+
 # find compiler -name "*.hi" -delete
 
 # Rules for building built-in packages

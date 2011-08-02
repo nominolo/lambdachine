@@ -18,6 +18,8 @@ typedef enum {
 struct Capability_ {
   Thread   *T;                 /* Currently running thread. */
   u4        flags;
+  Closure  *static_objs;        /* A linked list of updated static
+                                   objects.  These must be GC roots. */
 #if LC_HAS_JIT
   JitState  J;
   HotCount  hotcount[HOTCOUNT_SIZE]; /* Hot counters. */
@@ -31,7 +33,7 @@ extern Capability* G_cap0;
 
 #define hotcount_get(cap, pc) \
   (cap)->hotcount[hotcount_hash(pc)]
-#define hotcount_set(J, pc, val) \
+#define hotcount_set(cap, pc, val) \
   (hotcount_get((cap), (pc)) = (HotCount)(val))
 
 void *allocate(Capability *cap, u4 num_words);

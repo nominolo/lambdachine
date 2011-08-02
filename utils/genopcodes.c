@@ -15,7 +15,8 @@ main(int argc, char **argv)
   printf("/* DO NOT EDIT.  This is an auto-generated file. */\n");
   printf("/* See utils/genopcodes.c */\n\n");
 
-  printf("#define branch_BIAS 0x%x\n\n", BCBIAS_J);
+  printf("#define branch_BIAS 0x%x\n", BCBIAS_J);
+  printf("#define cMAX_CALL_ARGS %d\n\n", BCMAX_CALL_ARGS);
   
 #define DEF_LINE(name,fmt)                                         \
   printf("#define " STR(opc_ ## name) " %d\n", BC_##name);

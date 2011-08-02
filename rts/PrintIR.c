@@ -190,7 +190,7 @@ INLINE_HEADER char irt_chr(IRType irt)
 void
 printPrettyIRRef_(Fragment *F, IRRef ref, int follow)
 {
-  LC_ASSERT(F->nk < ref && ref < F->nins);
+  LC_ASSERT(F->nk <= ref && ref < F->nins);
 
   IRIns *ir = IR(ref);
 
