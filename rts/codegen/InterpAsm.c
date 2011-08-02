@@ -64,7 +64,7 @@ static void enterTrace(JitState *J, Fragment *F) {
     traceError(NULL, 1);
   }
   T->top += spillSizeArea;
-  Word *spillArea = base + F->framesize;
+  Word *spillArea = base + (sizeof(Word) * F->framesize);
 
 
   asmEnter(F, T, spillArea, base, F->mcode);

@@ -67,24 +67,21 @@ enum {
 #define REGARG_LASTFPR	RID_XMM7
 #define STACKARG_OFS	0
 
-/* Prefer the low 8 regs of each type to reduce REX prefixes. */
+/* Prefer the low 8 regs of each type to reduce REX prefixes. 
+ * This code will choose the highest bit in the regset that is set. The bswap
+ * will put the available regs in the high bytes and fls will return the
+ * highest index between 16-31 that is set. The xor with 0x18 translates this
+ * back to the original bit index in the regset.
+ */
 #undef rset_picktop
 #define rset_picktop(rs)	(lc_fls(lc_bswap(rs)) ^ 0x18)
 
 /* -- Spill slots --------------------------------------------------------- */
 
-/* Spill slots are 32 bit wide. An even/odd pair is used for FPRs.
-**
-** SPS_FIXED: Available fixed spill slots in interpreter frame.
-** This definition must match with the *.dasc file(s).
-**
-** SPS_FIRST: First spill slot for general use. Reserve min. two 32 bit slots.
+/* Spill slots are 64 bits wide.
 */
-#define SPS_FIXED	4
-#define SPS_FIRST	2
-
-#define sps_scale(slot)		(4 * (int32_t)(slot))
-#define sps_align(slot)		(((slot) - SPS_FIXED + 3) & ~3)
+#define SPS_FIRST 0 /* first spill slot */
+#define sps_scale(slot)		(8 * (int32_t)(slot))
 
 /* -- Exit state ---------------------------------------------------------- */
 

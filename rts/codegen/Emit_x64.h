@@ -366,18 +366,18 @@ static void emit_movrr(ASMState *as, IRIns *ir, Reg dst, Reg src)
 static void emit_spload(ASMState *as, IRIns *ir, Reg r, int32_t ofs)
 {
   if (r < RID_MAX_GPR)
-    emit_rmro(as, XO_MOV, REX_64IR(ir, r), RID_ESP, ofs);
+    emit_rmro(as, XO_MOV, REX_64IR(ir, r), RID_BASE, ofs);
   else
-    emit_rmro(as, XMM_MOVRM(as), r, RID_ESP, ofs);
+    emit_rmro(as, XMM_MOVRM(as), r, RID_BASE, ofs);
 }
 
 /* Generic store of register to stack slot. */
 static void emit_spstore(ASMState *as, IRIns *ir, Reg r, int32_t ofs)
 {
   if (r < RID_MAX_GPR)
-    emit_rmro(as, XO_MOVto, REX_64IR(ir, r), RID_ESP, ofs);
+    emit_rmro(as, XO_MOVto, REX_64IR(ir, r), RID_BASE, ofs);
   else
-    emit_rmro(as, XO_MOVSDto, r, RID_ESP, ofs);
+    emit_rmro(as, XO_MOVSDto, r, RID_BASE, ofs);
 }
 
 /* Add offset to pointer. */

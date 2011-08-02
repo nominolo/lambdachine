@@ -25,6 +25,12 @@ typedef uint32_t Reg;
 #define ra_noreg(r)		((r) & RID_NONE)
 #define ra_hasreg(r)		(!((r) & RID_NONE))
 
+/* The ra_hashint() macro assumes a previous test for ra_noreg(). */
+#define ra_hashint(r)		((r) != RID_INIT)
+#define ra_gethint(r)		((Reg)((r) & RID_MASK))
+#define ra_sethint(rr, r)	rr = (uint8_t)((r)|RID_NONE)
+#define ra_samehint(r1, r2)	(ra_gethint((r1)^(r2)) == 0)
+
 /* Spill slot 0 means no spill slot has been allocated. */
 #define SPS_NONE		0
 
@@ -59,6 +65,58 @@ typedef uint32_t RegSet;
 #define rset_exclude(rs, r)	(rs & ~RID2RSET(r))
 #define rset_picktop(rs)	((Reg)lc_fls(rs))
 #define rset_pickbot(rs)	((Reg)lc_ffs(rs))
+
+/* -- Register allocation cost -------------------------------------------- */
+
+/* The register allocation heuristic keeps track of the cost for allocating
+** a specific register:
+**
+** A free register (obviously) has a cost of 0 and a 1-bit in the free mask.
+**
+** An already allocated register has the (non-zero) IR reference in the lowest
+** bits and the result of a blended cost-model in the higher bits.
+**
+** The allocator first checks the free mask for a hit. Otherwise an (unrolled)
+** linear search for the minimum cost is used. The search doesn't need to
+** keep track of the position of the minimum, which makes it very fast.
+** The lowest bits of the minimum cost show the desired IR reference whose
+** register is the one to evict.
+**
+** Without the cost-model this degenerates to the standard heuristics for
+** (reverse) linear-scan register allocation. Since code generation is done
+** in reverse, a live interval extends from the last use to the first def.
+** For an SSA IR the IR reference is the first (and only) def and thus
+** trivially marks the end of the interval. The LSRA heuristics says to pick
+** the register whose live interval has the furthest extent, i.e. the lowest
+** IR reference in our case.
+**
+** A cost-model should take into account other factors, like spill-cost and
+** restore- or rematerialization-cost, which depend on the kind of instruction.
+** E.g. constants have zero spill costs, variant instructions have higher
+** costs than invariants and PHIs should preferably never be spilled.
+**
+** Here's a first cut at simple, but effective blended cost-model for R-LSRA:
+** - Due to careful design of the IR, constants already have lower IR
+**   references than invariants and invariants have lower IR references
+**   than variants.
+** - The cost in the upper 16 bits is the sum of the IR reference and a
+**   weighted score. The score currently only takes into account whether
+**   the IRT_ISPHI bit is set in the instruction type.
+** - The PHI weight is the minimum distance (in IR instructions) a PHI
+**   reference has to be further apart from a non-PHI reference to be spilled.
+** - It should be a power of two (for speed) and must be between 2 and 32768.
+**   Good values for the PHI weight seem to be between 40 and 150.
+** - Further study is required.
+*/
+#define REGCOST_PHI_WEIGHT	64
+
+/* Cost for allocating a specific register. */
+typedef uint32_t RegCost;
+
+/* Note: assumes 16 bit IRRef1. */
+#define REGCOST(cost, ref)	((RegCost)(ref) + ((RegCost)(cost) << 16))
+#define regcost_ref(rc)		((IRRef1)(rc))
+
 
 /* -- Target-specific definitions ----------------------------------------- */
 

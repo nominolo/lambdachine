@@ -107,7 +107,7 @@ typedef struct _Fragment {
   u2 nheapmap;
   HeapInfo *heap;
   HeapEntry *heapmap;
-  u4 framesize; // Total size of frame used by this fragment
+  u4 framesize; // Number of frame slots used by this fragment (before RA)
 
   MCode *mcode;  // Machine code for the trace
   MSize szmcode; // Size of machine code
