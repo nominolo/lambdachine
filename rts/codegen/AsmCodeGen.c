@@ -223,7 +223,7 @@ static Reg ra_pick(ASMState *as, RegSet allow)
   if (!pick)
     return ra_evict(as, allow);
   else
-    return rset_pickbot(pick);
+    return rset_picktop(pick);
 }
 
 /* Get a scratch register (marked as free). */
@@ -231,7 +231,6 @@ static Reg ra_scratch(ASMState *as, RegSet allow)
 {
   Reg r = ra_pick(as, allow);
   ra_modified(as, r);
-  RA_DBGX((as, "scratch        $r", r));
   return r;
 }
 
@@ -248,16 +247,64 @@ static Reg ra_dest(ASMState *as, IRIns *ir, RegSet allow)
     if (ra_hashint(dest) && rset_test(as->freeset, ra_gethint(dest))) {
       dest = ra_gethint(dest);
       ra_modified(as, dest);
-      RA_DBGX((as, "dest           $r", dest));
     } else {
       dest = ra_scratch(as, allow);
     }
+    RA_DBGX((as, "dest           $r", dest));
     ir->r = dest;
   }
   if (LC_UNLIKELY(ra_hasspill(ir->s))) ra_save(as, ir, dest);
   return dest;
 }
 
+/* Allocate a register for ref from the allowed set of registers.
+** Note: this function assumes the ref does NOT have a register yet!
+** Picks an optimal register, sets the cost and marks the register as non-free.
+*/
+static Reg ra_allocref(ASMState *as, IRRef ref, RegSet allow)
+{
+  IRIns *ir = IR(ref);
+  RegSet pick = as->freeset & allow;
+  Reg r;
+  LC_ASSERT(ra_noreg(ir->r));
+  if (pick) {
+    /* First check register hint from propagation or PHI. */
+    if (ra_hashint(ir->r)) {
+      r = ra_gethint(ir->r);
+      if (rset_test(pick, r))  /* Use hint register if possible. */
+	goto found;
+      /* Rematerialization is cheaper than missing a hint. */
+      if (rset_test(allow, r) && emit_canremat(regcost_ref(as->cost[r]))) {
+	ra_rematk(as, regcost_ref(as->cost[r]));
+	goto found;
+      }
+      RA_DBGX((as, "hintmiss  $f $r", ref, r));
+    }
+    else {
+      /* We've got plenty of regs, so get callee-save regs if possible. */
+      if (0/* we can do this later when we have c-calls */ && pick & ~RSET_SCRATCH)
+	pick &= ~RSET_SCRATCH;
+      r = rset_pickbot(pick);
+    }
+  } else {
+    r = ra_evict(as, allow);
+  }
+found:
+  RA_DBGX((as, "alloc     $f $r", ref, r));
+  ir->r = (uint8_t)r;
+  rset_clear(as->freeset, r);
+  as->cost[r] = REGCOST(0, ref);
+  return r;
+}
+
+/* Allocate a register on-demand. */
+static Reg ra_alloc(ASMState *as, IRRef ref, RegSet allow)
+{
+  Reg r = IR(ref)->r;
+  /* Note: allow is ignored if the register is already allocated. */
+  if (ra_noreg(r)) r = ra_allocref(as, ref, allow);
+  return r;
+}
 
 /* -- Exit stubs ---------------------------------------------------------- */
 /* Generate an exit stub group at the bottom of the reserved MCode memory.
@@ -405,6 +452,16 @@ static void asm_setup_regsp(ASMState *as)
 }
 
 /* -- Specific instructions  ---------------------------------------------- */
+static void asm_iload(ASMState *as, IRIns *ir) {
+  RA_DBGX((as, "ILOAD $f", ir->op1));
+  int32_t ofs = 0; /* info table is at offset 0 of closure */
+  RegSet allow = RSET_GPR;
+  Reg dest    = ra_dest(as,  ir, allow);
+  Reg base    = ra_alloc(as, ir->op1, allow);
+
+  emit_rmro(as, XO_MOV, dest|REX_64, base, ofs);
+}
+
 static void asm_sload(ASMState *as, IRIns *ir)
 {
   RA_DBGX((as, "SLOAD 0x$x", ir->op1));
@@ -421,7 +478,10 @@ static void asm_ir(ASMState *as, IRIns *ir) {
   switch((IROp)ir->o) {
     case IR_SLOAD:
       asm_sload(as, ir);
-    break;
+      break;
+    case IR_ILOAD:
+      asm_iload(as, ir);
+      break;
     default:
       LC_ASSERT(0 && "IR op not implemented");
   }
@@ -453,7 +513,7 @@ void genAsm(JitState *J, Fragment *T) {
   RA_DBG_START();
   as->stopins = REF_BASE;
   as->curins  = T->nins;
-  as->curins  = REF_FIRST + 1; // for testing
+  as->curins  = REF_FIRST + 2; // for testing
   for(as->curins--; as->curins > as->stopins; as->curins--) {
     IRIns *ir = IR(as->curins);
     asm_ir(as, ir);
