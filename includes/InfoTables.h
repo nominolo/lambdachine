@@ -163,9 +163,9 @@ extern u2 closure_flags[];
 // the stack.
 INLINE_HEADER
 const u2 *
-getPointerMask(BCIns *next_pc)
+getPointerMask(const BCIns *next_pc)
 {
-  BCIns *p0 = &next_pc[-1];
+  const BCIns *p0 = &next_pc[-1];
   u4 offset = (u4)(*p0);
   if (offset != 0)
     return (const u2*)((u1*)p0 + offset);
@@ -183,9 +183,37 @@ skipBitmap(const u2 *p)
 
 INLINE_HEADER
 const u2 *
-getLivenessMask(BCIns *next_pc)
+getLivenessMask(const BCIns *next_pc)
 {
-  skipBitmap(getPointerMask(next_pc));
+  return skipBitmap(getPointerMask(next_pc));
 }
+
+// Macro for iterating over a variable-length bitmask.
+//
+// The last three arguments are the three components of a
+// "for"-loop.  The first three parameters must be variable names.
+//
+//  - mask_ptr .. must be of type u2* and points to the beginning of the
+//                bitmask.  Its value is being updated by the loop.
+//  - mask_var .. contains the contents of the mask.  The lowest bit
+//                always corresponds to the current value.  It must be of
+//                type u2.
+//  - mask_ctr .. is an internal counter (of type int)
+//
+// Example (prints all the set bits):
+//
+//   FOR_MASK(liveout, mask, j, i = 1, i <= t, i++) {
+//     if (mask & 1) {
+//       printf("%d\n", i);
+//     }
+//   }
+//
+#define FOR_MASK(mask_ptr, mask_var, mask_ctr, init, cond, post) \
+  for ((init), (mask_var = *mask_ptr++, mask_ctr = 0);           \
+       (cond);                                                   \
+       (post), (mask_ctr = (mask_ctr < 14) ?                     \
+                   (mask_var >>= 1, mask_ctr + 1) :     \
+                   (mask_var = *mask_ptr++, 0)))
+
 
 #endif /* LC_INFOTABLES_H */
