@@ -326,7 +326,7 @@ INLINE_HEADER void
 guardEqualKWord(JitState *J, TRef ref, Word k, LitType lt)
 {
   TRef kref = emitKWord(J, k, lt);
-  emit(J, IRT(IR_EQ, IRT_VOID), ref, kref);
+  emit(J, IRT(IR_EQ, IRT_CMP), ref, kref);
 }
 
 void
@@ -505,7 +505,7 @@ recordIns(JitState *J)
       int irop = (int)IR_LT + ((int)op - (int)BC_ISLT);
       // Invert condition if negative outcome
       if (!evalNumComp(rav, rcv, irop)) irop ^= 1;
-      emit(J, IRT(irop, IRT_VOID), ra, rc);
+      emit(J, IRT(irop, IRT_CMP), ra, rc);
     }
     break;
 
@@ -578,7 +578,7 @@ recordIns(JitState *J)
       // table as the one we encountered at recording time.
       rc = emitKWord(J, (Word)ninfo, LIT_INFO);
       rb = emit(J, IRT(IR_ILOAD, IRT_INFO), ra, 0);
-      emit(J, IRT(IR_EQ, IRT_VOID), rb, rc);
+      emit(J, IRT(IR_EQ, IRT_CMP), rb, rc);
 
       if (closure_HNF(node)) {
         // ra is in normal form.  Guard makes sure of that, so we now just
@@ -622,7 +622,7 @@ recordIns(JitState *J)
         TRef rinfo = emitKWord(J, (Word)info, LIT_INFO);
         ra = getSlot(J, bc_a(ins));
         rb = emit(J, IRT(IR_ILOAD, IRT_INFO), ra, 0);
-        emit(J, IRT(IR_EQ, IRT_VOID), rb, rinfo);
+        emit(J, IRT(IR_EQ, IRT_CMP), rb, rinfo);
         setSlot(J, -1, ra);
 
         J->maxslot = info->code.framesize;
@@ -649,7 +649,7 @@ recordIns(JitState *J)
         TRef rinfo = emitKWord(J, (Word)info, LIT_INFO);
         ra = getSlot(J, bc_a(ins));
         rb = emit(J, IRT(IR_ILOAD, IRT_INFO), ra, 0);
-        emit(J, IRT(IR_EQ, IRT_VOID), rb, rinfo);
+        emit(J, IRT(IR_EQ, IRT_CMP), rb, rinfo);
 
         // Save references of extra args.
         for (i = 0; i < extra_args; i++)
@@ -782,7 +782,7 @@ recordIns(JitState *J)
       rb = getSlot(J, bc_b(ins));
       // Ensure that r(B) actually contains the the info table we're
       // expecting.  Usually, this will be optimised away.
-      emit(J, IRT(IR_EQ, IRT_VOID), rb, rinfo);
+      emit(J, IRT(IR_EQ, IRT_CMP), rb, rinfo);
 
       rc = getSlot(J, bc_c(ins));
       rnew = emit(J, IRT(IR_NEW, IRT_CLOS), rinfo, 2);
@@ -803,7 +803,7 @@ recordIns(JitState *J)
       u4 i;
       rinfo = emitKWord(J, (Word)info, LIT_INFO);
       rb = getSlot(J, bc_b(ins));
-      emit(J, IRT(IR_EQ, IRT_VOID), rb, rinfo);
+      emit(J, IRT(IR_EQ, IRT_CMP), rb, rinfo);
       u4 h = newHeapInfo(J, rnew, info);
       HeapInfo *hp = &J->cur.heap[h];
       for (i = 0; i < size; i++, arg++) {

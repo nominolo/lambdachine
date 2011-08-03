@@ -183,12 +183,14 @@ typedef enum {
   // Flags
   IRT_MARK  = 0x20,  // Marker for various purposes
   IRT_ISPHI = 0x40,  // Currently unused
-  IRT_GUARD = 0x80,  // Currently unused
+  IRT_GUARD = 0x80,  // Unused by asm code generator
 
   // Masks
   IRT_TYPE = 0x1f,
   IRT_T    = 0xff
 } IRType;
+
+#define IRT_CMP (IRT_VOID|IRT_GUARD)
 
 #define irt_setmark(irt) ((irt) |= IRT_MARK)
 #define irt_getmark(irt) ((irt) & IRT_MARK)
@@ -197,6 +199,7 @@ typedef enum {
 #define irt_getphi(irt)  ((irt) & IRT_ISPHI)
 #define irt_clearphi(irt)   ((irt) &= ~IRT_ISPHI)
 #define irt_type(irt)    ((irt) & IRT_TYPE)
+#define irt_isguard(irt) ((irt) & IRT_GUARD)
 
 enum {
   REF_BIAS  = 0x8000,
