@@ -121,6 +121,8 @@ static LC_NORET LC_NOINLINE void asm_mclimit(ASMState *as)
 #include "RA_debug.h"
 #define ra_free(as, r)		rset_set(as->freeset, (r))
 #define ra_modified(as, r)	rset_set(as->modset, (r))
+#define ra_used(ir)		(ra_hasreg((ir)->r) || ra_hasspill((ir)->s))
+
 
 /* Setup register allocator. */
 static void ra_setup(ASMState *as)
@@ -398,6 +400,52 @@ static void asm_exitstub_setup(ASMState *as, ExitNo nexits) {
       as->J->exitstubgroup[i] = asm_exitstub_gen(as, i);
 }
 
+/* Allocate register or spill slot for a ref that escapes to a snapshot. */
+static void asm_snap_alloc1(ASMState *as, IRRef ref)
+{
+  IRIns *ir = IR(ref);
+  if (!ra_used(ir)) {
+    RegSet allow = RSET_GPR;
+    /* Get a weak register if we have a free one or can rematerialize. */
+    if ((as->freeset & allow)){
+      ra_allocref(as, ref, allow);  /* Allocate a register. */
+      checkmclim(as);
+      RA_DBGX((as, "snapreg   $f $r", ref, ir->r));
+    } else {
+      ra_spill(as, ir);  /* Otherwise force a spill slot. */
+      RA_DBGX((as, "snapspill $f $s", ref, ir->s));
+    }
+  }
+}
+
+/* Allocate refs escaping to a snapshot. */
+static void asm_snap_alloc(ASMState *as)
+{
+  SnapShot *snap = &as->T->snap[as->snapno];
+  SnapEntry *map = &as->T->snapmap[snap->mapofs];
+  u1 n, nent = snap->nent;
+  for (n = 0; n < nent; n++) {
+    SnapEntry sn = map[n];
+    IRRef ref = snap_ref(sn);
+    if (!irref_islit(ref)) {
+      asm_snap_alloc1(as, ref);
+    }
+  }
+}
+
+/* Prepare snapshot for next guard instruction. */
+static void asm_snap_prep(ASMState *as)
+{
+  if (as->curins < as->snapref) {
+    do {
+      LC_ASSERT(as->snapno != 0);
+      as->snapno--;
+      as->snapref = as->T->snap[as->snapno].ref;
+    } while (as->curins < as->snapref);
+    asm_snap_alloc(as);
+  }
+}
+
 /* Emit conditional branch to exit for guard.
 ** It's important to emit this *after* all registers have been allocated,
 ** because rematerializations may invalidate the flags.
@@ -452,6 +500,67 @@ static void asm_setup_regsp(ASMState *as)
 }
 
 /* -- Specific instructions  ---------------------------------------------- */
+  /* Check if a reference is a signed 32 bit constant. */
+static int asm_isk32(ASMState *as, IRRef ref, int32_t *k)
+{
+  if (irref_islit(ref)) {
+    IRIns *ir = IR(ref);
+    if (ir->o == IR_KINT) {
+      *k = ir->i;
+      return 1;
+    } else if (ir->o == IR_KWORD && checki32((Word)as->T->kwords[ir->u])) {
+      *k = (int32_t)as->T->kwords[ir->u];
+      return 1;
+    }
+  }
+  return 0;
+}
+
+/* Map of comparisons to flags.
+ * The comparison code is for the negated condition because that is the
+ * condition on which we will exit the trace. For example, for IR_EQ we will
+ * test for CC_NE so that we can generate a jne instruction that will jump off
+ * the trace if the values are not equal
+ */
+static uint32_t asm_cmpmap(u1 opcode) {
+  uint32_t cc;
+  switch(opcode) {
+    case IR_LT: cc = CC_GE; break;
+    case IR_GE: cc = CC_L;  break;
+    case IR_LE: cc = CC_G;  break;
+    case IR_GT: cc = CC_LE; break;
+    case IR_EQ: cc = CC_NE; break;
+    case IR_NE: cc = CC_E;  break;
+    default: LC_ASSERT(0 && "Unknown comparison opcode");
+  }
+
+  return  cc;
+}
+
+static void asm_cmp(ASMState *as, IRIns *ir, uint32_t cc) {
+  RA_DBGX((as, "CMP   $f $f", ir->op1, ir->op2));
+  Reg left  = ra_alloc(as, ir->op1, RSET_GPR);
+  IRRef rref = ir->op2;
+  if(irref_islit(rref)) {
+    int32_t imm;
+    if(asm_isk32(as, rref, &imm)) {
+      asm_guardcc(as, cc);
+      emit_gmrmi(as, XG_ARITHi(XOg_CMP), left|REX_64, imm);
+    }
+    else { // have to use a register to hold the 64-bit constant
+      Reg right = IR(rref)->r = ra_scratch(as, rset_exclude(RSET_GPR, left));
+      asm_guardcc(as, cc);
+      emit_mrm(as, XO_CMP, left|REX_64, right|REX_64);
+      ra_rematk(as, rref); // load the constant into the reg before use
+    }
+  }
+  else { // Non-constant right op
+    Reg right = ra_alloc(as, rref, rset_exclude(RSET_GPR, left));
+    asm_guardcc(as, cc);
+    emit_mrm(as, XO_CMP, left|REX_64, right|REX_64);
+  }
+}
+
 static void asm_iload(ASMState *as, IRIns *ir) {
   RA_DBGX((as, "ILOAD $f", ir->op1));
   int32_t ofs = 0; /* info table is at offset 0 of closure */
@@ -481,6 +590,9 @@ static void asm_ir(ASMState *as, IRIns *ir) {
       break;
     case IR_ILOAD:
       asm_iload(as, ir);
+      break;
+    case IR_EQ: case IR_LT: case IR_GE: case IR_LE: case IR_GT: case IR_NE:
+      asm_cmp(as, ir, asm_cmpmap(ir->o));
       break;
     default:
       LC_ASSERT(0 && "IR op not implemented");
@@ -513,9 +625,10 @@ void genAsm(JitState *J, Fragment *T) {
   RA_DBG_START();
   as->stopins = REF_BASE;
   as->curins  = T->nins;
-  as->curins  = REF_FIRST + 2; // for testing
+  as->curins  = REF_FIRST + 3; // for testing
   for(as->curins--; as->curins > as->stopins; as->curins--) {
     IRIns *ir = IR(as->curins);
+    if (irt_isguard(ir->t)){ asm_snap_prep(as); }
     asm_ir(as, ir);
   }
 
