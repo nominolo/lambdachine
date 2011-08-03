@@ -499,6 +499,66 @@ static void asm_setup_regsp(ASMState *as)
   }
 }
 
+/* -- Operand Fusion ------------------------------------------------------ */
+/* So what is the deal with this operand fusion stuff?
+ * The idea is actually pretty simple. All we are doing here is trying to take
+ * advantage of the differnt addressing modes in x86. Many of the x86
+ * instructions can operate on either a register/register pair of operands or a
+ * register/memory pair of operands. The goal of the operand fusion is to
+ * replace one of the register operands with a memory operand to reduce
+ * register pressure. For example, consider this IR code
+ *
+ * 0001 = SLOAD ...
+ * 0002 = FREF  0001 1
+ * 0003 = FLOAD 0002
+ *
+ * Normally, when we get to the FLOAD, we would allocate a register for the
+ * destination (say rdi), allocate a register for the operand (say rax) and then
+ * generate the code
+ *
+ *      mov rdi, [rax]
+ *
+ * Then when we get to 0002 we would find the destination already allocated to
+ * rax and generate the code for the FREF which would be (assuming SLOAD goes
+ * into rcx)
+ *
+ *      lea rax, [rcx + 8]
+ *
+ * Now instetad we can fuse the FREF operand into the FLOAD directly, to get
+ *
+ *      mov rdi, [rcx + 8]
+ *
+ * Then the result of the FREF will not be used, which makes it dead code and
+ * we will not emit any instructions for it.
+ *
+ * In the simple case of a FREF/FLOAD pair the fusion is the obvious thing to
+ * do, but we can also do the fusion for other operations, such as an ADD
+ * instruction which can operate on a register and memory operand pair.
+ */
+static Reg asm_fuseload(ASMState *as, IRRef ref, RegSet allow) {
+  IRIns *ir = IR(ref);
+
+  /* If we already have a register just use that */
+  if (ra_hasreg(ir->r)) { return ir->r; }
+
+  /* IR_FREF
+   * The op can be easily fused if it is an FREF, since an FREF is
+   * simple [base + ofs]. We make sure that the base ref is not a constant
+   * because that would have to be remateralized to a register before we can
+   * use it.
+   */
+  if (ir->o == IR_FREF && !irref_islit(ir->op1)) {
+    int32_t ofs  = ir->op2;
+    as->mrm.base = ra_alloc(as, ir->op1, allow);
+    as->mrm.ofs  = fref_scale(ofs);
+    as->mrm.idx  = RID_NONE;
+    return RID_MRM;
+  }
+
+  /* if all else fails call allocref directly to allocate a register */
+  return ra_allocref(as, ref, allow);
+}
+
 /* -- Specific instructions  ---------------------------------------------- */
   /* Check if a reference is a signed 32 bit constant. */
 static int asm_isk32(ASMState *as, IRRef ref, int32_t *k)
@@ -514,6 +574,14 @@ static int asm_isk32(ASMState *as, IRRef ref, int32_t *k)
     }
   }
   return 0;
+}
+
+static void asm_fload(ASMState *as, IRIns *ir) {
+  RA_DBGX((as, "FLOAD $f", ir->op1));
+
+  Reg dest = ra_dest(as, ir, RSET_GPR);
+  Reg base = asm_fuseload(as, ir->op1, rset_exclude(RSET_GPR, dest));
+  emit_mrm(as, XO_MOV, dest|REX_64, base);
 }
 
 static void asm_fref(ASMState *as, IRIns *ir) {
@@ -618,6 +686,8 @@ static void asm_ir(ASMState *as, IRIns *ir) {
     case IR_FREF:
       asm_fref(as, ir);
       break;
+    case IR_FLOAD:
+      asm_fload(as, ir);
     case IR_FRAME:
       break;
     default:
@@ -651,7 +721,7 @@ void genAsm(JitState *J, Fragment *T) {
   RA_DBG_START();
   as->stopins = REF_BASE;
   as->curins  = T->nins;
-  as->curins  = REF_FIRST + 5; // for testing
+  as->curins  = REF_FIRST + 6; // for testing
   for(as->curins--; as->curins > as->stopins; as->curins--) {
     IRIns *ir = IR(as->curins);
     // Disable dce for now to debug the codegen
