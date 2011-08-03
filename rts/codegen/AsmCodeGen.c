@@ -516,13 +516,34 @@ static int asm_isk32(ASMState *as, IRRef ref, int32_t *k)
   return 0;
 }
 
+static void asm_fref(ASMState *as, IRIns *ir) {
+  RA_DBGX((as, "FREF $f", ir->op1));
+  int32_t ofs = ir->op2;
+  Reg dest = ra_dest(as, ir, RSET_GPR);
+  if(irref_islit(ir->op1)) {
+    IRIns *bir = IR(ir->op1);
+    if (bir->o == IR_KBASEO) {
+      Reg base = bir->r = ra_scratch(as, rset_exclude(RSET_GPR, dest));
+      emit_rmro(as, XO_LEA, dest|REX_64, base|REX_64, fref_scale(ofs));
+      ra_rematk(as, ir->op1); // load the constant into the reg before use
+    }
+    else {
+      LC_ASSERT(0 && "Cannot use constant in FREF");
+    }
+  }
+  else { // non-lit
+    Reg base = ra_alloc(as, ir->op1, rset_exclude(RSET_GPR, dest));
+    emit_rmro(as, XO_LEA, dest|REX_64, base|REX_64, fref_scale(ofs));
+  }
+}
+
 /* Map of comparisons to flags.
  * The comparison code is for the negated condition because that is the
  * condition on which we will exit the trace. For example, for IR_EQ we will
  * test for CC_NE so that we can generate a jne instruction that will jump off
  * the trace if the values are not equal
  */
-static uint32_t asm_cmpmap(u1 opcode) {
+static uint32_t asm_cmpmap(IROp opcode) {
   uint32_t cc;
   switch(opcode) {
     case IR_LT: cc = CC_GE; break;
@@ -594,6 +615,11 @@ static void asm_ir(ASMState *as, IRIns *ir) {
     case IR_EQ: case IR_LT: case IR_GE: case IR_LE: case IR_GT: case IR_NE:
       asm_cmp(as, ir, asm_cmpmap(ir->o));
       break;
+    case IR_FREF:
+      asm_fref(as, ir);
+      break;
+    case IR_FRAME:
+      break;
     default:
       LC_ASSERT(0 && "IR op not implemented");
   }
@@ -625,9 +651,13 @@ void genAsm(JitState *J, Fragment *T) {
   RA_DBG_START();
   as->stopins = REF_BASE;
   as->curins  = T->nins;
-  as->curins  = REF_FIRST + 3; // for testing
+  as->curins  = REF_FIRST + 5; // for testing
   for(as->curins--; as->curins > as->stopins; as->curins--) {
     IRIns *ir = IR(as->curins);
+    // Disable dce for now to debug the codegen
+    //if (!ra_used(ir) && !ir_sideeff(ir)){
+    //  continue;  /* Dead-code elimination can be soooo easy. */
+    //}
     if (irt_isguard(ir->t)){ asm_snap_prep(as); }
     asm_ir(as, ir);
   }

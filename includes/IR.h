@@ -230,5 +230,10 @@ typedef u4 TRef;
 #define tref_ref(tr)   ((IRRef1)(tr))
 #define tref_t(tr)     ((IRType)((tr) >> 24))
 
+/* A store or any other op with a guard has a side-effect. */
+static LC_AINLINE int ir_sideeff(IRIns *ir)
+{
+  return ((irt_isguard(ir->t)) ||  (ir_mode[ir->o] & IRM_S));
+}
 
 #endif /* _LAMBDACHINE_IR_H */

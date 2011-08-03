@@ -65,7 +65,7 @@ static void ra_dprintf(ASMState *as, const char *fmt, ...)
 	p += sprintf(p, "K%03d", REF_BIAS - ref);
     } else if (e[1] == 's') {
       uint32_t slot = va_arg(argp, uint32_t);
-      p += sprintf(p, "[sp+0x%x]", sps_scale(slot));
+      p += sprintf(p, "[sp+0x%lx]", sps_scale(slot));
     } else if (e[1] == 'x') {
       p += sprintf(p, "%08x", va_arg(argp, int32_t));
     } else {
