@@ -10,6 +10,7 @@
 #include "Jit.h"
 #include "MCode.h"
 #include "InterpAsm.h" // to see asmExit function
+#include "HeapInfo.h"
 
 #include <string.h> // for memset
 
@@ -384,7 +385,7 @@ static void ra_left(ASMState *as, Reg dest, IRRef lref)
   }
   /* Move needed for true 3-operand instruction: y=a+b ==> y=a; y+=b. */
   if (dest != left) {
-    emit_movrr(as, ir, dest, left);
+    emit_movrr(as, dest, left);
   }
 }
 /* -- Exit stubs ---------------------------------------------------------- */
@@ -614,7 +615,7 @@ static void asm_setup_regsp(ASMState *as)
  * do, but we can also do the fusion for other operations, such as an ADD
  * instruction which can operate on a register and memory operand pair.
  */
-static Reg asm_fuseload(ASMState *as, IRRef ref, RegSet allow) {
+static Reg ra_fuseload(ASMState *as, IRRef ref, RegSet allow) {
   IRIns *ir = IR(ref);
 
   /* If we already have a register just use that */
@@ -639,7 +640,61 @@ static Reg asm_fuseload(ASMState *as, IRRef ref, RegSet allow) {
 }
 
 /* -- Specific instructions  ---------------------------------------------- */
+static void
+asm_heapstore(ASMState *as, IRRef ref, int32_t ofs, Reg base, RegSet allow){
+  if(irref_islit(ref)) {
+    int32_t k;
+    Reg r = ra_allock(as, ref, allow, &k);
+    if(ra_noreg(r)) {
+      emit_movmroi(as, base, ofs, k);
+    }
+    else {
+      emit_rmro(as, XO_MOVto, REX_64|r, REX_64|base, ofs);
+      ra_rematk(as, ref);
+    }
+  }
+  else {
+    Reg r = ra_alloc(as, ref, allow);
+    emit_rmro(as, XO_MOVto, REX_64|r, REX_64|base, ofs);
+  }
+}
+
+static void asm_hpalloc(ASMState *as, uint32_t bytes) {
+  emit_gri(as, XG_ARITHi(XOg_ADD), RID_HP|REX_64, bytes);
+}
+
+static void asm_new(ASMState *as, IRIns *ir) {
+    RA_DBGX((as, "NEW $f", ir->op1));
+    Fragment *F  = as->T;
+    HeapInfo *hp = &F->heap[ir->op2];
+    int j;
+    int32_t ofs = wordsof(ClosureHeader) * sizeof(Word);
+    int32_t numBytes = sizeof(Word) * (wordsof(ClosureHeader) + hp->nfields);
+
+    /* allocate a register for the result */
+    RegSet allow = RSET_GPR;
+    Reg dest = ra_dest(as, ir, allow);
+    rset_clear(allow, dest);
+
+    /* do the allocation by bumping heap pointer */
+    asm_hpalloc(as, numBytes);
+
+    /* store each field as an offset from the pre-bumped heap pointer */
+    for (j = 0; j < hp->nfields; j++) {
+      IRRef ref = getHeapInfoField(F, hp, j);
+      asm_heapstore(as, ref, ofs, dest, allow);
+      ofs += sizeof(Word);
+    }
+
+    /* store the closure header */
+    asm_heapstore(as, ir->op1, 0, dest, allow);
+
+    /* save current heap pointer as the result of the allocation */
+    emit_movrr(as, dest, RID_HP);
+}
+
 static void asm_intarith(ASMState *as, IRIns *ir, x86Arith xa) {
+  RA_DBGX((as, "ARITH $f $f", ir->op1, ir->op2));
   RegSet allow = RSET_GPR;
   int32_t k = 0;
   IRRef lref = ir->op1;
@@ -673,7 +728,7 @@ static void asm_fload(ASMState *as, IRIns *ir) {
   RA_DBGX((as, "FLOAD $f", ir->op1));
 
   Reg dest = ra_dest(as, ir, RSET_GPR);
-  Reg base = asm_fuseload(as, ir->op1, rset_exclude(RSET_GPR, dest));
+  Reg base = ra_fuseload(as, ir->op1, rset_exclude(RSET_GPR, dest));
   emit_mrm(as, XO_MOV, dest|REX_64, base);
 }
 
@@ -771,6 +826,9 @@ static void asm_ir(ASMState *as, IRIns *ir) {
     case IR_MUL:
       asm_intarith(as, ir, XOg_X_IMUL);
       break;
+    case IR_NEW:
+      asm_new(as, ir);
+      break;
     case IR_FRAME:
       break;
     default:
@@ -804,7 +862,7 @@ void genAsm(JitState *J, Fragment *T) {
   RA_DBG_START();
   as->stopins = REF_BASE;
   as->curins  = T->nins;
-  as->curins  = REF_FIRST + 7; // for testing
+  as->curins  = REF_FIRST + 8; // for testing
   for(as->curins--; as->curins > as->stopins; as->curins--) {
     IRIns *ir = IR(as->curins);
     // Disable dce for now to debug the codegen
@@ -820,8 +878,8 @@ void genAsm(JitState *J, Fragment *T) {
   as->snapno = 1;
   asm_guardcc(as, CC_E);
   emit_rr(as, XO_CMP, RID_EAX, RID_EAX);
-  emit_movrr(as, IR(--as->curins), RID_EAX, RID_ECX);
-  emit_movrr(as, IR(--as->curins), RID_EAX, RID_R12D);
+  emit_movrr(as, RID_EAX, RID_ECX);
+  emit_movrr(as, RID_EAX, RID_R12D);
   */
 
   T->mcode = as->mcp;

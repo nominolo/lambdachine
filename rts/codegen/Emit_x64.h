@@ -353,11 +353,10 @@ static void emit_call_(ASMState *as, MCode *target)
 #define REX_64IR(ir, r)		((r) + REX_64)
 
 /* Generic move between two regs. */
-static void emit_movrr(ASMState *as, IRIns *ir, Reg dst, Reg src)
+static void emit_movrr(ASMState *as, Reg dst, Reg src)
 {
-  UNUSED(ir);
   if (dst < RID_MAX_GPR)
-    emit_rr(as, XO_MOV, REX_64IR(ir, dst), src);
+    emit_rr(as, XO_MOV, REX_64|dst, REX_64|src);
   else
     emit_rr(as, XMM_MOVRR(as), dst, src);
 }
