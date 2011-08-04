@@ -317,6 +317,18 @@ found:
   return r;
 }
 
+static Reg ra_allock(ASMState *as, IRRef ref, RegSet allow, int32_t *k) {
+  LC_ASSERT(irref_islit(ref) && "Non literal given to allock");
+  Reg r = RID_NONE;
+
+  /* If the constant can't fit in 32 bits then allocate a register */
+  if(!asm_isk32(as, ref, k)) {
+    r = IR(ref)->r = ra_scratch(as, allow);
+  }
+
+  return r;
+}
+
 /* Allocate a register on-demand. */
 static Reg ra_alloc(ASMState *as, IRRef ref, RegSet allow)
 {
@@ -326,6 +338,34 @@ static Reg ra_alloc(ASMState *as, IRRef ref, RegSet allow)
   return r;
 }
 
+/* Propagate dest register to left reference. Emit moves as needed.
+** This is a required fixup step for all 2-operand machine instructions.
+*/
+static void ra_left(ASMState *as, Reg dest, IRRef lref)
+{
+  IRIns *ir = IR(lref);
+  Reg left  = ir->r;
+  if(ra_noreg(left)) {
+    if(irref_islit(lref)) {
+      int32_t k;
+      if(asm_isk32(as, lref, &k)) {
+        emit_loadi(as, dest, k);
+      }
+      else {
+        ir->r = dest;
+        ra_rematk(as, lref);
+      }
+      return;
+    }
+  if (!ra_hashint(left))
+      ra_sethint(ir->r, dest);  /* Propagate register hint. */
+    left = ra_allocref(as, lref, dest < RID_MAX_GPR ? RSET_GPR : RSET_FPR);
+  }
+  /* Move needed for true 3-operand instruction: y=a+b ==> y=a; y+=b. */
+  if (dest != left) {
+    emit_movrr(as, ir, dest, left);
+  }
+}
 /* -- Exit stubs ---------------------------------------------------------- */
 /* Generate an exit stub group at the bottom of the reserved MCode memory.
 
@@ -578,6 +618,36 @@ static Reg asm_fuseload(ASMState *as, IRRef ref, RegSet allow) {
 }
 
 /* -- Specific instructions  ---------------------------------------------- */
+static void asm_intarith(ASMState *as, IRIns *ir, x86Arith xa) {
+  RegSet allow = RSET_GPR;
+  int32_t k = 0;
+  IRRef lref = ir->op1;
+  IRRef rref = ir->op2;
+
+  Reg right = IR(rref)->r;
+  if(ra_hasreg(right)) {
+    rset_clear(allow, right);
+  }
+  Reg dest  = ra_dest(as, ir, allow);
+
+  if(irref_islit(rref)) {
+    Reg right = ra_allock(as, rref, rset_clear(allow, dest), &k);
+    if(ra_noreg(right)) { /* 32-bit constant */
+      emit_gri(as, XG_ARITHi(xa), dest|REX_64, k);
+    }
+    else { /* Can't fit constant into opcode */
+      emit_mrm(as, XO_ARITH(xa), dest|REX_64, right|REX_64);
+      ra_rematk(as, rref); /* load the constant into the reg before use */
+    }
+  }
+  else { /* Non-constant right operand */
+    Reg right = ra_alloc(as, rref, rset_clear(allow, dest));
+    emit_mrm(as, XO_ARITH(xa), dest|REX_64, right|REX_64);
+  }
+
+  ra_left(as, dest, lref);
+}
+
 static void asm_fload(ASMState *as, IRIns *ir) {
   RA_DBGX((as, "FLOAD $f", ir->op1));
 
@@ -591,15 +661,16 @@ static void asm_fref(ASMState *as, IRIns *ir) {
   int32_t ofs = ir->op2;
   Reg dest = ra_dest(as, ir, RSET_GPR);
   if(irref_islit(ir->op1)) {
-    IRIns *bir = IR(ir->op1);
-    if (bir->o == IR_KBASEO) {
-      Reg base = bir->r = ra_scratch(as, rset_exclude(RSET_GPR, dest));
+    int k;
+    Reg base = ra_allock(as, ir->op1, rset_exclude(RSET_GPR, dest), &k);
+    if(ra_hasreg(base)) {
       emit_rmro(as, XO_LEA, dest|REX_64, base|REX_64, fref_scale(ofs));
-      ra_rematk(as, ir->op1); // load the constant into the reg before use
+      ra_rematk(as, ir->op1); /* load the constant into the reg before use */
     }
     else {
       LC_ASSERT(0 && "Cannot use constant in FREF");
     }
+
   }
   else { // non-lit
     Reg base = ra_alloc(as, ir->op1, rset_exclude(RSET_GPR, dest));
@@ -634,18 +705,18 @@ static void asm_cmp(ASMState *as, IRIns *ir, uint32_t cc) {
   IRRef rref = ir->op2;
   if(irref_islit(rref)) {
     int32_t imm;
-    if(asm_isk32(as, rref, &imm)) {
+    Reg right = ra_allock(as, rref, rset_exclude(RSET_GPR, left), &imm);
+    if(ra_noreg(right)) { /* 32-bit constant */
       asm_guardcc(as, cc);
       emit_gmrmi(as, XG_ARITHi(XOg_CMP), left|REX_64, imm);
     }
-    else { // have to use a register to hold the 64-bit constant
-      Reg right = IR(rref)->r = ra_scratch(as, rset_exclude(RSET_GPR, left));
+    else { /* have to use a register to hold the 64-bit constant */
       asm_guardcc(as, cc);
       emit_mrm(as, XO_CMP, left|REX_64, right|REX_64);
-      ra_rematk(as, rref); // load the constant into the reg before use
+      ra_rematk(as, rref); /* load the constant into the reg before use */
     }
   }
-  else { // Non-constant right op
+  else { /* Non-constant right op */
     Reg right = ra_alloc(as, rref, rset_exclude(RSET_GPR, left));
     asm_guardcc(as, cc);
     emit_mrm(as, XO_CMP, left|REX_64, right|REX_64);
@@ -690,6 +761,16 @@ static void asm_ir(ASMState *as, IRIns *ir) {
       break;
     case IR_FLOAD:
       asm_fload(as, ir);
+      break;
+    case IR_ADD:
+      asm_intarith(as, ir, XOg_ADD);
+      break;
+    case IR_SUB:
+      asm_intarith(as, ir, XOg_SUB);
+      break;
+    case IR_MUL:
+      asm_intarith(as, ir, XOg_X_IMUL);
+      break;
     case IR_FRAME:
       break;
     default:
@@ -723,7 +804,7 @@ void genAsm(JitState *J, Fragment *T) {
   RA_DBG_START();
   as->stopins = REF_BASE;
   as->curins  = T->nins;
-  as->curins  = REF_FIRST + 6; // for testing
+  as->curins  = REF_FIRST + 7; // for testing
   for(as->curins--; as->curins > as->stopins; as->curins--) {
     IRIns *ir = IR(as->curins);
     // Disable dce for now to debug the codegen
