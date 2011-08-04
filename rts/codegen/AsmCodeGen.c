@@ -48,6 +48,7 @@ typedef struct ASMState {
 
 } ASMState;
 
+/* -- Helper Functions ---------------------------------------------------- */
 #define IR(ref)			(&as->ir[(ref)])
 
 /* Sparse limit checks using a red zone before the actual limit. */
@@ -62,6 +63,23 @@ static LC_NORET LC_NOINLINE void asm_mclimit(ASMState *as)
   exit(1);
 }
 
+/* Check if a reference is a signed 32 bit constant. */
+static int asm_isk32(ASMState *as, IRRef ref, int32_t *k)
+{
+  if (irref_islit(ref)) {
+    IRIns *ir = IR(ref);
+    if (ir->o == IR_KINT) {
+      *k = ir->i;
+      return 1;
+    } else if (ir->o == IR_KWORD && checki32((Word)as->T->kwords[ir->u])) {
+      *k = (int32_t)as->T->kwords[ir->u];
+      return 1;
+    }
+  }
+  return 0;
+}
+
+/* -- Instruction Emitter ------------------------------------------------- */
 #include "Emit_x64.h"  // Target specific instruction emitter
 
 /* -- Register Allocation ------------------------------------------------- */
@@ -560,22 +578,6 @@ static Reg asm_fuseload(ASMState *as, IRRef ref, RegSet allow) {
 }
 
 /* -- Specific instructions  ---------------------------------------------- */
-  /* Check if a reference is a signed 32 bit constant. */
-static int asm_isk32(ASMState *as, IRRef ref, int32_t *k)
-{
-  if (irref_islit(ref)) {
-    IRIns *ir = IR(ref);
-    if (ir->o == IR_KINT) {
-      *k = ir->i;
-      return 1;
-    } else if (ir->o == IR_KWORD && checki32((Word)as->T->kwords[ir->u])) {
-      *k = (int32_t)as->T->kwords[ir->u];
-      return 1;
-    }
-  }
-  return 0;
-}
-
 static void asm_fload(ASMState *as, IRIns *ir) {
   RA_DBGX((as, "FLOAD $f", ir->op1));
 
