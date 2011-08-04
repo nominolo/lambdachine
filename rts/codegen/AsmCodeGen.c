@@ -819,7 +819,7 @@ void genAsm(JitState *J, Fragment *T) {
   /*
   as->snapno = 1;
   asm_guardcc(as, CC_E);
-  emit_rr(as, XO_TEST, RID_ECX, RID_R12D);
+  emit_rr(as, XO_CMP, RID_EAX, RID_EAX);
   emit_movrr(as, IR(--as->curins), RID_EAX, RID_ECX);
   emit_movrr(as, IR(--as->curins), RID_EAX, RID_R12D);
   */

@@ -56,7 +56,6 @@ static void enterTrace(JitState *J, Fragment *F) {
   // Jump to trace machine code
   const int spillSizeArea = 256;
   Thread *T  = J->T;
-  Word *base = T->base - 1;
 
   // Allocate spill area
   if(stackOverflow(T, T->top, spillSizeArea)) {
@@ -64,10 +63,11 @@ static void enterTrace(JitState *J, Fragment *F) {
     traceError(NULL, 1);
   }
   T->top += spillSizeArea;
-  Word *spillArea = base + (SLOT_SIZE * F->framesize);
+  Word *spillArea = (T->base - 1) + F->framesize;
 
 
-  asmEnter(F, T, spillArea, base, F->mcode);
+  Word *hp = xmalloc(1024); //TODO: get a real heap pointer
+  asmEnter(F, T, spillArea, hp, F->mcode);
 }
 
 static void LC_USED
@@ -98,7 +98,7 @@ exitTrace(ExitNo n, ExitState* s) {
 #define SAVE_SIZE 64
 
 static void LC_USED
-asmEnterIsImplementedInAssembly(Fragment *F, Thread *T, Word *spillArea, Word *base, MCode *code) {
+asmEnterIsImplementedInAssembly(Fragment *F, Thread *T, Word *spillArea, Word *hp, MCode *code) {
   asm volatile(
     ".globl " ASM_ENTER "\n"
     ASM_ENTER ":\n\t"
@@ -121,12 +121,21 @@ asmEnterIsImplementedInAssembly(Fragment *F, Thread *T, Word *spillArea, Word *b
     "movq %%rdx,-64(%%rax)\n\t" /* S */
 
     /* load base pointer */
-    "movq %%rcx,%%rbp\n\t"
+    "movq %%rsi,%%rbp\n\t"   /* rbp = &T         :: (Thread *)*/
+    "addq %1,%%rbp\n\t"      /* rbp = &T.base    :: (Word **) */
+    "movq (%%rbp),%%rbp\n\t" /* rbp = base       :: (Word *)  */
+    "subq %2,%%rbp\n\t"      /* rbp = T->base - 1:: (Word *)  */
+
+    /* load heap pointer */
+    "movq %%rcx,%%r12\n\t"   /* r12 = hp */
 
     /* jump to code */
     "jmp *%%r8\n\t"
 
-    : : "i"(SAVE_SIZE /*stack frame size*/));
+    : : "i"(SAVE_SIZE /*stack frame size*/),
+        "i"(offsetof(struct Thread_,base)),
+        "i"(sizeof(Word))
+    );
 }
 
 static void LC_USED
