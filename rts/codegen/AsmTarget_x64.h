@@ -93,8 +93,8 @@ enum {
 /* This definition must match with the asmEnter/asmExit functions */
 typedef struct {
   double   fpr[RID_NUM_FPR];	/* Floating-point registers. */
-  intptr_t gpr[RID_NUM_GPR];	/* General-purpose registers. */
-  int64_t *spill;		/* Spill slots. */
+  Word     gpr[RID_NUM_GPR];	/* General-purpose registers. */
+  Word    *spill;		/* Spill slots. */
   Thread   *T;                  /* Currently executing thread */
   Fragment *F;                  /* Fragment under execution */
 } ExitState;
