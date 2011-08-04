@@ -83,8 +83,8 @@ enum {
 
 /* Spill slots are 64 bits wide.
 */
-#define SPS_FIRST 0 /* first spill slot */
-#define sps_scale(slot)		(sizeof(Word) * (int32_t)(slot))
+#define SPS_FIRST 1 /* first spill slot */
+#define sps_scale(slot)		(sizeof(Word) * (int32_t)((slot) - 1))
 #define fref_scale(fref)        (sizeof(Word) * (fref))
 /* field refs start at index 1, which correctly skips the closure header*/
 
