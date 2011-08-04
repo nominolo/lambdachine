@@ -79,6 +79,27 @@ static int asm_isk32(ASMState *as, IRRef ref, int32_t *k)
   return 0;
 }
 
+/* Map of comparisons to flags.
+ * The comparison code is for the negated condition because that is the
+ * condition on which we will exit the trace. For example, for IR_EQ we will
+ * test for CC_NE so that we can generate a jne instruction that will jump off
+ * the trace if the values are not equal
+ */
+static uint32_t asm_cmpmap(IROp opcode) {
+  uint32_t cc;
+  switch(opcode) {
+    case IR_LT: cc = CC_GE; break;
+    case IR_GE: cc = CC_L;  break;
+    case IR_LE: cc = CC_G;  break;
+    case IR_GT: cc = CC_LE; break;
+    case IR_EQ: cc = CC_NE; break;
+    case IR_NE: cc = CC_E;  break;
+    default: LC_ASSERT(0 && "Unknown comparison opcode");
+  }
+
+  return  cc;
+}
+
 /* -- Instruction Emitter ------------------------------------------------- */
 #include "Emit_x64.h"  // Target specific instruction emitter
 
@@ -676,27 +697,6 @@ static void asm_fref(ASMState *as, IRIns *ir) {
     Reg base = ra_alloc(as, ir->op1, rset_exclude(RSET_GPR, dest));
     emit_rmro(as, XO_LEA, dest|REX_64, base|REX_64, fref_scale(ofs));
   }
-}
-
-/* Map of comparisons to flags.
- * The comparison code is for the negated condition because that is the
- * condition on which we will exit the trace. For example, for IR_EQ we will
- * test for CC_NE so that we can generate a jne instruction that will jump off
- * the trace if the values are not equal
- */
-static uint32_t asm_cmpmap(IROp opcode) {
-  uint32_t cc;
-  switch(opcode) {
-    case IR_LT: cc = CC_GE; break;
-    case IR_GE: cc = CC_L;  break;
-    case IR_LE: cc = CC_G;  break;
-    case IR_GT: cc = CC_LE; break;
-    case IR_EQ: cc = CC_NE; break;
-    case IR_NE: cc = CC_E;  break;
-    default: LC_ASSERT(0 && "Unknown comparison opcode");
-  }
-
-  return  cc;
 }
 
 static void asm_cmp(ASMState *as, IRIns *ir, uint32_t cc) {
