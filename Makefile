@@ -54,7 +54,7 @@ echo:
 
 interp: $(SRCS:.c=.o)
 	@echo "LINK $^ => $@"
-	@$(CC) -o $@ $^
+	@$(CC) -Wl,-no_pie -o $@ $^
 
 # Building a C file automatically generates dependencies as a side
 # effect.  This only works with `gcc'.
