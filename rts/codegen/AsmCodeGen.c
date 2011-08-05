@@ -11,6 +11,7 @@
 #include "MCode.h"
 #include "InterpAsm.h" // to see asmExit function
 #include "HeapInfo.h"
+#include "MiscClosures.h" // for stg_IND_info
 
 #include <string.h> // for memset
 
@@ -663,6 +664,18 @@ static void asm_hpalloc(ASMState *as, uint32_t bytes) {
   emit_gri(as, XG_ARITHi(XOg_ADD), RID_HP|REX_64, bytes);
 }
 
+static void asm_update(ASMState *as, IRIns *ir) {
+  RA_DBGX((as, "UPDATE $f $f", ir->op1, ir->op2));
+  /* set first field of the indirection as a pointer to other closure */
+  Reg old = ra_alloc(as, ir->op1, RSET_GPR);
+  asm_heapstore(as, ir->op2, sizeof(Word) * wordsof(ClosureHeader), old, RSET_GPR);
+
+  /* update the info table to an indirection */
+  Reg r = ra_scratch(as, RSET_GPR);
+  emit_rmro(as, XO_MOVto, REX_64|r, REX_64|old, 0);
+  emit_loadu64(as, r|REX_64, (Word)&stg_IND_info);
+}
+
 static void asm_new(ASMState *as, IRIns *ir) {
     RA_DBGX((as, "NEW $f", ir->op1));
     Fragment *F  = as->T;
@@ -829,7 +842,10 @@ static void asm_ir(ASMState *as, IRIns *ir) {
     case IR_NEW:
       asm_new(as, ir);
       break;
-    case IR_FRAME:
+    case IR_UPDATE:
+      asm_update(as, ir);
+      break;
+    case IR_FRAME: case IR_NOP: case IR_RET:
       break;
     default:
       LC_ASSERT(0 && "IR op not implemented");
@@ -860,9 +876,9 @@ void genAsm(JitState *J, Fragment *T) {
 
   /* generate code in linear backwards order need */
   RA_DBG_START();
-  as->stopins = REF_BASE;
+  as->stopins = REF_BASE + 54;
   as->curins  = T->nins;
-  as->curins  = REF_FIRST + 8; // for testing
+  as->curins  = REF_FIRST + 57; // for testing
   for(as->curins--; as->curins > as->stopins; as->curins--) {
     IRIns *ir = IR(as->curins);
     // Disable dce for now to debug the codegen
