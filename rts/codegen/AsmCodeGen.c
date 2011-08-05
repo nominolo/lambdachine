@@ -293,9 +293,9 @@ static Reg ra_dest(ASMState *as, IRIns *ir, RegSet allow)
     } else {
       dest = ra_scratch(as, allow);
     }
-    RA_DBGX((as, "dest           $r", dest));
     ir->r = dest;
   }
+  RA_DBGX((as, "dest           $r", dest));
   if (LC_UNLIKELY(ra_hasspill(ir->s))) ra_save(as, ir, dest);
   return dest;
 }
@@ -665,7 +665,7 @@ static void asm_hpalloc(ASMState *as, uint32_t bytes) {
 }
 
 static void asm_update(ASMState *as, IRIns *ir) {
-  RA_DBGX((as, "UPDATE $f $f", ir->op1, ir->op2));
+  RA_DBGX((as, "<<UPDATE $f $f>>", ir->op1, ir->op2));
   /* set first field of the indirection as a pointer to other closure */
   Reg old = ra_alloc(as, ir->op1, RSET_GPR);
   asm_heapstore(as, ir->op2, sizeof(Word) * wordsof(ClosureHeader), old, RSET_GPR);
@@ -677,7 +677,7 @@ static void asm_update(ASMState *as, IRIns *ir) {
 }
 
 static void asm_new(ASMState *as, IRIns *ir) {
-    RA_DBGX((as, "NEW $f", ir->op1));
+    RA_DBGX((as, "<<NEW $f>>", ir->op1));
     Fragment *F  = as->T;
     HeapInfo *hp = &F->heap[ir->op2];
     int j;
@@ -707,7 +707,7 @@ static void asm_new(ASMState *as, IRIns *ir) {
 }
 
 static void asm_intarith(ASMState *as, IRIns *ir, x86Arith xa) {
-  RA_DBGX((as, "ARITH $f $f", ir->op1, ir->op2));
+  RA_DBGX((as, "<<ARITH $f $f>>", ir->op1, ir->op2));
   RegSet allow = RSET_GPR;
   int32_t k = 0;
   IRRef lref = ir->op1;
@@ -738,7 +738,7 @@ static void asm_intarith(ASMState *as, IRIns *ir, x86Arith xa) {
 }
 
 static void asm_fload(ASMState *as, IRIns *ir) {
-  RA_DBGX((as, "FLOAD $f", ir->op1));
+  RA_DBGX((as, "<<FLOAD $f>>", ir->op1));
 
   Reg dest = ra_dest(as, ir, RSET_GPR);
   Reg base = ra_fuseload(as, ir->op1, rset_exclude(RSET_GPR, dest));
@@ -746,7 +746,7 @@ static void asm_fload(ASMState *as, IRIns *ir) {
 }
 
 static void asm_fref(ASMState *as, IRIns *ir) {
-  RA_DBGX((as, "FREF $f", ir->op1));
+  RA_DBGX((as, "<<FREF $f 0x$x>>", ir->op1, ir->op2));
   int32_t ofs = ir->op2;
   Reg dest = ra_dest(as, ir, RSET_GPR);
   if(irref_islit(ir->op1)) {
@@ -768,7 +768,7 @@ static void asm_fref(ASMState *as, IRIns *ir) {
 }
 
 static void asm_cmp(ASMState *as, IRIns *ir, uint32_t cc) {
-  RA_DBGX((as, "CMP   $f $f", ir->op1, ir->op2));
+  RA_DBGX((as, "<<CMP   $f $f>>", ir->op1, ir->op2));
   Reg left  = ra_alloc(as, ir->op1, RSET_GPR);
   IRRef rref = ir->op2;
   if(irref_islit(rref)) {
@@ -792,7 +792,7 @@ static void asm_cmp(ASMState *as, IRIns *ir, uint32_t cc) {
 }
 
 static void asm_iload(ASMState *as, IRIns *ir) {
-  RA_DBGX((as, "ILOAD $f", ir->op1));
+  RA_DBGX((as, "<<ILOAD $f>>", ir->op1));
   int32_t ofs = 0; /* info table is at offset 0 of closure */
   RegSet allow = RSET_GPR;
   Reg dest    = ra_dest(as,  ir, allow);
@@ -803,7 +803,7 @@ static void asm_iload(ASMState *as, IRIns *ir) {
 
 static void asm_sload(ASMState *as, IRIns *ir)
 {
-  RA_DBGX((as, "SLOAD 0x$x", ir->op1));
+  RA_DBGX((as, "<<SLOAD 0x$x>>", ir->op1));
   int32_t ofs = SLOT_SIZE * ir->op1;
   Reg base = RID_BASE;
   RegSet allow = RSET_GPR;
@@ -876,7 +876,7 @@ void genAsm(JitState *J, Fragment *T) {
 
   /* generate code in linear backwards order need */
   RA_DBG_START();
-  as->stopins = REF_BASE + 54;
+  as->stopins = REF_BASE;
   as->curins  = T->nins;
   as->curins  = REF_FIRST + 57; // for testing
   for(as->curins--; as->curins > as->stopins; as->curins--) {
