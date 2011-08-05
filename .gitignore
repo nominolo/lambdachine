@@ -20,3 +20,4 @@ interp
 dist/
 .DS_Store
 dump.s
+_T.*
