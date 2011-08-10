@@ -32,6 +32,7 @@ typedef struct ASMState {
 
   SnapNo snapno;	/* Current snapshot number. */
   IRRef snapref;	/* Current snapshot is active after this reference. */
+  SnapNo loopsnapno;	/* Loop snapshot number. */
 
   RegSet freeset;	/* Set of free registers. */
   RegSet modset;	/* Set of modified registers. */
@@ -244,7 +245,7 @@ static Reg ra_restore(ASMState *as, IRRef ref)
 static void ra_save(ASMState *as, IRIns *ir, Reg r)
 {
   RA_DBGX((as, "save      $i $r", ir, r));
-  emit_spstore(as, ir, r, sps_scale(ir->s));
+  emit_spstore(as, ir, r, (as->spill_offset) + sps_scale(ir->s));
 }
 
 /* Evict the register with the lowest cost, forcing a restore. */
@@ -647,6 +648,214 @@ static Reg ra_fuseload(ASMState *as, IRRef ref, RegSet allow) {
 }
 
 /* -- PHI and loop handling  ---------------------------------------------- */
+
+/* Emit rename ir instruction. */
+static void emit_ir_rename(ASMState *as, Reg down, IRRef ref, SnapNo snapno) {
+    IRRef ren;
+    ren = tref_ref(emit_raw(as->J, IRT(IR_RENAME, IRT_VOID), ref, snapno));
+    as->ir = as->T->ir;  /* The IR may have been reallocated. */
+    IR(ren)->r = (uint8_t)down;
+    IR(ren)->s = SPS_NONE;
+}
+
+/* Rename register allocation and emit move.
+ *
+ * This function takes care of the operations needed when we change the
+ * register allocated to an ir instruction. For example, consider this code
+ *
+ *     ... = x
+ *     ...
+ *     --- as->curins --
+ *     ... = r1 ;; allocation = {x : r1}
+ *     ...
+ *     GUARD(snapno=3) ;; snapshot = {0 : x}
+ *
+ * If we call rename(as, r1, r2), we will end up the following state
+ *
+ *     ... = x
+ *     ...
+ *     	;; allocation = {x : r2}
+ *     --- as->curins --
+ *     r1  = r2
+ *     ... = r1
+ *     GUARD(snapno=3) {0 : x}
+ *     IR_RENAME(x, 3)
+ *
+ * The allocation state has been updated, a rr move inserted, and the rename ir
+ * instruction inserted to make sure that we restore x from the correct
+ * location when the guard fails.
+ **/
+static void ra_rename(ASMState *as, Reg down, Reg up)
+{
+  IRRef ref = regcost_ref(as->cost[up] = as->cost[down]);
+  IRIns *ir = IR(ref);
+  ir->r = (uint8_t)up;
+  as->cost[down] = 0;
+  LC_ASSERT((down < RID_MAX_GPR) == (up < RID_MAX_GPR));
+  LC_ASSERT(!rset_test(as->freeset, down) && rset_test(as->freeset, up));
+  ra_free(as, down);  /* 'down' is free ... */
+  rset_clear(as->freeset, up);  /* ... and 'up' is now allocated. */
+  RA_DBGX((as, "rename    $f $r $r", regcost_ref(as->cost[up]), down, up));
+  emit_movrr(as, down, up);  /* Backwards codegen needs inverse move. */
+  if (!ra_hasspill(IR(ref)->s)) {  /* Add the rename to the IR. */
+    emit_ir_rename(as, down, ref, as->snapno);
+  }
+}
+
+/* Break a PHI cycle by renaming to a free register (evict if needed).
+ * This gets rid of cycles caused by code like this:
+ *
+ *     ... = x0
+ *     y1  = ...
+ *     ... = y0
+ *     x1  = ...
+ *     phi(x0, x1)
+ *     phi(y0, y1)
+ *
+ * With the allocation like:
+ *     { x1 : r1,  y1 : r2
+ *     	 y0 : r1,  x0 : r2 }
+ *
+ * To break the cycle we choose one of the blockers and rename it to a free
+ * register.
+ */
+static void asm_phi_break(ASMState *as, RegSet blocked, RegSet blockedby,
+			  RegSet allow)
+{
+  RegSet candidates = blocked & allow;
+  if (candidates) {  /* If this register file has candidates. */
+    /* Note: the set for ra_pick cannot be empty, since each register file
+    ** has some registers never allocated to PHIs.
+    */
+    Reg down, up = ra_pick(as, ~blocked & allow);  /* Get a free register. */
+    if (candidates & ~blockedby)  /* Optimize shifts, else it's a cycle. */
+      candidates = candidates & ~blockedby;
+    down = rset_picktop(candidates);  /* Pick candidate PHI register. */
+    ra_rename(as, down, up);  /* And rename it to the free register. */
+  }
+}
+
+/* PHI register shuffling.
+ *
+ * The allocator tries hard to preserve PHI register assignments across
+ * the loop body. Most of the time this loop does nothing, since there
+ * are no register mismatches.
+ *
+ * A mismatch occurs when the LHS of a phi node has a different register than
+ * the RHS. If there is a mismatch then we need to insert some copies to make
+ * sure that the correct value flows through the loop. Inserting a copy is
+ * called renaming the register becuase the IR instruction will be allocated to
+ * two different registers over the course of the trace. When we rename the
+ * register we take that register to use outside the loop and free the current
+ * register for use outside the loop.
+ *
+ * As a small example, consider this code
+ *      x1  = x0 + 1
+ *      ... = x0
+ *      phi(x0, x1)
+ *
+ * With this register assignment: { x1 : r1,  x0 : r2 }
+ *
+ * If r1 is free outside the loop, then we can "rename" the register for x0, by
+ * changing the assignment to use r1 outside the loop and r2 inside the loop.
+ * This renaming also ensures that the phi operation (x0 = phi(x0,x1)) happens
+ * correctly.
+ *
+ * To rename we can insert a copy from `r1` to `r2` at the top of the loop and
+ * assign `r1` to `x0` outside of the loop. Since `r1` is on free on entry to the
+ * loop we can safely take it for use by `x0` outside of the loop. The final code
+ * will look like
+ *
+ *      r1  = ... (initialze x0)
+ *      LOOP:
+ *      	r2  = r1
+ *      ;; body
+ *      	r1  = r2 + 1
+ *      	... = r2
+ *      goto LOOP
+ *
+ * The action taken for a register mismatch depends on the state of the
+ * register allocated to the value in the RHS of the phi node.
+ *
+ * If a register mismatch is detected and ...
+ * - the register is currently free: rename it.
+ * - the register is blocked by an invariant: restore/remat and rename it.
+ * - Otherwise the register is used by another PHI, so mark it as blocked.
+ *
+ * The renames are order-sensitive, so just retry the loop if a register
+ * is marked as blocked, but has been freed in the meantime. A cycle is
+ * detected if all of the blocked registers are allocated. To break the
+ * cycle rename one of them to a free register and retry.
+ *
+ * Note that PHI spill slots are kept in sync and don't need to be shuffled.
+*/
+static void asm_phi_shuffle(ASMState *as){
+  RA_DBGX((as, "<<PHI SHUFFLE>>"));
+  RegSet work;
+
+  /* Find and resolve PHI register mismatches. */
+  for (;;) {
+    RegSet blocked = RSET_EMPTY;
+    RegSet blockedby = RSET_EMPTY;
+    RegSet phiset = as->phiset;
+    while (phiset) {  /* Check all left PHI operand registers. */
+      Reg r = rset_pickbot(phiset);
+      IRIns *irl = IR(as->phireg[r]);
+      Reg left = irl->r;
+      if (r != left) {  /* Mismatch? */
+	if (!rset_test(as->freeset, r)) {  /* PHI register blocked? */
+	  IRRef ref = regcost_ref(as->cost[r]);
+	  /* Blocked by other PHI (w/reg)? */
+	  if (!irref_islit(ref) && irt_getmark(IR(ref)->t)) {
+	    rset_set(blocked, r);
+	    if (ra_hasreg(left))
+	      rset_set(blockedby, left);
+	    left = RID_NONE;
+	  } else {  /* Otherwise grab register from invariant. */
+	    ra_restore(as, ref);
+	    checkmclim(as);
+	  }
+	}
+	if (ra_hasreg(left)) {
+	  ra_rename(as, left, r);
+	  checkmclim(as);
+	}
+      }
+      rset_clear(phiset, r);
+    }
+    if (!blocked) break;  /* Finished. */
+    if (!(as->freeset & blocked)) {  /* Break cycles if none are free. */
+      asm_phi_break(as, blocked, blockedby, RSET_GPR);
+      checkmclim(as);
+    }  /* Else retry some more renames. */
+  }/* end for */
+
+
+  /* For any LHS that was spilled inside the loop, make sure that
+   * we store the current value at the top of the loop so that the spill slot
+   * will hold the current value when it is loaded in the loop body.
+   **/
+  work = as->phiset;
+  while (work) {
+    Reg r = rset_picktop(work);
+    IRRef lref = as->phireg[r];
+    IRIns *ir = IR(lref);
+    if (ra_hasspill(ir->s)) {  /* Left PHI gained a spill slot? */
+      irt_clearmark(ir->t);  /* Handled here, so clear marker now. */
+      /* Get a register for the store operation. Either the LHS already has a
+       * register from the loop (it can be live out even thought it has a
+       * spill) or we need to assign a new register. If we need a new register
+       * then use the same register as the RHS of the phi. This register will
+       * be free for us to use because the loop above will ensure it is so
+       * beacuse the RID_NONE != rhs assignment.*/
+      ra_alloc(as, lref, RID2RSET(r));
+      ra_save(as, ir, r);  /* Save to spill slot inside the loop. */
+      checkmclim(as);
+    }
+    rset_clear(work, r);
+  }
+}
+
 /* Setup right PHI reference. */
 static void asm_phi(ASMState *as, IRIns *ir) {
   RA_DBGX((as, "<<PHI $f $f>>", ir->op1, ir->op2));
@@ -686,6 +895,69 @@ static void asm_phi(ASMState *as, IRIns *ir) {
     ra_spill(as, ir);
     irl->s = irr->s = ir->s;  /* Sync left/right PHI spill slots. */
   }
+}
+
+/* Emit renames for LHS phis which are only spilled outside the loop.
+ * We need to do this because if the LHS was spilled outside of the loop the
+ * snapshot restoration will attempt to load it from the spill slot. This spill
+ * slot will be out of date as the value changes in the loop. We emit a
+ * rename to ensure that snapshots will restore the value from the register
+ * inside the loop.*/
+static void asm_phi_spill_fixup(ASMState *as)
+{
+  RegSet work = as->phiset;
+  while (work) {
+    Reg r = rset_picktop(work);
+    IRRef lref = as->phireg[r];
+    IRIns *ir = IR(lref);
+    /* Left PHI gained a spill slot before the loop? */
+    if (irt_getmark(ir->t) && ra_hasspill(ir->s)) {
+      emit_ir_rename(as, r, lref, as->loopsnapno);
+    }
+    irt_clearmark(ir->t);  /* Always clear marker. */
+    rset_clear(work, r);
+  }
+}
+
+/* Prepare tail of trace code */
+static void asm_tail_prep(ASMState *as) {
+  MCode *p = as->mctop;
+  p -= 5;  /* Space for exit branch (near jmp). */
+  as->mcp = p;
+}
+
+/* Fixup the loop branch at end of trace to jump to current target. */
+static void asm_loop_fixup(ASMState *as) {
+  MCode *p = as->mctop;
+  MCode *target = as->mcp;
+
+  p[-5] = XI_JMP;
+  *(int32_t *)(p-4) = (int32_t)(target - p);
+}
+
+
+/* Middle part of a loop. */
+static void asm_loop(ASMState *as)
+{
+  /* Record the last snapshot we passed. We need this to store in the IR_RENAME
+   * instructions*/
+  as->loopsnapno = as->snapno;
+
+  /* LOOP marks the transition from the variant to the invariant part.
+   * Values that are defined outside the loop and do not flow into a PHI node
+   * will not change anytime during exection. The values defined in the loop
+   * and those that reach phi nodes may change as the loop executes.
+   *
+   * When we reach the loop marker we need to resolve any differences in
+   * allocation of values in the same phi node and then fixup the backwards
+   * branch to point to the start of the loop.*/
+
+  /* reslove differences in phi node allocation */
+  asm_phi_shuffle(as);
+
+  /* fixup the backward branch at bottom of trace to jump to top of loop */
+  asm_loop_fixup(as);
+  RA_DBGX((as, "===== LOOP =====")); RA_DBG_FLUSH();
 }
 
 /* -- Allocations --------------------------------------------------------- */
@@ -897,6 +1169,9 @@ static void asm_ir(ASMState *as, IRIns *ir) {
     case IR_PHI:
       asm_phi(as, ir);
       break;
+    case IR_LOOP:
+      asm_loop(as);
+      break;
     case IR_FRAME: case IR_NOP: case IR_RET:
       break;
     default:
@@ -920,15 +1195,18 @@ void genAsm(JitState *J, Fragment *T) {
   as->mcp   = as->mctop;
   as->mclim = as->mcbot + MCLIM_REDZONE;
 
-  /* Setup initial register and spill state */
-  asm_setup_regsp(as);
-
   /* generate the exit stubs we need */
   asm_exitstub_setup(as, T->nsnap);
 
+  /* generate the tail of the trace that will loop back or exit */
+  asm_tail_prep(as);
+
+  /* Setup initial register and spill state */
+  asm_setup_regsp(as);
+
   /* generate code in linear backwards order need */
   RA_DBG_START();
-  as->stopins = REF_BASE  + 68;
+  as->stopins = REF_BASE  + 67;
   as->curins  = T->nins;
   as->curins  = REF_FIRST + 118; // for testing
   for(as->curins--; as->curins > as->stopins; as->curins--) {
@@ -941,15 +1219,10 @@ void genAsm(JitState *J, Fragment *T) {
     asm_ir(as, ir);
   }
 
-  /* generate some test code */
-  /*
-  as->snapno = 1;
-  asm_guardcc(as, CC_E);
-  emit_rr(as, XO_CMP, RID_EAX, RID_EAX);
-  emit_movrr(as, RID_EAX, RID_ECX);
-  emit_movrr(as, RID_EAX, RID_R12D);
-  */
+  /* Add renames for any phis spilled outside the loop */
+  asm_phi_spill_fixup(as);
 
+  /* Save the trace's machine code */
   T->mcode = as->mcp;
   T->szmcode = (MSize)((char *)as->mctop - (char *)as->mcp);
   mcodeCommit(J, T->mcode);
