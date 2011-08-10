@@ -36,6 +36,9 @@ typedef struct ASMState {
   RegSet freeset;	/* Set of free registers. */
   RegSet modset;	/* Set of modified registers. */
 
+  RegSet phiset;	/* Set of registers assigned to RHS of PHI nodes. */
+  IRRef1 phireg[RID_MAX];  /* Maps register to LHS PHI references. */
+
   i4 spill;             /* Next spill slot. */
   i4 spill_offset;      /* Offset from base reg into the spill area */
 
@@ -168,9 +171,14 @@ static uint32_t asm_cmpmap(IROp opcode) {
 /* Setup register allocator. */
 static void ra_setup(ASMState *as)
 {
+  Reg r;
   /* Initially all regs (except the base and heap pointers) are free for use. */
   as->freeset = RSET_INIT;
   as->modset = RSET_EMPTY;
+  as->phiset = RSET_EMPTY;
+  memset(as->phireg, 0, sizeof(as->phireg));
+  for (r = RID_MIN_GPR; r < RID_MAX; r++)
+    as->cost[r] = REGCOST(~0u, 0u);
 }
 
 /* Rematerialize constants. */
@@ -323,13 +331,9 @@ static Reg ra_allocref(ASMState *as, IRRef ref, RegSet allow)
       }
       RA_DBGX((as, "hintmiss  $f $r", ref, r));
     }
-    else {
-      /* We've got plenty of regs, so get callee-save regs if possible. */
-      if (0/* we can do this later when we have c-calls */ && pick & ~RSET_SCRATCH)
-	pick &= ~RSET_SCRATCH;
-      r = rset_pickbot(pick);
-    }
-  } else {
+    /* If we get here then we did not have a hint, or it wasn't available */
+    r = rset_pickbot(pick);
+  } else { /* No regs available */
     r = ra_evict(as, allow);
   }
 found:
@@ -357,7 +361,8 @@ static Reg ra_alloc(ASMState *as, IRRef ref, RegSet allow)
 {
   Reg r = IR(ref)->r;
   /* Note: allow is ignored if the register is already allocated. */
-  if (ra_noreg(r)) r = ra_allocref(as, ref, allow);
+  if (ra_noreg(r)){r = ra_allocref(as, ref, allow);}
+  else{RA_DBGX((as, "existing  $f $r", ref, r));}
   return r;
 }
 
@@ -380,8 +385,8 @@ static void ra_left(ASMState *as, Reg dest, IRRef lref)
       }
       return;
     }
-  if (!ra_hashint(left))
-      ra_sethint(ir->r, dest);  /* Propagate register hint. */
+    if (!ra_hashint(left))
+        ra_sethint(ir->r, dest);  /* Propagate register hint. */
     left = ra_allocref(as, lref, dest < RID_MAX_GPR ? RSET_GPR : RSET_FPR);
   }
   /* Move needed for true 3-operand instruction: y=a+b ==> y=a; y+=b. */
@@ -502,6 +507,7 @@ static void asm_snap_alloc1(ASMState *as, IRRef ref)
 /* Allocate refs escaping to a snapshot. */
 static void asm_snap_alloc(ASMState *as)
 {
+  RA_DBGX((as, "<<SNAP $x>>", as->snapno));
   SnapShot *snap = &as->T->snap[as->snapno];
   SnapEntry *map = &as->T->snapmap[snap->mapofs];
   u1 n, nent = snap->nent;
@@ -640,7 +646,49 @@ static Reg ra_fuseload(ASMState *as, IRRef ref, RegSet allow) {
   return ra_allocref(as, ref, allow);
 }
 
-/* -- Specific instructions  ---------------------------------------------- */
+/* -- PHI and loop handling  ---------------------------------------------- */
+/* Setup right PHI reference. */
+static void asm_phi(ASMState *as, IRIns *ir) {
+  RA_DBGX((as, "<<PHI $f $f>>", ir->op1, ir->op2));
+  RegSet allow = RSET_GPR & ~as->phiset;
+  RegSet afree = as->freeset & allow;
+  IRIns *irl = IR(ir->op1);
+  IRIns *irr = IR(ir->op2);
+
+  /* Spill slot shuffling is not implemented yet (but rarely needed). */
+  if (ra_hasspill(irl->s) || ra_hasspill(irr->s)) {
+    LC_ASSERT(0 && "Spill slot shuffling not implemented");
+  }
+
+  /* Leave at least one register free for non-PHIs (and PHI cycle breaking).*/
+  if((afree & (afree-1))) { /* Two or more free registers? */
+    Reg r;
+    if (ra_noreg(irr->r)) { /* Get a register for the right PHI. */
+      r = ra_allocref(as, ir->op2, allow);
+    }
+    else { /* Duplicate right PHI, need a copy (rare). */
+      r = ra_scratch(as, allow);
+      emit_movrr(as, r, irr->r);
+    }
+    ir->r = (uint8_t)r;
+    rset_set(as->phiset, r);
+    as->phireg[r] = (IRRef1)ir->op1;
+    irt_setmark(irl->t); /* Marks left PHIs that have a register in rhs. */
+    if (ra_noreg(irl->r)) {
+      ra_sethint(irl->r, r); /* Set register hint for left PHI. */
+    }
+  }
+  else {  /* Otherwise allocate a spill slot. */
+    /* This is overly restrictive, but it triggers only on synthetic code. */
+    if (ra_hasreg(irl->r) || ra_hasreg(irr->r)){
+      LC_ASSERT(0 && "Unable to spill phi node with already assigned regs");
+    }
+    ra_spill(as, ir);
+    irl->s = irr->s = ir->s;  /* Sync left/right PHI spill slots. */
+  }
+}
+
+/* -- Allocations --------------------------------------------------------- */
 static void
 asm_heapstore(ASMState *as, IRRef ref, int32_t ofs, Reg base, RegSet allow){
   if(irref_islit(ref)) {
@@ -664,6 +712,7 @@ static void asm_hpalloc(ASMState *as, uint32_t bytes) {
   emit_gri(as, XG_ARITHi(XOg_ADD), RID_HP|REX_64, bytes);
 }
 
+/* -- Specific instructions  ---------------------------------------------- */
 static void asm_update(ASMState *as, IRIns *ir) {
   RA_DBGX((as, "<<UPDATE $f $f>>", ir->op1, ir->op2));
   /* set first field of the indirection as a pointer to other closure */
@@ -845,6 +894,9 @@ static void asm_ir(ASMState *as, IRIns *ir) {
     case IR_UPDATE:
       asm_update(as, ir);
       break;
+    case IR_PHI:
+      asm_phi(as, ir);
+      break;
     case IR_FRAME: case IR_NOP: case IR_RET:
       break;
     default:
@@ -876,9 +928,9 @@ void genAsm(JitState *J, Fragment *T) {
 
   /* generate code in linear backwards order need */
   RA_DBG_START();
-  as->stopins = REF_BASE;
+  as->stopins = REF_BASE  + 68;
   as->curins  = T->nins;
-  as->curins  = REF_FIRST + 57; // for testing
+  as->curins  = REF_FIRST + 118; // for testing
   for(as->curins--; as->curins > as->stopins; as->curins--) {
     IRIns *ir = IR(as->curins);
     // Disable dce for now to debug the codegen
