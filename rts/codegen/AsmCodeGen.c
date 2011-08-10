@@ -1206,7 +1206,7 @@ void genAsm(JitState *J, Fragment *T) {
 
   /* generate code in linear backwards order need */
   RA_DBG_START();
-  as->stopins = REF_BASE  + 67;
+  as->stopins = REF_BASE;
   as->curins  = T->nins;
   as->curins  = REF_FIRST + 118; // for testing
   for(as->curins--; as->curins > as->stopins; as->curins--) {
@@ -1221,6 +1221,13 @@ void genAsm(JitState *J, Fragment *T) {
 
   /* Add renames for any phis spilled outside the loop */
   asm_phi_spill_fixup(as);
+
+  /* Sanity check. Should never happen. */
+  if (as->freeset != RSET_ALL)
+    LC_ASSERT(0 && "Oops. All registers have not been freed");
+
+  RA_DBGX((as, "===== START ===="));
+  RA_DBG_FLUSH();
 
   /* Save the trace's machine code */
   T->mcode = as->mcp;
