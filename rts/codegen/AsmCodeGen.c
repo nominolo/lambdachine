@@ -199,7 +199,7 @@ static Reg ra_rematk(ASMState *as, IRRef ref)
   else if (ir->o == IR_KWORD) {
     emit_loadu64(as, r|REX_64, as->T->kwords[ir->u]);
   } else if(ir->o == IR_KBASEO) {
-    emit_rmro(as, XO_LEA, r|REX_64, RID_BASE, sps_scale(ir->i));
+    emit_rmro(as, XO_LEA, r|REX_64, RID_BASE, baseo_scale(ir->i));
   } else {
     LC_ASSERT(0 && "Cannot remat ir instruction");
   }

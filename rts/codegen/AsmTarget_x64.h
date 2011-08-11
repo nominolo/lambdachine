@@ -84,9 +84,15 @@ enum {
 /* Spill slots are 64 bits wide.
 */
 #define SPS_FIRST 1 /* first spill slot */
-#define sps_scale(slot)		(sizeof(Word) * (int32_t)((slot) - 1))
-#define fref_scale(fref)        (sizeof(Word) * (fref))
+/* Scale a spill slot as an offset from the spill area.
+ * Since the spill area is zero indexed (i.e. spills[0] is the first spill),
+ * subtract the "FIRST" spill slot from the acutal slot. SPS_FIRST cannot
+ * be zero because a zero means no spill slot is allocated.*/
+#define sps_scale(slot)  (sizeof(Word) * (int32_t)((slot) - SPS_FIRST))
 /* field refs start at index 1, which correctly skips the closure header*/
+#define fref_scale(fref) (sizeof(Word) * (fref))
+/* BASEO offset is from &base, but RID_BASE contains &base[-1] */
+#define baseo_scale(ofs) ((sizeof(Word) * (ofs)) + sizeof(Word))
 
 /* -- Exit state ---------------------------------------------------------- */
 
