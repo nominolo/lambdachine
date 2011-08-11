@@ -6,6 +6,8 @@
 #include "AsmTarget.h" // for exitstub_addr
 #include "AsmTarget_x64.h" // for EXITSTUB_SPACING
 #include "Thread.h"
+#include "StorageManager.h"
+#include "Snapshot.h"
 
 static void enterTrace(JitState *J, Fragment *F);
 static void dumpAsm(MCode* mcode, MSize sz, FILE* out);
@@ -16,12 +18,12 @@ void asmEngine(Capability *cap, Fragment *F) {
   JitState *J = &cap->J;
 
   genAsm(J, F);
-  dumpAsm(F->mcode, F->szmcode, NULL);
-  LC_ASSERT(0 && "STOPPING AFTER CODEGEN");
+  dumpAsm(F->mcode, F->szmcode, NULL /* use a new FILE */);
+  //LC_ASSERT(0 && "STOPPING AFTER CODEGEN");
   dumpExitStubs(J);
   enterTrace(&cap->J, F);
 
-  LC_ASSERT(0 && "STOP HERE");
+  //LC_ASSERT(0 && "STOP HERE");
 }
 
 static void dumpAsm(MCode* mcode, MSize sz, FILE* out) {
@@ -66,13 +68,13 @@ static void enterTrace(JitState *J, Fragment *F) {
   Word *spillArea = (T->base - 1) + F->framesize;
 
 
-  Word *hp = xmalloc(1024); //TODO: get a real heap pointer
+  Word *hp = allocClosure(1024); //TODO: get a real heap pointer
   asmEnter(F, T, spillArea, hp, F->mcode);
 }
 
 static void LC_USED
 exitTrace(ExitNo n, ExitState* s) {
-  // Restore state here
+  restoreSnapshot(n, s);
 }
 
 /* Names of the machine code entry and exit functions. These are written in

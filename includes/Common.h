@@ -254,4 +254,12 @@ static LC_AINLINE uint32_t lc_bswap(uint32_t x)
   uint32_t r; __asm__("bswap %0" : "=r" (r) : "0" (x)); return r;
 }
 
+/* A really naive Bloom filter. But sufficient for our needs. */
+typedef Word BloomFilter;
+#define BLOOM_MASK	(8*sizeof(BloomFilter) - 1)
+#define bloombit(x)	((Word)1 << ((x) & BLOOM_MASK))
+#define bloomset(b, x)	((b) |= bloombit((x)))
+#define bloomtest(b, x)	((b) & bloombit((x)))
+
+
 #endif

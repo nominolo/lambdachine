@@ -357,6 +357,7 @@ printIRBuffer(JitState *J)
   IRRef ref;
   SnapShot *snap = J->cur.nsnap > 0 ? J->cur.snap : NULL;
   IRRef nextsnap = snap ? snap->ref : 0;
+  SnapNo snapno = 0;
 
   printf("IRs (%d..%d):\n",
          J->cur.nk - REF_BIAS,
@@ -372,9 +373,10 @@ printIRBuffer(JitState *J)
 #endif
 
     if (ref == nextsnap) {
-      printf("          ");
+      printf("     S:%02d  ",snapno);
       printSnapshot(J, snap, J->cur.snapmap);
       ++snap;
+      ++snapno;
       if (snap >= J->cur.snap + J->cur.nsnap) {
         snap = NULL; nextsnap = 0;
       } else

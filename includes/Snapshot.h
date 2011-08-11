@@ -8,6 +8,7 @@ void growSnapshotBuffer_(JitState *J, Word needed);
 void growSnapshotMapBuffer_(JitState *J, Word needed);
 void addSnapshot(JitState *J);
 void printSnapshot(JitState *J, SnapShot *snap, SnapEntry *map);
+void restoreSnapshot(SnapNo snapno, void *exptr);
 
 INLINE_HEADER void growSnapshotBuffer(JitState *J, Word needed)
 {
