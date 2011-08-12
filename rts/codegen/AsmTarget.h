@@ -117,6 +117,10 @@ typedef uint32_t RegCost;
 #define REGCOST(cost, ref)	((RegCost)(ref) + ((RegCost)(cost) << 16))
 #define regcost_ref(rc)		((IRRef1)(rc))
 
+#define REGCOST_T(t) \
+  ((RegCost)((t)&IRT_ISPHI) * (((RegCost)(REGCOST_PHI_WEIGHT)<<16)/IRT_ISPHI))
+#define REGCOST_REF_T(ref, t)	(REGCOST((ref), (ref)) + REGCOST_T((t)))
+
 
 /* -- Target-specific definitions ----------------------------------------- */
 

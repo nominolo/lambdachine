@@ -341,7 +341,7 @@ found:
   RA_DBGX((as, "alloc     $f $r", ref, r));
   ir->r = (uint8_t)r;
   rset_clear(as->freeset, r);
-  as->cost[r] = REGCOST(0, ref);
+  as->cost[r] = REGCOST_REF_T(ref, ir->t);
   return r;
 }
 

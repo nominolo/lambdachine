@@ -182,8 +182,8 @@ typedef enum {
 
   // Flags
   IRT_MARK  = 0x20,  // Marker for various purposes
-  IRT_ISPHI = 0x40,  // Currently unused
-  IRT_GUARD = 0x80,  // Unused by asm code generator
+  IRT_ISPHI = 0x40,  // Used by register allocator
+  IRT_GUARD = 0x80,  // Used by asm code generator
 
   // Masks
   IRT_TYPE = 0x1f,
