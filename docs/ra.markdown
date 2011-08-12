@@ -1,33 +1,164 @@
-1. The hint gets lost when a register is allocated, so phi's that get allocated to separate register will never join together.
-
-2. Need to try and not spill a phi-node by setting the cost higher for spilling phi nodes.
-
-Generating code for loops
+Asm Code Generation Overview
 =============================
 
-Phi Nodes
------------
-1. Backwards walk, assign regs to rhs of the phi node.
+Code generation and register allocation a performed as a single backwards pass over the IR. For each IR instruction we decide which registers will be used in the instruction and then generate the machine code using those registers. Most IR instructions map to one or two machine instructions. Notable exceptions are heap allocations which need to both allocate the space and copy the values into the heap.
+
+Two Operand Instructions
+-------------------------
+
+Each two operand IR instruction has the form
+
+    D = op L R
+
+where D is the destination register L is the left operand and R is the
+right operand.
+
+When we go to allocate registers for the instruction we
+
+1. R - Make sure the right operand has a register.
+
+    If R already has a register allocated then simply use that register
+    If R does not have a register allocated we need to choose one
+      If there is a free register available then use it
+      If there are no more registers available then evict a register
+        Evicting a register will assign a spill slot to the IR that is spilled
+ 
+        Generate a load for the spilled instruction. We generate a load now
+        because we are allocating bottom up and we already generated
+        instructions that expected to find the spilled value in a particular
+        register. We will generate the store for the spilled value when we
+        get to its defition point which is earlier in the instruction
+        stream.
+
+2. D - Make sure the destination has a register allocated
+
+    The D may already have a register allocated if it was referenced a an L
+    or R value in the instructions below.
+
+    If it has a register allocated then reuse it, Otherwise find a
+    register to use as for R
+
+    If D was assigned a spill slot earlier then generate a store to spill
+    the regsiter to its assigned slot. We do this so that the later load
+    will find the register in the right location.
+
+    Mark the register used by D as free. Since we going bottom up, the D
+    register will be free at all the instructions above the current op,
+    since D is defined in this instruction.
+
+3. op - Generate the code for the operation using D = op D R
+
+4. L - Generate code to make sure that L is in the same register as D. 
+
+    If L does not have a register then 
+        If L can be rematerailzed then remat into D
+        Else allocate D's register to L
+    Otherwise generate a register-to-register copy here.
+    
+    This is a required step for all of the x86 two operand machine
+    instructions.
+
+One Operand Instructions
+------------------------
+
+Each one operand instruction has the form of
+
+    D = op R
+
+Code is generated similarly for the two-operand case except that L is not needed.
+
+Spills
+-------------------------
+
+Since we are generating code bottom up, we will find uses of values before their definitions. At the first use site an instruction will be assigned a register. As codegen continues it will use the register for references to that value. If there are not enough registers, a value may have to be spilled. When a value is spilled a restore is generated that loads the value from it spill slot into the currently assigned register so that the code already generated will have the correct value. If it is referenced again before its definition point, it will be assigned a (possibly different) register so that a single value could be assigned to different registers during the course of execution. When we reach the (single because of SSA) definition point and a value has a spill we will generate code to save it to the correct spill slots so that later loads will find the correct value in the spill slot.
+
+The cost to spill is a combination of the reference number plus an extra bit
+for those values that flow to phi nodes. Due to the organization of the IR,
+constants will have a smaller cost than values defined outside the loop, which
+will have a smaller cost than values defined inside the loop. The extra phi-
+factor tries to ensure that values in phi nodes will get a register.
+
+Constants and Rematerialization
+-------------------------------
+
+If a reference is to a constant value (which we can detect by checking ref < REF_BASE) then we try to generate code that uses the constant value without a register. Because of the limitiations of the x86 instruction set, only 32-bit constants can be used in most instructions. To use a full 64-bit constnatn, the value must be loaded to a register with a `mov` operation, like
+    
+    movq 0x1122334455667788, r
+
+Currently, only KINT constants are small enought to fold directly into the instructions.
+
+Constants are cheaper to spill because they don't have to actually be stored and loaded from the stack. Since they are constant, they can alwyas be recreated on demand. We call this rematerialization and it is used by the register allocator so that we consider it cheaper to spill constants.
+
+Generating code for loops
+=========================
+
+Code generation for loops can be broken down into three major parts
+
+    1. Register allocation for phi nodes at the bottom of the loop
+    2. Codegen for the body of the loop
+    3. Codegen to resolve phi conflicts at the top of the loop
+
+Phi nodes are found at the bottom of the loop, unlike traditional compiler IRs which would place them at the top. In this discussion we talk about the LHS and RHS of a phi node. We think of a phi node like
+
+    phi(L, R)
+
+The L is the value coming from outside the loop, and the R is the value defined inside the loop. Unlike traditional phi nodes, the phi nodes in this IR do not define a new variable that is referenced in the loop. The value computed by the phi node redefines the L value, so that the phi node can operationally be read as
+    
+    L = phi(L,R)
+
+Although the phi nodes are found at the bottom of the loop in the IR, its operations take effect at the top of the loop. After register allocation, we will have a situation like this
+
+    L = L;
+    LOOP:
+        ;; L = phi(L,R)
+        ...
+        R = ...
+        ...
+        L = R
+    GOTO LOOP
+
+Where the phi node has been replaced by copies. How the copies actually get placed is a bit complicated and is discussed in the "Resolving PHI node allocations at the LOOP marker" section below.
+
+
+Phi Nodes (bottom of loop)
+--------------------------
+When we begin code generation, the first thing we will do is allocate registers for the RHS of the phi nodes.
+
+1. Assign regs to rhs of the phi node.
 	* Mark the register assigned to the RHS as a hint for the LHS
-	* Keep track of each register that we have assigned to the RHS of a phi node (phiset)
+	* Keep track of each machine register `r` that we have assigned to the RHS of a phi node (phiset)
 	* Keep track of the LHS of each register we have assigned to a RHS of a phi node (phimap[r] -> LHS)
+
+
+Loop Codgen (loop body)
+------------------------
+The codgen for the loop body continues as for the rest of the IR as described above. The LHS are not handled specially. We stored the hint for the LHS to take the same register as the RHS so it will automatically get that register if it is free when we first need to allocate a register for the LHS.
+
 2. If we see the LHS of the phi node and cannot assign the same register (stored as a hint), then we have overlapping live ranges and the two sides of the phi node must be given different registers.
 3. If we see the LHS of a phi node and the register is free then we can assign the same register and the copying will happen automatically.
 4. Generate copies and stores as neede for phi nodes at the loop marker
 
-Loop Marker
------------
-Check all assigned phi register
-	* If reg(LHS) == reg(RHS) then ok
+
+Loop Marker (top of loop)
+-------------------------
+When we get to the loop marker we have reached the top of the loop. We need to take care of any phi nodes that have different registers assigned to the LHS and RHS. Resolving the differences is skecthed below and discussed in detail in a later section.
+
+Check all assigned phi register (phiregs)
+	* If reg(LHS) == reg(RHS) then pass
 	* Else
-		* If reg(RHS) is free then rename(LHS to RHS) (r(RHS) => r(LHS))
-		* Else
-			* If we are blocked by another phi register GIVE UP (for now)
-			* Else, spill
+		* If reg(RHS) is free then call  rename(LHS, RHS)
+          This will change the LHS register assignement to use r(RHS) outside of the loop and insert a copy from r(RHS) to r(LHS) at the top of the loop.
+		* Else (r(RHS) is not free)
+            * If we are blocked by another phi register then we have a cycle of depencies between the phi nodes and we need to use an extra register to be able to correctly insert copies to break the cycle.
+            * Otherwise (not blocked by another phi register) we will choose to spill the value that is taking our register. Spilling the non-phi value will insert a load for that value at the top of the loop and then call rename(r(LHS),r(RHS)). The rename will use the r(RHS) register for the phi outside the loop, insert a copy from r(RHS) to r(LHS) at the top of the loop, and a load from non-phi into r(RHS) at the top of the loop (after the copy).
 
+Once phi register mismatches have been resolved we have generated all the code for the loop. Now that we know the location of the top of the loop we insert the jump at the bottom of the loop that returns to the top of the loop.
 
-Register allocation for PHI Nodes
-==================================
+Resolving PHI node allocations at the LOOP marker
+=================================================
+
+Resolving phi node conflicts can be a bit confusing so here are some more details.
+
 
 No conflict between LHS and RHS assignment
 ------------------------------------------
@@ -400,8 +531,3 @@ To make sure that we always reference the right location for a snapshot, we emit
 The `IR_RENAME` instruction takes two paramters, the first is the IR Reference that is being renamed, and the second is the IR reference below which the renaming is valid. The register for the value above the change point will be stored in the origininal IR instruction, and the register below the change point will be stored in the `IR_RENAME` instruction.
 
 When we go to restore a snapshot, we check to see if the ir reference is an input to a IR_RENAME instruction and if we are below the rename point. If so, we will use the renamed register value, otherwise we use the original register value.
-
-
-
-
-
