@@ -17,12 +17,9 @@ extern void asmEnter(Fragment *F, Thread *T, Word *spillArea, Word *base, MCode*
 void asmEngine(Capability *cap, Fragment *F) {
   JitState *J = &cap->J;
 
-  dumpAsm(F->mcode, F->szmcode, NULL /* use a new FILE */);
-  //LC_ASSERT(0 && "STOPPING AFTER CODEGEN");
-  dumpExitStubs(J);
-  enterTrace(&cap->J, F);
-
-  //LC_ASSERT(0 && "STOP HERE");
+  IF_DBG_LVL(2,dumpAsm(F->mcode, F->szmcode, NULL /* use a new FILE */));
+  IF_DBG_LVL(2,dumpExitStubs(J));
+  enterTrace(J, F);
 }
 
 static void dumpAsm(MCode* mcode, MSize sz, FILE* out) {

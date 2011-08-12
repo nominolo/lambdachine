@@ -67,11 +67,13 @@ static void emit_rr(ASMState *as, x86Op xo, Reg r1, Reg r2)
 }
 
 /* [addr] is sign-extended in x64 and must be in lower 2G (not 4G). */
+#ifdef LC_DEBUG_RA
 static int32_t ptr2addr(const void *p)
 {
   LC_ASSERT((uintptr_t)p < (uintptr_t)0x80000000);
   return i32ptr(p);
 }
+#endif
 
 /* op r, [base+ofs] */
 static void emit_rmro(ASMState *as, x86Op xo, Reg rr, Reg rb, int32_t ofs)
