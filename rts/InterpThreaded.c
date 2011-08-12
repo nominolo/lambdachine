@@ -635,6 +635,7 @@ int engine(Capability *cap)
     LC_ASSERT(getInfo(tnode) != NULL);
 
     DBG_IND(printf("evaluating: %p\n", tnode));
+    DBG_IND(printf("closure: ");printClosure(tnode);printf("\n"););
     DBG_IND(printf("itbl %p\n", getFInfo(tnode)->name));
 
     while (closure_IND(tnode)) {
@@ -709,6 +710,7 @@ int engine(Capability *cap)
     recordEvent(EV_UPDATE, 0);
 
     DBG_IND(printf("... updating: %p with %p\n", oldnode, newnode));
+    DBG_IND(printf("...  closure: "); printClosure(newnode);printf("\n"););
     setInfo(oldnode, (InfoTable*)&stg_IND_info);
     // TODO: Enforce invariant: *newcode is never an indirection.
     oldnode->payload[0] = (Word)newnode;
