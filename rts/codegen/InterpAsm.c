@@ -17,7 +17,6 @@ extern void asmEnter(Fragment *F, Thread *T, Word *spillArea, Word *base, MCode*
 void asmEngine(Capability *cap, Fragment *F) {
   JitState *J = &cap->J;
 
-  genAsm(J, F);
   dumpAsm(F->mcode, F->szmcode, NULL /* use a new FILE */);
   //LC_ASSERT(0 && "STOPPING AFTER CODEGEN");
   dumpExitStubs(J);

@@ -14,6 +14,7 @@
 #include "Bitset.h"
 #include "Stats.h"
 #include "Opts.h"
+#include "AsmCodeGen.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -955,6 +956,13 @@ finishRecording(JitState *J)
   *J->startpc = BCINS_AD(BC_JFUNC, 0, J->nfragments);
   DBG_PR("Overwriting startpc = %p, with: %x\n",
          J->startpc, *J->startpc);
+
+  if(J->param[JIT_P_enableasm]) {
+    //TODO: compute the actual framsize of a trace
+    //This number needs to be computed before a call to genAsm
+    J->cur.framesize = MAX_SLOTS;
+    genAsm(J, &J->cur);
+  }
   return registerCurrentFragment(J);
 }
 
@@ -1021,7 +1029,9 @@ registerCurrentFragment(JitState *J)
   F->heapmap = xmalloc(F->nheapmap * sizeof(HeapEntry));
   memcpy(F->heapmap, J->cur.heapmap, F->nheapmap * sizeof(HeapEntry));
 
-  F->framesize = MAX_SLOTS; //TODO: compute the actual framsize of a trace
+  F->framesize = J->cur.framesize;
+  F->mcode = J->cur.mcode;
+  F->szmcode = J->cur.szmcode;
 
   recordCleanup(J);
 
