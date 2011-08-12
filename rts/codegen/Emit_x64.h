@@ -73,15 +73,6 @@ static int32_t ptr2addr(const void *p)
   return i32ptr(p);
 }
 
-/* op r, [addr] */
-static void emit_rma(ASMState *as, x86Op xo, Reg rr, const void *addr)
-{
-  MCode *p = as->mcp;
-  *(int32_t *)(p-4) = ptr2addr(addr);
-  p[-5] = MODRM(XM_SCALE1, RID_ESP, RID_EBP);
-  as->mcp = emit_opm(xo, XM_OFS0, rr, RID_ESP, p, -5);
-}
-
 /* op r, [base+ofs] */
 static void emit_rmro(ASMState *as, x86Op xo, Reg rr, Reg rb, int32_t ofs)
 {
@@ -110,25 +101,6 @@ static void emit_rmro(ASMState *as, x86Op xo, Reg rr, Reg rb, int32_t ofs)
   as->mcp = emit_opm(xo, mode, rr, rb, p, 0);
 }
 
-/* op r, [base+idx*scale+ofs] */
-static void emit_rmrxo(ASMState *as, x86Op xo, Reg rr, Reg rb, Reg rx,
-		       x86Mode scale, int32_t ofs)
-{
-  MCode *p = as->mcp;
-  x86Mode mode;
-  if (ofs == 0 && (rb&7) != RID_EBP) {
-    mode = XM_OFS0;
-  } else if (checki8(ofs)) {
-    mode = XM_OFS8;
-    *--p = (MCode)ofs;
-  } else {
-    mode = XM_OFS32;
-    p -= 4;
-    *(int32_t *)p = ofs;
-  }
-  as->mcp = emit_opmx(xo, mode, scale, rr, rb, rx, p);
-}
-
 /* op r, i */
 static void emit_gri(ASMState *as, x86Group xg, Reg rb, int32_t i)
 {
@@ -143,21 +115,6 @@ static void emit_gri(ASMState *as, x86Group xg, Reg rb, int32_t i)
     xo = XG_TOXOi(xg);
   }
   as->mcp = emit_opm(xo, XM_REG, (Reg)(xg & 7) | (rb & REX_64), rb, p, 0);
-}
-
-/* op [base+ofs], i */
-static void emit_gmroi(ASMState *as, x86Group xg, Reg rb, int32_t ofs,
-		       int32_t i)
-{
-  x86Op xo;
-  if (checki8(i)) {
-    emit_i8(as, i);
-    xo = XG_TOXOi8(xg);
-  } else {
-    emit_i32(as, i);
-    xo = XG_TOXOi(xg);
-  }
-  emit_rmro(as, xo, (Reg)(xg & 7), rb, ofs);
 }
 
 #define emit_shifti(as, xg, r, i) \
@@ -281,33 +238,6 @@ static void emit_loadu64(ASMState *as, Reg r, uint64_t u64)
 /* Label for short jumps. */
 typedef MCode *MCLabel;
 
-/* jcc short target */
-static void emit_sjcc(ASMState *as, int cc, MCLabel target)
-{
-  MCode *p = as->mcp;
-  ptrdiff_t delta = target - p;
-  LC_ASSERT(delta == (int8_t)delta);
-  p[-1] = (MCode)(int8_t)delta;
-  p[-2] = (MCode)(XI_JCCs+(cc&15));
-  as->mcp = p - 2;
-}
-
-/* jcc short (pending target) */
-static MCLabel emit_sjcc_label(ASMState *as, int cc)
-{
-  MCode *p = as->mcp;
-  p[-1] = 0;
-  p[-2] = (MCode)(XI_JCCs+(cc&15));
-  as->mcp = p - 2;
-  return p;
-}
-
-/* Fixup jcc short target. */
-static void emit_sfixup(ASMState *as, MCLabel source)
-{
-  source[-1] = (MCode)(as->mcp-source);
-}
-
 /* Return label pointing to current PC. */
 #define emit_label(as)		((as)->mcp)
 
@@ -327,21 +257,6 @@ static void emit_jcc(ASMState *as, int cc, MCode *target)
   p[-5] = (MCode)(XI_JCCn+(cc&15));
   p[-6] = 0x0f;
   as->mcp = p - 6;
-}
-
-/* call target */
-static void emit_call_(ASMState *as, MCode *target)
-{
-  MCode *p = as->mcp;
-  if (target-p != (int32_t)(target-p)) {
-    /* Assumes RID_RET is never an argument to calls and always clobbered. */
-    emit_rr(as, XO_GROUP5, XOg_CALL, RID_RET);
-    emit_loadu64(as, RID_RET, (uint64_t)target);
-    return;
-  }
-  *(int32_t *)(p-4) = jmprel(p, target);
-  p[-5] = XI_CALL;
-  as->mcp = p - 5;
 }
 
 #define emit_call(as, f)	emit_call_(as, (MCode *)(void *)(f))
@@ -377,14 +292,6 @@ static void emit_spstore(ASMState *as, IRIns *ir, Reg r, int32_t ofs)
     emit_rmro(as, XO_MOVto, REX_64IR(ir, r), RID_BASE, ofs);
   else
     emit_rmro(as, XO_MOVSDto, r, RID_BASE, ofs);
-}
-
-/* Add offset to pointer. */
-static void emit_addptr(ASMState *as, Reg r, int32_t ofs)
-{
-  if (ofs) {
-    emit_gri(as, XG_ARITHi(XOg_ADD), r, ofs);
-  }
 }
 
 #define emit_spsub(as, ofs)	emit_addptr(as, RID_ESP|REX_64, -(ofs))
