@@ -11,6 +11,7 @@
 #include <string.h>
 #include <assert.h>
 #include <unistd.h>
+#include "Opts.h"
 
 #define VERSION_MAJOR  0
 #define VERSION_MINOR  1
@@ -37,7 +38,7 @@ void printModule(Module *mdl);
 void printStringTable(StringTabEntry *tbl, u4 len);
 void bufferOverflow(int sz, int bufsize);
 
-void initBasepath();
+void initBasepath(Opts *opts);
 
 void loadStringTabEntry(FILE *, StringTabEntry */*out*/);
 char *loadId(FILE *, const StringTabEntry *, const char* sep);
@@ -64,20 +65,24 @@ bufferOverflow(int sz, int bufsize)
 }
 
 void
-initBasepath()
+initBasepath(Opts *opts)
 {
   char buf[BUFSIZE];
   int res, sz;
-  char *cwd = getcwd(buf, BUFSIZE);
 
-  if (cwd == NULL) {
-    fprintf(stderr, "Could not get working directory\n");
-    exit(1);
+  const char *base = opts->base_path;
+  if(base[0] == '.') {
+    base = getcwd(buf, BUFSIZE);
+    if (base == NULL) {
+      fprintf(stderr, "Could not get working directory\n");
+      exit(1);
+    }
   }
 
-  sz = strlen(cwd) + 8;
+  sz = strlen(base) + 8;
   G_basepath = xmalloc(sz);
-  res = snprintf(G_basepath, sz, "%s/tests/", cwd);
+  res = snprintf(G_basepath, sz, "%s/tests/", base);
+  printf("BASE: %s\n", G_basepath);
 
   if (res <= 0) {
     fprintf(stderr, "Could not initialise base path.\n");
@@ -86,14 +91,14 @@ initBasepath()
 }
 
 void
-initLoader()
+initLoader(Opts *opts)
 {
   G_loader = xmalloc(sizeof(*G_loader));
   G_loader->loadedModules = HashTable_create();
   G_loader->infoTables = HashTable_create();
   G_loader->closures = HashTable_create();
 
-  initBasepath();
+  initBasepath(opts);
 }
 
 Closure *
