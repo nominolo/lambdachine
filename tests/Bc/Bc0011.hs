@@ -1,5 +1,7 @@
 {-# LANGUAGE NoImplicitPrelude, BangPatterns, MagicHash #-}
-module Bc0011 where
+-- RUN: %bc_vm_chk
+-- CHECK: @Result@ IND -> GHC.Bool.True!con_info
+module Bc.Bc0011 where
 
 import GHC.Base
 import GHC.Integer

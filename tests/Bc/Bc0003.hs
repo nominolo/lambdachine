@@ -1,5 +1,6 @@
 {-# LANGUAGE NoImplicitPrelude, MagicHash, BangPatterns #-}
-module Bc0003 where
+-- RUN: %bc
+module Bc.Bc0003 where
 
 import GHC.Prim
 import GHC.Bool

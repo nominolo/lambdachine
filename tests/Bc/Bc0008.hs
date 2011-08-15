@@ -1,5 +1,9 @@
 {-# LANGUAGE NoImplicitPrelude, BangPatterns, MagicHash #-}
-module Bc0008 where
+-- RUN: %bc_vm_chk
+-- CHECK: @Result@ IND -> GHC.Types.I#!con_info 0x0000000000000037
+-- This test currently segfaults
+-- XFAIL: *
+module Bc.Bc0008 where
 
 import GHC.Prim
 import GHC.Types
