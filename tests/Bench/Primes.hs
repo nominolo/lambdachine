@@ -1,4 +1,6 @@
 {-# LANGUAGE NoImplicitPrelude, BangPatterns, MagicHash #-}
+-- RUN: %bc_vm_chk
+-- CHECK: @Result@ IND -> GHC.Bool.True!con_info 
 module Bench.Primes where
 
 import GHC.Prim
@@ -25,7 +27,7 @@ root n = primes !! n
     primes = map head (iterate the_filter (iterate succ 2))
 
 test = 
-  root 10 == 13
+  root 10 == 31
   --(root 1500 == 12569)
 
 {-

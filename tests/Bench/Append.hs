@@ -1,5 +1,7 @@
 {-# LANGUAGE NoImplicitPrelude, BangPatterns, MagicHash #-}
 {-# OPTIONS_GHC -O0 #-}
+-- RUN: %bc_vm_chk
+-- CHECK: @Result@ IND -> GHC.Bool.True!con_info 
 module Bench.Append where
 
 import GHC.Types
