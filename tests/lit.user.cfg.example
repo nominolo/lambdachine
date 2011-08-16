@@ -1,0 +1,12 @@
+# Copy this file to lit.user.cfg to customize the lit.cfg file
+#
+# This config file is interpreted is a python file so you can use the full
+# python languages to customize the file as you see fit.
+
+
+# Some example configuration changes
+
+#config.INTERP_FLAGS += " --asm"
+#config.LCC_FLAGS    += " --dump-core-binds"
+#config.COMPILE_BC = False
+#config.BENCHMARK  = True
