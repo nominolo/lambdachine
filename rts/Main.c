@@ -144,7 +144,7 @@ main(int argc, char *argv[])
 
   T0 = createThread(G_cap0, 1024);
   clos0 = startThread(T0, clos0);
-  printClosure(clos0);
+  printf("@Result@ "); printClosure(clos0);
   printEvents();
 
   return 0;
