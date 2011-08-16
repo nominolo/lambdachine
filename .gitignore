@@ -1,14 +1,118 @@
-*.o
-asm_offsets.incl
-gen_offs
+### compiler and interpreter intermediate files
+# haskell (ghc) interfaces
 *.hi
 *.hi-boot
 *.o-boot
-.deps
-*~
-*.lcbc
+# object files
+*.o
+*.o.cmd
+# profiling haskell
+*.p_hi
+*.p_o
+# haskell program coverage resp. profiling info
+*.tix
+*.prof
+# fortran module files
+*.mod
+# linux kernel
+*.ko.cmd
+*.mod.c
+# *.ko files aren't boring by default because they might
+# be Korean translations rather than kernel modules
+# \.ko$
+# python, emacs, java byte code
+*.pyc
+*.pyo
+*.elc
+*.class
+# objects and libraries; lo and la are libtool things
+*.obj
+*.a
+*.exe
+*.so
+*.lo
+*.la
+# compiled zsh configuration files
+*.zwc
+# Common LISP output files for CLISP and CMUCL
+*.fas
+*.fasl
+*.sparcf
+*.x86f
+
+### build and packaging systems
+# cabal intermediates
+*.installed-pkg-config*
+*.setup-config*
+# standard cabal build dir, might not be boring for everybody
+# autotools
+autom4te.cache
+config.log
+config.status
+# microsoft web expression, visual studio metadata directories
+*_vti_cnf
+*_vti_pvt
+# gentoo tools
+*.revdep-rebuild.*
+# generated dependencies
+.depend
+
+### version control systems
+# cvs
+CVS/
+.cvsignore
+# cvs, emacs locks
+.#
+# rcs
+RCS/
+*,v
+# subversion
+*.svn
+# mercurial
+*.hg
+# bzr
+*.bzr
+# sccs
+SCCS/
+# darcs
+_darcs/
+*.darcsrepo/
+.darcs-temp-mail
 *.swp
 *.swo
+
+### miscellaneous
+# backup files
+*~
+*.bak
+*.BAK
+# patch originals and rejects
+*.orig
+*.rej
+# X server
+.serverauth.*
+# image spam
+Thumbs.db
+# vi, emacs tags
+tags/
+TAGS/
+#(^|/)\.[^/]
+# core dumps
+*.core
+# partial broken files (KIO copy operations)
+*.part
+# mac os finder
+*.DS_Store
+
+# Erlang
+*.dump
+*.beam
+
+# Lambdachine
+asm_offsets.incl
+gen_offs
+.deps
+*.lcbc
 # User config
 mk/build.mk
 # Util executables
@@ -18,6 +122,5 @@ utils/print_config
 compiler/Opcodes.h
 interp
 dist/
-.DS_Store
 dump.s
 _T.*
