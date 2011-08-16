@@ -125,6 +125,7 @@ clean:
 	rm -f $(SRCS:%.c=%.o) utils/*.o interp compiler/.depend \
 		compiler/lcc
 	rm -rf $(HSBUILDDIR)
+	$(MAKE) -C tests clean
 
 .PHONY: install-deps
 install-deps:
@@ -148,9 +149,6 @@ tests/base/%.lcbc: tests/base/%.hs
 	$(LCC) $(LCCFLAGS) --package-name=base $(patsubst tests/base/%, %, $<)
 #	@echo "@ = $@, < = $<"
 
-tests/%.lcbc: tests/%.hs
-	cd tests && $(LCC) $(LCCFLAGS) $(patsubst tests/%, %, $<)
-
 PRIM_MODULES_ghc-prim = GHC/Bool GHC/Types GHC/Ordering GHC/Tuple
 PRIM_MODULES_integer-gmp = GHC/Integer/Type GHC/Integer
 PRIM_MODULES_base = GHC/Base GHC/Classes GHC/Num GHC/List \
@@ -161,82 +159,21 @@ PRIM_MODULES = \
 	$(patsubst %,tests/integer-gmp/%.lcbc,$(PRIM_MODULES_integer-gmp)) \
 	$(patsubst %,tests/base/%.lcbc,$(PRIM_MODULES_base))
 
+.PHONY: check
+TESTS ?= .
+check: $(PRIM_MODULES)
+	@ $(MAKE) -C tests check TESTS=$(TESTS) LITARGS=$(LITARGS)
 
-test1: tests/Bc0005.lcbc $(PRIM_MODULES)
-	./interp --print-loader-state Bc0005
-
-test2: tests/Bc0006.lcbc $(PRIM_MODULES)
-	./interp Bc0006
-
-test3: tests/Bc0007.lcbc $(PRIM_MODULES)
-	./interp Bc0007
-
-test4: tests/PreludeTests.lcbc $(PRIM_MODULES)
-	./interp PreludeTests
-
-test5: tests/Bc0008.lcbc $(PRIM_MODULES)
-	./interp Bc0008
-
-test6: tests/Toys/Ackermann.lcbc $(PRIM_MODULES)
-	./interp Toys.Ackermann
-
-test7: tests/Bc0009.lcbc  $(PRIM_MODULES)
-	./interp --print-loader-state Bc0009
-
-test10: tests/Bc0010.lcbc  $(PRIM_MODULES)
-	./interp Bc0010
-
-test11: tests/Bc0011.lcbc  $(PRIM_MODULES)
-	./interp --print-loader-state Bc0011
-
-test12: tests/Bc0012.lcbc  $(PRIM_MODULES)
-	./interp --print-loader-state Bc0012
-
-test13: tests/Bc0013.lcbc $(PRIM_MODULES)
-	./interp Bc0013
-
-#
-# To run benchmark without the JIT enabled:
-#
-# $ make bench<n> NOJIT=1
-#
-
-ifeq ($(NOJIT),)
-BENCH_FLAGS ?=
-else
-BENCH_FLAGS = --no-jit
-endif
-
-bench1: tests/Bench/Append.lcbc $(PRIM_MODULES)
-	./interp $(BENCH_FLAGS) Bench.Append
-
-bench2: tests/Bench/SumFromTo1.lcbc $(PRIM_MODULES)
-	./interp $(BENCH_FLAGS) Bench.SumFromTo1
-
-bench2a: tests/Bench/SumFromTo2.lcbc $(PRIM_MODULES)
-	./interp $(BENCH_FLAGS) Bench.SumFromTo2
-
-bench2b: tests/Bench/SumFromTo3.lcbc $(PRIM_MODULES)
-	./interp $(BENCH_FLAGS) Bench.SumFromTo3
-
-bench2c: tests/Bench/SumFromTo4.lcbc $(PRIM_MODULES)
-	./interp $(BENCH_FLAGS) Bench.SumFromTo4
-
-bench3: tests/Bench/Tak.lcbc  $(PRIM_MODULES)
-	./interp $(BENCH_FLAGS) Bench.Tak
-
-bench4: tests/Bench/Primes.lcbc $(PRIM_MODULES)
-	./interp $(BENCH_FLAGS) Bench.Primes
-
-bench5: tests/Bench/SumSquare1.lcbc $(PRIM_MODULES)
-	./interp $(BENCH_FLAGS) Bench.SumSquare1
+.PHONY: bench
+bench: $(PRIM_MODULES)
+	$(MAKE) -C tests check TESTS=Bench LITARGS=$(LITARGS)
 
 pr:
 	@echo $(PRIM_MODULES)
 
 clean-bytecode:
-	rm -f $(PRIM_MODULES) tests/*.lcbc tests/Toys/*.lcbc \
-           tests/Bench/*.lcbc
+	rm -f $(PRIM_MODULES)
+	$(MAKE) -C tests clean
 
 -include $(SRCS:%.c=$(DEPDIR)/%.P)
 -include $(UTILSRCS:%.c=$(DEPDIR)/%.P)
