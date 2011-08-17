@@ -113,6 +113,10 @@ from separately compiled modules.
 #if defined(__GNUC__) || defined( __INTEL_COMPILER)
 
 # define INLINE_HEADER static inline
+# define LC_AINLINE inline __attribute__((always_inline))
+# define LC_NORET __attribute__((noreturn))
+# define LC_NOINLINE __attribute__((noinline))
+# define LC_USED     __attribute__((used))
 
 // Comment from GHC's Rts.h:
 // 
@@ -220,5 +224,42 @@ INLINE_HEADER void xfree(void *p)
 # define IF_DBG_LVL(lvl, stmt)   if (0) { }
 
 #endif
+
+/* JIT compiler limits. */
+#define LC_MAX_JSLOTS	250		/* Max. # of stack slots for a trace. */
+#define LC_MAX_PHI	32		/* Max. # of PHIs for a loop. */
+#define LC_MAX_EXITSTUBGR	8	/* Max. # of exit stub groups. */
+
+/* Various macros. */
+#define i32ptr(p)	((int32_t)(intptr_t)(void *)(p))
+#define u32ptr(p)	((uint32_t)(intptr_t)(void *)(p))
+
+#define checki8(x)	((x) == (int32_t)(int8_t)(x))
+#define checku8(x)	((x) == (int32_t)(uint8_t)(x))
+#define checki16(x)	((x) == (int32_t)(int16_t)(x))
+#define checku16(x)	((x) == (int32_t)(uint16_t)(x))
+#define checki32(x)	((x) == (int32_t)(x))
+#define checku32(x)	((x) == (uint32_t)(x))
+#define checkptr32(x)	((uintptr_t)(x) == (uint32_t)(uintptr_t)(x))
+#define UNUSED(x)  ((void)(x))  /* to avoid warnings */
+#define lc_ffs(x)  ((uint32_t)__builtin_ctz(x))       /* position of last bit */
+/* postion of first bit (most significant) set */
+static LC_AINLINE uint32_t lc_fls(uint32_t x)
+{
+  uint32_t r; __asm__("bsrl %1, %0" : "=r" (r) : "r" (x) : "cc"); return r;
+}
+/* swap order of bytes in x */
+static LC_AINLINE uint32_t lc_bswap(uint32_t x)
+{
+  uint32_t r; __asm__("bswap %0" : "=r" (r) : "0" (x)); return r;
+}
+
+/* A really naive Bloom filter. But sufficient for our needs. */
+typedef Word BloomFilter;
+#define BLOOM_MASK	(8*sizeof(BloomFilter) - 1)
+#define bloombit(x)	((Word)1 << ((x) & BLOOM_MASK))
+#define bloomset(b, x)	((b) |= bloombit((x)))
+#define bloomtest(b, x)	((b) & bloombit((x)))
+
 
 #endif

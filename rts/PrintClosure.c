@@ -33,7 +33,7 @@ printClosure(Closure* cl)
     
   int n, p = 0;
   for (n = info->layout.payload.ptrs; n > 0; p++, n--)
-    printf("%0" FMT_WordLen FMT_WordX " ", cl->payload[p]);
+    printf("0x%0" FMT_WordLen FMT_WordX " ", cl->payload[p]);
   for (n = info->layout.payload.nptrs; n > 0; p++, n--)
     printf("%" FMT_Int " ", cl->payload[p]);
   

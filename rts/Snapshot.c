@@ -9,6 +9,8 @@
 //
 #include "Snapshot.h"
 #include "PrintIR.h"
+#include "AsmTarget.h"
+#include "Thread.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -151,6 +153,103 @@ printSnapshot(JitState *J, SnapShot *snap, SnapEntry *map)
   }
   printf("pc = %p\n", pc);
 }
+
+/* -- Snapshot restoration ------------------------------------------------ */
+/* Initialize a Bloom Filter with all renamed refs.
+** There are very few renames (often none), so the filter has
+** very few bits set. This makes it suitable for negative filtering.
+*/
+static BloomFilter snap_renamefilter(Fragment *F, SnapNo lim)
+{
+  BloomFilter rfilt = 0;
+  IRIns *ir;
+  for (ir = &F->ir[F->nins-1]; ir->o == IR_RENAME; ir--)
+    if (ir->op2 <= lim)
+      bloomset(rfilt, ir->op1);
+  return rfilt;
+}
+
+/* Process matching renames to find the original RegSP. */
+static RegSP snap_renameref(Fragment *F, SnapNo lim, IRRef ref, RegSP rs)
+{
+  IRIns *ir;
+  for (ir = &F->ir[F->nins-1]; ir->o == IR_RENAME; ir--)
+    if (ir->op1 == ref && ir->op2 <= lim)
+      rs = ir->prev;
+  return rs;
+}
+
+void restoreSnapshot(SnapNo snapno, void *exptr) {
+  ExitState *ex = (ExitState *)exptr;
+  Thread *T   = ex->T;
+  Fragment *F = ex->F;
+  SnapShot *snap = &F->snap[snapno];
+  u1 n, nent = snap->nent;
+  SnapEntry *smap = &F->snapmap[snap->mapofs];
+  BloomFilter rfilt = snap_renamefilter(F, snapno);
+
+  /* Recall the base pointer we had on entry */
+  Word *base = (Word *)ex->gpr[RID_BASE];
+
+  /* Fill stack slots with data from the registers and spill slots. */
+  for (n = 0; n < nent; n++) {
+    SnapEntry se = smap[n];
+    BCReg s    = snap_slot(se);
+    IRRef ref  = snap_ref(se);
+    Word *bval = &base[s];
+    IRIns *ir  = &F->ir[ref];
+
+    if(irref_islit(ref)) { /* restore constant ref */
+      switch(ir->o) {
+        case IR_KINT:
+          *bval = ir->i;
+          break;
+        case IR_KWORD:
+          *bval = F->kwords[ir->u];
+          break;
+        case IR_KBASEO:
+          //TODO: why is KBASEO against base[0], but other offsets are
+          // against base[-1]??
+          *bval = (Word)&base[ir->i + 1];
+          break;
+        default:
+          LC_ASSERT(0 && "Unexpected constant ref");
+      }
+    }
+    else { /* non-const reference */
+      RegSP rs = ir->prev;
+
+      /* check for rename */
+      if (LC_UNLIKELY(bloomtest(rfilt, ref))){
+        rs = snap_renameref(F, snapno, ref, rs);
+      }
+
+      /* restore from spill slot */
+      if(ra_hasspill(regsp_spill(rs))) {
+        *bval = ex->spill[regsp_spill(rs)];
+      }
+      /* or restore from register */
+      else {
+        Reg r = regsp_reg(rs);
+	LC_ASSERT(ra_hasreg(r));
+        *bval = ex->gpr[r];
+      }
+    }
+
+    IF_DBG_LVL(1,
+      printf("base[%d] = ", s - 1);
+      printSlot(base + s);
+      printf("\n")
+    );
+  }
+
+  /* Restore pc, base, and top pointers for the thread */
+  DBG_PR("Base slot: %d\n", smap[nent+1]);
+  T->pc   = (BCIns *)F->startpc + (int)smap[nent];
+  T->base = base + smap[nent+1];
+  T->top  = base + snap->nslots;
+}
+
 
 #undef IR
 

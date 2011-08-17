@@ -13,6 +13,8 @@
 #include "HeapInfo.h"
 #include "Bitset.h"
 #include "Stats.h"
+#include "Opts.h"
+#include "AsmCodeGen.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -325,7 +327,7 @@ INLINE_HEADER void
 guardEqualKWord(JitState *J, TRef ref, Word k, LitType lt)
 {
   TRef kref = emitKWord(J, k, lt);
-  emit(J, IRT(IR_EQ, IRT_VOID), ref, kref);
+  emit(J, IRT(IR_EQ, IRT_CMP), ref, kref);
 }
 
 void
@@ -356,6 +358,7 @@ printIRBuffer(JitState *J)
   IRRef ref;
   SnapShot *snap = J->cur.nsnap > 0 ? J->cur.snap : NULL;
   IRRef nextsnap = snap ? snap->ref : 0;
+  SnapNo snapno = 0;
 
   printf("IRs (%d..%d):\n",
          J->cur.nk - REF_BIAS,
@@ -371,9 +374,10 @@ printIRBuffer(JitState *J)
 #endif
 
     if (ref == nextsnap) {
-      printf("          ");
+      printf("     S:%02d  ",snapno);
       printSnapshot(J, snap, J->cur.snapmap);
       ++snap;
+      ++snapno;
       if (snap >= J->cur.snap + J->cur.nsnap) {
         snap = NULL; nextsnap = 0;
       } else
@@ -504,7 +508,7 @@ recordIns(JitState *J)
       int irop = (int)IR_LT + ((int)op - (int)BC_ISLT);
       // Invert condition if negative outcome
       if (!evalNumComp(rav, rcv, irop)) irop ^= 1;
-      emit(J, IRT(irop, IRT_VOID), ra, rc);
+      emit(J, IRT(irop, IRT_CMP), ra, rc);
     }
     break;
 
@@ -577,7 +581,7 @@ recordIns(JitState *J)
       // table as the one we encountered at recording time.
       rc = emitKWord(J, (Word)ninfo, LIT_INFO);
       rb = emit(J, IRT(IR_ILOAD, IRT_INFO), ra, 0);
-      emit(J, IRT(IR_EQ, IRT_VOID), rb, rc);
+      emit(J, IRT(IR_EQ, IRT_CMP), rb, rc);
 
       if (closure_HNF(node)) {
         // ra is in normal form.  Guard makes sure of that, so we now just
@@ -621,7 +625,7 @@ recordIns(JitState *J)
         TRef rinfo = emitKWord(J, (Word)info, LIT_INFO);
         ra = getSlot(J, bc_a(ins));
         rb = emit(J, IRT(IR_ILOAD, IRT_INFO), ra, 0);
-        emit(J, IRT(IR_EQ, IRT_VOID), rb, rinfo);
+        emit(J, IRT(IR_EQ, IRT_CMP), rb, rinfo);
         setSlot(J, -1, ra);
 
         J->maxslot = info->code.framesize;
@@ -648,7 +652,7 @@ recordIns(JitState *J)
         TRef rinfo = emitKWord(J, (Word)info, LIT_INFO);
         ra = getSlot(J, bc_a(ins));
         rb = emit(J, IRT(IR_ILOAD, IRT_INFO), ra, 0);
-        emit(J, IRT(IR_EQ, IRT_VOID), rb, rinfo);
+        emit(J, IRT(IR_EQ, IRT_CMP), rb, rinfo);
 
         // Save references of extra args.
         for (i = 0; i < extra_args; i++)
@@ -781,7 +785,7 @@ recordIns(JitState *J)
       rb = getSlot(J, bc_b(ins));
       // Ensure that r(B) actually contains the the info table we're
       // expecting.  Usually, this will be optimised away.
-      emit(J, IRT(IR_EQ, IRT_VOID), rb, rinfo);
+      emit(J, IRT(IR_EQ, IRT_CMP), rb, rinfo);
 
       rc = getSlot(J, bc_c(ins));
       rnew = emit(J, IRT(IR_NEW, IRT_CLOS), rinfo, 2);
@@ -802,7 +806,7 @@ recordIns(JitState *J)
       u4 i;
       rinfo = emitKWord(J, (Word)info, LIT_INFO);
       rb = getSlot(J, bc_b(ins));
-      emit(J, IRT(IR_EQ, IRT_VOID), rb, rinfo);
+      emit(J, IRT(IR_EQ, IRT_CMP), rb, rinfo);
       u4 h = newHeapInfo(J, rnew, info);
       HeapInfo *hp = &J->cur.heap[h];
       for (i = 0; i < size; i++, arg++) {
@@ -888,8 +892,16 @@ recordIns(JitState *J)
   return REC_ABORT;
 }
 
+/* Default values for JIT parameters. */
+static const int32_t jit_param_default[JIT_P__MAX+1] = {
+#define JIT_PARAMINIT(len, name, value)	(value),
+JIT_PARAMDEF(JIT_PARAMINIT)
+#undef JIT_PARAMINIT
+  0
+};
+
 void
-initJitState(JitState *J)
+initJitState(JitState *J, const Opts* opts)
 {
   J->mode = 0;
   J->startpc = 0;
@@ -898,6 +910,13 @@ initJitState(JitState *J)
   //  J->maskfragment = J->sizefragment - 1;
   J->fragment = xmalloc(J->sizefragment * sizeof(*J->fragment));
   J->nfragments = 0;
+
+  // Initialize jit parameters
+  memcpy(J->param, jit_param_default, sizeof(J->param));
+  J->param[JIT_P_enableasm] = opts->enable_asm;
+
+  // Initialize exit stubs
+  memset(J->exitstubgroup, 0, sizeof(J->exitstubgroup));
 }
 
 LC_FASTCALL void
@@ -937,6 +956,13 @@ finishRecording(JitState *J)
   *J->startpc = BCINS_AD(BC_JFUNC, 0, J->nfragments);
   DBG_PR("Overwriting startpc = %p, with: %x\n",
          J->startpc, *J->startpc);
+
+  if(J->param[JIT_P_enableasm]) {
+    //TODO: compute the actual framsize of a trace
+    //This number needs to be computed before a call to genAsm
+    J->cur.framesize = MAX_SLOTS;
+    genAsm(J, &J->cur);
+  }
   return registerCurrentFragment(J);
 }
 
@@ -1002,6 +1028,10 @@ registerCurrentFragment(JitState *J)
   memcpy(F->heap, J->cur.heap, F->nheap * sizeof(HeapInfo));
   F->heapmap = xmalloc(F->nheapmap * sizeof(HeapEntry));
   memcpy(F->heapmap, J->cur.heapmap, F->nheapmap * sizeof(HeapEntry));
+
+  F->framesize = J->cur.framesize;
+  F->mcode = J->cur.mcode;
+  F->szmcode = J->cur.szmcode;
 
   recordCleanup(J);
 

@@ -15,6 +15,7 @@
 #include "StorageManager.h"
 #include "Jit.h"
 #include "Stats.h"
+#include "InterpAsm.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -198,7 +199,8 @@ int engine(Capability *cap)
     J->func = getFInfo((Closure*)base[-1]);
     u4 recstatus = recordIns(J);
     if (recstatus != REC_CONT) {
-      printf(COL_RED "Recording finished: %x\n" COL_RESET, recstatus);
+      //printf(COL_RED "Recording finished: %x\n" COL_RESET, recstatus);
+      printf("Recording finished: %x\n", recstatus);
       disp = disp1;
       switch (recstatus & REC_MASK) {
       case REC_ABORT:
@@ -211,7 +213,12 @@ int engine(Capability *cap)
           Closure *cl;
           LC_ASSERT(F != NULL);
           recordEvent(EV_TRACE, 0);
-          irEngine(cap, F);
+          if(J->param[JIT_P_enableasm]) {
+            asmEngine(cap, F);
+          }
+          else {
+            irEngine(cap, F);
+          }
           DBG_PR("*** Continuing at: pc = %p, base = %p\n",
                  T->pc, T->base);
           //LC_ASSERT(0);
@@ -456,7 +463,12 @@ int engine(Capability *cap)
 
     LC_ASSERT(F != NULL);
     recordEvent(EV_TRACE, 0);
-    irEngine(cap, F);
+    if(J->param[JIT_P_enableasm]) {
+      asmEngine(cap, F);
+    }
+    else {
+      irEngine(cap, F);
+    }
     DBG_PR("*** Continuing at: pc = %p, base = %p\n", T->pc, T->base);
 
     pc = T->pc;
@@ -623,6 +635,7 @@ int engine(Capability *cap)
     LC_ASSERT(getInfo(tnode) != NULL);
 
     DBG_IND(printf("evaluating: %p\n", tnode));
+    DBG_IND(printf("closure: ");printClosure(tnode);printf("\n"););
     DBG_IND(printf("itbl %p\n", getFInfo(tnode)->name));
 
     while (closure_IND(tnode)) {
@@ -697,6 +710,7 @@ int engine(Capability *cap)
     recordEvent(EV_UPDATE, 0);
 
     DBG_IND(printf("... updating: %p with %p\n", oldnode, newnode));
+    DBG_IND(printf("...  closure: "); printClosure(newnode);printf("\n"););
     setInfo(oldnode, (InfoTable*)&stg_IND_info);
     // TODO: Enforce invariant: *newcode is never an indirection.
     oldnode->payload[0] = (Word)newnode;

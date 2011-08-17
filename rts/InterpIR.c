@@ -227,8 +227,8 @@ irEngine(Capability *cap, Fragment *F)
     LC_ASSERT(snap != 0);
     snap->count++;
     se = F->snapmap + snap->mapofs;
-    DBG_PR("Snap entries: %d, slots = %d\n",
-           snap->nent, snap->nslots);
+    DBG_PR("Snapshot: %d, Snap entries: %d, slots = %d\n",
+           i, snap->nent, snap->nslots);
     recordEvent(EV_EXIT, snap->nent);
     for (i = 0; i < snap->nent; i++, se++) {
       BCReg s = snap_slot(*se);

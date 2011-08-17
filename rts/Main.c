@@ -4,17 +4,11 @@
 #include "PrintClosure.h"
 #include "StorageManager.h"
 #include "Stats.h"
+#include "Opts.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <getopt.h>
-
-typedef struct {
-  const char  *input_file;
-  const char  *main_closure;
-  int          print_loader_state;
-  int          disable_jit;
-} Opts;
 
 #define MAX_CLOSURE_NAME_LEN 512
 
@@ -22,7 +16,8 @@ static Opts opts = {
   .input_file = "Bc0005",
   .main_closure = "test",
   .print_loader_state = 0,
-  .disable_jit = 0
+  .disable_jit = 0,
+  .enable_asm  = 0
 };
 
 void loadWiredInModules();
@@ -39,6 +34,7 @@ main(int argc, char *argv[])
   static struct option long_options[] = {
     {"print-loader-state", no_argument, &opts.print_loader_state, 1},
     {"no-jit",             no_argument, &opts.disable_jit, 1},
+    {"asm",                no_argument, &opts.enable_asm, 1},
     {"no-run",             no_argument, 0, 'l'},
     {"entry",              required_argument, 0, 'e'},
     {"help",               no_argument, 0, 'h'},
@@ -112,7 +108,7 @@ main(int argc, char *argv[])
     }
   }
 
-  initVM();
+  initVM(&opts);
   initStorageManager();
   initLoader();
   loadWiredInModules();

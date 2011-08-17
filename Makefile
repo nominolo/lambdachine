@@ -25,9 +25,10 @@ all: interp compiler/Opcodes.h $(LCC)
 boot:
 	mkdir -p $(HSBUILDDIR)
 	mkdir -p $(DEPDIR)/rts
+	mkdir -p $(DEPDIR)/rts/codegen
 	mkdir -p $(DEPDIR)/utils
 
-INCLUDES = -Iincludes -Irts
+INCLUDES = -Iincludes -Irts -Irts/codegen
 CFLAGS = -Wall -g
 
 df = $(DEPDIR)/$(*D)/$(*F)
@@ -40,7 +41,10 @@ SRCS = rts/Bytecode.c rts/Capability.c rts/ClosureFlags.c \
        rts/Main.c \
        rts/Record.c rts/PrintIR.c rts/OptimiseIR.c \
        rts/Snapshot.c rts/HeapInfo.c rts/Bitset.c \
-       rts/InterpIR.c rts/Stats.c
+       rts/InterpIR.c rts/Stats.c \
+       rts/codegen/MCode.c rts/codegen/InterpAsm.c \
+       rts/codegen/AsmCodeGen.c
+
 
 UTILSRCS = utils/genopcodes.c
 
@@ -50,7 +54,7 @@ echo:
 
 interp: $(SRCS:.c=.o)
 	@echo "LINK $^ => $@"
-	@$(CC) -o $@ $^
+	@$(CC) -Wl,-no_pie -o $@ $^
 
 # Building a C file automatically generates dependencies as a side
 # effect.  This only works with `gcc'.

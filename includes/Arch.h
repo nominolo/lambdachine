@@ -39,6 +39,7 @@
 # define LC_TARGET_X64		1
 # define LC_TARGET_X86ORX64	1
 # define LC_PAGESIZE		4096
+# define LC_TARGET_JUMPRANGE	31/* +-2^31 = +-2GB */
 #else
 #error "No target architecture defined"
 #endif
