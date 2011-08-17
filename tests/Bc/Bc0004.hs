@@ -1,4 +1,5 @@
 {-# LANGUAGE NoImplicitPrelude, MagicHash #-}
+-- RUN: %bc
 module Bc0004 where
 
 import GHC.Prim

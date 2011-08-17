@@ -1,5 +1,7 @@
 {-# LANGUAGE NoImplicitPrelude, BangPatterns, MagicHash #-}
-module PreludeTests where
+-- RUN: %bc_vm_chk
+-- CHECK: @Result@ IND -> GHC.Types.I#!con_info 0x000000000000000a
+module Bc.PreludeTests where
 
 import GHC.Base
 import GHC.Num

@@ -1,4 +1,6 @@
 {-# LANGUAGE NoImplicitPrelude, BangPatterns, MagicHash #-}
+-- RUN: %bc_vm_chk
+-- CHECK: @Result@ IND -> GHC.Types.I#!con_info 0x0000000000000003
 module Bench.Tak where
 
 import GHC.Types

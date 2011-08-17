@@ -1,5 +1,7 @@
 {-# LANGUAGE MagicHash, NoImplicitPrelude #-}
-module Bc0013 where
+-- RUN: %bc_vm_chk
+-- CHECK: @Result@ IND -> GHC.Types.I#!con_info 0x0000000000000003 
+module Bc.Bc0013 where
 
 import GHC.Prim
 import GHC.Bool

@@ -1,5 +1,7 @@
 {-# LANGUAGE NoImplicitPrelude, MagicHash #-}
-module Bc0005 where
+-- RUN: %bc_vm_chk
+-- CHECK: @Result@ IND -> GHC.Bool.False!con_info
+module Bc.Bc0005 where
 
 import GHC.Prim
 import GHC.Bool

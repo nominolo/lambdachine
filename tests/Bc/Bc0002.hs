@@ -1,5 +1,6 @@
 {-  # LANGUAGE NoImplicitPrelude, MagicHash #-}
-module Bc0002 where
+-- RUN: %bc
+module Bc.Bc0002 where
 {-
 import GHC.Num
 import GHC.Types

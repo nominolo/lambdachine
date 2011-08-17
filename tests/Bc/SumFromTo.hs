@@ -1,5 +1,16 @@
 {-# LANGUAGE NoImplicitPrelude, MagicHash, BangPatterns #-}
-module Test1 where
+-- RUN: %bc_vm
+-- Fails with:
+-- No instance for (GHC.Num.Num Int)
+--   arising from the literal `1234567890'
+-- Possible fix: add an instance declaration for (GHC.Num.Num Int)
+-- In the first argument of `sum', namely `1234567890'
+-- In the expression: (sum 1234567890 (upto (I# 1#) (I# 15#)))
+-- In an equation for `test':
+--     test = (sum 1234567890 (upto (I# 1#) (I# 15#)))
+-- XFAIL: *
+
+module Bc.SumFromTo where
 
 --import Prelude (Int, print)
 --import GHC.Base (plusInt, gtInt)

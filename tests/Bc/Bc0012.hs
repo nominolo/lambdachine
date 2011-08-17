@@ -1,4 +1,5 @@
 {-# LANGUAGE NoImplicitPrelude, BangPatterns, MagicHash #-}
+-- RUN: %bc
 module Bc0012 where
 
 import GHC.Base

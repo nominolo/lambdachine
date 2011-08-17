@@ -14,6 +14,7 @@
 
 static Opts opts = {
   .input_file = "Bc0005",
+  .base_path  = ".",
   .main_closure = "test",
   .print_loader_state = 0,
   .disable_jit = 0,
@@ -37,6 +38,7 @@ main(int argc, char *argv[])
     {"asm",                no_argument, &opts.enable_asm, 1},
     {"no-run",             no_argument, 0, 'l'},
     {"entry",              required_argument, 0, 'e'},
+    {"base",               required_argument, 0, 'B'},
     {"help",               no_argument, 0, 'h'},
     {0, 0, 0, 0}
   };
@@ -45,7 +47,7 @@ main(int argc, char *argv[])
 
   while (1) {
     int option_index = 0;
-    c = getopt_long(argc, argv, "he:", long_options, &option_index);
+    c = getopt_long(argc, argv, "he:B:", long_options, &option_index);
 
     if (c == -1)
       break;
@@ -60,6 +62,10 @@ main(int argc, char *argv[])
       printf("entry = %s\n", optarg);
       opts.main_closure = optarg;
       break;
+    case 'B':
+      printf("base = %s\n", optarg);
+      opts.base_path = optarg;
+      break;
     case 'l':
       opts.main_closure = NULL;
       break;
@@ -72,6 +78,8 @@ main(int argc, char *argv[])
              "     --print-loader-state\n"
              "                  Print static closures and info tables after loading.\n"
              "     --no-jit     Don't enable JIT.\n"
+             "     --asm        Generate native code.\n"
+             "  -B --base       Set loader base dir (default: cwd).\n"
              "\n",
              argv[0]);
       exit(0);
@@ -110,7 +118,7 @@ main(int argc, char *argv[])
 
   initVM(&opts);
   initStorageManager();
-  initLoader();
+  initLoader(&opts);
   loadWiredInModules();
   loadModule(opts.input_file);
 
@@ -136,7 +144,7 @@ main(int argc, char *argv[])
 
   T0 = createThread(G_cap0, 1024);
   clos0 = startThread(T0, clos0);
-  printClosure(clos0);
+  printf("@Result@ "); printClosure(clos0);
   printEvents();
 
   return 0;
