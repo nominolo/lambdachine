@@ -123,5 +123,5 @@ compiler/Opcodes.h
 interp
 dist/
 dump.s
-_T.*
+_T*.*
 tests/lit.user.cfg
