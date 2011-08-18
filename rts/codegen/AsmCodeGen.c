@@ -1041,18 +1041,42 @@ static void asm_intarith(ASMState *as, IRIns *ir, x86Arith xa) {
   Reg dest  = ra_dest(as, ir, allow);
 
   if(irref_islit(rref)) {
-    Reg right = ra_allock(as, rref, rset_clear(allow, dest), &k);
-    if(ra_noreg(right)) { /* 32-bit constant */
-      emit_gri(as, XG_ARITHi(xa), dest|REX_64, k);
-    }
-    else { /* Can't fit constant into opcode */
-      emit_mrm(as, XO_ARITH(xa), dest|REX_64, right|REX_64);
-      ra_rematk(as, rref); /* load the constant into the reg before use */
-    }
+    right = ra_allock(as, rref, rset_clear(allow, dest), &k);
   }
   else { /* Non-constant right operand */
-    Reg right = ra_alloc(as, rref, rset_clear(allow, dest));
-    emit_mrm(as, XO_ARITH(xa), dest|REX_64, right|REX_64);
+    right = ra_alloc(as, rref, rset_clear(allow, dest));
+  }
+
+  if(xa != XOg_X_IMUL) {
+    if(ra_hasreg(right)) {
+      emit_mrm(as, XO_ARITH(xa), dest|REX_64, right|REX_64);
+
+      /* load the 64-bit constant into the reg before use */
+      if(irref_islit(rref)) {
+        ra_rematk(as, rref);
+      }
+    }
+    else { /* 32-bit constant */
+      emit_gri(as, XG_ARITHi(xa), dest|REX_64, k);
+    }
+  }
+  else { /* Integer Multiplication */
+    if(ra_hasreg(right)) { /* IMUL r, mrm */
+      emit_mrm(as, XO_IMUL, dest|REX_64, right|REX_64);
+
+      /* load the 64-bit constant into the reg before use */
+      if(irref_islit(rref)) {
+        ra_rematk(as, rref);
+      }
+    }
+    else { /* IMUL r, r, k */
+      Reg left = ra_alloc(as, lref, RSET_GPR);
+      x86Op xo;
+      if (checki8(k)) { emit_i8(as, k); xo = XO_IMULi8;
+      } else { emit_i32(as, k); xo = XO_IMULi; }
+      emit_mrm(as, xo, dest|REX_64, left|REX_64);
+      return;
+    }
   }
 
   ra_left(as, dest, lref);
