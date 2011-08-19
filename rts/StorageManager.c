@@ -95,10 +95,10 @@ allocInRegion(MemRegion **rp, u4 nwords)
     return res;
   } else {
     MemRegion *s = allocRegion(REGION_SIZE);
-    void *res = s->top;
+    void *res = s->next;
     s->next_region = r;
     *rp = s;
-    s->top += nwords;
+    s->next += nwords;
     return res;
   }
 }

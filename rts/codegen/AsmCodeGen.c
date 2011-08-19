@@ -587,66 +587,6 @@ static void asm_setup_regsp(ASMState *as)
   }
 }
 
-/* -- Operand Fusion ------------------------------------------------------ */
-/* So what is the deal with this operand fusion stuff?
- * The idea is actually pretty simple. All we are doing here is trying to take
- * advantage of the differnt addressing modes in x86. Many of the x86
- * instructions can operate on either a register/register pair of operands or a
- * register/memory pair of operands. The goal of the operand fusion is to
- * replace one of the register operands with a memory operand to reduce
- * register pressure. For example, consider this IR code
- *
- * 0001 = SLOAD ...
- * 0002 = FREF  0001 1
- * 0003 = FLOAD 0002
- *
- * Normally, when we get to the FLOAD, we would allocate a register for the
- * destination (say rdi), allocate a register for the operand (say rax) and then
- * generate the code
- *
- *      mov rdi, [rax]
- *
- * Then when we get to 0002 we would find the destination already allocated to
- * rax and generate the code for the FREF which would be (assuming SLOAD goes
- * into rcx)
- *
- *      lea rax, [rcx + 8]
- *
- * Now instetad we can fuse the FREF operand into the FLOAD directly, to get
- *
- *      mov rdi, [rcx + 8]
- *
- * Then the result of the FREF will not be used, which makes it dead code and
- * we will not emit any instructions for it.
- *
- * In the simple case of a FREF/FLOAD pair the fusion is the obvious thing to
- * do, but we can also do the fusion for other operations, such as an ADD
- * instruction which can operate on a register and memory operand pair.
- */
-static Reg ra_fuseload(ASMState *as, IRRef ref, RegSet allow) {
-  IRIns *ir = IR(ref);
-
-  /* If we already have a register just use that */
-  if (ra_hasreg(ir->r)) { return ir->r; }
-
-  /* IR_FREF
-   * The op can be easily fused if it is an FREF, since an FREF is
-   * simple [base + ofs]. We make sure that the base ref is not a constant
-   * because that would have to be remateralized to a register before we can
-   * use it.
-   */
-  if (ir->o == IR_FREF && !irref_islit(ir->op1)) {
-    int32_t ofs  = ir->op2;
-    as->mrm.base = ra_alloc(as, ir->op1, allow);
-    as->mrm.ofs  = fref_scale(ofs);
-    as->mrm.idx  = RID_NONE;
-    return RID_MRM;
-  }
-
-  /* if all else fails call allocref directly to allocate a register */
-  return ra_allocref(as, ref, allow);
-}
-
 /* -- PHI and loop handling  ---------------------------------------------- */
 
 /* Emit rename ir instruction. */
@@ -694,6 +634,7 @@ static void ra_rename(ASMState *as, Reg down, Reg up)
   LC_ASSERT((down < RID_MAX_GPR) == (up < RID_MAX_GPR));
   LC_ASSERT(!rset_test(as->freeset, down) && rset_test(as->freeset, up));
   ra_free(as, down);  /* 'down' is free ... */
+  ra_modified(as, down);
   rset_clear(as->freeset, up);  /* ... and 'up' is now allocated. */
   RA_DBGX((as, "rename    $f $r $r", regcost_ref(as->cost[up]), down, up));
   emit_movrr(as, down, up);  /* Backwards codegen needs inverse move. */
@@ -830,6 +771,14 @@ static void asm_phi_shuffle(ASMState *as){
     }  /* Else retry some more renames. */
   }/* end for */
 
+  /* Restore/remat invariants whose registers are modified inside the loop. */
+  work = as->modset & ~(as->freeset | as->phiset);
+  while (work) {
+    Reg r = rset_pickbot(work);
+    ra_restore(as, regcost_ref(as->cost[r]));
+    rset_clear(work, r);
+    checkmclim(as);
+  }
 
   /* For any LHS that was spilled inside the loop, make sure that
    * we store the current value at the top of the loop so that the spill slot
@@ -1041,18 +990,42 @@ static void asm_intarith(ASMState *as, IRIns *ir, x86Arith xa) {
   Reg dest  = ra_dest(as, ir, allow);
 
   if(irref_islit(rref)) {
-    Reg right = ra_allock(as, rref, rset_clear(allow, dest), &k);
-    if(ra_noreg(right)) { /* 32-bit constant */
-      emit_gri(as, XG_ARITHi(xa), dest|REX_64, k);
-    }
-    else { /* Can't fit constant into opcode */
-      emit_mrm(as, XO_ARITH(xa), dest|REX_64, right|REX_64);
-      ra_rematk(as, rref); /* load the constant into the reg before use */
-    }
+    right = ra_allock(as, rref, rset_clear(allow, dest), &k);
   }
   else { /* Non-constant right operand */
-    Reg right = ra_alloc(as, rref, rset_clear(allow, dest));
-    emit_mrm(as, XO_ARITH(xa), dest|REX_64, right|REX_64);
+    right = ra_alloc(as, rref, rset_clear(allow, dest));
+  }
+
+  if(xa != XOg_X_IMUL) {
+    if(ra_hasreg(right)) {
+      emit_mrm(as, XO_ARITH(xa), dest|REX_64, right|REX_64);
+
+      /* load the 64-bit constant into the reg before use */
+      if(irref_islit(rref)) {
+        ra_rematk(as, rref);
+      }
+    }
+    else { /* 32-bit constant */
+      emit_gri(as, XG_ARITHi(xa), dest|REX_64, k);
+    }
+  }
+  else { /* Integer Multiplication */
+    if(ra_hasreg(right)) { /* IMUL r, mrm */
+      emit_mrm(as, XO_IMUL, dest|REX_64, right|REX_64);
+
+      /* load the 64-bit constant into the reg before use */
+      if(irref_islit(rref)) {
+        ra_rematk(as, rref);
+      }
+    }
+    else { /* IMUL r, r, k */
+      Reg left = ra_alloc(as, lref, RSET_GPR);
+      x86Op xo;
+      if (checki8(k)) { emit_i8(as, k); xo = XO_IMULi8;
+      } else { emit_i32(as, k); xo = XO_IMULi; }
+      emit_mrm(as, xo, dest|REX_64, left|REX_64);
+      return;
+    }
   }
 
   ra_left(as, dest, lref);
@@ -1061,9 +1034,36 @@ static void asm_intarith(ASMState *as, IRIns *ir, x86Arith xa) {
 static void asm_fload(ASMState *as, IRIns *ir) {
   RA_DBGX((as, "<<FLOAD $f>>", ir->op1));
 
-  Reg dest = ra_dest(as, ir, RSET_GPR);
-  Reg base = ra_fuseload(as, ir->op1, rset_exclude(RSET_GPR, dest));
-  emit_mrm(as, XO_MOV, dest|REX_64, base);
+  int need_remat = 0;
+  RegSet allow = RSET_GPR;
+  Reg base;
+  Reg dest = ra_dest(as, ir, allow);
+  rset_clear(allow, dest);
+
+  /* Allocate a register for the base pointer of the fload */
+  IRIns *irf = IR(ir->op1);
+  LC_ASSERT((irf->o == IR_FREF) && "FLOAD must use FREF as first arguement");
+  if(irref_islit(irf->op1)) {
+    int k;
+    base = ra_allock(as, irf->op1, allow, &k);
+    LC_ASSERT(ra_hasreg(base) && "Must have base register for fref");
+    need_remat = 1;
+  }
+  else {
+    base = ra_alloc(as, irf->op1, allow);
+  }
+
+  /* setup the [base + ofs * idx] operand which is the fref*/
+  int32_t ofs  = irf->op2;
+  as->mrm.base = base;
+  as->mrm.ofs  = fref_scale(ofs);
+  as->mrm.idx  = RID_NONE;
+
+  /* emit load */
+  emit_mrm(as, XO_MOV, dest|REX_64, RID_MRM);
+
+  /* emit remat  if needed */
+  if(need_remat) ra_rematk(as, irf->op1);
 }
 
 static void asm_fref(ASMState *as, IRIns *ir) {
@@ -1208,7 +1208,6 @@ void genAsm(JitState *J, Fragment *T) {
   RA_DBG_START();
   as->stopins = REF_BASE;
   as->curins  = T->nins;
-  as->curins  = REF_FIRST + 118; // for testing
   for(as->curins--; as->curins > as->stopins; as->curins--) {
     IRIns *ir = IR(as->curins);
     // Disable dce for now to debug the codegen

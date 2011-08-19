@@ -17,8 +17,8 @@ extern void asmEnter(Fragment *F, Thread *T, Word *spillArea, Word *base, MCode*
 void asmEngine(Capability *cap, Fragment *F) {
   JitState *J = &cap->J;
 
-  IF_DBG_LVL(2,dumpAsm(F->mcode, F->szmcode, NULL /* use a new FILE */));
-  IF_DBG_LVL(2,dumpExitStubs(J));
+  IF_DBG_LVL(1,dumpAsm(F->mcode, F->szmcode, NULL /* use a new FILE */));
+  IF_DBG_LVL(1,dumpExitStubs(J));
   enterTrace(J, F);
 }
 
@@ -64,7 +64,7 @@ static void enterTrace(JitState *J, Fragment *F) {
   Word *spillArea = (T->base - 1) + F->framesize;
 
 
-  Word *hp = allocClosure(1024); //TODO: get a real heap pointer
+  Word *hp = allocClosure(0x1000); //TODO: get a real heap pointer
   asmEnter(F, T, spillArea, hp, F->mcode);
 }
 
