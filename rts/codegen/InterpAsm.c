@@ -64,7 +64,7 @@ static void enterTrace(JitState *J, Fragment *F) {
   Word *spillArea = (T->base - 1) + F->framesize;
 
 
-  Word *hp = allocClosure(1024); //TODO: get a real heap pointer
+  Word *hp = allocClosure(0x1000); //TODO: get a real heap pointer
   asmEnter(F, T, spillArea, hp, F->mcode);
 }
 
