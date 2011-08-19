@@ -634,6 +634,7 @@ static void ra_rename(ASMState *as, Reg down, Reg up)
   LC_ASSERT((down < RID_MAX_GPR) == (up < RID_MAX_GPR));
   LC_ASSERT(!rset_test(as->freeset, down) && rset_test(as->freeset, up));
   ra_free(as, down);  /* 'down' is free ... */
+  ra_modified(as, down);
   rset_clear(as->freeset, up);  /* ... and 'up' is now allocated. */
   RA_DBGX((as, "rename    $f $r $r", regcost_ref(as->cost[up]), down, up));
   emit_movrr(as, down, up);  /* Backwards codegen needs inverse move. */
@@ -770,6 +771,14 @@ static void asm_phi_shuffle(ASMState *as){
     }  /* Else retry some more renames. */
   }/* end for */
 
+  /* Restore/remat invariants whose registers are modified inside the loop. */
+  work = as->modset & ~(as->freeset | as->phiset);
+  while (work) {
+    Reg r = rset_pickbot(work);
+    ra_restore(as, regcost_ref(as->cost[r]));
+    rset_clear(work, r);
+    checkmclim(as);
+  }
 
   /* For any LHS that was spilled inside the loop, make sure that
    * we store the current value at the top of the loop so that the spill slot

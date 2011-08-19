@@ -489,7 +489,7 @@ Finally, since `x0`
 
 
 Handling Renamings in Snapshots
-=================================
+===================================================
 
 When processing a snapshot during register allocation we have two options for recording where the IR references are currently mapped to. We can directly write the stack slot or register for the ir instruciton into the snapshot entry, or we can use the value stored in the ir instruction itself. The advantage of writing into the snapshot directly is that it is simple to implement. The disadvantage is that the snapshot no longer contains valid IR references, which could break other code examining the snapshot. 
 
@@ -531,3 +531,40 @@ To make sure that we always reference the right location for a snapshot, we emit
 The `IR_RENAME` instruction takes two paramters, the first is the IR Reference that is being renamed, and the second is the IR reference below which the renaming is valid. The register for the value above the change point will be stored in the origininal IR instruction, and the register below the change point will be stored in the `IR_RENAME` instruction.
 
 When we go to restore a snapshot, we check to see if the ir reference is an input to a IR_RENAME instruction and if we are below the rename point. If so, we will use the renamed register value, otherwise we use the original register value.
+
+
+The Modified Set
+================================================================
+
+
+Consider a simple example
+
+	x = ...
+	LOOP:
+	  = x  ;; x is dead
+	y = ...
+	  = y  ;; y is dead
+	
+	{x : r1, y : r1}
+
+As we do a backwards allocation, we will assign `y` the first available register, say `r1`. When `y` dies at its definition point, we free `r1` to use for other values. So when we get to `x`, we can also assign it to `r1`, leaving us with this code:
+
+	r1 = ...
+	LOOP:
+		   = r1  ;; x 
+		r1 = ...
+		   = r1  ;; y
+	goto LOOP
+
+The code is incorrect because after the first iteration, the value in `r1` will by `y` instead of `x`. To fix this problem we need to insert a load of `x` at the top of the loop. The correct code looks like this:
+
+	r1 = ...
+	ST r1 => x
+	LOOP:
+		r1 = LD x
+		   = r1  ;; x 
+		r1 = ...
+		   = r1  ;; y
+	goto LOOP
+
+We use the `modset` to keep track of which physical registers are written to in the body of the loop. When we get to the top of the loop, we need to insert a load for any value contained in a register that is modified in the loop and the register is not free. A register that is modified but not free means that it is written to in the body of the loop, but is assigned to a different register outside the loop.
