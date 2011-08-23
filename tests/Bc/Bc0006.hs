@@ -1,6 +1,6 @@
 {-# LANGUAGE NoImplicitPrelude, MagicHash, BangPatterns #-}
 -- RUN: %bc_vm_chk
--- CHECK: @Result@ IND -> GHC.Types.I#!con_info 0x000000000000002a
+-- CHECK: @Result@ IND -> GHC.Types.I#`con_info 0x000000000000002a
 
 -- Currently fails with
 -- No instance for (GHC.Num.Num Int)

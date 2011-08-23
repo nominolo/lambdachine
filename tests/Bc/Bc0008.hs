@@ -1,6 +1,6 @@
 {-# LANGUAGE NoImplicitPrelude, BangPatterns, MagicHash #-}
 -- RUN: %bc_vm_chk
--- CHECK: @Result@ IND -> GHC.Types.I#!con_info 0x0000000000000037
+-- CHECK: @Result@ IND -> GHC.Types.I#`con_info 0x0000000000000037
 -- This test currently segfaults
 -- XFAIL: *
 module Bc.Bc0008 where

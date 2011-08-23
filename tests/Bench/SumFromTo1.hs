@@ -1,6 +1,6 @@
 {-# LANGUAGE NoImplicitPrelude, BangPatterns, MagicHash #-}
 -- RUN: %bc_vm_chk
--- CHECK: @Result@ IND -> GHC.Bool.True!con_info
+-- CHECK: @Result@ IND -> GHC.Bool.True`con_info
 module Bench.SumFromTo1 where
 
 import GHC.Prim

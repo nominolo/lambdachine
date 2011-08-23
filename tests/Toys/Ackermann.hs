@@ -1,6 +1,6 @@
 {-# LANGUAGE NoImplicitPrelude, BangPatterns, MagicHash #-}
 -- RUN: %bc_vm_chk
--- CHECK: @Result@ IND -> GHC.Types.I#!con_info 0x000000000000000d
+-- CHECK: @Result@ IND -> GHC.Types.I#`con_info 13
 module Toys.Ackermann where
 
 import GHC.Num

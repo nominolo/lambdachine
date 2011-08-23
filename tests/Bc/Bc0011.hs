@@ -1,6 +1,6 @@
 {-# LANGUAGE NoImplicitPrelude, BangPatterns, MagicHash #-}
 -- RUN: %bc_vm_chk
--- CHECK: @Result@ IND -> GHC.Bool.True!con_info
+-- CHECK: @Result@ IND -> GHC.Bool.True`con_info
 module Bc.Bc0011 where
 
 import GHC.Base
