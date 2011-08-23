@@ -48,7 +48,7 @@
 # define FMT_Word64X    "I64x"
 # define FMT_Word64     "I64u"
 # define FMT_Int64      "I64d"
-#elif defined(__linux__)
+#elif defined(__linux__) && LC_ARCH_BITS == 64
 // FIXME: need a better way to find out which format specs to use
 # define FMT_Word64X    "lx"
 # define FMT_Word64     "lu"

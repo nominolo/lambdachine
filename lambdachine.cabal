@@ -29,3 +29,5 @@ Executable lambdachine
                   , uniplate        == 1.6.*
                   , hoopl           >= 3.8.6.1
                   , value-supply    == 0.6.*
+                  , graph-serialize >= 0.1.5
+                  , temporary       == 1.1.*

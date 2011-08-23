@@ -27,7 +27,7 @@ root n = primes !! n
     primes = map head (iterate the_filter (iterate succ 2))
 
 test = 
-  root 10 == 31
+  root 30 == 127
   --(root 1500 == 12569)
 
 {-

@@ -11,6 +11,18 @@ endif
 HC ?= ghc
 CC ?= gcc
 
+ifeq "$(strip $(PerformanceBuild))" "Yes"
+EXTRA_CFLAGS := $(EXTRA_CFLAGS) -DNDEBUG
+endif
+
+ifeq "$(strip $(DisableJit))" "Yes"
+EXTRA_CFLAGS := $(EXTRA_CFLAGS) -DLC_HAS_JIT=0
+endif
+
+ifneq ($(DebugLevel),)
+EXTRA_CFLAGS := $(EXTRA_CFLAGS) -DLC_DEBUG_LEVEL=$(DebugLevel)
+endif
+
 HSBUILDDIR = $(DIST)/build
 LCC = $(HSBUILDDIR)/lcc
 CABAL ?= cabal
@@ -27,9 +39,10 @@ boot:
 	mkdir -p $(DEPDIR)/rts
 	mkdir -p $(DEPDIR)/rts/codegen
 	mkdir -p $(DEPDIR)/utils
+	touch mk/build.mk
 
 INCLUDES = -Iincludes -Irts -Irts/codegen
-CFLAGS = -Wall -g
+CFLAGS = -Wall -g $(EXTRA_CFLAGS)
 
 df = $(DEPDIR)/$(*D)/$(*F)
 
@@ -43,8 +56,8 @@ SRCS = rts/Bytecode.c rts/Capability.c rts/ClosureFlags.c \
        rts/Snapshot.c rts/HeapInfo.c rts/Bitset.c \
        rts/InterpIR.c rts/Stats.c \
        rts/codegen/MCode.c rts/codegen/InterpAsm.c \
-       rts/codegen/AsmCodeGen.c
-
+       rts/codegen/AsmCodeGen.c \
+       rts/GC.c
 
 UTILSRCS = utils/genopcodes.c
 
@@ -61,7 +74,7 @@ interp: $(SRCS:.c=.o)
 #
 # The dependency file for `rts/Foo.c' lives at `.deps/rts/Foo.c'.
 #
-%.o: %.c
+%.o: %.c mk/build.mk
 	@echo "CC $(CFLAGS) $< => $@"
 	@$(CC) -c $(INCLUDES) -MD -MF $(patsubst %.c,$(DEPDIR)/%.d,$<) $(CFLAGS) -o $@ $<
 	@cp $(df).d $(df).P; \
@@ -88,6 +101,7 @@ HSFLAGS = -hide-all-packages \
           -package ghc-paths -package cmdargs -package mtl -package blaze-builder -package vector \
           -package utf8-string -package bytestring -package array -package ansi-wl-pprint -package binary \
           -package uniplate -package hoopl -package value-supply \
+          -package graph-serialize -package temporary \
           -icompiler \
           -odir $(HSBUILDDIR) -hidir $(HSBUILDDIR)
 

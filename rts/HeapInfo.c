@@ -57,7 +57,7 @@ u4
 newHeapInfo(JitState *J, IRRef1 ref, InfoTable *info)
 {
   growHeapInfoBuffer(J, J->cur.nheap + 1);
-  u4 nfields = info->layout.payload.ptrs + info->layout.payload.nptrs;
+  u4 nfields = info->size;
   HeapInfo *hp = &J->cur.heap[J->cur.nheap++];
   hp->mapofs = J->cur.nheapmap;
   hp->ref = ref;

@@ -489,8 +489,12 @@ loadInfoTable(const char *filename,
       ConInfoTable *info = allocInfoTable(wordsof(ConInfoTable));
       info->i.type = cl_type;
       info->i.tagOrBitmap = fget_varuint(f);  // tag
-      info->i.layout.payload.ptrs = fget_varuint(f);
-      info->i.layout.payload.nptrs = fget_varuint(f);
+      Word sz = fget_varuint(f);
+      assert(sz <= 32);
+      info->i.size = sz;
+      info->i.layout.bitmap = sz > 0 ? fget_u4(f) : 0;
+      // info->i.layout.payload.ptrs = fget_varuint(f);
+      // info->i.layout.payload.nptrs = fget_varuint(f);
       info->name = loadId(f, strings, ".");
       new_itbl = (InfoTable*)info;
     }
@@ -500,20 +504,25 @@ loadInfoTable(const char *filename,
       FuncInfoTable *info = allocInfoTable(wordsof(FuncInfoTable));
       info->i.type = cl_type;
       info->i.tagOrBitmap = 0; // TODO: anything useful to put in here?
-      info->i.layout.payload.ptrs = fget_varuint(f);
-      info->i.layout.payload.nptrs = fget_varuint(f);
+      Word sz = fget_varuint(f);
+      assert(sz <= 32);
+      info->i.size = sz;
+      info->i.layout.bitmap = sz > 0 ? fget_u4(f) : 0;
       info->name = loadId(f, strings, ".");
       loadCode(filename, f, &info->code, strings, itbls, closures);
       new_itbl = (InfoTable*)info;
     }
     break;
+  case CAF:
   case THUNK:
     {
       ThunkInfoTable *info = allocInfoTable(wordsof(ThunkInfoTable));
       info->i.type = cl_type;
       info->i.tagOrBitmap = 0; // TODO: anything useful to put in here?
-      info->i.layout.payload.ptrs = fget_varuint(f);
-      info->i.layout.payload.nptrs = fget_varuint(f);
+      Word sz = fget_varuint(f);
+      assert(sz <= 32);
+      info->i.size = sz;
+      info->i.layout.bitmap = sz > 0 ? fget_u4(f) : 0;
       info->name = loadId(f, strings, ".");
       loadCode(filename, f, &info->code, strings, itbls, closures);
       new_itbl = (InfoTable*)info;
@@ -649,6 +658,7 @@ loadClosure(const char *filename,
   setInfo(cl, info);
   xfree(itbl_name);
   for (i = 0; i < payloadsize; i++) {
+    LD_DBG_PR(1, "Loading payload for: %s [%d]\n", clos_name, i);
     u1 dummy;
     loadLiteral(filename, f, &dummy, &cl->payload[i], strings, itbls, closures);
   }
@@ -720,19 +730,31 @@ loadCode(const char *filename,
           HashTable *itbls, HashTable *closures)
 {
   u4 i;
+  u2 *bitmaps;
   code->framesize = fget_varuint(f);
   code->arity = fget_varuint(f);
   code->sizelits = fget_varuint(f);
-  code->sizecode = fget_varuint(f);
+  code->sizecode = fget_u2(f);
+  code->sizebitmaps = fget_u2(f);
+  //printf("loading code: frame:%d, arity:%d, lits:%d, code:%d, bitmaps:%d\n",
+  //       code->framesize, code->arity, code->sizelits, code->sizecode,
+  //       code->sizebitmaps);
 
   code->lits = xmalloc(sizeof(*code->lits) * code->sizelits);
   code->littypes = xmalloc(sizeof(u1) * code->sizelits);
   for (i = 0; i < code->sizelits; ++i) {
-    loadLiteral(filename, f, &code->littypes[i], &code->lits[i], strings, itbls, closures);
+    loadLiteral(filename, f, &code->littypes[i], &code->lits[i],
+                strings, itbls, closures);
   }
-  code->code = xmalloc(sizeof(BCIns) * code->sizecode);
+  code->code = xmalloc(sizeof(BCIns) * code->sizecode +
+                       sizeof(u2) * code->sizebitmaps);
   for (i = 0; i < code->sizecode; i++) {
     code->code[i] = loadBCIns(f);
+  }
+  bitmaps = (u2*)&code->code[code->sizecode];
+  for (i = 0; i < code->sizebitmaps; i++) {
+    *bitmaps = fget_u2(f);
+    ++bitmaps;
   }
 }
 

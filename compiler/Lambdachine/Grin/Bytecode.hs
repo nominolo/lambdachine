@@ -14,6 +14,9 @@ import Lambdachine.Utils.Pretty
 import Lambdachine.Utils ( second, snd3 )
 import qualified Lambdachine.Utils.Unique as U
 
+import qualified Type as Ghc
+import qualified Outputable as Ghc
+
 import Compiler.Hoopl
 import Control.Monad.State
 import Data.Maybe ( maybeToList, fromMaybe )
@@ -25,8 +28,16 @@ import Data.Bits ( (.&.) )
 import qualified Data.Vector as V
 import Data.Binary
 
+instance Show Ghc.Type where show = Ghc.showSDoc . Ghc.ppr
+
+instance Pretty Ghc.Type where ppr t = text (show t)
+
+
 type BlockId = Label
 
+type LiveSet = S.Set BcVar
+
+-- | A bytecode instruction.  Suitable for use with Hoopl.
 data BcIns' b e x where
   Label  :: b -> BcIns' b C O
   -- O/O stuff
@@ -38,15 +49,16 @@ data BcIns' b e x where
   CondBranch :: BinOp -> OpTy -> BcVar -> BcVar
              -> b -> b            -> BcIns' b O C
   Case :: CaseType -> BcVar 
-       -> [(BcTag, S.Set BcVar, b)]            -> BcIns' b O C
-  Call :: Maybe (BcVar, b, S.Set BcVar)
+       -> [(BcTag, LiveSet, b)]   -> BcIns' b O C
+  Call :: Maybe (BcVar, b, LiveSet)
        -> BcVar -> [BcVar]        -> BcIns' b O C
   Ret1 :: BcVar                   -> BcIns' b O C
-  Eval   :: b -> S.Set BcVar -> BcVar            -> BcIns' b O C
+  Eval   :: b -> LiveSet -> BcVar -> BcIns' b O C
   -- only used by the interpreter / RTS
   Update ::                          BcIns' b O C
   Stop   ::                          BcIns' b O C
 
+-- | A linearised bytecode instruction.
 data LinearIns' b
   = Fst (BcIns' b C O)
   | Mid (BcIns' b O O)
@@ -81,8 +93,8 @@ data BcRhs
   | Load BcLoadOperand
   | BinOp BinOp OpTy BcVar BcVar
   | Fetch BcVar Int
-  | Alloc BcVar [BcVar]
-  | AllocAp [BcVar]
+  | Alloc BcVar [BcVar] LiveSet
+  | AllocAp [BcVar] LiveSet
   deriving (Eq, Ord)
 
 data BcLoadOperand
@@ -115,17 +127,29 @@ data OpTy = IntTy
           | PtrTy
           | FunTy [OpTy] OpTy
           | AlgTy !Id
+          | VoidTy
   deriving (Eq, Ord)
 
-data BcVar = BcVar !Id
-           | BcReg {-# UNPACK #-} !Int
-  deriving (Eq, Ord)
+data BcVar = BcVar !Id Ghc.Type
+           | BcReg {-# UNPACK #-} !Int OpTy
+
+compareBcVar :: BcVar -> BcVar -> Ordering
+compareBcVar (BcVar n _) (BcVar m _) = compare n m
+compareBcVar (BcVar _ _) _           = LT
+compareBcVar (BcReg r _) (BcReg s _) = compare r s
+compareBcVar (BcReg _ _) (BcVar _ _) = GT
+
+instance Eq BcVar where
+  v == q = compareBcVar v q == EQ
+
+instance Ord BcVar where
+  compare = compareBcVar
 
 instance Show BcVar where show v = pretty v
 
 instance U.Uniquable BcVar where
-  getUnique (BcVar x) = U.getUnique x
-  getUnique (BcReg n) = U.unsafeMkUniqueNS 'R' n
+  getUnique (BcVar x _) = U.getUnique x
+  getUnique (BcReg n _) = U.unsafeMkUniqueNS 'R' n
 
 instance NonLocal (BcIns' Label) where
   entryLabel (Label l) = l
@@ -147,13 +171,16 @@ hooplUniqueFromUniqueSupply us =
 -- -------------------------------------------------------------------
 
 instance Pretty BcVar where
-  ppr (BcVar v) = ppr v
-  ppr (BcReg n) = char 'r' <> int n
+  ppr (BcVar v t) = ppr v <> brackets (ppr t)
+  ppr (BcReg n t) = char 'r' <> int n <> char '_' <> ppr t
   
 instance Pretty Label where
   ppr lbl = text (show lbl)
 
 --instance Pretty CompOp where
+
+pprLives :: LiveSet -> PDoc
+pprLives lives = braces (hsep (commaSep (map ppr (S.toList lives))))
 
 instance Pretty BinOp where
   ppr OpAdd = char '+'
@@ -173,8 +200,7 @@ instance Pretty b => Pretty (BcIns' b e x) where
   ppr (Assign d (Move s)) | d == s = text "---"
   ppr (Assign r rhs) = ppr r <+> char '=' <+> ppr rhs
   ppr (Eval _ lives r) =
-    text "eval" <+> ppr r <+> 
-         braces (hsep (commaSep (map ppr (S.toList lives))))
+    text "eval" <+> ppr r <+> pprLives lives
   ppr (Store base offs val) =
     text "Mem[" <> ppr base <+> char '+' <+> int offs <> text "] = " <> ppr val
   ppr (Goto bid) = text "goto" <+> ppr bid
@@ -187,8 +213,7 @@ instance Pretty b => Pretty (BcIns' b e x) where
     indent 2 (vcat (map ppr_target targets))
    where
      ppr_target (tag, lives, target) = 
-       ppr tag <> colon <+> ppr target
-         <+> braces (hsep (commaSep (map ppr (S.toList lives))))
+       ppr tag <> colon <+> ppr target <+> pprLives lives
   ppr (Call rslt f args) =
     align $
       (case rslt of
@@ -206,12 +231,15 @@ instance Pretty BcRhs where
     ppr src1 <+> ppr op <+> ppr src2 <+> char '<' <> (ppr ty) <> char '>'
   ppr (Fetch r offs) =
     text "Mem[" <> ppr r <+> char '+' <+> int offs <> char ']'
-  ppr (Alloc ctor args) =
+  ppr (Alloc ctor args lives) =
     text "alloc(" <> hsep (commaSep (map ppr (ctor:args))) <> char ')'
-  ppr (AllocAp args) =
+      <+> pprLives lives
+  ppr (AllocAp args lives) =
     text "alloc_ap(" <> hsep (commaSep (map ppr args)) <> char ')'
+      <+> pprLives lives
 
 instance Pretty OpTy where
+  ppr VoidTy = text "v"
   ppr IntTy = text "i"
   ppr Int64Ty = text "I"
   ppr WordTy = text "u"
@@ -224,7 +252,7 @@ instance Pretty OpTy where
   ppr (FunTy args res) =
     char '(' <> hcat (map ppr args) <> text "):" <> ppr res
   ppr (AlgTy n) =
-    char '[' <> ppr n <> char ']'
+    char '<' <> ppr n <> char '>'
 
 instance Pretty BcLoadOperand where
   ppr (LoadLit l) = ppr l
@@ -238,10 +266,11 @@ instance Pretty BcTag where
   ppr (Tag n) = int n
   ppr (LitT n) = char '#' <> text (show n)
 
+{-
 tst1 = do
-  pprint ((Assign (BcReg 1) (BinOp OpAdd IntTy (BcReg 2) (BcReg 3))) :: BcIns O O)
+  pprint ((Assign (BcReg 1 IntTy) (BinOp OpAdd IntTy (BcReg 2) (BcReg 3))) :: BcIns O O)
   pprint ((Assign (BcReg 2) (Fetch (BcReg 2) 42)) :: BcIns O O)
-
+-}
 -- -------------------------------------------------------------------
 
 mapLabels :: (l1 -> l2) -> BcIns' l1 e x -> BcIns' l2 e x
@@ -332,13 +361,13 @@ insLoadBlackhole :: BcVar -> BcGraph O O
 insLoadBlackhole r = mkMiddle $ Assign r (Load LoadBlackhole)
 
 insMkAp :: BcVar -> [BcVar] -> BcGraph O O
-insMkAp r args = mkMiddle $ Assign r (AllocAp args)
+insMkAp r args = mkMiddle $ Assign r (AllocAp args S.empty)
 
 insMove :: BcVar -> BcVar -> BcGraph O O
 insMove dst src = mkMiddle $ Assign dst (Move src)
 
 insAlloc :: BcVar -> BcVar -> [BcVar] -> BcGraph O O
-insAlloc r dcon args = mkMiddle $ Assign r (Alloc dcon args)
+insAlloc r dcon args = mkMiddle $ Assign r (Alloc dcon args S.empty)
 
 insStore :: BcVar -> Int -> BcVar -> BcGraph O O
 insStore base offs val = mkMiddle $ Store base offs val
@@ -380,7 +409,7 @@ data BytecodeObject' g
     , bcoCode :: g
     , bcoGlobalRefs :: [Id]
     , bcoConstants :: [BcConst]
-    , bcoFreeVars  :: Int
+    , bcoFreeVars  :: M.Map Int OpTy
     }
   | BcoCon
     { bcoType :: BcoType -- ^ Always 'Con'.  Only for completeness.
@@ -414,14 +443,14 @@ instance Pretty BytecodeModule where
          ppr (bcm_bcos mdl)]
 
 data BcoType
-  = BcoFun Int  -- arity
+  = BcoFun Int [OpTy]  -- arity and argument types
   | Thunk
   | CAF
   | Con
   deriving Eq
 
 bcoArity :: BytecodeObject' g -> Int
-bcoArity BcObject{ bcoType = BcoFun n } = n
+bcoArity BcObject{ bcoType = BcoFun n _ } = n
 bcoArity _ = 0
 
 
@@ -470,14 +499,16 @@ instance Pretty BcConst where
   ppr (CDouble r) = text (show (fromRational r :: Double)) <> char 'd'
 
 instance Pretty BcoType where
-  ppr (BcoFun n) = text "FUN_" <> int n
+  ppr (BcoFun n ts) =
+    text "FUN_" <> int n <> char '_' <> hcat (map ppr ts)
   ppr Thunk = text "THUNK"
   ppr CAF = text "CAF"
   ppr Con = text "CON"
 
 instance Pretty g => Pretty (BytecodeObject' g) where
   ppr bco@BcObject{} =
-    align $ ppr (bcoType bco) <> char ':' <> int (bcoFreeVars bco) $+$
+    align $ ppr (bcoType bco) <> char ':' <>
+              int (M.size (bcoFreeVars bco)) $+$
             text "gbl: " <> align (ppr (bcoGlobalRefs bco)) $+$
             (indent 2 $ ppr (bcoCode bco))
              -- pprGraph ppr (\l -> ppr l <> colon) (bcoCode bco))
@@ -610,8 +641,8 @@ instance Biplate BcRhs BcVar where
   biplate (Move r) = plate Move |* r
   biplate (BinOp op ty r1 r2) = plate (BinOp op ty) |* r1 |* r2
   biplate (Fetch r n) = plate Fetch |* r |- n
-  biplate (Alloc rt rs) = plate Alloc |* rt ||* rs
-  biplate (AllocAp rs) = plate AllocAp ||* rs
+  biplate (Alloc rt rs lv) = plate Alloc |* rt ||* rs |+ lv
+  biplate (AllocAp rs lv) = plate AllocAp ||* rs |+ lv
   biplate rhs = plate rhs
 
 invertCondition :: CmpOp -> CmpOp
@@ -622,3 +653,11 @@ invertCondition cond = case cond of
   CmpLt -> CmpGe
   CmpEq -> CmpNe
   CmpNe -> CmpEq
+
+-- | Is this type represented as a pointer that needs to be followed
+-- by the GC?
+isGCPointer :: OpTy -> Bool
+isGCPointer (FunTy _ _) = True
+isGCPointer (AlgTy _)   = True
+isGCPointer PtrTy       = True
+isGCPointer _           = False

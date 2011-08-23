@@ -9,10 +9,11 @@ typedef struct {
   u2   arity;                   /* No. of function arguments.  */
   u2   sizecode;                /* No. of instructions in bytecode. */
   u2   sizelits;		/* No. of literals */
+  u2   sizebitmaps;             /* No. of bitmaps (in multiples of `u2') */
   /* INVARIANT: framesize >= arity */
   Word  *lits;			/* Literals */
   u1    *littypes;              /* Types of literals.  See LitType. */
-  BCIns *code;                  /* The bytecode. */
+  BCIns *code;                  /* The bytecode followed by bitsets. */
   /* INVARIANT: code != NULL */
 } LcCode;
 
@@ -50,6 +51,11 @@ typedef struct _PapClosure {
   Word          payload[FLEXIBLE_ARRAY];
 } PapClosure;
 
+typedef struct _IndClosure {
+  ClosureHeader header;
+  Closure      *indirectee;
+} IndClosure;
+
 /*  
 inline InfoTable *getInfo(Closure *cl) { return cl->header.info; }
 */
@@ -76,7 +82,8 @@ typedef union {
 
 struct _InfoTable {
   ClosureInfo layout;
-  u2 type;       // closure type
+  u1 type;       // closure type
+  u1 size;
   u2 tagOrBitmap; // type == CONSTR_*: constructor tag
                   // type == FUN/THUNK: srt_bitmap
 };
@@ -95,6 +102,8 @@ typedef struct _FuncInfoTable {
 } FuncInfoTable;
 
 typedef FuncInfoTable ThunkInfoTable;
+typedef FuncInfoTable ApContInfoTable;
+typedef FuncInfoTable ApInfoTable;
 
 typedef struct _ConInfoTable {
   InfoTable i;
@@ -126,6 +135,7 @@ typedef struct _FwdRefInfoTable {
   _(IND,            IND) \
   _(CAF,            THU) \
   _(PAP,            HNF) \
+  _(AP_CONT,        HNF) \
   _(STATIC_IND,     IND) \
   _(UPDATE_FRAME,   ___) \
   _(BLACKHOLE,      ___)
@@ -145,6 +155,65 @@ extern u2 closure_flags[];
 #define closure_THUNK(cl)  ( closureFlags(cl) & CF_THU )
 #define closure_IND(cl)    ( closureFlags(cl) & CF_IND )
 
+
+// --- Bitmasks -------------------------------------------
+
+// Return a pointer to the bitmask associated with the current PC.
+// May return NULL.  In that case, the bitmap is to be extracted from
+// the stack.
+INLINE_HEADER
+const u2 *
+getPointerMask(const BCIns *next_pc)
+{
+  const BCIns *p0 = &next_pc[-1];
+  u4 offset = (u4)(*p0);
+  if (offset != 0)
+    return (const u2*)((u1*)p0 + offset);
+  else
+    return NULL;
+}
+
+INLINE_HEADER
+const u2 *
+skipBitmap(const u2 *p)
+{
+  while (*p++ & 0x8000) ;
+  return p;
+}
+
+INLINE_HEADER
+const u2 *
+getLivenessMask(const BCIns *next_pc)
+{
+  return skipBitmap(getPointerMask(next_pc));
+}
+
+// Macro for iterating over a variable-length bitmask.
+//
+// The last three arguments are the three components of a
+// "for"-loop.  The first three parameters must be variable names.
+//
+//  - mask_ptr .. must be of type u2* and points to the beginning of the
+//                bitmask.  Its value is being updated by the loop.
+//  - mask_var .. contains the contents of the mask.  The lowest bit
+//                always corresponds to the current value.  It must be of
+//                type u2.
+//  - mask_ctr .. is an internal counter (of type int)
+//
+// Example (prints all the set bits):
+//
+//   FOR_MASK(liveout, mask, j, i = 1, i <= t, i++) {
+//     if (mask & 1) {
+//       printf("%d\n", i);
+//     }
+//   }
+//
+#define FOR_MASK(mask_ptr, mask_var, mask_ctr, init, cond, post) \
+  for ((init), (mask_var = *mask_ptr++, mask_ctr = 0);           \
+       (cond);                                                   \
+       (post), (mask_ctr = (mask_ctr < 14) ?                     \
+                   (mask_var >>= 1, mask_ctr + 1) :     \
+                   (mask_var = *mask_ptr++, 0)))
 
 
 #endif /* LC_INFOTABLES_H */
