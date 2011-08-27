@@ -91,6 +91,7 @@ transType (Ghc.TyConApp tycon _)
        | tycon == ghcAnyTyCon           -> PtrTy
        | tycon == Ghc.bcoPrimTyCon       -> AddrTy
        | tycon == Ghc.addrPrimTyCon      -> AddrTy
+       | tycon == Ghc.wordPrimTyCon  -> WordTy
        | otherwise ->
          error $ "Unknown primitive type: " ++ showPpr tycon
   | otherwise =
