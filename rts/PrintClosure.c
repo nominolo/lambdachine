@@ -270,6 +270,7 @@ printInfoTable(InfoTable* info0)
     break;
   case CAF:
   case THUNK:
+  case AP_CONT:
     {
       ThunkInfoTable *info = (ThunkInfoTable*)info0;
       printf("%s: %s (%p)\n",
