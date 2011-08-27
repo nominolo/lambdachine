@@ -15,43 +15,43 @@ void
 printBuckets(u8 *buckets)
 {
   int i;
-  printf("    1-15:");
+  fprintf(stderr, "    1-15:");
   for (i = 0; i < 15; i++) {
-    printf("%c%" FMT_Word64, (i % 5) == 0 ? ' ' : '/', buckets[i]);
+    fprintf(stderr, "%c%" FMT_Word64, (i % 5) == 0 ? ' ' : '/', buckets[i]);
   }
-  printf(" 16+: %" FMT_Word64 "\n\n", buckets[15]);
+  fprintf(stderr, " 16+: %" FMT_Word64 "\n\n", buckets[15]);
 }
 
 void
 printEvents()
 {
-  printf("-- Stats --------------------------------------\n");
-  printf("ALU ops:           %9" FMT_Word64 "\n", G_events.counters[EV_ALU]);
-  printf("Multiplications:   %9" FMT_Word64 "\n", G_events.counters[EV_MUL]);
-  printf("Divisions:         %9" FMT_Word64 "\n", G_events.counters[EV_REMDIV]);
-  printf("Comparisions:      %9" FMT_Word64 "\n", G_events.counters[EV_CMP]);
-  printf("Loads:             %9" FMT_Word64 "\n", G_events.counters[EV_LOAD]);
-  printf("Updates:           %9" FMT_Word64 "\n", G_events.counters[EV_UPDATE]);
-  printf("Eval (in HNF):     %9" FMT_Word64 "\n", G_events.counters[EV_EVAL_HNF]);
-  printf("Eval (thunk):      %9" FMT_Word64 "\n", G_events.counters[EV_EVAL_THUNK]);
-  printf("Function calls:    %9" FMT_Word64 "\n", G_events.counters[EV_CALL]);
-  printf("  Arguments:\n");
+  fprintf(stderr, "-- Stats --------------------------------------\n");
+  fprintf(stderr, "ALU ops:           %9" FMT_Word64 "\n", G_events.counters[EV_ALU]);
+  fprintf(stderr, "Multiplications:   %9" FMT_Word64 "\n", G_events.counters[EV_MUL]);
+  fprintf(stderr, "Divisions:         %9" FMT_Word64 "\n", G_events.counters[EV_REMDIV]);
+  fprintf(stderr, "Comparisions:      %9" FMT_Word64 "\n", G_events.counters[EV_CMP]);
+  fprintf(stderr, "Loads:             %9" FMT_Word64 "\n", G_events.counters[EV_LOAD]);
+  fprintf(stderr, "Updates:           %9" FMT_Word64 "\n", G_events.counters[EV_UPDATE]);
+  fprintf(stderr, "Eval (in HNF):     %9" FMT_Word64 "\n", G_events.counters[EV_EVAL_HNF]);
+  fprintf(stderr, "Eval (thunk):      %9" FMT_Word64 "\n", G_events.counters[EV_EVAL_THUNK]);
+  fprintf(stderr, "Function calls:    %9" FMT_Word64 "\n", G_events.counters[EV_CALL]);
+  fprintf(stderr, "  Arguments:\n");
   printBuckets(G_events.callargs);
-  printf("Case dispatches:   %9" FMT_Word64 "\n", G_events.counters[EV_CASE]);
-  printf("  Choices:\n");
+  fprintf(stderr, "Case dispatches:   %9" FMT_Word64 "\n", G_events.counters[EV_CASE]);
+  fprintf(stderr, "  Choices:\n");
   printBuckets(G_events.caseargs);
-  printf("Allocations:       %9" FMT_Word64 "\n", G_events.counters[EV_ALLOC]);
-  printf("  Total words:     %9" FMT_Word64 "\n", G_events.totalalloc);
-  printf("  Sizes:\n");
+  fprintf(stderr, "Allocations:       %9" FMT_Word64 "\n", G_events.counters[EV_ALLOC]);
+  fprintf(stderr, "  Total words:     %9" FMT_Word64 "\n", G_events.totalalloc);
+  fprintf(stderr, "  Sizes:\n");
   printBuckets(G_events.allocsize);
-  printf("Interpreted:       %9" FMT_Word64 "\n", G_events.counters[EV_DISPATCH]);
-  printf("  in record mode:  %9" FMT_Word64 "\n", G_events.counters[EV_RECORD]);
-  printf("Traces entered:    %9" FMT_Word64 "\n", G_events.counters[EV_TRACE]);
-  printf("  Exit work:\n");
+  fprintf(stderr, "Interpreted:       %9" FMT_Word64 "\n", G_events.counters[EV_DISPATCH]);
+  fprintf(stderr, "  in record mode:  %9" FMT_Word64 "\n", G_events.counters[EV_RECORD]);
+  fprintf(stderr, "Traces entered:    %9" FMT_Word64 "\n", G_events.counters[EV_TRACE]);
+  fprintf(stderr, "  Exit work:\n");
   printBuckets(G_events.exitwork);
-  printf("Traces aborted:    %9" FMT_Word64 "\n", G_events.counters[EV_ABORT_TRACE]);
-  printf("-----------------------------------------------\n");
-  printf("Ticks:             %9" FMT_Word64 "\n", G_events.counters[EV_TICK]);
+  fprintf(stderr, "Traces aborted:    %9" FMT_Word64 "\n", G_events.counters[EV_ABORT_TRACE]);
+  fprintf(stderr, "-----------------------------------------------\n");
+  fprintf(stderr, "Ticks:             %9" FMT_Word64 "\n", G_events.counters[EV_TICK]);
 }
 
 LC_FASTCALL void

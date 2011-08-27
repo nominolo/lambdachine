@@ -60,11 +60,11 @@ main(int argc, char *argv[])
         break;
       break;
     case 'e':
-      printf("entry = %s\n", optarg);
+      fprintf(stderr, "entry = %s\n", optarg);
       opts.main_closure = optarg;
       break;
     case 'B':
-      printf("base = %s\n", optarg);
+      fprintf(stderr, "base = %s\n", optarg);
       opts.base_path = optarg;
       break;
     case 'l':
@@ -86,7 +86,7 @@ main(int argc, char *argv[])
              argv[0]);
       exit(0);
     default:
-      printf("c = %d\n", c);
+      fprintf(stderr, "c = %d\n", c);
       abort();
     }
   }
@@ -102,7 +102,7 @@ main(int argc, char *argv[])
     fprintf(stderr, "Too many modules specified (%d).\n",
             nmodules);
     while (optind < argc)
-      printf("%s\n", argv[optind++]);
+      fprintf(stderr, "%s\n", argv[optind++]);
     exit(1);
   }
 
@@ -132,7 +132,7 @@ main(int argc, char *argv[])
   if (opts.main_closure == NULL) // Nothing to run, just quit.
     return 0;
 
-  printf("----------------------------------------------------\n"
+  fprintf(stderr, "----------------------------------------------------\n"
 	 "Loaded %s, now evaluating '%s'\n", opts.input_file, opts.main_closure);
 
   clos0 = lookupClosure(opts.main_closure);
@@ -144,13 +144,13 @@ main(int argc, char *argv[])
   if (opts.disable_jit)
     G_cap0->flags |= CF_NO_JIT;
 
-  T0 = createThread(G_cap0, 1024);
+  T0 = createThread(G_cap0, 1024 / 4);
   clos0 = startThread(T0, clos0);
-  printf("@Result@ "); printClosure(clos0);
+  printf("@Result@ "); printClosure_(stdout, clos0, 1);
   printEvents();
   dumpStorageManagerState();
   dumpApClosures();
-  printf("StaticRoots: %p\n", G_cap0->static_objs);
+  fprintf(stderr, "StaticRoots: %p\n", G_cap0->static_objs);
 
   return 0;
 }

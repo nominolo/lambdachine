@@ -7,16 +7,26 @@
 
 void printClosure_(FILE *f, Closure* cl, int add_newline);
 INLINE_HEADER void printClosure(Closure* cl) {
-  printClosure_(stdout, cl, 1);
+  printClosure_(stderr, cl, 1);
 }
-void printInfoTable(InfoTable* info0);
+void printInfoTable(FILE *stream, InfoTable* info0);
 
 // Print a bytecode instruction.
 //
-// Returns: length of printed instrution (in multiples of BCIns).
-u4 printInstruction(const BCIns *ins);
-u4 printInstructionOneLine(const BCIns *ins);
-void printCode(LcCode *code);
-void printInlineBitmap(const BCIns *p0);
+// Returns: length of printed instruction (in multiples of BCIns).
+u4 printInstruction_aux(FILE *stream, const BCIns *ins /*in*/, int oneline);
+
+INLINE_HEADER u4
+printInstruction(FILE *stream, const BCIns *ins) {
+  return printInstruction_aux(stream, ins, 0);
+}
+
+INLINE_HEADER u4
+printInstructionOneLine(FILE *stream, const BCIns *ins) {
+  return printInstruction_aux(stream, ins, 1);
+}
+
+void printCode(FILE *stream, LcCode *code);
+void printInlineBitmap(FILE *stream, const BCIns *p0);
 
 #endif

@@ -344,16 +344,16 @@ printSlots(JitState *J)
 
     j = i - J->baseslot;
     if ((j & 0x03) == 0)
-      printf("[%d]:", j);
+      fprintf(stderr, "[%d]:", j);
 
     if (ref == 0)
-      printf("---- ");
+      fprintf(stderr, "---- ");
     else if (ref >= REF_BIAS)
-      printf("%04d ", ref - REF_BIAS);
+      fprintf(stderr, "%04d ", ref - REF_BIAS);
     else
-      printf("K%03d ", REF_BIAS - ref);
+      fprintf(stderr, "K%03d ", REF_BIAS - ref);
   }
-  printf("\n");
+  fprintf(stderr, "\n");
 }
 
 void
@@ -364,7 +364,7 @@ printIRBuffer(JitState *J)
   IRRef nextsnap = snap ? snap->ref : 0;
   SnapNo snapno = 0;
 
-  printf("IRs (%d..%d):\n",
+  fprintf(stderr, "IRs (%d..%d):\n",
          J->cur.nk - REF_BIAS,
          J->cur.nins - REF_BIAS);
 
@@ -378,7 +378,7 @@ printIRBuffer(JitState *J)
 #endif
 
     if (ref == nextsnap) {
-      printf("     S:%02d  ",snapno);
+      fprintf(stderr, "     S:%02d  ",snapno);
       printSnapshot(J, snap, J->cur.snapmap);
       ++snap;
       ++snapno;
@@ -427,7 +427,7 @@ recordBuildEvalFrame(JitState *J, TRef node, ThunkInfoTable *info,
     return 0;
 
   const u2 *liveouts = getLivenessMask(return_pc);
-  printf("LIVES: %p %x\n", return_pc, (int)liveouts);
+  fprintf(stderr, "LIVES: %p %x\n", return_pc, (int)liveouts);
 
   setSlot(J, t + 0, emitKBaseOffset(J, b));
   setSlot(J, t + 1, emitKWord(J, (Word)return_pc, LIT_PC));
@@ -472,7 +472,7 @@ recordIns(JitState *J)
       // TODO: If the stack-level is not the one that we started with,
       // we currently simply abort.  This needs to change.
       if (J->framedepth != 0) {
-        printf("ABORT: Non-constant stack loop: %d\n.", J->framedepth);
+        fprintf(stderr, "ABORT: Non-constant stack loop: %d\n.", J->framedepth);
         goto abort_recording;
       }
 
@@ -483,10 +483,10 @@ recordIns(JitState *J)
   if (J->needsnap) {
     J->needsnap = 0;
     IF_DBG_LVL(1,
-               printf(COL_GREEN);
+               fprintf(stderr, COL_GREEN);
                printSlots(J);
                addSnapshot(J);
-               printf(COL_RESET));
+               fprintf(stderr, COL_RESET));
     J->mergesnap = 1;
   }
 
@@ -616,7 +616,7 @@ recordIns(JitState *J)
       u4 farity;
 
       if (getInfo(fnode)->type != FUN) {
-        printf("ABORT: CALLT with non-FUN.\n");
+        fprintf(stderr, "ABORT: CALLT with non-FUN.\n");
         goto abort_recording;
       }
 
@@ -691,7 +691,7 @@ recordIns(JitState *J)
       } else {
         // Partial Application
 
-        printf("ABORT: CALLT partial application.\n");
+        fprintf(stderr, "ABORT: CALLT partial application.\n");
         goto abort_recording;
       }
     }
@@ -733,7 +733,7 @@ recordIns(JitState *J)
       for (i = callargs; i < J->maxslot; i++)
         setSlot(J, i, 0); // clear slots
       J->framedepth ++;
-      //      printf("exact CALL detected\n");
+      //      fprintf(stderr, "exact CALL detected\n");
       //      LC_ASSERT(0);
     }
     break;
@@ -949,12 +949,12 @@ finishRecording(JitState *J)
   //  for (i = J->cur.nheap - 1; i >= 0; i--)
   //    heapSCCs(J, i);
 
-  printf("*** Stopping to record.\n");
+  DBG_PR("*** Stopping to record.\n");
 
   printPrettyIR(&J->cur, J->nfragments);
 #ifndef NDEBUG
   printIRBuffer(J);
-  printHeapInfo(J);
+  printHeapInfo(stderr, J);
 #endif
   J->cur.orig = *J->startpc;
   *J->startpc = BCINS_AD(BC_JFUNC, 0, J->nfragments);

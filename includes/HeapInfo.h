@@ -10,7 +10,7 @@ void growHeapInfoMapBuffer_(JitState *J, Word needed);
 u4 newHeapInfo(JitState *J, IRRef1 ref, InfoTable *info);
 u4 cloneHeapInfo(JitState *J, IRRef1 ref, u2 orig);
 HeapInfo *getHeapInfo(JitState *J, IRRef ref);
-void printHeapInfo(JitState *J);
+void printHeapInfo(FILE *file, JitState *J);
 void heapSCCs(JitState *J);
 
 

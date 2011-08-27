@@ -237,7 +237,7 @@ irEngine(Capability *cap, Fragment *F)
       DBG_PR("base[%d] = ", s - 1);
       base[s] = restoreValue(F, vals, r);
 
-      IF_DBG_LVL(1, printSlot(base + s); printf("\n"));
+      IF_DBG_LVL(1, printSlot(stderr, base + s); fprintf(stderr, "\n"));
       //DBG_PR("0x%" FMT_WordX "\n", base[s]);
     }
     DBG_PR("Base slot: %d\n", se[1]);

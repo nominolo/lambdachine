@@ -106,7 +106,7 @@ snapshotStack(JitState *J, SnapShot *snap, Word nsnapmap)
   snap->nent = (u1)nent;
   snap->count = 0;
   J->cur.nsnapmap = nsnapmap + nent + 2;
-  IF_DBG_LVL(1, printf("Created snapshot:\n  ");
+  IF_DBG_LVL(1, fprintf(stderr, "Created snapshot:\n  ");
              printSnapshot(J, snap, J->cur.snapmap));
 }
 
@@ -143,15 +143,15 @@ printSnapshot(JitState *J, SnapShot *snap, SnapEntry *map)
   for (i = 0; i < nslots; i++) {
     int j = i - baseslot;
     if ((j & 3) == 0)
-      printf("[%d]:", j);
+      fprintf(stderr, "[%d]:", j);
 
     if (nent > 0 && snap_slot(*p) == i) {
       printIRRef(&J->cur, snap_ref(*p));
       ++p;
     } else
-      printf("---- ");
+      fprintf(stderr, "---- ");
   }
-  printf("pc = %p\n", pc);
+  fprintf(stderr, "pc = %p\n", pc);
 }
 
 /* -- Snapshot restoration ------------------------------------------------ */
@@ -237,9 +237,9 @@ void restoreSnapshot(SnapNo snapno, void *exptr) {
     }
 
     IF_DBG_LVL(1,
-      printf("base[%d] = ", s - 1);
-      printSlot(base + s);
-      printf("\n")
+               fprintf(stderr, "base[%d] = ", s - 1);
+               printSlot(stderr, base + s);
+               fprintf(stderr, "\n")
     );
   }
 

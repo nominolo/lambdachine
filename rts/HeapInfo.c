@@ -106,19 +106,19 @@ getHeapInfo(JitState *J, IRRef ref)
 }
 
 void
-printHeapInfo(JitState *J)
+printHeapInfo(FILE *stream, JitState *J)
 {
   u4 i, j;
   for (i = 0; i < J->cur.nheap; i++) {
     HeapInfo *hp = &J->cur.heap[i];
-    printf("  [%d,%d] %s ", hp->mapofs, hp->scc,
+    fprintf(stream, "  [%d,%d] %s ", hp->mapofs, hp->scc,
            (hp->loop & 1) ? "L" : " ");
     printIRRef(&J->cur, hp->ref);
-    printf("=> ");
+    fprintf(stream, "=> ");
     for (j = 0; j < hp->nfields; j++) {
       printIRRef(&J->cur, getHeapInfoField(&J->cur, hp, j));
     }
-    printf("\n");
+    fprintf(stream, "\n");
   }
 }
 

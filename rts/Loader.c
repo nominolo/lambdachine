@@ -142,9 +142,9 @@ initBasepath(BasePathEntry **basepaths, Opts *opts)
 void
 printBasePaths(BasePathEntry *b)
 {
-  printf("basepaths:\n");
+  fprintf(stderr, "basepaths:\n");
   while (b) {
-    printf("  %s\n", b->path);
+    fprintf(stderr, "  %s\n", b->path);
     b = b->next;
   }
 }
@@ -294,7 +294,7 @@ findModule(const char *moduleName)
     // 1. Try to find module in base directory
     filename = moduleNameToFile(b->path, moduleName);
     
-    printf(".. Searching for `%s' in `%s'\n", moduleName, filename);
+    fprintf(stderr, ".. Searching for `%s' in `%s'\n", moduleName, filename);
 
     if (fileExists(filename)) {
       return filename;
@@ -341,8 +341,8 @@ loadModule_aux(const char *moduleName, u4 level)
 
   filename = findModule(moduleName);
 
-  for (i = 0; i < level; i++) putchar(' ');
-  printf("> Loading %s ...(%s)\n", moduleName, filename);
+  for (i = 0; i < level; i++) fputc(' ', stderr);
+  fprintf(stderr, "> Loading %s ...(%s)\n", moduleName, filename);
 
   f = fopen(filename, "rb");
   if (f == NULL) {
@@ -369,8 +369,8 @@ loadModule_aux(const char *moduleName, u4 level)
   xfree(mdl->strings);
   mdl->strings = NULL;
 
-  for (i = 0; i < level; i++) putchar(' ');
-  printf("< DONE   (%s)\n", moduleName);
+  for (i = 0; i < level; i++) fputc(' ', stderr);
+  fprintf(stderr, "< DONE   (%s)\n", moduleName);
 }
 
 // Load the module and
@@ -461,28 +461,28 @@ loadModuleBody(const char *filename, FILE *f, Module *mdl)
 void
 printModule(Module* mdl)
 {
-  printf("--- Module: %s ---\n", mdl->name);
-  printf("  info tables: %d\n", mdl->numInfoTables);
-  printf("  closures:    %d\n", mdl->numClosures);
-  printf("--- Info Tables ----------------\n");
+  fprintf(stderr, "--- Module: %s ---\n", mdl->name);
+  fprintf(stderr, "  info tables: %d\n", mdl->numInfoTables);
+  fprintf(stderr, "  closures:    %d\n", mdl->numClosures);
+  fprintf(stderr, "--- Info Tables ----------------\n");
   HashTable_print(G_loader->infoTables, (HashValuePrinter)printInfoTable);
-  printf("--- Closures (%d) ---------------\n", HashTable_entries(G_loader->closures));
+  fprintf(stderr, "--- Closures (%d) ---------------\n", HashTable_entries(G_loader->closures));
   HashTable_print(G_loader->closures, (HashValuePrinter)printClosure);
 }
 
 void
 printClosure1(void *unused, const char *const name, Closure *cl)
 {
-  printf("%s: [%p]: ", name, cl);
+  fprintf(stderr, "%s: [%p]: ", name, cl);
   printClosure(cl);
 }
 
 void
 printLoaderState()
 {
-  printf("--- Info Tables ----------------\n");
+  fprintf(stderr, "--- Info Tables ----------------\n");
   HashTable_print(G_loader->infoTables, (HashValuePrinter)printInfoTable);
-  printf("--- Closures (%d) ---------------\n", HashTable_entries(G_loader->closures));
+  fprintf(stderr, "--- Closures (%d) ---------------\n", HashTable_entries(G_loader->closures));
   HashTable_foreach(G_loader->closures,
                     (HashValueCallback)printClosure1, NULL);
   //  HashTable_print(G_loader->closures, (HashValuePrinter)printClosure);
@@ -834,8 +834,8 @@ void
 printStringTable(StringTabEntry *tbl, u4 len)
 {
   u4 i;
-  printf("String Table:\n");
+  fprintf(stderr, "String Table:\n");
   for (i = 0; i < len; i++) {
-    printf("  %5d: %s\n", i, tbl[i].str);
+    fprintf(stderr, "  %5d: %s\n", i, tbl[i].str);
   }
 }

@@ -29,7 +29,7 @@ Closure *startThread(Thread *, Closure *);
 
 // -- Stuff likely to be removed -------------------------------------
 
-void printFrame(Word *base, Word *top);
-void printSlot(Word *slot);
+void printFrame(FILE *, Word *base, Word *top);
+void printSlot(FILE *, Word *slot);
 
 #endif

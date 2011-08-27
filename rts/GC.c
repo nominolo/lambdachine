@@ -197,7 +197,7 @@ scavengeStack(Word *base, Word *top, BCIns *pc)
            "     pc = %p, ",
            i, base, frame_top, (int)(frame_top - base),
            pc);
-    IF_DBG(printInlineBitmap(pc - 1));
+    IF_DBG(printInlineBitmap(stderr, pc - 1));
 
     scavengeFrame(base, pc);
     

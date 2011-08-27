@@ -4,7 +4,7 @@
 #include "Bytecode.h"
 #include "StorageManager.h"
 
-void printInlineBitmap(const BCIns *p0);
+void printInlineBitmap(FILE *stream, const BCIns *p0);
 
 void
 printClosure_(FILE *f, Closure* cl, int nl)
@@ -51,194 +51,182 @@ printClosure_(FILE *f, Closure* cl, int nl)
     printf("%" FMT_Int " ", cl->payload[p]);
   */
   if (nl) 
-    fprintf(f, "\n");
-  
-}
-
-u4 printInstruction_aux(const BCIns *ins /*in*/, int oneline);
-
-u4
-printInstruction(const BCIns *ins) {
-  return printInstruction_aux(ins, 0);
+    fputc('\n', f);
 }
 
 u4
-printInstructionOneLine(const BCIns *ins) {
-  return printInstruction_aux(ins, 1);
-}
-
-u4
-printInstruction_aux(const BCIns *ins /*in*/, int oneline)
+printInstruction_aux(FILE *stream, const BCIns *ins /*in*/, int oneline)
 {
   const BCIns *ins0 = ins;
   u4 j;
   const BCIns i = *ins;
   const char *name = ins_name[bc_op(i)];
 
-  printf("%p: ", ins);
+  fprintf(stream, "%p: ", ins);
   ++ ins;
 
   switch(ins_format[bc_op(i)]) {
   case IFM_R:
-    printf("%s\tr%d\n", name, bc_a(i)); break;
+    fprintf(stream, "%s\tr%d\n", name, bc_a(i)); break;
   case IFM_RR:
-    printf("%s\tr%d, r%d\n", name, bc_a(i), bc_d(i)); break;
+    fprintf(stream, "%s\tr%d, r%d\n", name, bc_a(i), bc_d(i)); break;
   case IFM_RRR:
-    printf("%s\tr%d, r%d, r%d\n", name, bc_a(i), bc_b(i), bc_c(i));
+    fprintf(stream, "%s\tr%d, r%d, r%d\n", name, bc_a(i), bc_b(i), bc_c(i));
     break;
   case IFM_RN:
-    printf("%s\tr%d, %d\n", name, bc_a(i), bc_d(i)); break;
+    fprintf(stream, "%s\tr%d, %d\n", name, bc_a(i), bc_d(i)); break;
   case IFM_RRN:
-    printf("%s\tr%d, r%d, %d\n", name, bc_a(i), bc_b(i), bc_c(i));
+    fprintf(stream, "%s\tr%d, r%d, %d\n", name, bc_a(i), bc_b(i), bc_c(i));
     break;
   case IFM_RS:
-    printf("%s\tr%d, %d\n", name, bc_a(i), bc_sd(i)); break;
+    fprintf(stream, "%s\tr%d, %d\n", name, bc_a(i), bc_sd(i)); break;
   case IFM_J:
-    printf("%s\t%p\n", name, ins + bc_j(i)); break;
+    fprintf(stream, "%s\t%p\n", name, ins + bc_j(i)); break;
   case IFM_RRJ:
-    printf("%s\tr%d, r%d, %p\n", name, bc_a(i), bc_d(i),
+    fprintf(stream, "%s\tr%d, r%d, %p\n", name, bc_a(i), bc_d(i),
            ins + 1 + bc_j(*ins));
     ins++;
     break;
   case IFM____:
     switch (bc_op(i)) {
     case BC_EVAL:
-      { printf("EVAL\tr%d", bc_a(i));
-        printInlineBitmap(ins);
+      { fprintf(stream, "EVAL\tr%d", bc_a(i));
+        printInlineBitmap(stream, ins);
         ins++;
       }
       break;
     case BC_CASE:
       { u2 *tgt = (u2*)ins;  u4 ncases = bc_d(i);
         ins += (ncases + 1) / 2;
-        printf("CASE\tr%d\n", bc_a(i));
+        fprintf(stream, "CASE\tr%d\n", bc_a(i));
         if (!oneline) {
           for (j = 0; j < ncases; j++, tgt++) {
-            printf("         %d: %p\n", j + 1, ins + bc_j_from_d(*tgt));
+            fprintf(stream, "         %d: %p\n", j + 1, ins + bc_j_from_d(*tgt));
           }
         }
       }
       break;
     case BC_CASE_S:
-      printf("CASE_S\tr%d ...TODO...\n", bc_a(i));
+      fprintf(stream, "CASE_S\tr%d ...TODO...\n", bc_a(i));
       ins += bc_d(i);
       break;
     case BC_ALLOC1:
-      printf("ALLOC1\tr%d, r%d, r%d", bc_a(i), bc_b(i), bc_c(i));
-      printInlineBitmap(ins);
+      fprintf(stream, "ALLOC1\tr%d, r%d, r%d", bc_a(i), bc_b(i), bc_c(i));
+      printInlineBitmap(stream, ins);
       ins += 1;
       break;
 
     case BC_ALLOC:
       {
         u1 *arg = (u1*)ins; ins += 1 + BC_ROUND(bc_c(i));
-        printf("ALLOC\tr%d, r%d", bc_a(i), bc_b(i));
+        fprintf(stream, "ALLOC\tr%d, r%d", bc_a(i), bc_b(i));
         for (j = 0; j < bc_c(i); j++, arg++)
-          printf(", r%d", *arg);
-        printInlineBitmap(ins - 1);
+          fprintf(stream, ", r%d", *arg);
+        printInlineBitmap(stream, ins - 1);
       }
       break;
     case BC_ALLOCAP:
       {
         u1 *arg = (u1*)ins; ins += 1 + BC_ROUND(bc_c(i) + 1);
-        printf("ALLOCAP\tr%d", bc_a(i));
+        fprintf(stream, "ALLOCAP\tr%d", bc_a(i));
         u1 ptrmask = bc_b(i);
-        printf(", r%d", *arg++);
+        fprintf(stream, ", r%d", *arg++);
         for (j = 1; j < bc_c(i); j++, arg++) {
-          printf(", r%d%c", *arg, ptrmask & 1 ? '*' : ' ');
+          fprintf(stream, ", r%d%c", *arg, ptrmask & 1 ? '*' : ' ');
           ptrmask >>= 1;
         }
-        printInlineBitmap(ins - 1);
+        printInlineBitmap(stream, ins - 1);
       }
       break;
     case BC_CALL:
       { u1 *arg = (u1*)ins; ins += BC_ROUND(bc_c(i)) + 1;
-        printf("%s\tr%d", name, bc_a(i));
+        fprintf(stream, "%s\tr%d", name, bc_a(i));
         char comma = '(';
         for (j = 0; j < bc_c(i); j++, arg++) {
-          printf("%cr%d", comma, *arg);
+          fprintf(stream, "%cr%d", comma, *arg);
           comma = ',';
         }
-        printf(") [%x]", bc_b(i));
-        printInlineBitmap(ins - 1);
+        fprintf(stream, ") [%x]", bc_b(i));
+        printInlineBitmap(stream, ins - 1);
       }
       break;
     case BC_CALLT:
       { 
         int j;
         u1 bitmask = bc_b(i);
-        printf("CALLT r%d", bc_a(i));
+        fprintf(stream, "CALLT r%d", bc_a(i));
         for (j = 0; j < bc_c(i); j++) {
-          printf("%cr%d%c", j == 0 ? '(' : ',', j, bitmask & 1 ? '*' : ' ');
+          fprintf(stream, "%cr%d%c", j == 0 ? '(' : ',', j, bitmask & 1 ? '*' : ' ');
           bitmask >>= 1;
         }
-        printf(")\n");
+        fprintf(stream, ")\n");
       }
       break;
     default:
-      printf("%s ...TODO...\n", name);
+      fprintf(stream, "%s ...TODO...\n", name);
     }
     break;
   default:
     fprintf(stderr, "FATAL: Unknown intruction format: %d\n",
             ins_format[bc_op(i)]);
+    exit(1);
   }
 
   return (u4)(ins - ins0);
 }
 
 const u2 *
-printInlineBitmap_(const u2 *p)
+printInlineBitmap_(FILE *stream, const u2 *p)
 {
   u2 bitmap;
   int min = 0;
   int i;
   // Live pointers
-  printf("(%p) { ", p);
+  fprintf(stream, "(%p) { ", p);
   do {
     bitmap = *p;
     for (i = 0; i < 15 && bitmap != 0; i++) {
       if (bitmap & 1)
-        printf("r%d ", min + i);
+        fprintf(stream, "r%d ", min + i);
       bitmap = bitmap >> 1;
     }
     ++p;
   } while (bitmap != 0);
-  printf("}");
+  fprintf(stream, "}");
   return p;
 }
 
 void
-printInlineBitmap(const BCIns *p0)
+printInlineBitmap(FILE *stream, const BCIns *p0)
 {
   u4 offset = (u4)(*p0);
   if (offset != 0) {
     const u2 *p = (const u2*)((u1*)p0 + offset);
-    putchar('\t');
-    p = printInlineBitmap_(p); // pointers
-    printf(" / ");
-    printInlineBitmap_(p);   // Live-out variables
-    putchar('\n');
+    fputc('\t', stream);
+    p = printInlineBitmap_(stream, p); // pointers
+    fprintf(stream, " / ");
+    printInlineBitmap_(stream, p);   // Live-out variables
+    fputc('\n', stream);
   }
 }
 
 void
-printPointerBitmap(InfoTable *info)
+printPointerBitmap(FILE *stream, InfoTable *info)
 {
   int i; u4 bitmap;
   i = info->size;
   if (i <= 32) {
     bitmap = info->layout.bitmap;
-    printf("  pointers: (%d) ", (int)i);
+    fprintf(stream, "  pointers: (%d) ", (int)i);
     while (i > 0) {
-      if (bitmap & 1) putchar('*'); else putchar('-');
+      if (bitmap & 1) fputc('*', stream); else fputc('-', stream);
       i--;
       bitmap = bitmap >> 1;
     }
   } else {
-    printf("  pointers: ?");
+    fprintf(stream, "  pointers: ?");
   }
-  putchar('\n');
+  fputc('\n', stream);
 }
 
 void
@@ -249,23 +237,23 @@ printPtrNPtr(InfoTable *info)
 }
 
 void
-printInfoTable(InfoTable* info0)
+printInfoTable(FILE *stream, InfoTable* info0)
 {
   switch (info0->type) {
   case CONSTR:
     {
       ConInfoTable* info = (ConInfoTable*)info0;
-      printf("Constructor: %s, (%p)\n", info->name, info);
-      printf("  tag: %d\n", info->i.tagOrBitmap);
-      printPointerBitmap(info0);
+      fprintf(stream, "Constructor: %s, (%p)\n", info->name, info);
+      fprintf(stream, "  tag: %d\n", info->i.tagOrBitmap);
+      printPointerBitmap(stream, info0);
     }
     break;
   case FUN:
     {
       FuncInfoTable *info = (FuncInfoTable*)info0;
-      printf("Function: %s (%p)\n", info->name, info);
-      printPointerBitmap(info0);
-      printCode(&info->code);
+      fprintf(stream, "Function: %s (%p)\n", info->name, info);
+      printPointerBitmap(stream, info0);
+      printCode(stream, &info->code);
     }
     break;
   case CAF:
@@ -273,70 +261,70 @@ printInfoTable(InfoTable* info0)
   case AP_CONT:
     {
       ThunkInfoTable *info = (ThunkInfoTable*)info0;
-      printf("%s: %s (%p)\n",
+      fprintf(stream, "%s: %s (%p)\n",
              info0->type == THUNK ? "Thunk" : "CAF",
              info->name, info);
-      printPointerBitmap(info0);
-      printCode(&info->code);
+      printPointerBitmap(stream, info0);
+      printCode(stream, &info->code);
     }
     break;
   default:
-    printf("Unknown info table\n");
+    fprintf(stream, "Unknown info table\n");
   }
-  printf("\n");
+  fprintf(stream, "\n");
 }
 
 void
-printCode(LcCode *code)
+printCode(FILE *stream, LcCode *code)
 {
   u4 i; u4 nc = 0; BCIns *c = code->code;
   if (code->arity > 0) {
-    printf("  arity: %d, ptrs: ", code->arity);
+    fprintf(stream, "  arity: %d, ptrs: ", code->arity);
     // First bitmap is the function pointer map
-    printInlineBitmap_((const u2 *)&code->code[code->sizecode]);
-    putchar('\n');
+    printInlineBitmap_(stream, (const u2 *)&code->code[code->sizecode]);
+    fputc('\n', stream);
   }
-  printf("  frame: %d\n", code->framesize);
-  printf("  literals:\n");
+  fprintf(stream, "  frame: %d\n", code->framesize);
+  fprintf(stream, "  literals:\n");
   for (i = 0; i < code->sizelits; i++) {
-    printf("   %3d: ", i);
+    fprintf(stream, "   %3d: ", i);
     switch (code->littypes[i]) {
     case LIT_INT:
-      printf("%" FMT_Int " (i)", (WordInt)code->lits[i]);
+      fprintf(stream, "%" FMT_Int " (i)", (WordInt)code->lits[i]);
       break;
     case LIT_WORD:
-      printf("%" FMT_Word " (w)", (Word)code->lits[i]);
+      fprintf(stream, "%" FMT_Word " (w)", (Word)code->lits[i]);
       break;
     case LIT_FLOAT:
-      printf("%f / %" FMT_WordX, *((float*)&code->lits[i]), code->lits[i]);
+      fprintf(stream, "%f / %" FMT_WordX, *((float*)&code->lits[i]), code->lits[i]);
       break;
     case LIT_CHAR:
       { Word c = code->lits[i];
 	if (c < 256)
-	  printf("'%c'", (char)c);
+	  fprintf(stream, "'%c'", (char)c);
 	else
-	  printf("u%xd", (u4)c);
+	  fprintf(stream, "u%xd", (u4)c);
       }
       break;
     case LIT_STRING:
-      printf("\"%s\"", (char*)code->lits[i]);
+      fprintf(stream, "\"%s\"", (char*)code->lits[i]);
       break;
     case LIT_CLOSURE:
-      printf("clos %" FMT_WordX " (%s)", code->lits[i],
+      fprintf(stream, "clos %" FMT_WordX " (%s)", code->lits[i],
              getFInfo(code->lits[i])->name);
       break;
     case LIT_INFO:
-      printf("info %" FMT_WordX " (%s)", code->lits[i],
+      fprintf(stream, "info %" FMT_WordX " (%s)", code->lits[i],
              cast(FuncInfoTable*,code->lits[i])->name);
       break;
     default:
-      printf("???");
+      fprintf(stream, "???");
     }
-    printf("\n");
+    fprintf(stream, "\n");
   }
-  printf("  code:\n");
+  fprintf(stream, "  code:\n");
   while (nc < code->sizecode) {
-    i = printInstruction(c);
+    i = printInstruction(stream, c);
     c += i;
     nc += i;
   }

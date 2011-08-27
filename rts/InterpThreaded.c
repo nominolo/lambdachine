@@ -57,8 +57,8 @@ as follows:
 *********************************************************************/
 
 int engine(Capability *);
-void printStack(Word *base, Word *bottom);
-void printFrame(Word *base, Word *top);
+void printStack(FILE *, Word *base, Word *bottom);
+void printFrame(FILE *, Word *base, Word *top);
 void invalidateDeadSlots(Word *from, Word *to, BCIns *pc);
 
 enum {
@@ -99,7 +99,7 @@ startThread(Thread *T, Closure *cl)
 
 typedef void* Inst;
 
-void printIndent(int i, char c);
+void printIndent(FILE *stream, int i, char c);
 
 int engine(Capability *cap)
 {
@@ -142,17 +142,18 @@ int engine(Capability *cap)
 
 #if (LC_DEBUG_LEVEL >= 1)
 # define DBG_IND(stmt) \
-  do { printIndent(base - T->stack, '.'); stmt;} while (0)
+  do { printIndent(stderr, base - T->stack, '.'); stmt;} while (0)
 # define DBG_ENTER(info) \
-  do { printIndent(base - T->stack - 1, '='); \
-    printf(" ENTER %s (%p)\n", (info)->name, (info)); \
-    printInfoTable((InfoTable*)(info));               \
+  do { printIndent(stderr, base - T->stack - 1, '=');  \
+    fprintf(stderr, " ENTER %s (%p)\n", (info)->name, (info));   \
+    printInfoTable(stderr, (InfoTable*)(info));                   \
     /* printFrame(base, T->top); */ } while (0)
 # define DBG_RETURN(info, pc) \
-  DBG_IND(printf("Returning to: %s (%p), PC = %p\n", \
-		 (info)->name, (info), (pc)))
+  DBG_IND(fprintf(stderr, "Returning to: %s (%p), PC = %p\n",    \
+		 (info)->name, (info), (pc)); \
+          printInfoTable(stderr, (InfoTable*)(info)))
 # define DBG_STACK \
-  do { printStack(base, T->stack); } while (0)
+  do { printStack(stderr, base, T->stack); } while (0)
 #else
 # define DBG_IND(stmt)
 # define DBG_ENTER(info)
@@ -169,10 +170,10 @@ int engine(Capability *cap)
 # define DISPATCH_NEXT \
     opcode = bc_op(*pc); \
     if (LC_DEBUG_LEVEL >= 2) { \
-      printf(COL_YELLOW); \
-      DBG_IND(printf("    "); printFrame(base, T->top));   \
-      DBG_IND(printInstructionOneLine(pc)); \
-      printf(COL_RESET); \
+      fprintf(stderr, COL_YELLOW);                                       \
+      DBG_IND(fprintf(stderr, "    "); printFrame(stderr, base, T->top)); \
+      DBG_IND(printInstructionOneLine(stderr, pc));         \
+      fprintf(stderr, COL_RESET);                            \
     } \
     maxsteps--;  if (maxsteps == 0) return INTERP_OUT_OF_STEPS; \
     recordEvent(EV_DISPATCH, 0); \
@@ -202,7 +203,7 @@ int engine(Capability *cap)
     u4 recstatus = recordIns(J);
     if (recstatus != REC_CONT) {
       //printf(COL_RED "Recording finished: %x\n" COL_RESET, recstatus);
-      printf("Recording finished: %x\n", recstatus);
+      fprintf(stderr, "Recording finished: %x\n", recstatus);
       disp = disp1;
       switch (recstatus & REC_MASK) {
       case REC_ABORT:
@@ -239,7 +240,7 @@ int engine(Capability *cap)
  stop:
   T->pc = pc;
   T->base = base;
-  printf(">>> Steps Left: %d\n", maxsteps);
+  fprintf(stderr, ">>> Steps Left: %d\n", maxsteps);
   return INTERP_OK;
 
  op_ADDRR:
@@ -401,7 +402,11 @@ int engine(Capability *cap)
     DECODE_BC;
     u4 sz = opC;
     DBG_PR("ALLOC_%d  ; ", sz);
-    IF_DBG(if (sz == 0) { printInfoTable((InfoTable*)base[opB]); } else { printf("\n"); });
+    IF_DBG(
+           if (sz == 0) {
+             printInfoTable(stderr, (InfoTable*)base[opB]);
+           } else { fprintf(stderr, "\n");
+           });
     recordEvent(EV_ALLOC, 1 + sz);
     u4 i;
     u1 *arg = (u1 *)pc;
@@ -466,7 +471,7 @@ int engine(Capability *cap)
     T->base = base;
     T->pc = pc - 1;
 
-    printf("re-entering trace: %d\n", frag_id);
+    fprintf(stderr, "re-entering trace: %d\n", frag_id);
 
     LC_ASSERT(F != NULL);
     recordEvent(EV_TRACE, 0);
@@ -552,7 +557,7 @@ int engine(Capability *cap)
     LC_ASSERT(getInfo(cl)->type == CONSTR);
 
     u2 tag = getTag(cl) - 1;  // tags start at 1
-    DBG_IND(printf("... tag = %d\n", tag + 1));
+    DBG_IND(fprintf(stderr, "... tag = %d\n", tag + 1));
 
     if (tag < num_cases) {
       BCIns target = table[tag >> 1];
@@ -641,18 +646,18 @@ int engine(Capability *cap)
     LC_ASSERT(!looksLikeInfoTable((void*)tnode));
     LC_ASSERT(getInfo(tnode) != NULL);
 
-    DBG_IND(printf("evaluating: %p\n", tnode));
-    DBG_IND(printf("closure: ");printClosure(tnode);printf("\n"););
-    DBG_IND(printf("itbl %p\n", getFInfo(tnode)->name));
+    DBG_IND(fprintf(stderr, "evaluating: %p\n", tnode));
+    DBG_IND(fprintf(stderr, "closure: ");printClosure(tnode);fprintf(stderr, "\n"););
+    DBG_IND(fprintf(stderr, "itbl %p\n", getFInfo(tnode)->name));
 
     while (closure_IND(tnode)) {
-      DBG_IND(printf("... following indirection\n"));
+      DBG_IND(fprintf(stderr, "... following indirection\n"));
       tnode = (Closure*)tnode->payload[0];
     }
 
     if (closure_HNF(tnode)) {
       recordEvent(EV_EVAL_HNF, 0);
-      DBG_IND(printf("         (in HNF)\n"));
+      DBG_IND(fprintf(stderr, "         (in HNF)\n"));
       T->last_result = (Word)tnode;
       pc += 1; // skip live-out info
       DISPATCH_NEXT;
@@ -720,11 +725,11 @@ int engine(Capability *cap)
     LC_ASSERT(newnode != 0);
     recordEvent(EV_UPDATE, 0);
 
-    DBG_IND(printf("... updating: %p with %p\n", oldnode, newnode));
-    DBG_IND(printf("...  closure: "); printClosure(newnode);printf("\n"););
+    DBG_IND(fprintf(stderr, "... updating: %p with %p\n", oldnode, newnode));
+    DBG_IND(fprintf(stderr, "...  closure: "); printClosure(newnode);fprintf(stderr, "\n"););
     setInfo(oldnode, (InfoTable*)&stg_IND_info);
     // TODO: Enforce invariant: *newnode is never an indirection.
-    DBG_IND(printf("... writing to mem loc: %p\n", &oldnode->payload[0]));
+    DBG_IND(fprintf(stderr, "... writing to mem loc: %p\n", &oldnode->payload[0]));
     oldnode->payload[0] = (Word)newnode;
 
     if (info->type == CAF) {
@@ -786,7 +791,7 @@ int engine(Capability *cap)
 	info = getFInfo(fnode);
 	nargs += pap->nargs;
 
-	DBG_IND(printf("calling a PAP%d (%s)\n", pap->nargs, info->name));
+	DBG_IND(fprintf(stderr, "calling a PAP%d (%s)\n", pap->nargs, info->name));
       }
       break;
     case FUN:
@@ -852,7 +857,7 @@ int engine(Capability *cap)
       new_pap->nargs = nargs;
       new_pap->fun = fnode;
 
-      DBG_IND(printf("Creating PAP = %s, nargs = %d, arity = %d\n",
+      DBG_IND(fprintf(stderr, "Creating PAP = %s, nargs = %d, arity = %d\n",
 		     info->name, new_pap->nargs, new_pap->arity));
 
 
@@ -887,7 +892,7 @@ int engine(Capability *cap)
       // Adjust pointer mask to match extra_args.
       pointer_mask >>= callargs - extra_args;
 
-      DBG_IND(printf(" ... overapplication: %d + %d\n",
+      DBG_IND(fprintf(stderr, " ... overapplication: %d + %d\n",
 		     immediate_args, extra_args));
 
       // 1. Calculate where new frame must start.
@@ -1109,7 +1114,7 @@ int engine(Capability *cap)
       new_pap->nargs = nargs;
       new_pap->fun   = fnode;
 
-      DBG_IND(printf("Creating PAP = %s, nargs = %d, arity = %d\n",
+      DBG_IND(fprintf(stderr, "Creating PAP = %s, nargs = %d, arity = %d\n",
 		     info->name, pap->nargs, new_pap->arity));
 
       if (pap != NULL) {
@@ -1157,7 +1162,7 @@ int engine(Capability *cap)
       u4 extra_args = nargs - immediate_args;
       pointer_mask >>= callargs - extra_args;  // now matches extra_args
 
-      DBG_IND(printf(" ... overapplication: %d + %d\n",
+      DBG_IND(fprintf(stderr, " ... overapplication: %d + %d\n",
 		     immediate_args, extra_args));
       DBG_ENTER(info);
 
@@ -1260,50 +1265,6 @@ int engine(Capability *cap)
   return INTERP_UNIMPLEMENTED;
 }
 
-static BCIns test_code[] = {
-  BCINS_ABC(BC_ADDRR, 1, 0, 1),
-  BCINS_ABC(BC_ADDRR, 1, 0, 1),
-  BCINS_AJ(BC_JMP, 0, +1), // skip next instr.
-  BCINS_ABC(BC_ADDRR, 1, 0, 1),
-  BCINS_AD(BC__MAX, 0, 0) };
-
-// static BCIns
-
-static BCIns silly1_code[] = {
-  BCINS_AD(BC_KINT, 0, 42),   // r0 = 42
-  BCINS_AD(BC_NEW_INT, 0, 0), // r0 = new(I#, r0)
-  BCINS_AD(BC_RET1, 0, 0)     // return r0
-};
-
-static ThunkInfoTable silly1_info = {
-  .i = DEF_INFO_TABLE(THUNK, 0, 0, 1),
-  .name = "silly1",
-  .code = {
-    .lits = NULL, .sizelits = 0, 
-    .littypes = NULL,
-    .code = silly1_code, .sizecode = countof(silly1_code),
-    .framesize = 1, .arity = 0
-  }
-};
-
-static Closure silly1 = 
-  DEF_CLOSURE(&silly1_info, { 0 });
-/*
-int main(int argc, char* argv[])
-{
-  initVM();
-  Thread *T0 = createThread(cap0, 1024);
-
-  T0->base[0] = (Word)&silly1; // smallInt(0);
-  //printClosure((Closure*)T0->base[0]);
-
-  engine(T0);
-
-  printClosure((Closure*)T0->stack[1]);
-  //printf("%0" FMT_WordLen FMT_WordX "\n", T0->stack[1]);
-  return 0;
-}
-*/
 int
 stackOverflow(Thread* T, Word* top, u4 increment)
 {
@@ -1314,37 +1275,37 @@ stackOverflow(Thread* T, Word* top, u4 increment)
 }
 
 void
-printStack(Word *base, Word *bottom)
+printStack(FILE *stream, Word *base, Word *bottom)
 {
-  printf(">>> Stack = ");
+  fprintf(stream, ">>> Stack = ");
   while (base > bottom + 1) {
     FuncInfoTable *i = getFInfo((Closure*)base[-1]);
-    printf("%s : ", i->name);
+    fprintf(stream, "%s : ", i->name);
     base = (Word*)base[-3];
   }
-  printf("[]\n");
+  fprintf(stream, "[]\n");
 }
 
-void printSlot(Word *slot);
+void printSlot(FILE *, Word *slot);
 
 void
-printFrame(Word *base, Word *top)
+printFrame(FILE *stream, Word *base, Word *top)
 {
   u4 i = -1;
-  printf("[%p](%ld)", base, (long)(top - base));
+  fprintf(stream, "[%p](%ld)", base, (long)(top - base));
   base--;
   while (base < top) {
-    printf(" %d:", i);
-    printSlot(base);
+    fprintf(stream, " %d:", i);
+    printSlot(stream, base);
     ++base; ++i;
   }
-  printf("\n");
+  fprintf(stream, "\n");
 }
 
 void shortName(char *rslt, u4 maxlen, const char *str);
 
 void
-printSlot(Word *slot)
+printSlot(FILE *stream, Word *slot)
 {
   if (looksLikeClosure((void*)*slot)) {
     Closure *cl = (Closure*)(*slot);
@@ -1352,19 +1313,19 @@ printSlot(Word *slot)
     char name[10];
     shortName(name, 10, info->name);
     if (name[0] == 'I' && name[1] == '#') {
-      printf("[I# %" FMT_Word "]", cl->payload[0]);
+      fprintf(stream, "[I# %" FMT_Word "]", cl->payload[0]);
     } else {
-      printf("[%s]", name);
+      fprintf(stream, "[%s]", name);
     }
   } else if (looksLikeInfoTable((void*)*slot)) {
     ConInfoTable *info = (ConInfoTable*)*slot;
     char name[10];
     shortName(name, 10, info->name);
-    printf("<%s>", name);
+    fprintf(stream, "<%s>", name);
   } else {
-    printf("$%" FMT_WordX, *slot);
+    fprintf(stream, "$%" FMT_WordX, *slot);
   }
-  fflush(stdout);
+  fflush(stream);
 }
 
 void
@@ -1384,18 +1345,18 @@ shortName(char *rslt, u4 maxlen, const char *str)
   rslt[i] = '\0';
 }
 
-void printIndent(int i, char c)
+void printIndent(FILE *stream, int i, char c)
 {
   while (i-- > 0) {
-    putchar(c);
+    fputc(c, stream);
   }
 }
 
 void
-printFullStack(Word *base, Word *top)
+printFullStack(FILE *stream, Word *base, Word *top)
 {
   while (base) {
-    printFrame(base, top);
+    printFrame(stream, base, top);
     top = (Word*)&base[-3];
     base = (Word*)base[-3];
   }
@@ -1410,7 +1371,7 @@ void
 invalidateDeadSlots(Word *from, Word *to, BCIns *ret_pc)
 {
   DBG_PR("INVALIDATING: %p..%p", from, to);
-  IF_DBG_LVL(0,printInlineBitmap(ret_pc - 1));
+  IF_DBG_LVL(0,printInlineBitmap(stderr, ret_pc - 1));
   const u2 *mask = ret_pc ? getLivenessMask(ret_pc) : NULL;
   u2 m = mask ? *mask++ : 0;
   int vbits = 15; // valid mask bits left

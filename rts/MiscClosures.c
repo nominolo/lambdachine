@@ -440,26 +440,26 @@ void
 dumpApClosures(void)
 {
   int i, n;
-  printf("************************************************************\n");
-  printf("Closures generated:\n  ApCont:");
+  fprintf(stderr, "************************************************************\n");
+  fprintf(stderr, "Closures generated:\n  ApCont:");
   n = 0;
   for (i = 0; i <= MAX_APK_INDEX; i++) {
     if (apk_info[i].clos != NULL) {
       ++n;
-      if (n % 4 == 0) putchar('\n');
-      printf(" %s", cast(ApContInfoTable*,getInfo(apk_info[i].clos))->name);
+      if (n % 4 == 0) fputc('\n', stderr);
+      fprintf(stderr, " %s", cast(ApContInfoTable*,getInfo(apk_info[i].clos))->name);
     }
   }
-  printf("\n  Ap: ");
+  fprintf(stderr, "\n  Ap: ");
   n = 0;
   for (i = 1; i <= MAX_APK_INDEX; i++) {
     if (ap_itbls[i] != NULL) {
       ++n;
-      if (n % 4 == 0) putchar('\n');
-      printf(" %s", cast(ApInfoTable*,ap_itbls[i])->name);
+      if (n % 4 == 0) fputc('\n', stderr);
+      fprintf(stderr, " %s", cast(ApInfoTable*,ap_itbls[i])->name);
     }
   }
-  printf("\n");
+  fprintf(stderr, "\n");
  }
 
 

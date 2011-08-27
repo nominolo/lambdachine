@@ -376,19 +376,19 @@ dumpStorageManagerState()
   d = M->current;
   formatWithThousands(str, M->allocated * (LC_ARCH_BITS / 8) +
                       ((char*)M->hp - d->free));
-  printf("************************************************************\n"
+  fprintf(stderr, "************************************************************\n"
          "Bytes allocated:                  %20s bytes\n", str);
   formatWithThousands(str, M->copied * (LC_ARCH_BITS / 8));
-  printf("Bytes copied:                     %20s bytes\n", str);
+  fprintf(stderr, "Bytes copied:                     %20s bytes\n", str);
 
-  printf("Alloc:            hp=%p, limit=%p\n", M->hp, M->limit);
-  printf("Blocks:           %u full, %u total, next GC: %u full blocks\n",
+  fprintf(stderr, "Alloc:            hp=%p, limit=%p\n", M->hp, M->limit);
+  fprintf(stderr, "Blocks:           %u full, %u total, next GC: %u full blocks\n",
          M->nfull, M->ntotal, M->nextgc);
 
   u8 block_capacity = ((char*)d + BLOCK_SIZE) - d->start;
   u8 block_full = (char*)M->hp - d->start;
 
-  printf("Current:          %p-%p, %" FMT_Word64 "%% full, flags = %x\n",
+  fprintf(stderr, "Current:          %p-%p, %" FMT_Word64 "%% full, flags = %x\n",
          d->start, BLOCK_END(d),
          (100 * block_full) / block_capacity,
          d->flags);
@@ -397,13 +397,13 @@ dumpStorageManagerState()
   //   printf("Empty block: %p-%p\n",  d->start, (char*)d + BLOCK_SIZE);
   // }
   for (d = M->full; d != NULL; d = d->link) {
-    printf("Full block:  %p-%p\n",  d->start, BLOCK_END(d));
+    fprintf(stderr, "Full block:  %p-%p\n",  d->start, BLOCK_END(d));
   }
   for (d = M->infoTables; d != NULL; d = d->link) {
-    printf("Itbl block:  %p-%p\n",  d->start, BLOCK_END(d));
+    fprintf(stderr, "Itbl block:  %p-%p\n",  d->start, BLOCK_END(d));
   }
   for (d = M->staticClosures; d != NULL; d = d->link) {
-    printf("Static block:  %p-%p\n",  d->start, BLOCK_END(d));
+    fprintf(stderr, "Static block:  %p-%p\n",  d->start, BLOCK_END(d));
   }
 }
 
