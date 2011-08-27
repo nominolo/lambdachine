@@ -1175,7 +1175,7 @@ int engine(Capability *cap)
       saved_base = &top[3];
 
       u1 *args = (u1*)pc;
-      args += immediate_args - 1;
+      args += immediate_args;
       Word *p = &top[3];
       for (i = immediate_args; i < callargs; i++, p++, args++) {
         //DBG_IND(printf(" copying %d r%d %" FMT_WordX "\n", i, *args, base[*args]));
