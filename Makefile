@@ -31,7 +31,7 @@ DEPDIR = $(DIST)/.deps
 DEPDIRS = $(DEPDIR) $(DEPDIR)/rts
 
 .PHONY: all
-all: interp compiler/Opcodes.h $(LCC)
+all: interp compiler/Opcodes.h $(LCC) lcc
 
 .PHONY: boot
 boot:
@@ -68,6 +68,9 @@ echo:
 interp: $(SRCS:.c=.o)
 	@echo "LINK $^ => $@"
 	@$(CC) -Wl,-no_pie -o $@ $^
+
+lcc: $(LCC)
+	ln -s $(LCC) $@
 
 # Building a C file automatically generates dependencies as a side
 # effect.  This only works with `gcc'.
@@ -137,7 +140,7 @@ clean-interp:
 .PHONY: clean
 clean:
 	rm -f $(SRCS:%.c=%.o) utils/*.o interp compiler/.depend \
-		compiler/lcc
+		compiler/lcc lcc
 	rm -rf $(HSBUILDDIR)
 	$(MAKE) -C tests clean
 

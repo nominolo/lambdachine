@@ -121,6 +121,7 @@ utils/print_config
 # Auto-generated files
 compiler/Opcodes.h
 interp
+lcc
 dist/
 dump.s
 _T*.*
