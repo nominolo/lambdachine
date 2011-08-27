@@ -144,7 +144,7 @@ main(int argc, char *argv[])
   if (opts.disable_jit)
     G_cap0->flags |= CF_NO_JIT;
 
-  T0 = createThread(G_cap0, 1024 / 4);
+  T0 = createThread(G_cap0, 1024);
   clos0 = startThread(T0, clos0);
   printf("@Result@ "); printClosure_(stdout, clos0, 1);
   printEvents();
