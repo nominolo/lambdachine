@@ -15,10 +15,13 @@ typedef struct _StringTabEntry {
   char *str;
 } StringTabEntry;
 
+typedef struct _BasePathEntry BasePathEntry;  // Defined in Loader.c
+
 typedef struct _GlobalLoaderState {
-  HashTable      *loadedModules;
-  HashTable      *infoTables;
-  HashTable      *closures;
+  HashTable       *loadedModules;
+  HashTable       *infoTables;
+  HashTable       *closures;
+  BasePathEntry   *basepaths;   // list of search paths for bytecode files
 } GlobalLoaderState;
 
 typedef struct _Module {

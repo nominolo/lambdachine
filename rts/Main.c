@@ -81,6 +81,7 @@ main(int argc, char *argv[])
              "     --no-jit     Don't enable JIT.\n"
              "     --asm        Generate native code.\n"
              "  -B --base       Set loader base dir (default: cwd).\n"
+             "                  Separate multiple paths with \":\""
              "\n",
              argv[0]);
       exit(0);

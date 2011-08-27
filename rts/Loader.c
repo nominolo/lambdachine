@@ -11,6 +11,7 @@
 #include <string.h>
 #include <assert.h>
 #include <unistd.h>
+#include <limits.h>
 #include "Opts.h"
 
 #define VERSION_MAJOR  0
@@ -26,10 +27,20 @@
 #endif
 
 //--------------------------------------------------------------------
+// Local type definitions
+
+// Linked list of strings
+struct _BasePathEntry {
+  const char    *path;
+  BasePathEntry *next;
+};
+
+//--------------------------------------------------------------------
 // Global variables
 
+
 GlobalLoaderState *G_loader = NULL;
-char *G_basepath = NULL;
+//char *G_basepath = NULL;
 
 //--------------------------------------------------------------------
 
@@ -38,7 +49,7 @@ void printModule(Module *mdl);
 void printStringTable(StringTabEntry *tbl, u4 len);
 void bufferOverflow(int sz, int bufsize);
 
-void initBasepath(Opts *opts);
+void initBasepath(BasePathEntry **basepaths, Opts *opts);
 
 void loadStringTabEntry(FILE *, StringTabEntry */*out*/);
 char *loadId(FILE *, const StringTabEntry *, const char* sep);
@@ -64,29 +75,77 @@ bufferOverflow(int sz, int bufsize)
   exit(1);
 }
 
-void
-initBasepath(Opts *opts)
+// Initialise the base path from the command line options.
+// The base path argument is a colon-separated list of directories
+// that are searched in order (i.e., left to right).  "." is expanded
+// to the home directory.
+//
+BasePathEntry **
+addBasePathEntry(BasePathEntry **p, const char *path)
 {
-  char buf[BUFSIZE];
-  int res, sz;
+  BasePathEntry *b;
+  size_t sz;
+  char buf[PATH_MAX + 1];
+  const char *real = realpath(path, buf);
 
-  const char *base = opts->base_path;
-  if(base[0] == '.') {
-    base = getcwd(buf, BUFSIZE);
-    if (base == NULL) {
-      fprintf(stderr, "Could not get working directory\n");
-      exit(1);
-    }
+  if (real == NULL) {
+    fprintf(stderr, "WARNING: Could not resolve base path: %s\n", path);
+    return p;
   }
 
-  sz = strlen(base) + 8;
-  G_basepath = xmalloc(sz);
-  res = snprintf(G_basepath, sz, "%s/tests/", base);
-  printf("BASE: %s\n", G_basepath);
+  b = xmalloc(sizeof(BasePathEntry));
+  b->next = NULL;
+  sz = strlen(real) + 1;
+  b->path = xmalloc(sz);
+  memmove((void*)b->path, real, sz);
 
-  if (res <= 0) {
-    fprintf(stderr, "Could not initialise base path.\n");
-    exit(1);
+  *p = b;
+  return &b->next;
+}
+
+void
+initBasepath(BasePathEntry **basepaths, Opts *opts)
+{
+  const char *path = opts->base_path;
+  const char *path_end;
+  char buf[PATH_MAX + 1];
+
+  while (1) {
+    int path_len;
+    path_end = strchr(path, ':');
+    path_len = (path_end != NULL) ? path_end - path : strlen(path);
+    int is_last_path = path_end == NULL;
+    
+    if (path_len == 0) {
+      if (is_last_path) {
+        // Add default path (current working directory)
+        basepaths = addBasePathEntry(basepaths, ".");
+      }
+    } else {
+      if (path_len > PATH_MAX) {
+        // Skip if path is too long
+        fprintf(stderr, "WARNING: Path too long - ignoring: %s\n", path);
+      } else {
+        memmove((void*)buf, path, path_len);
+        buf[path_len] = '\0';
+        basepaths = addBasePathEntry(basepaths, buf);
+      }
+    }
+
+    if (is_last_path)
+      break;
+    else
+      path = path_end + 1;
+  }
+}
+
+void
+printBasePaths(BasePathEntry *b)
+{
+  printf("basepaths:\n");
+  while (b) {
+    printf("  %s\n", b->path);
+    b = b->next;
   }
 }
 
@@ -98,7 +157,8 @@ initLoader(Opts *opts)
   G_loader->infoTables = HashTable_create();
   G_loader->closures = HashTable_create();
 
-  initBasepath(opts);
+  G_loader->basepaths = NULL;
+  initBasepath(&G_loader->basepaths, opts);
 }
 
 Closure *
@@ -132,7 +192,8 @@ modulePath(const char *moduleName)
   return path;
 }
 
-/* String arguments must be UTF-8 encoded. */
+// String arguments must be UTF-8 encoded.
+/*
 FILE *
 openModuleFile(const char *packageName, const char *moduleName)
 {
@@ -158,6 +219,7 @@ openModuleFile(const char *packageName, const char *moduleName)
   fprintf(stderr, "  tried: %s\n", path);
   return NULL;
 }
+*/
 
 void
 loadStringTabEntry(FILE *f, StringTabEntry *e /*out*/)
@@ -225,24 +287,34 @@ findModule(const char *moduleName)
 {
   u4     i;
   char  *filename;
-  char   base[512];
-  // 1. Try to find module in base directory
+  char   base[PATH_MAX];
+  BasePathEntry *b = G_loader->basepaths;
+  
+  while (b) {
+    // 1. Try to find module in base directory
+    filename = moduleNameToFile(b->path, moduleName);
+    
+    printf(".. Searching for `%s' in `%s'\n", moduleName, filename);
 
-  filename = moduleNameToFile(G_basepath, moduleName);
-
-  if (fileExists(filename)) {
-    return filename;
-  }
-  xfree(filename);
-
-  for (i = 0; i < countof(wired_in_packages); i++) {
-    snprintf(base, 512, "%s/%s", G_basepath, wired_in_packages[i]);
-    filename = moduleNameToFile(base, moduleName);
     if (fileExists(filename)) {
       return filename;
-    } else {
-      xfree(filename);
     }
+    xfree(filename);
+
+    // TODO: wired-in packages should probably only live in one
+    // directory.  Otherwise, the user could accidentally shadow them.
+
+    for (i = 0; i < countof(wired_in_packages); i++) {
+      snprintf(base, PATH_MAX, "%s/%s", b->path, wired_in_packages[i]);
+      filename = moduleNameToFile(base, moduleName);
+      if (fileExists(filename)) {
+        return filename;
+      } else {
+        xfree(filename);
+      }
+    }
+
+    b = b->next;
   }
 
   fprintf(stderr, "ERROR: Could not find module: %s\n",
