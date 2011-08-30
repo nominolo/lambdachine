@@ -53,7 +53,7 @@ import qualified VarSet as Ghc
 import qualified HscTypes as Ghc ( CoreModule(..) )
 import qualified Module as Ghc
 import qualified Literal as Ghc
-import qualified Name as Ghc
+import qualified Name as Ghc hiding ( varName )
 import qualified IdInfo as Ghc
 import qualified Id as Ghc
 import qualified Type as Ghc
@@ -349,8 +349,12 @@ build_bind_code fwd_env env fvi closures locs0 = do
    go bcis locs0 fvs ((x, AppObj f args) : objs) = do
      (bcis1, locs1, fvs1, (freg:regs))
        <- transArgs (Ghc.Var f : args) env fvi locs0
-     let (arg_tys, rslt_ty) = Ghc.splitFunTysN (length args) $
-                                Ghc.repType (Ghc.varType f)
+     let Just (arg_tys, rslt_ty) =
+           --trace ("splitfun" ++
+           --       ghcPretty (length args, f, Ghc.repType (Ghc.varType f),
+           --              Ghc.splitFunTys (Ghc.repType (Ghc.varType f)))) $
+            splitFunTysN (length args) $
+               Ghc.repType (Ghc.varType f)
      -- trace ("AppObj:" ++ show (length args) ++ ":" ++
      --        Ghc.showSDoc (Ghc.ppr (Ghc.repType (Ghc.varType f))) ++
      --        " => " ++ Ghc.showSDoc (Ghc.ppr rslt_ty)) $ do
@@ -882,8 +886,8 @@ transApp f args env fvi locs0 ctxt
        case () of
          _ | Just (op, ty) <- primOpToBinOp p
            -> do
-             let (_arg_tys, rslt_ty) = Ghc.splitFunTysN 2 $
-                                        Ghc.repType (Ghc.varType f)
+             let Just (_arg_tys, rslt_ty) =
+                   splitFunTysN 2 $ Ghc.repType (Ghc.varType f)
              rslt <- mbFreshLocal rslt_ty (contextVar ctxt)
              maybeAddRet ctxt (is0 <*> insBinOp op ty rslt r1 r2)
                          locs1 fvs rslt
@@ -934,8 +938,13 @@ transApp f args env fvi locs0 ctxt
          BindC mr ->  do
            -- need to ensure that x = O, so we need to emit
            -- a fresh label after the call
-           let (_arg_tys, rslt_ty) = Ghc.splitFunTysN (length args) $
-                                       Ghc.repType (Ghc.varType f)
+           let rslt_ty =
+                 case splitFunTysN (length args) $
+                        Ghc.repType (Ghc.varType f) of
+                   Just (_arg_tys, rslt_ty_) -> rslt_ty_
+                   Nothing -> error $ "Result type for: " ++
+                                ghcPretty (f, Ghc.repType (Ghc.varType f),
+                                           Ghc.varType f, length args)
            r <- mbFreshLocal rslt_ty mr
            let ins = withFresh $ \l ->
                        is2 <*> insCall (Just (r, l)) fr regs |*><*| mkLabel l
@@ -979,8 +988,8 @@ transStore dcon args env fvi locs0 ctxt = do
   
   (bcis1, con_reg, locs2, fvs')
     <- loadDataCon dcon env fvi locs1 (contextVar ctxt)
-  let (arg_tys, rslt_ty) = Ghc.splitFunTysN (length args) $
-                             Ghc.repType (Ghc.varType dcon)
+  let Just (arg_tys, rslt_ty) =
+        splitFunTysN (length args) $ Ghc.repType (Ghc.varType dcon)
   rslt <- mbFreshLocal rslt_ty (contextVar ctxt)
   let bcis = (bcis0 <*> bcis1) <*> insAlloc rslt con_reg regs
   maybeAddRet ctxt bcis locs2 (fvs `mappend` fvs') rslt
@@ -1339,15 +1348,28 @@ isCondPrimOp primop =
 -- > viewApp [| 42# x |] = Nothing
 -- 
 viewGhcApp :: CoreExpr -> Maybe (CoreBndr, [CoreArg])
-viewGhcApp expr = go expr []
+viewGhcApp expr = go expr [] []
  where
-   go (Ghc.Var v)          as = Just (v, as)
-   go (Ghc.App f (Type _)) as = go f as
-   go (Ghc.App f a)        as = go f (a:as)
-   go (Ghc.Note _ e)       as = go e as
-   go (Ghc.Cast e _)       as = go e as
-   go (Ghc.Lam x e) as | isTyVar x = go e as
-   go _ _ = Nothing
+   go (Ghc.Var v)          ctx as = Just (adjustVarTy v ctx, as)
+   go (Ghc.App f (Type t)) ctx as = go f (t:ctx) as
+   go (Ghc.App f a)        ctx as = go f ctx (a:as)
+   go (Ghc.Note _ e)       ctx as = go e ctx as
+   go (Ghc.Cast e _)       ctx as = go e ctx as
+   go (Ghc.Lam x e)        ctx as | isTyVar x = go e ctx as
+   go _ _ _ = Nothing
+
+   -- We want the returned Id/CoreBndr to be annotated with the usage
+   -- type, not the polymorphic type.
+   adjustVarTy v [] = v
+   adjustVarTy v tys =
+     let ty' = Ghc.applyTys (Ghc.varType v) tys in
+     if Ghc.isGlobalId v then
+       Ghc.mkGlobalVar (Ghc.idDetails v) (Ghc.varName v) ty' (Ghc.idInfo v)
+      else
+        Ghc.mkLocalVar (Ghc.idDetails v) (Ghc.varName v) ty' (Ghc.idInfo v)
+
+  -- f @ a @ b x y z ==
+  -- (App (App (Var f) a) b)
 
 -- | View expression as n-ary abstraction.  Ignores type abstraction.
 --

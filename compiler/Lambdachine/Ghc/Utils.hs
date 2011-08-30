@@ -46,6 +46,15 @@ dataConInfoTableId dcon =
    N.mkBuiltinName (fromGhcUnique dcon)
       (showSDocForUser alwaysQualify (Ghc.ppr dcon))
 
+splitFunTysN :: Int -> Ghc.Type -> Maybe ([Ghc.Type], Ghc.Type)
+splitFunTysN n ty = split n ty []
+ where
+   split 0 ty acc = Just (reverse acc, ty)
+   split n ty acc =
+     case Ghc.splitFunTy_maybe ty of
+       Nothing         -> Nothing
+       Just (arg, ty') -> split (n - 1) ty' (arg:acc)
+
 tyConId :: Ghc.Name -> Id
 tyConId x =
   mkTopLevelId $
