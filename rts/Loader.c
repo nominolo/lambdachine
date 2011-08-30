@@ -457,6 +457,10 @@ loadModuleBody(const char *filename, FILE *f, Module *mdl)
   }
 }
 
+void printInfoTable1(InfoTable *info)
+{
+  printInfoTable(stderr, info);
+}
 
 void
 printModule(Module* mdl)
@@ -465,7 +469,7 @@ printModule(Module* mdl)
   fprintf(stderr, "  info tables: %d\n", mdl->numInfoTables);
   fprintf(stderr, "  closures:    %d\n", mdl->numClosures);
   fprintf(stderr, "--- Info Tables ----------------\n");
-  HashTable_print(G_loader->infoTables, (HashValuePrinter)printInfoTable);
+  HashTable_print(G_loader->infoTables, (HashValuePrinter)printInfoTable1);
   fprintf(stderr, "--- Closures (%d) ---------------\n", HashTable_entries(G_loader->closures));
   HashTable_print(G_loader->closures, (HashValuePrinter)printClosure);
 }
@@ -481,7 +485,7 @@ void
 printLoaderState()
 {
   fprintf(stderr, "--- Info Tables ----------------\n");
-  HashTable_print(G_loader->infoTables, (HashValuePrinter)printInfoTable);
+  HashTable_print(G_loader->infoTables, (HashValuePrinter)printInfoTable1);
   fprintf(stderr, "--- Closures (%d) ---------------\n", HashTable_entries(G_loader->closures));
   HashTable_foreach(G_loader->closures,
                     (HashValueCallback)printClosure1, NULL);
