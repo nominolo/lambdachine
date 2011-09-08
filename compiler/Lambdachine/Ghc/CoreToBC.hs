@@ -58,7 +58,7 @@ import qualified IdInfo as Ghc
 import qualified Id as Ghc
 import qualified Type as Ghc
 import qualified DataCon as Ghc
-import qualified CoreSyn as Ghc ( Expr(..), mkConApp )
+import qualified CoreSyn as Ghc ( Expr(..), mkConApp, isTypeArg )
 import qualified PrimOp as Ghc
 import qualified TysWiredIn as Ghc
 import qualified TysPrim as Ghc
@@ -1346,27 +1346,62 @@ isCondPrimOp primop =
 -- > viewApp [| f @a x y 42# |] = Just (f, [x, y, 42#])
 -- > viewApp [| case e of ... |] = Nothing
 -- > viewApp [| 42# x |] = Nothing
+--
+-- The returned binder type has all type applications applied and
+-- all type abstractions removed.  For example:
+--
+-- > -- full type of (>>=)
+-- > Ghc.Base.>>= ::
+-- >    forall (m :: * -> *). GHC.Base.Monad m =>
+-- >      forall a b. m a -> (a -> m b) -> m b
+--
+-- For the expression:
 -- 
+-- > GHC.Base.>>= @ m $dMonad @ a @ b m sat_saP
+--
+-- this function will return
+--
+-- > Just (GHC.Base.>>=, [$dMonad, m, sat_saP]
+--
+-- and the type of the returned @GHC.Base.>>=@ will be
+--
+-- > GHC.Base.Monad m -> m a -> (a -> m b) -> m b
+--
+-- We use this to compute the representation type of the variable in
+-- function position.
 viewGhcApp :: CoreExpr -> Maybe (CoreBndr, [CoreArg])
-viewGhcApp expr = go expr [] []
+viewGhcApp expr = {- tracePpr expr $ -} go expr []
  where
-   go (Ghc.Var v)          ctx as = Just (adjustVarTy v ctx, as)
-   go (Ghc.App f (Type t)) ctx as = go f (t:ctx) as
-   go (Ghc.App f a)        ctx as = go f ctx (a:as)
-   go (Ghc.Note _ e)       ctx as = go e ctx as
-   go (Ghc.Cast e _)       ctx as = go e ctx as
-   go (Ghc.Lam x e)        ctx as | isTyVar x = go e ctx as
-   go _ _ _ = Nothing
+   go (Ghc.Var v)    as = Just (adjustVarTy v as, filter (not . Ghc.isTypeArg) as)
+   go (Ghc.App f a)  as = go f (a:as)
+   go (Ghc.Note _ e) as = go e as
+   go (Ghc.Cast e _) as = go e as
+   go (Ghc.Lam x e)  as | isTyVar x = go e as
+   go _ _ = Nothing
 
    -- We want the returned Id/CoreBndr to be annotated with the usage
    -- type, not the polymorphic type.
+   adjustVarTy :: CoreBndr -> [CoreArg] -> CoreBndr
    adjustVarTy v [] = v
-   adjustVarTy v tys =
-     let ty' = Ghc.applyTys (Ghc.varType v) tys in
-     if Ghc.isGlobalId v then
-       Ghc.mkGlobalVar (Ghc.idDetails v) (Ghc.varName v) ty' (Ghc.idInfo v)
-      else
-        Ghc.mkLocalVar (Ghc.idDetails v) (Ghc.varName v) ty' (Ghc.idInfo v)
+   adjustVarTy v args =
+     -- tracePpr (v, Ghc.varType v, args) $
+     let ty' = adjustTy (Ghc.varType v) args in
+     let r = if Ghc.isGlobalId v then
+               Ghc.mkGlobalVar (Ghc.idDetails v) (Ghc.varName v) ty' (Ghc.idInfo v)
+              else
+               Ghc.mkLocalVar (Ghc.idDetails v) (Ghc.varName v) ty' (Ghc.idInfo v)
+     in {- tracePpr (r, Ghc.varType r) -} r
+
+   adjustTy :: Ghc.Type -> [CoreArg] -> Ghc.Type
+   adjustTy ty [] = ty
+   adjustTy ty (Type a:as) =
+     -- ty must be a forall 
+     let Just (_tyvar, res) = Ghc.splitForAllTy_maybe ty in
+     adjustTy (Ghc.applyTy ty a) as
+   adjustTy ty (a:as) =  -- at this stage 'a' must be a variable
+     -- ty must be a FunType of some sort
+     let Just (arg, res) = Ghc.splitFunTy_maybe ty in
+     Ghc.mkFunTy arg $! adjustTy res as
 
   -- f @ a @ b x y z ==
   -- (App (App (Var f) a) b)
