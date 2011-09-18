@@ -30,3 +30,11 @@
 # output.
 #
 # DebugLevel = 1
+
+# Lambdachine is currently x86-64 only.  You can still develop on 32
+# bit systems (e.g., a netbook, or ARM) if you turn off the code
+# generator.  You can test the trace compiler by using the IR
+# interpreter (it will of course be a lot slower).  Uncomment this
+# line to do just that.
+#
+# DisableAsm = Yes

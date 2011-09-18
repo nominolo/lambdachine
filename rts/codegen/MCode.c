@@ -3,6 +3,9 @@
 ** Copyright (C) 2005-2011 Mike Pall. See Copyright Notice in luajit.h
 */
 
+#include "Config.h"
+#if LC_HAS_ASM_BACKEND
+
 #include "Jit.h"
 #include "MCode.h"
 #include "InterpAsm.h" // for reference to asmExitHandler
@@ -231,3 +234,4 @@ void lj_mcode_limiterr(JitState *J, size_t need)
   traceError(J, 1);  /* Retry with new area. */
 }
 
+#endif

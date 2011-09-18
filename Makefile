@@ -23,6 +23,10 @@ ifneq ($(DebugLevel),)
 EXTRA_CFLAGS := $(EXTRA_CFLAGS) -DLC_DEBUG_LEVEL=$(DebugLevel)
 endif
 
+ifeq "$(strip $(DisableAsm))" "Yes"
+EXTRA_CFLAGS := $(EXTRA_CFLAGS) -DLC_HAS_ASM_BACKEND=0
+endif
+
 HSBUILDDIR = $(DIST)/build
 LCC = $(HSBUILDDIR)/lcc
 CABAL ?= cabal

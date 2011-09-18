@@ -3,6 +3,9 @@
 ** Copyright (C) 2005-2011 Mike Pall. See Copyright Notice in luajit.h
 */
 
+#include "Config.h"
+#if LC_HAS_ASM_BACKEND
+
 #include "AsmCodeGen.h"
 #include "AsmTarget.h" // Target Machine Definitions
 #include "Common.h"
@@ -1236,3 +1239,5 @@ void genAsm(JitState *J, Fragment *T) {
 }
 
 #undef IR
+
+#endif

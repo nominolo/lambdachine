@@ -3,7 +3,11 @@
 
 #ifndef LC_HAS_JIT
 # define LC_HAS_JIT      1
-#endif 
+#endif
+
+#ifndef LC_HAS_ASM_BACKEND
+# define LC_HAS_ASM_BACKEND 1
+#endif
 
 #undef NDEBUG
 #define DEBUG

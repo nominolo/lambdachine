@@ -9,8 +9,10 @@
 //
 #include "Snapshot.h"
 #include "PrintIR.h"
-#include "AsmTarget.h"
 #include "Thread.h"
+#if LC_HAS_ASM_BACKEND
+#include "AsmTarget.h"
+#endif
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -154,6 +156,7 @@ printSnapshot(JitState *J, SnapShot *snap, SnapEntry *map)
   fprintf(stderr, "pc = %p\n", pc);
 }
 
+#if LC_HAS_ASM_BACKEND
 /* -- Snapshot restoration ------------------------------------------------ */
 /* Initialize a Bloom Filter with all renamed refs.
 ** There are very few renames (often none), so the filter has
@@ -249,7 +252,7 @@ void restoreSnapshot(SnapNo snapno, void *exptr) {
   T->base = base + smap[nent+1];
   T->top  = base + snap->nslots;
 }
-
+#endif	/* LC_HAS_ASM_BACKEND */
 
 #undef IR
 

@@ -15,7 +15,9 @@
 #include "StorageManager.h"
 #include "Jit.h"
 #include "Stats.h"
+#if LC_HAS_ASM_BACKEND
 #include "InterpAsm.h"
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -216,12 +218,16 @@ int engine(Capability *cap)
           Closure *cl;
           LC_ASSERT(F != NULL);
           recordEvent(EV_TRACE, 0);
+#if LC_HAS_ASM_BACKEND
           if(J->param[JIT_P_enableasm]) {
             asmEngine(cap, F);
           }
           else {
             irEngine(cap, F);
           }
+#else
+	  irEngine(cap, F);
+#endif
           DBG_PR("*** Continuing at: pc = %p, base = %p\n",
                  T->pc, T->base);
           //LC_ASSERT(0);
@@ -475,12 +481,16 @@ int engine(Capability *cap)
 
     LC_ASSERT(F != NULL);
     recordEvent(EV_TRACE, 0);
+#if LC_HAS_ASM_BACKEND
     if(J->param[JIT_P_enableasm]) {
       asmEngine(cap, F);
     }
     else {
       irEngine(cap, F);
     }
+#else
+      irEngine(cap, F);
+#endif
     DBG_PR("*** Continuing at: pc = %p, base = %p\n", T->pc, T->base);
 
     pc = T->pc;

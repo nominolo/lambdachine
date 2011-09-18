@@ -1,3 +1,5 @@
+#include "Config.h"
+#if LC_HAS_ASM_BACKEND
 
 #include "Capability.h"
 #include "Jit.h"
@@ -222,3 +224,5 @@ asmExitIsImplementedInAssembly() {
     : : "i"(SAVE_SIZE + 256/* 256 bytes for int and float regs
                             * plus the extra space used by SAVE_SIZE */));
 }
+
+#endif
