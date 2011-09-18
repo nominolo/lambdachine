@@ -23,7 +23,7 @@ import Blaze.ByteString.Builder
 import Blaze.ByteString.Builder.Word
 import Blaze.ByteString.Builder.Char8 ( fromString )
 import Control.Applicative
-import Control.Exception.Base ( assert )
+import Control.Exception ( assert )
 import Control.Monad ( liftM, ap, forM_, forM )
 import Control.Monad.State.Strict --( StateT, runStateT )
 import Data.Bits
