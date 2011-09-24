@@ -136,15 +136,6 @@ BCDEF(BCENUM)
   BC__MAX
 } BCOp;
 
-// Can invert condition by toggling lowest bit.
-LC_STATIC_ASSERT((BC_ISLT ^ 1) == BC_ISGE);
-LC_STATIC_ASSERT((BC_ISGT ^ 1) == BC_ISLE);
-LC_STATIC_ASSERT((BC_ISEQ ^ 1) == BC_ISNE);
-// Order of comparison operations matters.  Same is enforced for IR.
-LC_STATIC_ASSERT((BC_ISLT & 1) == 0);
-LC_STATIC_ASSERT((BC_ISLT + 2) == BC_ISLE);
-LC_STATIC_ASSERT((BC_ISLE + 2) == BC_ISEQ);
-
 typedef enum {
   IFM_J,
   IFM_R,
@@ -159,5 +150,14 @@ typedef enum {
 
 extern InsFormat ins_format[];
 extern const char *ins_name[];
+
+// Can invert condition by toggling lowest bit.
+LC_STATIC_ASSERT((BC_ISLT ^ 1) == BC_ISGE);
+LC_STATIC_ASSERT((BC_ISGT ^ 1) == BC_ISLE);
+LC_STATIC_ASSERT((BC_ISEQ ^ 1) == BC_ISNE);
+// Order of comparison operations matters.  Same is enforced for IR.
+LC_STATIC_ASSERT((BC_ISLT & 1) == 0);
+LC_STATIC_ASSERT((BC_ISLT + 2) == BC_ISLE);
+LC_STATIC_ASSERT((BC_ISLE + 2) == BC_ISEQ);
 
 #endif
