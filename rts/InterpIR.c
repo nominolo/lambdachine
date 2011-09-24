@@ -25,14 +25,18 @@ irEngine(Capability *cap, Fragment *F)
     &&stop
   };
 
+  
+  IRRef ref;
   Thread *T = cap->T;
+  Word nphis = F->nphis;
   Word *base = T->base - 1;
   Word szins = F->nins - F->nk;
-  Word vals_[szins];
+  Word vals_[szins + nphis];
+  Word *phibuf = &vals_[szins]; /* For parallel copy of PHI nodes */
   Word *vals = vals_ - (int)F->nk;
+       
   IRIns *pc = F->ir + REF_FIRST;
   IRRef pcref = REF_FIRST;
-  IRRef ref;
   IRIns *pcmax = F->ir + F->nins;
   IRIns *pcloop = F->nloop ? F->ir + F->nloop + 1 : pc;
   //int count = 100;
@@ -78,8 +82,27 @@ irEngine(Capability *cap, Fragment *F)
   DISPATCH_NEXT;
 
  op_PHI:
-  vals[pc->op1] = vals[pc->op2];
-  DISPATCH_NEXT;
+  {
+    /* PHI nodes represent parallel assignments, so as soon as we
+       discover the first PHI node, we perform all assignments in
+       parallel. */
+    LC_ASSERT(nphis > 0);
+    u2 i;
+    DBG_LVL(3, "             ( ");
+    for (i = 0; i < nphis; i++) {
+      DBG_LVL(3, "%d ", irref_int(pc[i].op2));
+      phibuf[i] = vals[pc[i].op2];
+    }
+    DBG_LVL(3, ") --> ( ");
+    for (i = 0; i < nphis; i++) {
+      DBG_LVL(3, "%d ", irref_int(pc[i].op1));
+      vals[pc[i].op1] = phibuf[i];
+    }
+    DBG_LVL(3, ")  [%d phis]\n", (int)nphis);
+    pc += nphis - 1;
+    //vals[pc->op1] = vals[pc->op2];
+    DISPATCH_NEXT;
+  }
 
  op_LT:
   recordEvent(EV_CMP, 0);
@@ -169,7 +192,7 @@ irEngine(Capability *cap, Fragment *F)
   DISPATCH_NEXT;
 
  op_NEW:
-  if (F->heap[pc->op2].loop & 1) {
+  if (!ir_issunken(pc)) {
     // do actual allocation on trace
     HeapInfo *hp = &F->heap[pc->op2];
     int j;
@@ -267,7 +290,7 @@ restoreValue(Fragment *F, Word *vals, IRRef ref)
 
   hp = &F->heap[ir->op2];
   // Store has *not* been sunken, i.e., allocation occurred on-trace
-  if (hp->loop & 1)
+  if (!ir_issunken(ir))
     return vals[ref];
 
   // Otherwise we need to do the allocation now, possibly recursively

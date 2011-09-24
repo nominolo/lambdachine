@@ -256,6 +256,7 @@ printedByPretty(Fragment *F, IRRef ref)
     return 0;
 
   if (ir->o == IR_NEW) {
+    return 1;
     LC_ASSERT(ir->op2 < F->nheap);
 
     if (!(F->heap[ir->op2].loop & 1))
@@ -361,7 +362,12 @@ printPrettyIRIns(Fragment *F, IRRef ref)
         if (i != 0) fprintf(stderr, ", ");
         printPrettyIRRef(F, getHeapInfoField(F, hp, i));
       }
-      fputc(')', stderr);
+      fprintf(stderr, ")%s",
+              irt_getmark(ir->t) ? "" : " [sunken]");
+      if (hp->ind) {
+        fprintf(stderr, " upd=>");
+        printPrettyIRRef(F, hp->ind);
+      }
     }
     break;
   default:

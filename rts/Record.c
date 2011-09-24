@@ -82,8 +82,9 @@ emitIR(JitState *J)
   ir->t = foldIns->t;
   ir->op1 = foldIns->op1;
   ir->op2 = foldIns->op2;
-  DBG_LVL(2, "emitted: %5d ", ref - REF_BIAS);
+  DBG_LVL(2, COL_GREEN "emitted: %5d ", ref - REF_BIAS);
   IF_DBG_LVL(2, printIR(&J->cur, *ir));
+  DBG_LVL(2, COL_RESET);
 
   return TREF(ref, ir->t);
 }
@@ -171,6 +172,7 @@ recordSetup(JitState *J, Thread *T)
   J->cur.nins = REF_BASE;
   J->cur.nk = REF_BASE;
   J->cur.nloop = 0;
+  J->cur.nphis = 0;
   // Emit BASE.  Causes buffer allocation.
   emit_raw(J, IRT(IR_BASE, IRT_PTR), 0, 0);
   J->last_result = 0;
@@ -944,20 +946,25 @@ finishRecording(JitState *J)
   addSnapshot(J);
   J->cur.nloop = tref_ref(emit_raw(J, IRT(IR_LOOP, IRT_VOID), 0, 0));
   optUnrollLoop(J);
-  optDeadCodeElim(J);
-  heapSCCs(J);
-  optDeadAssignElim(J);
 
-  //  for (i = J->cur.nheap - 1; i >= 0; i--)
-  //    heapSCCs(J, i);
-
-  DBG_PR("*** Stopping to record.\n");
-
-  printPrettyIR(&J->cur, J->nfragments);
 #ifndef NDEBUG
+  printPrettyIR(&J->cur, J->nfragments);
   printIRBuffer(J);
   printHeapInfo(stderr, J);
 #endif
+
+  optDeadCodeElim(J);
+  compactPhis(J);               /* useful for IR interpreter */
+  heapSCCs(J);
+
+  DBG_PR("*** Stopping to record.\n");
+
+#ifndef NDEBUG
+  printPrettyIR(&J->cur, J->nfragments);
+  printIRBuffer(J);
+  printHeapInfo(stderr, J);
+#endif
+
   J->cur.orig = *J->startpc;
   *J->startpc = BCINS_AD(BC_JFUNC, 0, J->nfragments);
   DBG_PR("Overwriting startpc = %p, with: %x\n",
@@ -1016,6 +1023,7 @@ registerCurrentFragment(JitState *J)
   F->nloop = J->cur.nloop;
   F->ir = xmalloc((F->nins - F->nk) * sizeof(IRIns));
   F->ir = F->ir + F->nk - REF_BIAS;
+  F->nphis = J->cur.nphis;
   memcpy(F->ir + F->nk, J->cur.ir + J->cur.nk,
          (F->nins - F->nk) * sizeof(IRIns));
 

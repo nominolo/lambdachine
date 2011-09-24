@@ -7,6 +7,10 @@ typedef u2 IRRef1;              /* One stored reference */
 typedef u4 IRRef2;              /* Two stored references */
 typedef u4 IRRef;               /* Used to pass around references */
 
+#define mkIRRef2(r1, r2) ((r1) | ((r2) << 16))
+#define irref2_ref1(r)   ((u2)(r))
+#define irref2_ref2(r)   ((u2)((r) >> 16))
+
 /*
  * LuaJIT IR
  *
@@ -209,6 +213,7 @@ enum {
 };
 
 #define irref_islit(ref)   ((ref) < REF_BIAS)
+#define irref_int(ref)     ((int)((ref) - REF_BIAS))
 
 #define IRT(o, t)      (cast(u4, ((o) << 8) | (t)))
 
@@ -234,6 +239,11 @@ typedef u4 TRef;
 static LC_AINLINE int ir_sideeff(IRIns *ir)
 {
   return ((irt_isguard(ir->t)) ||  (ir_mode[ir->o] & IRM_S));
+}
+
+static LC_AINLINE int ir_issunken(IRIns *ir)
+{
+  return !irt_getmark(ir->t);
 }
 
 #endif /* _LAMBDACHINE_IR_H */

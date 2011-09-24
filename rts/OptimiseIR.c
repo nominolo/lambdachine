@@ -18,6 +18,25 @@
 // The instruction currently being optimised
 #define foldIns     (&J->fold.ins)
 
+// There we go.
+
+// -------------------------------------------------------------------
+
+INLINE_HEADER IRIns *
+followAbstractINDs(JitState *J, IRIns *ir)
+{
+  while (ir->o == IR_NEW) {
+    HeapInfo *hp = getHeapInfo(J, ir);
+    if (hp->ind)
+      ir = IR(hp->ind);
+    else
+      break;
+  }
+
+  return ir;
+}
+
+
 // -------------------------------------------------------------------
 
 // Common subexpression elimination.
@@ -103,7 +122,7 @@ optFold(JitState *J)
       DBG_PR("FOLD: ILOAD for static closure\n%s", "");
       return emitKWord(J, (Word)getFInfo(c), LIT_INFO);
     } else {
-      IRIns *left = IR(foldIns->op1);
+      IRIns *left = followAbstractINDs(J, IR(foldIns->op1));
       if (left->o == IR_NEW) {
         DBG_PR("FOLD: ILOAD for NEW closure\n%s", "");
         return left->op1;
@@ -117,6 +136,19 @@ optFold(JitState *J)
   case IR_NEW:
     // TODO: Allocating a loop-invariant value only needs to be done
     // once.
+    break;
+  case IR_UPDATE:
+    {
+      // If the updated node has been allocated on-trace, just update
+      // its `ind` field.
+      IRIns *left = IR(foldIns->op1);
+      if (left->o == IR_NEW) {
+        HeapInfo *hp = getHeapInfo(J, left);
+        LC_ASSERT(!hp->ind && foldIns->op2);
+        hp->ind = foldIns->op2;
+        return emitIR(J);
+      }
+    }
     break;
   default:
     ;
@@ -234,59 +266,66 @@ optUnrollLoop(JitState *J)
     TRef tr = renaming[ref];
     IRIns *ir = IR(tref_ref(tr));
     // We need PHI nodes for all instructions that:
-    //   - have been redefined in the unrolled loop
-    //   - return a result
-    //   - ar not FREFS
+    //   - return a result, and
+    //   - are live-out or needed to compute another live-out value, and
+    //   - whose renaming is different from the original
+    //   - are not FREFS
+    //
     // For both IRs involved we set the IRT_PHI flag to efficiently
-    // detect wether any node is argument to a PHI node.
+    // detect wether a node is argument to a PHI node.
+    //
     if (tref_t(tr) != IRT_VOID &&
-        tref_ref(tr) > J->cur.nloop &&
+        tref_ref(tr) >= REF_FIRST &&
+        tref_ref(tr) != ref &&
+        //tref_ref(tr) > J->cur.nloop &&
         ir->o != IR_FREF) {
+      DBG_LVL(3, "UNROLL: Adding PHI for %d/%d",
+              irref_int(ref), irref_int(tref_ref(tr)));
       irt_setphi(IR(ref)->t);
-      irt_setphi(ir->t);
+      //irt_setphi(ir->t);
       emit(J, IRT(IR_PHI, ir->t), ref, tref_ref(tr));
     }
   }
 
+  IF_DBG_LVL(3,
+             {
+               IRRef ref;
+               DBG_PR("UNROLL: Renaming: \n");
+               for (ref = REF_FIRST; ref < J->cur.nloop; ref++) {
+                 DBG_PR("         %d -> %d\n", irref_int(ref),
+                        irref_int(tref_ref(renaming[ref])));
+               }
+             });
+
   xfree(renaming + REF_BIAS);
 }
 
-// Find the corresponding twin of a referenced involved in a PHI node.
-//
-// For example:
-//
-//     t1  ADD a b
-//     --- LOOP ---
-//     x1  SUB t1 c  ; reference to t1 or t2
-//     t2  ADD t1 b
-//     x2  SUB t2 d  ; reference to just t2
-//     -   PHI t1 t2
-//
-// The basic principle is that all PHI nodes semantically occur right
-// after the LOOP marker.  The reference to `t1` in `x1` therefore refers
-// to `t1` in the first iteration and thereafter to `t2` from the
-// previous iteration.
-//
+// Slow-path of [findPhi].
 LC_FASTCALL IRRef
-findPhiTwin(JitState *J, IRRef ref)
+findPhi_aux(JitState *J, IRRef ref)
 {
-  if (ref < J->cur.nloop && irt_getphi(IR(ref)->t)) {
-    // We have a reference to a loop variant variable
-    IRRef1 r = J->chain[IR_PHI];
-    while (r) {
-      IRIns *ir = IR(r);
-      if (ir->op1 == ref)
-	return ir->op2;
-      r = ir->prev;
-    }
-    // We must have a matching PHI node if the IRT_PHI flag is set.
-    // So we should never reach this point.
-    fprintf(stderr, "Could not find PHI twin for: %d\n",
-            ref - REF_BIAS);
-    LC_ASSERT(0);
-    return 0;
-  } else
-    return 0;
+  LC_ASSERT(ref < J->cur.nloop && irt_getphi(IR(ref)->t));
+  //  DBG_LVL(3, "findPhi: %d\n", irref_int(ref));
+  
+  // Linear search through the PHI nodes.  We expect there to be not
+  // very many PHI nodes in general and they are in adjacent cache
+  // lines so binary search probably wouldn't be (much) faster.
+  //
+  // We don't use the prev field here because during the SCC phase of
+  // allocation sinking it will be undefined.
+  IRRef r = J->chain[IR_PHI];
+  while (r) {
+    IRIns *ir = IR(r);
+    if (ir->o == IR_PHI && ir->op1 == ref)
+      return r;
+    if (!(ir->o == IR_NOP || ir->o == IR_PHI))
+      break;
+    r--;
+  }
+  
+  fprintf(stderr, "findPhi_aux: Could not find PHI noder for: %d",
+          irref_int(ref));
+  exit(2);
 }
 
 // Mark reference [ref] from reference site [site].
@@ -375,9 +414,11 @@ optDeadCodeElim(JitState *J)
     if (!irt_getmark(ir->t) && ir->o != IR_LOOP) {
       // Remove PHI tag from arguments if we're deleting a PHI node.
       if (ir->o == IR_PHI) {
-	printf("Deleting PHI for %d, %d\n", ir->op1 - REF_BIAS, ir->op2 - REF_BIAS);
+	DBG_PR("DCE: Deleting PHI for %d, %d\n", ir->op1 - REF_BIAS, ir->op2 - REF_BIAS);
         irt_clearphi(IR(ir->op1)->t);
-        irt_clearphi(IR(ir->op2)->t);
+        //irt_clearphi(IR(ir->op2)->t);
+      } else {
+	DBG_PR("DCE: Deleting node %d\n", irref_int(ref));
       }
       ir->o = IR_NOP;
       ir->t = IRT_VOID;
@@ -503,6 +544,122 @@ optDeadAssignElim(JitState *J)
   }
 }
 
+/* Make PHI nodes contiguous (remove NOPs between PHIs).
+ *
+ * This is useful mainly for the IR interpreter.  Recall that PHI
+ * nodes represent a *parallel* assignment.  Having all PHI nodes in
+ * adjacent memory locations makes it easier to implement this in the
+ * IR interpreter.
+ */
+LC_FASTCALL
+void
+compactPhis(JitState *J)
+{
+  IRRef ref, dstref, srcref;
+  u2 nphis = 1;
+
+  DBG_LVL(3, "Compacting PHIs\n");
+
+  if (!J->chain[IR_PHI]) {      /* Trivial case. */
+    J->cur.nphis = 0;
+    return;
+  }
+
+  /* 1. Find first PHI. */
+  for (ref = J->chain[IR_PHI]; IR(ref)->prev; ref = IR(ref)->prev)
+    nphis++;
+
+  srcref = ref;
+
+  /* 1a. Try to skip past any NOPs while we're at it. */
+  for (dstref = ref; IR(dstref - 1)->o == IR_NOP; dstref--)
+    ;
+
+  /* 2. Copy things */
+  J->chain[IR_PHI] = 0;
+  for ( ; srcref < J->cur.nins; srcref++) {
+    DBG_LVL(3, "CPHI: First %d := %d\n",
+            irref_int(dstref), irref_int(srcref));
+    LC_ASSERT(dstref <= srcref);
+    if (dstref == srcref) {
+      IR(dstref)->prev = J->chain[IR_PHI];
+      J->chain[IR_PHI] = dstref;
+      dstref++;
+      continue;
+    } else if (IR(srcref)->o != IR_PHI) {
+      continue;
+    } else {
+      *IR(dstref) = *IR(srcref);
+      IR(dstref)->prev = J->chain[IR_PHI];
+      J->chain[IR_PHI] = dstref;
+      dstref++;
+    }
+  }
+  /* 2. IR buffer may now be shorter.  There can't be anything after a
+     PHI node at this point.  (The code generator may add something
+     later, but that doesn't concern us here.)
+
+     Resizing the buffer here avoids the need to set all opcodes to
+     NOPs, too.
+  */
+  DBG_LVL(3, "CPHI: nphis = %d\n", (int)nphis);
+  J->cur.nins = dstref;
+  J->cur.nphis = nphis;
+}
+
+/*
+
+Reorder PHI nodes into a sequencing-save order.
+
+It is a common notational issue in literature about SSA form that PHI
+nodes are separate and per-variable.  The problem is that semantically
+all PHI nodes represent parallel assignment.  Our PHI nodes have the
+same problem.  For example:
+
+    PHI a b
+    PHI c d
+    PHI e a
+
+This corresponds to the parallel assignment (or parallel move)
+
+    (a, c, d) := (b, d, a)
+
+But it is *not* equivalent to the following sequence of assignments:
+
+    a := b
+    c := d
+    e := a   ; should be the value of "a" before the assignment above
+
+If we moved "e := a" to the beginning of the sequence it would be a
+valid sequence equivalent to the original parallel move.
+
+In general there may be loops in which case we need one temporary
+register (or two, one for integer values and one for floating point
+values).
+
+The algorithm used here is the imperative algorithm presented in the
+paper:
+
+    "Tilting at windmills with Coq: formal verification of a
+    compilation algorithm for parallel moves" by Laurence Rideau,
+    Bernard Paul Serpette, Xavier Leroy
+
+We still represent moves as PHI nodes, but we need to be able to
+represent moves to the temporary register.  We can just use another PHI
+node for this.
+
+ */
+
+/*
+Actually this is not needed here.  We need it in the code generator,
+though.
+
+void
+reorderPhis(JitState *J)
+{
+  
+}
+*/
 
 
 #endif
