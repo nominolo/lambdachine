@@ -149,10 +149,11 @@ typedef struct _JitState {
   FuncInfoTable *func;
 
   // Virtual/Recorder State
-  TRef *base;
-  TRef slot[MAX_SLOTS];
-  BCReg baseslot;
-  BCReg maxslot;
+  TRef *base;      // current base pointer as pointer into slots
+  TRef slot[MAX_SLOTS];   // virtual register contents
+  BCReg baseslot;  // current base pointer as offset into slot
+  BCReg maxslot;   // size of the current frame
+                   // INVARIANT: baseslot + maxslot < MAX_SLOTS
   TRef last_result;
   u4 flags;
   u4 mode;

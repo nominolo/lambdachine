@@ -416,7 +416,13 @@ abortRecording(JitState *J)
   exit(111);
 }
 
-// Record the construction of a stack frame.
+/* Record the construction of a stack frame.
+ *
+ * Returns:
+ *
+ *   - non-zero if recording should continue
+ *   - zero if recording should be aborted (e.g. too many stack frames)
+ */
 LC_FASTCALL int
 recordBuildEvalFrame(JitState *J, TRef node, ThunkInfoTable *info,
                      const BCIns *return_pc)
@@ -429,6 +435,13 @@ recordBuildEvalFrame(JitState *J, TRef node, ThunkInfoTable *info,
 
   if (LC_UNLIKELY(stackOverflow(J->T, top, 8 + framesize)))
     return 0;
+
+  /* DBG_PR("CHECK: %d, %d\n", (top + 8 + framesize - J->startbase), */
+  /*        MAX_SLOTS); */
+  if (LC_UNLIKELY((top + 8 + framesize - J->startbase) >= MAX_SLOTS)) {
+    DBG_PR("ABORT: Frame too deep (EVAL).");
+    return 0;                   /* too many nested stack frames */
+  }
 
   const u2 *liveouts = getLivenessMask(return_pc);
   fprintf(stderr, "LIVES: %p %x\n", return_pc, (int)liveouts);
@@ -629,6 +642,11 @@ recordIns(JitState *J)
 
       if (farity == nargs) {
         // Exact application
+        
+        if (LC_UNLIKELY(J->T->base + info->code.framesize >= J->startbase + MAX_SLOTS)) {
+          DBG_PR("ABORT: Frame too deep.");
+          goto abort_recording;
+        }
 
         // Guard for info table, as usual
         TRef rinfo = emitKWord(J, (Word)info, LIT_INFO);
@@ -657,6 +675,12 @@ recordIns(JitState *J)
         Closure *ap_closure;
         getApContClosure(&ap_closure, &ap_return_pc, extra_args,
                          pointer_mask >> (nargs - extra_args));
+
+        if (LC_UNLIKELY(J->T->base + topslot + 3 + framesize >=
+                        J->startbase + MAX_SLOTS)) {
+          DBG_PR("ABORT: Frame too deep.");
+          goto abort_recording;
+        }
 
         // First the guard
         TRef rinfo = emitKWord(J, (Word)info, LIT_INFO);
@@ -720,6 +744,11 @@ recordIns(JitState *J)
       if (LC_UNLIKELY(stackOverflow(J->T, J->T->top, 3 + framesize)))
         goto abort_recording;
 
+      if (LC_UNLIKELY(J->T->base + topslot + 3 + framesize >= J->startbase + MAX_SLOTS)) {
+        DBG_PR("ABORT: Frame too deep.");
+        goto abort_recording;
+      }
+
       ra = getSlot(J, bc_a(ins));  // The function
 
       setSlot(J, topslot + 0, emitKBaseOffset(J, baseslot));
@@ -758,8 +787,10 @@ recordIns(JitState *J)
 
 
     do_return:
-      if (J->framedepth <= 0)
+      if (J->framedepth <= 0) {
+        DBG_PR("ABORT: Returning outside of original frame.\n");
         goto abort_recording; // for now
+      }
 
       Word return_pc = tbase[-2];
       Word *return_base = (Word*)tbase[-3];
@@ -767,7 +798,10 @@ recordIns(JitState *J)
       int i;
 
       J->framedepth--;
-      if (J->framedepth < 0) goto abort_recording;
+      if (J->framedepth < 0) { 
+        DBG_PR("ABORT: Returning outside of original frame (B).\n");
+        goto abort_recording;
+      }
 
       guardEqualKWord(J, getSlot(J, -2), return_pc, LIT_PC);
 
