@@ -69,6 +69,7 @@ newHeapInfo(JitState *J, IRRef1 ref, InfoTable *info)
   u4 nfields = info->size;
   HeapInfo *hp = &J->cur.heap[J->cur.nheap++];
   hp->mapofs = J->cur.nheapmap;
+  hp->hp_offs = 0;
   hp->ref = ref;
   hp->nfields = nfields;
   hp->nent = nfields;
@@ -91,6 +92,7 @@ cloneHeapInfo(JitState *J, IRRef1 ref, u2 orig)
   hporig = &J->cur.heap[orig];
   hp = &J->cur.heap[J->cur.nheap++];
   hp->mapofs = J->cur.nheapmap;
+  hp->hp_offs = 0;
   hp->ref = ref;
   hp->nfields = hporig->nfields;
   hp->nent = hporig->nent;
@@ -716,6 +718,105 @@ heapSCCs(JitState *J)
   }
 
   debugIRDeps(J);
+}
+
+/* Make sure the HeapInfos and heap checks are in accordance with the
+ * results of allocation sinking.
+ *
+ * Example:
+ *
+ *   x = new I#(a)        ; size: 2
+ *   y = new Cons(c, d) [sunken]  ; size: 3 but sunken
+ *   z = new Cons(e, f)   ; size: 3
+ *
+ * the heap check will allocate memory for the non-sunken objects, in
+ * this case 5.  Memory will be initialised relative to the
+ * *incremented* heap pointer:
+ *
+ *   Hp += 5 * sizeof(Word)
+ *   if (Hp >= HpLim) goto exit_handler
+ *   Hp[-4 * sizeof(Word)] = &I#_info
+ *   Hp[-3 * sizeof(Word)] = a
+ *   Hp[-2 * sizeof(Word)] = &Cons_info
+ *   Hp[-1 * sizeof(Word)] = e
+ *   Hp[0]                 = f
+ *
+ */
+void
+fixHeapOffsets(JitState *J)
+{
+  IRRef ref, ref_firstpreloop;
+  int hpmax = 0;
+  IRRef hpchk_post = 0, hpchk_pre = 0;
+
+  for (ref = J->chain[IR_HEAPCHK]; ref > REF_FIRST; ref = IR(ref)->prev) {
+    if (ref > J->cur.nloop)
+      hpchk_post = ref;
+    else
+      hpchk_pre = ref;
+  }
+
+  /* 1. Find the total amount of actual on-trace allocation in the
+     loop body.
+
+     TODO: probably could traverse the heap infos directly.
+  */
+  for (ref = J->chain[IR_NEW]; ref > J->cur.nloop; ref = IR(ref)->prev) {
+    HeapInfo *hp = getHeapInfo(J, IR(ref));
+    if (!ir_issunken(IR(ref))) {
+      hpmax += hp->nfields + 1;
+    } else {
+      //      fprintf(stderr, "sunken: ");
+      //      printPrettyIRIns(&J->cur, ref);
+    }
+  }
+  ref_firstpreloop = ref;
+
+  if (hpmax > 0) {
+    LC_ASSERT(hpchk_post != 0);
+    LC_ASSERT(IR(hpchk_post)->u >= hpmax);
+    IR(hpchk_post)->u = hpmax;
+
+    int total = 1;
+    for (ref = J->chain[IR_NEW]; ref > J->cur.nloop; ref = IR(ref)->prev) {
+      HeapInfo *hp = getHeapInfo(J, IR(ref));
+      if (!ir_issunken(IR(ref))) {
+        hp->hp_offs = total - hp->nfields - 1;
+        total -= hp->nfields + 1;
+      }
+    }
+  }
+
+  /* 2. Find the total amount of actual on-trace allocation in the
+     loop header.
+
+     TODO: probably could traverse the heap infos directly.
+  */
+  hpmax = 0;
+  for (ref = ref_firstpreloop; ref > REF_FIRST; ref = IR(ref)->prev) {
+    HeapInfo *hp = getHeapInfo(J, IR(ref));
+    if (!ir_issunken(IR(ref))) {
+      hpmax += hp->nfields + 1;
+    } else {
+      //      fprintf(stderr, "sunken: ");
+      //      printPrettyIRIns(&J->cur, ref);
+    }
+  }
+
+  if (hpmax > 0) {
+    LC_ASSERT(hpchk_pre != 0);
+    LC_ASSERT(IR(hpchk_pre)->u >= hpmax);
+    IR(hpchk_pre)->u = hpmax;
+
+    int total = 1;
+    for (ref = ref_firstpreloop; ref > REF_FIRST; ref = IR(ref)->prev) {
+      HeapInfo *hp = getHeapInfo(J, IR(ref));
+      if (!ir_issunken(IR(ref))) {
+        hp->hp_offs = total - hp->nfields - 1;
+        total -= hp->nfields + 1;
+      }
+    }
+  }
 }
 
 void

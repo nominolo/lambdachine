@@ -75,6 +75,8 @@ irEngine(Capability *cap, Fragment *F)
     IF_DBG_LVL(2, printIR(F, *pc)); } \
   goto *disp[pc->o]
 
+ op_HEAPCHK:
+  /* it's a NOP for now */
  op_NOP:
  op_FRAME:
  op_RET:

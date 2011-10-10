@@ -66,6 +66,8 @@ typedef IRRef1 HeapEntry;
 typedef struct _HeapInfo {
   u2 mapofs;
   IRRef1 ref; // First reference to heap object
+  int hp_offs; /* Start address of object as offset (in words) from
+                 heap pointer at beginning of trace/loop */
   u1 nfields; // Total number of fields
   u1 nent;    // Number of `HeapEntry`s used
   u1 compact; // non-zero if fields are in order.

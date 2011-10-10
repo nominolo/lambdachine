@@ -99,6 +99,7 @@ typedef union IRIns {
   _(GT,      G,   ref, ref) \
   _(EQ,      G,   ref, ref) \
   _(NE,      G,   ref, ref) \
+  _(HEAPCHK, G,   cst, ___) \
    \
   _(BNOT,    N,   ref, ___) \
   _(BAND,    C,   ref, ref) \

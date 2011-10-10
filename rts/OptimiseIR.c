@@ -133,6 +133,24 @@ optFold(JitState *J)
     if (J->slot[foldIns->op1])
       return J->slot[foldIns->op1];
     break;
+  case IR_HEAPCHK:
+    {
+      /* Fold multiple heap checks into one, but not across the loop
+         boundary */
+      IRRef ref = J->chain[IR_HEAPCHK];
+      if ( ref &&
+           ((J->cur.nloop && ref > J->cur.nloop) ||
+            (!J->cur.nloop && ref) )) {
+        DBG_PR("FOLD: HEAPCHECK += %u\n", foldIns->u);
+        IRIns *ir = IR(ref);
+        ir->u += foldIns->u;
+        return ref;
+      } else {
+        DBG_PR("FOLD: new HEAPCHECK %u\n", foldIns->u);
+        return emitIR(J);
+      }
+    }
+    break;
   case IR_NEW:
     // TODO: Allocating a loop-invariant value only needs to be done
     // once.

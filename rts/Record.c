@@ -656,6 +656,7 @@ recordIns(JitState *J)
         setSlot(J, -1, ra);
 
         J->maxslot = info->code.framesize;
+
         // Invalidate non-argument slots:
         u4 i;
         for (i = nargs; i < J->maxslot; i++) setSlot(J, i, 0);
@@ -664,6 +665,7 @@ recordIns(JitState *J)
         IF_DBG_LVL(1, printSlots(J));
 
       } else if (farity < nargs) {
+
         // Overapplication
         u4 extra_args = nargs - farity;
         TRef extras[extra_args];
@@ -830,6 +832,7 @@ recordIns(JitState *J)
       // expecting.  Usually, this will be optimised away.
       emit(J, IRT(IR_EQ, IRT_CMP), rb, rinfo);
 
+      emit(J, IRT(IR_HEAPCHK, IRT_VOID), 2, 0);
       rc = getSlot(J, bc_c(ins));
       rnew = emit(J, IRT(IR_NEW, IRT_CLOS), rinfo, 2);
       setSlot(J, bc_a(ins), rnew);
@@ -856,6 +859,7 @@ recordIns(JitState *J)
         rc = getSlot(J, *arg);
         setHeapInfoField(&J->cur, hp, i, rc);
       }
+      emit(J, IRT(IR_HEAPCHK, IRT_VOID), size + 1, 0);
       rnew = emit(J, IRT(IR_NEW, IRT_CLOS), rinfo, h);
       hp->ref = rnew;
       setSlot(J, bc_a(ins), rnew);
@@ -872,6 +876,8 @@ recordIns(JitState *J)
       InfoTable *info = getApInfoTable(nargs, pointer_mask);
       HeapInfo *hp;
       u1 *arg = (u1*)(pc + 1);
+
+      emit(J, IRT(IR_HEAPCHK, IRT_VOID), nargs + 2, 0);
 
       rinfo = emitKWord(J, (Word)info, LIT_INFO);
       h = newHeapInfo(J, 0, info);
@@ -990,6 +996,7 @@ finishRecording(JitState *J)
   optDeadCodeElim(J);
   compactPhis(J);               /* useful for IR interpreter */
   heapSCCs(J);
+  fixHeapOffsets(J);
 
   DBG_PR("*** Stopping to record.\n");
 

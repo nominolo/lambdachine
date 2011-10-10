@@ -11,6 +11,7 @@ u4 newHeapInfo(JitState *J, IRRef1 ref, InfoTable *info);
 u4 cloneHeapInfo(JitState *J, IRRef1 ref, u2 orig);
 void printHeapInfo(FILE *file, JitState *J);
 void heapSCCs(JitState *J);
+void fixHeapOffsets(JitState *J);
 
 INLINE_HEADER HeapInfo *
 getHeapInfo(JitState *J, IRIns *ir)

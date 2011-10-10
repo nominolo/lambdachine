@@ -227,12 +227,6 @@ printPrettyIRRef_(Fragment *F, IRRef ref, int follow)
   }
 }
 
-INLINE_HEADER void
-printPrettyIRRef(Fragment *F, IRRef ref)
-{
-  printPrettyIRRef_(F, ref, 1);
-}
-
 const char *ir_cmp_name[IR_NE - IR_LT + 1] = {
   [IR_LT - IR_LT] = "< ",
   [IR_GE - IR_LT] = ">=",
@@ -309,6 +303,9 @@ printPrettyIRIns(Fragment *F, IRRef ref)
     fputc(')', stderr);
     // TODO: Print snapshot / live-outs
     break;
+  case IR_HEAPCHK:
+    fprintf(stderr, "guard (Hp + %u < HpLim)", ir->u);
+    break;
   case IR_FLOAD:
     ir = IR(ir->op1);
     printPrettyIRRef(F, ir->op1);
@@ -350,6 +347,7 @@ printPrettyIRIns(Fragment *F, IRRef ref)
     printPrettyIRRef(F, ir->op2);
     fputc(')', stderr);
     break;
+
   case IR_NEW:
     fprintf(stderr, "new ");
     printPrettyIRRef(F, ir->op1);
@@ -364,6 +362,11 @@ printPrettyIRIns(Fragment *F, IRRef ref)
       }
       fprintf(stderr, ")%s",
               irt_getmark(ir->t) ? "" : " [sunken]");
+
+      if (irt_getmark(ir->t)) {
+        fprintf(stderr, " Hp[%d]", hp->hp_offs);
+      }
+      
       if (hp->ind) {
         fprintf(stderr, " upd=>");
         printPrettyIRRef(F, hp->ind);
