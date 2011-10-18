@@ -47,6 +47,7 @@ initStorageManager()
   G_storage.ntotal = 0;
   G_storage.nextgc = 2;
   G_storage.gc_inprogress = 0;
+  G_storage.gc_inhibited = 0;
   G_storage.hp = NULL;
   G_storage.limit = NULL;
   G_storage.allocated = 0;
@@ -156,8 +157,14 @@ getEmptyBlock(StorageManagerState *M)
   }
 }
 
+/* PRE: M->current != NULL
+
+   POST: M->current = NULL
+         pre(M->current) is in full list
+         accounting is correct
+*/
 void
-currentBlockFull(StorageManagerState *M)
+markCurrentBlockFull(StorageManagerState *M)
 {
   LC_ASSERT(M->current);
   BlockDescr *blk = M->current;
@@ -171,8 +178,14 @@ currentBlockFull(StorageManagerState *M)
   blk->link = M->full;
   M->full = blk;
   M->nfull++;
+}
 
-  if (M->nfull >= M->nextgc && !M->gc_inprogress) {
+void
+currentBlockFull(StorageManagerState *M)
+{
+  markCurrentBlockFull(M);
+
+  if (M->nfull >= M->nextgc && !M->gc_inprogress && !M->gc_inhibited) {
     performGC(G_cap0);
     //    printf("TODO: PerformGC\n");
   } else {

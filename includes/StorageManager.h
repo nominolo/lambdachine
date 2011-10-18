@@ -59,7 +59,10 @@ typedef struct _StorageManagerState {
   u4 ntotal;                    /* Total number of blocks (full and empty) */
   u4 nextgc;                    /* Do next GC when nfull reaches this
                                    value. */
-  u4 gc_inprogress;             /* 1 iff GC is in progress, 0 otherwise */
+  u1 gc_inprogress;             /* 1 iff GC is in progress, 0 otherwise */
+  u1 gc_inhibited;              /* 1 iff GC should not be performed
+                                   right now */
+  u2 unused;
   Word *hp;                     /* Next location to allocate */
   Word *limit;                  /* Upper bound for current allocation
                                    buffer. */
@@ -91,6 +94,7 @@ int looksLikeInfoTable(void *);
 int looksLikeClosure(void *);
 int looksLikeStaticClosure(void *);
 int isClosure(void *p);
+void markCurrentBlockFull(StorageManagerState *M);
 
 void performGC(Capability *C);
 

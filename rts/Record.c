@@ -41,10 +41,42 @@ void recordCleanup(JitState *J);
 
 // -------------------------------------------------------------------
 
+const u2 emptyBitmask[2] = {0, 0};
+
 LC_FASTCALL TRef
 emitLoadSlot(JitState *J, i4 slot)
 {
-  TRef ref = emit_raw(J, IRT(IR_SLOAD, IRT_UNK), (i4)J->baseslot + slot, 0);
+  /* Type info is mostly needed for determining the pointerhood of
+     items in snapshots.  In fact, we're really only interested in
+     snapshots for guards that might trigger GC.
+  */
+
+  /* TODO: Would it be cheaper to load the type info when
+     calling/returning from a function?
+  */
+
+  IRType ty;
+  if (slot < 0) {
+    if (slot == -1) {
+      /* If slot is -1 (i.e., Node pointer) we assume it's always a
+         pointer. */
+      ty = IRT_CLOS;
+    } else {
+      /* Stack frame link info shouldn't  */
+      ty = IRT_UNK;
+    }
+  } else {
+    const u2 *ptr_mask = getParamPointerMask(getFInfo(J->T->base[-1]));
+    while (slot > 15 && (*ptr_mask & 0x8000)) {
+      slot -= 15;
+      ptr_mask++;
+    }
+    if ((*ptr_mask & (1 << slot)) != 0)
+      ty = IRT_CLOS;
+    else
+      ty = IRT_UNK;
+  }
+  TRef ref = emit_raw(J, IRT(IR_SLOAD, ty), (i4)J->baseslot + slot, 0);
   J->base[slot] = ref;
   //  if (slot >= J->maxslot) J->maxslot = slot + 1;
   return ref;

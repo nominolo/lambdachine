@@ -4,6 +4,54 @@
 #include "Common.h"
 #include "Bytecode.h"
 
+/*
+
+Current Bitmap Story (likely to change)
+---------------------------------------
+
+Every return point is preceded by an offset into the pointer bitmask.
+These are multiples of 16 bits; the highest bit serves as a
+continuation bit; the LSB is the first bit of the sequence.  If it is
+set another 16 bit follows.  E.g., the bit sequence
+
+    1100 1010 0100 0100 01
+
+is first split into chunks of 15 bits
+
+    1100 1010 0100 010  |  0010
+
+end then encoded in little endian:
+
+    0xa253 0x0004
+
+There are two such bitmasks.  The first one is pointer mask, the
+second the liveness mask.  The pointer mask must be a subset of the
+liveness mask.  If a bit is set, then the corresponding register
+contains a pointer and/or is live at this point.  For example, the two
+bitmasks
+
+    0x0005 0x0007
+
+are interpreted as registers r0 and r2 contain a pointer, and
+registers r0, r1, and r2 contain live values.
+
+
+For heap objects, the bitmask describing the pointerhood of each argument
+is located in the `layout.bitmap` field of the info table.  These bitmaps
+are currently fixed-size 32 bit values.  So, for now, we don't support
+heap objects with more than 32 fields.
+
+For function closures we need both a bitmap for the free variables as
+well as for the function arguments (used by PAPs and the JIT).  The
+latter are encoded the same way as return point bitmasks and are at
+the location immediately following the functions bytecode
+instructions.  I.e., if `i` is a pointer to the functions info table
+then it can be accessed as:
+
+    i->code.code[i->code.sizecode]
+
+*/
+
 typedef struct {
   u2   framesize;               /* No. of local variables. */
   u2   arity;                   /* No. of function arguments.  */
@@ -171,6 +219,18 @@ getPointerMask(const BCIns *next_pc)
     return (const u2*)((u1*)p0 + offset);
   else
     return NULL;
+}
+
+extern const u2 emptyBitmask[2];         /* Defined in Record.c */
+
+INLINE_HEADER
+const u2 *
+getParamPointerMask(const FuncInfoTable *info)
+{
+  if (info->i.type == FUN)
+    return (const u2 *)&info->code.code[info->code.sizecode];
+  else
+    return &emptyBitmask[0];
 }
 
 INLINE_HEADER

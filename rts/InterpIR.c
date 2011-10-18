@@ -7,6 +7,16 @@
 #include "HeapInfo.h"
 #include "StorageManager.h"
 #include "Stats.h"
+#include "PrintClosure.h"
+
+/**
+
+The function `irEngine` implements an interpreter for the trace IR.
+While this is obviously very slow, it can be useful to collect
+execution statistics and to serve as a reference semantics for the
+generated machine code.
+  
+*********************************************************************/
 
 typedef void* Inst;
 
@@ -34,6 +44,8 @@ irEngine(Capability *cap, Fragment *F)
   Word vals_[szins + nphis];
   Word *phibuf = &vals_[szins]; /* For parallel copy of PHI nodes */
   Word *vals = vals_ - (int)F->nk;
+  Word *hp = G_storage.hp;
+  Word *hplim = G_storage.limit;
        
   IRIns *pc = F->ir + REF_FIRST;
   IRRef pcref = REF_FIRST;
@@ -75,8 +87,6 @@ irEngine(Capability *cap, Fragment *F)
     IF_DBG_LVL(2, printIR(F, *pc)); } \
   goto *disp[pc->o]
 
- op_HEAPCHK:
-  /* it's a NOP for now */
  op_NOP:
  op_FRAME:
  op_RET:
@@ -193,17 +203,84 @@ irEngine(Capability *cap, Fragment *F)
   vals[pcref] = (Word)getInfo(vals[pc->op1]);
   DISPATCH_NEXT;
 
+ op_HEAPCHK:
+  if (LC_LIKELY(hp + pc->u <= hplim)) {
+    hp += pc->u;
+    DISPATCH_NEXT;
+  } else {
+    StorageManagerState *M = &G_storage;
+    M->hp = hp;
+    M->limit = hplim;
+    markCurrentBlockFull(M);
+
+    if (M->nfull < M->nextgc) {
+      /* We just reached the end of the current block, no full GC
+         necessary, yet.  Just grab a new block and re-enter trace.
+         
+         This is safe even in compiled code provided that:
+         
+           - the heap pointer is a dedicated register (or stack slot)
+
+           - the heap limit is in a dedicated register or stack slot
+             (more likely the latter)
+      */
+      
+      makeCurrent(M, getEmptyBlock(M));
+      hp = M->hp;
+      hplim = M->limit;
+      goto op_HEAPCHK;          /* Retry */
+
+      /* NOTE: We cannot get into an infinite loop here because on
+         each but the last iteration we increment M->nfull */
+
+    } else {
+      
+      /* GC necessary.  It's easiest to just force execution back to
+         the interpreter.  Eventually, the interpreter will try to
+         allocate an object, fail the heap check, and trigger a
+         garbage collection.
+
+         NOTE: Just exiting the trace may trigger allocation due to
+         sunken allocations.  This means, we could run out of memory
+         while allocating an object from the heap snapshot.  To avoid
+         this, we temporarily suppress GC until after the snapshot has
+         been restored.  We then set `G_storage.limit = G_storage.hp`
+         which will trigger garbage at the next allocation
+         instruction executed by the interpreter.
+
+         There is one degenerate case here.  Consider these events:
+         
+           1. We exit a trace
+
+           2. The interpreter continues execution but doesn't perform
+              any allocations.
+
+           3. The interpreter finds another trace entrance 
+         
+      */
+      makeCurrent(M, getEmptyBlock(M));
+      G_storage.gc_inhibited = 1;
+      goto guard_failed;
+      /* fprintf(stderr, "Exiting due to failed on-trace heap check.\n"); */
+      /* exit(123);  */
+    }
+  }
+
  op_NEW:
   if (!ir_issunken(pc)) {
     // do actual allocation on trace
-    HeapInfo *hp = &F->heap[pc->op2];
+    HeapInfo *hpi = &F->heap[pc->op2];
     int j;
-    recordEvent(EV_ALLOC, hp->nfields + 1);
-    Closure *cl = allocClosure(wordsof(ClosureHeader) + hp->nfields);
+    recordEvent(EV_ALLOC, hpi->nfields + 1);
+    Closure *cl = (Closure*)(hp + (hpi->hp_offs - 1));
+    //Closure *cl = allocClosure(wordsof(ClosureHeader) + hp->nfields);
     setInfo(cl, (InfoTable*)vals[pc->op1]);
-    for (j = 0; j < hp->nfields; j++) {
-      cl->payload[j] = vals[getHeapInfoField(F, hp, j)];
+    for (j = 0; j < hpi->nfields; j++) {
+      cl->payload[j] = vals[getHeapInfoField(F, hpi, j)];
     }
+    /* DBG_LVL(3, "Hp = %p size=%d offs=%d Clos=%p\n", */
+    /*         hp, hpi->nfields, hpi->hp_offs, cl); */
+    /* IF_DBG_LVL(3, printClosure(cl)); */
     vals[pcref] = (Word)cl;
   } else {
     vals[pcref] = 0;  // to trigger an error if accessed
@@ -270,6 +347,14 @@ irEngine(Capability *cap, Fragment *F)
     T->pc = (BCIns *)F->startpc + (int)se[0];
     T->base = base + se[1];
     T->top = base + snap->nslots;
+
+    if (G_storage.gc_inhibited) {
+      /* Force a GC next time an allocation is triggered. */
+      G_storage.limit = G_storage.hp;
+      G_storage.gc_inhibited = 0;
+      DBG_PR("GC no longer inhibited\n");
+    }
+
     //printFrame(T->base, T->top);
     return 0;
   }

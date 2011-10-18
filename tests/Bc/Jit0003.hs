@@ -7,6 +7,9 @@ import GHC.Base
 import GHC.Integer
 import GHC.Num
 
+-- This tests whether PHI nodes are correctly implemented as
+-- concurrent assignment.
+
 --import Debug.Trace
 --import Prelude ( show )
 
