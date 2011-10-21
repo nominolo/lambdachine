@@ -198,11 +198,19 @@ int engine(Capability *cap)
  recording:
   //printf("%p, %p\n", pc, J->startpc);
   {
+    u4 recstatus;
     recordEvent(EV_RECORD, 0);
     T->base = base;
     J->pc = T->pc = pc - 1;
     J->func = getFInfo((Closure*)base[-1]);
-    u4 recstatus = recordIns(J);
+
+    if (bc_op(*T->pc) != BC_JFUNC) {
+      /* We discovered and existing trace */
+      recstatus = REC_ABORT;
+    } else {
+      recstatus = recordIns(J);
+    }
+
     if (recstatus != REC_CONT) {
       //printf(COL_RED "Recording finished: %x\n" COL_RESET, recstatus);
       fprintf(stderr, "Recording finished: %x\n", recstatus);
