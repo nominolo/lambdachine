@@ -206,6 +206,10 @@ int engine(Capability *cap)
     if (recstatus != REC_CONT) {
       //printf(COL_RED "Recording finished: %x\n" COL_RESET, recstatus);
       fprintf(stderr, "Recording finished: %x\n", recstatus);
+      if (G_jitstep & STEP_FINISH_RECORDING) {
+        getchar();
+      }
+
       disp = disp1;
       switch (recstatus & REC_MASK) {
       case REC_ABORT:
@@ -479,6 +483,12 @@ int engine(Capability *cap)
 
     fprintf(stderr, "re-entering trace: %d\n", frag_id);
 
+    if (G_jitstep & STEP_ENTER_TRACE) {
+      fprintf(stderr, "Entering trace: %d [press key to continue]\n", frag_id);
+      getchar();
+    }
+
+
     LC_ASSERT(F != NULL);
     recordEvent(EV_TRACE, 0);
 #if LC_HAS_ASM_BACKEND
@@ -524,6 +534,11 @@ int engine(Capability *cap)
       hotcount_set(cap, pc-1, HOTCOUNT_DEFAULT); // Reset hotcount
       startRecording(J, pc-1, cap->T, base);
       disp = disp_record;
+      if (G_jitstep & STEP_START_RECORDING) {
+        fprintf(stderr, "Starting to record trace at PC: %p", pc - 1);
+        getchar();
+      }
+
     }
   }
 #endif

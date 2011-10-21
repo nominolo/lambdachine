@@ -6,6 +6,7 @@
 #include "MiscClosures.h"
 #include "Stats.h"
 #include "Opts.h"
+#include "Jit.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,8 +20,11 @@ static Opts opts = {
   .main_closure = "test",
   .print_loader_state = 0,
   .disable_jit = 0,
-  .enable_asm  = 0
+  .enable_asm  = 0,
+  .step_opts = 0
 };
+
+u4 G_jitstep = 0;
 
 void loadWiredInModules();
 
@@ -41,6 +45,7 @@ main(int argc, char *argv[])
     {"entry",              required_argument, 0, 'e'},
     {"base",               required_argument, 0, 'B'},
     {"help",               no_argument, 0, 'h'},
+    {"step",               required_argument, 0, 'S'},
     {0, 0, 0, 0}
   };
 
@@ -66,6 +71,9 @@ main(int argc, char *argv[])
     case 'B':
       fprintf(stderr, "base = %s\n", optarg);
       opts.base_path = optarg;
+      break;
+    case 'S':
+      opts.step_opts = optarg;
       break;
     case 'l':
       opts.main_closure = NULL;
@@ -115,6 +123,22 @@ main(int argc, char *argv[])
     } else {
       fprintf(stderr, "ERROR: Main closure name too long.\n");
       exit(1);
+    }
+  }
+
+  if (opts.step_opts != 0) {
+    const char *p = opts.step_opts;
+    while (*p != '\0') {
+      switch (*p) {
+      case '*': G_jitstep |= 0xffffffff; break;
+      case 'r': G_jitstep |= STEP_START_RECORDING; break;
+      case 'R': G_jitstep |= STEP_FINISH_RECORDING; break;
+      case 't': G_jitstep |= STEP_ENTER_TRACE; break;
+      case 'T': G_jitstep |= STEP_ENTER_TRACE; break;
+      default:
+        fprintf(stderr, "Unknown option to --step: %c", *p);
+      }
+      p++;
     }
   }
 

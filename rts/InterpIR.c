@@ -205,6 +205,7 @@ irEngine(Capability *cap, Fragment *F)
 
  op_HEAPCHK:
   if (LC_LIKELY(hp + pc->u <= hplim)) {
+    DBG_LVL(2, "               Hp: %p => %p\n", hp, hp + pc->u);
     hp += pc->u;
     DISPATCH_NEXT;
   } else {
@@ -327,10 +328,11 @@ irEngine(Capability *cap, Fragment *F)
       }
     }
     LC_ASSERT(snap != 0);
+    int snap_id = i;
     snap->count++;
     se = F->snapmap + snap->mapofs;
     DBG_PR("Snapshot: %d, Snap entries: %d, slots = %d\n",
-           i, snap->nent, snap->nslots);
+           snap_id, snap->nent, snap->nslots);
     recordEvent(EV_EXIT, snap->nent);
     for (i = 0; i < snap->nent; i++, se++) {
       BCReg s = snap_slot(*se);
@@ -353,6 +355,11 @@ irEngine(Capability *cap, Fragment *F)
       G_storage.limit = G_storage.hp;
       G_storage.gc_inhibited = 0;
       DBG_PR("GC no longer inhibited\n");
+    }
+
+    if (G_jitstep & STEP_EXIT_TRACE) {
+      fprintf(stderr, "Exited trace: at exit %d", snap_id);
+      getchar();
     }
 
     //printFrame(T->base, T->top);

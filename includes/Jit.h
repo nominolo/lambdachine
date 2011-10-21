@@ -330,5 +330,13 @@ findPhiTwin(JitState *J, IRRef ref)
   return ref != 0 ? J->cur.ir[ref2].op2 : 0;
 }
 
+typedef enum {
+  STEP_START_RECORDING   = 0x0001,
+  STEP_FINISH_RECORDING  = 0x0002,
+  STEP_ENTER_TRACE       = 0x0004,
+  STEP_EXIT_TRACE        = 0x0008
+} JitStep;
+
+extern u4 G_jitstep;
 
 #endif

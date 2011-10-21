@@ -7,5 +7,6 @@ typedef struct {
   int          print_loader_state;
   int          disable_jit;
   int          enable_asm;  /* enable machine code generation */
+  const char  *step_opts;   /* Allow stepping through JIT phases */
 } Opts;
 #endif
