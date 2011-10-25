@@ -60,7 +60,7 @@ typedef struct _StorageManagerState {
   u4 nextgc;                    /* Do next GC when nfull reaches this
                                    value. */
   u1 gc_inprogress;             /* 1 iff GC is in progress, 0 otherwise */
-  u1 gc_inhibited;              /* 1 iff GC should not be performed
+  u1 gc_inhibited;              /* 1 iff GC should *not* be performed
                                    right now */
   u2 unused;
   Word *hp;                     /* Next location to allocate */

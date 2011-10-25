@@ -46,7 +46,7 @@ irEngine(Capability *cap, Fragment *F)
   Word *vals = vals_ - (int)F->nk;
   Word *hp = G_storage.hp;
   Word *hplim = G_storage.limit;
-       
+  int heapcheck_failed = 0;
   IRIns *pc = F->ir + REF_FIRST;
   IRRef pcref = REF_FIRST;
   IRIns *pcmax = F->ir + F->nins;
@@ -204,6 +204,7 @@ irEngine(Capability *cap, Fragment *F)
   DISPATCH_NEXT;
 
  op_HEAPCHK:
+  //DISPATCH_NEXT;
   if (LC_LIKELY(hp + pc->u <= hplim)) {
     DBG_LVL(2, "               Hp: %p => %p\n", hp, hp + pc->u);
     hp += pc->u;
@@ -260,12 +261,14 @@ irEngine(Capability *cap, Fragment *F)
          
       */
       makeCurrent(M, getEmptyBlock(M));
-      G_storage.gc_inhibited = 1;
+      heapcheck_failed = 1;
       goto guard_failed;
       /* fprintf(stderr, "Exiting due to failed on-trace heap check.\n"); */
       /* exit(123);  */
     }
   }
+  fprintf(stderr, "FATAL: unreachable in op_HEAPCHK\n");
+  exit(13);
 
  op_NEW:
   if (!ir_issunken(pc)) {
@@ -274,7 +277,7 @@ irEngine(Capability *cap, Fragment *F)
     int j;
     recordEvent(EV_ALLOC, hpi->nfields + 1);
     Closure *cl = (Closure*)(hp + (hpi->hp_offs - 1));
-    //Closure *cl = allocClosure(wordsof(ClosureHeader) + hp->nfields);
+    //Closure *cl = allocClosure(wordsof(ClosureHeader) + hpi->nfields);
     setInfo(cl, (InfoTable*)vals[pc->op1]);
     for (j = 0; j < hpi->nfields; j++) {
       cl->payload[j] = vals[getHeapInfoField(F, hpi, j)];
@@ -321,6 +324,13 @@ irEngine(Capability *cap, Fragment *F)
     int i;
     SnapShot *snap = 0;
     SnapEntry *se;
+    /* Reconstructing from the snapshot may cause allocation
+       which in turn may cause garbage collection.  We temporarily
+       suppress GC to avoid having to attach pointer info
+       to each snapshot. */
+    G_storage.gc_inhibited = 1;
+    G_storage.hp = hp;
+    G_storage.limit = hplim;
     for (i = 0; i < F->nsnap; i++) {
       if (F->snap[i].ref == pcref) {
         snap = &F->snap[i];
@@ -350,12 +360,13 @@ irEngine(Capability *cap, Fragment *F)
     T->base = base + se[1];
     T->top = base + snap->nslots;
 
-    if (G_storage.gc_inhibited) {
+    if (heapcheck_failed) {
       /* Force a GC next time an allocation is triggered. */
       G_storage.limit = G_storage.hp;
-      G_storage.gc_inhibited = 0;
-      DBG_PR("GC no longer inhibited\n");
+      heapcheck_failed = 0;
+      // DBG_PR("GC no longer inhibited\n");
     }
+    G_storage.gc_inhibited = 0;
 
     if (G_jitstep & STEP_EXIT_TRACE) {
       fprintf(stderr, "Exited trace: at exit %d", snap_id);
