@@ -204,8 +204,8 @@ int engine(Capability *cap)
     J->pc = T->pc = pc - 1;
     J->func = getFInfo((Closure*)base[-1]);
 
-    if (bc_op(*T->pc) != BC_JFUNC) {
-      /* We discovered and existing trace */
+    if (bc_op(*T->pc) == BC_JFUNC) {
+      /* We discovered an existing trace */
       recstatus = REC_ABORT;
     } else {
       recstatus = recordIns(J);
