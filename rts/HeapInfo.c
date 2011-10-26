@@ -748,6 +748,7 @@ fixHeapOffsets(JitState *J)
   IRRef ref, ref_firstpreloop;
   int hpmax = 0;
   IRRef hpchk_post = 0, hpchk_pre = 0;
+  int hpchk_snap = J->cur.nsnap - 1;
 
   for (ref = J->chain[IR_HEAPCHK]; ref > REF_FIRST; ref = IR(ref)->prev) {
     if (ref > J->cur.nloop)
@@ -785,6 +786,16 @@ fixHeapOffsets(JitState *J)
         total -= hp->nfields + 1;
       }
     }
+  } else if (hpmax == 0 && hpchk_post) {
+    IR(hpchk_post)->o = IR_NOP; /* Delete heap check */
+    /* Also delete snapshot (by setting size to zero) */
+    while (J->cur.snap[hpchk_snap].ref != hpchk_post) {
+      hpchk_snap--;
+      LC_ASSERT(hpchk_snap >= 0);
+    }
+    LC_ASSERT(J->cur.snap[hpchk_snap].ref == hpchk_post);
+    J->cur.snap[hpchk_snap].nent = 0;
+    hpchk_snap--;
   }
 
   /* 2. Find the total amount of actual on-trace allocation in the
@@ -816,6 +827,14 @@ fixHeapOffsets(JitState *J)
         total -= hp->nfields + 1;
       }
     }
+  } else if (hpmax == 0 && hpchk_pre) {
+    IR(hpchk_pre)->o = IR_NOP;  /* Delete heap check */
+    while (J->cur.snap[hpchk_snap].ref != hpchk_pre) {
+      hpchk_snap--;
+      LC_ASSERT(hpchk_snap >= 0);
+    }
+    LC_ASSERT(J->cur.snap[hpchk_snap].ref == hpchk_pre);
+    J->cur.snap[hpchk_snap].nent = 0;
   }
 }
 
