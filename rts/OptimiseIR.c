@@ -26,7 +26,7 @@ INLINE_HEADER IRIns *
 followAbstractINDs(JitState *J, IRIns *ir)
 {
   while (ir->o == IR_NEW) {
-    HeapInfo *hp = getHeapInfo(J, ir);
+    HeapInfo *hp = getHeapInfo(&J->cur, ir);
     if (hp->ind)
       ir = IR(hp->ind);
     else
@@ -161,7 +161,7 @@ optFold(JitState *J)
       // its `ind` field.
       IRIns *left = IR(foldIns->op1);
       if (left->o == IR_NEW) {
-        HeapInfo *hp = getHeapInfo(J, left);
+        HeapInfo *hp = getHeapInfo(&J->cur, left);
         LC_ASSERT(!hp->ind && foldIns->op2);
         hp->ind = foldIns->op2;
         return emitIR(J);
@@ -363,7 +363,10 @@ markIRRef(JitState *J, IRRef ref, IRRef site)
     IRRef phiref = tref_ref(J->chain[IR_PHI]);
     while (phiref) {
       if (IR(phiref)->op1 == ref) {
-        //DBG_PR("Setting mark for PHI: %d\n", phiref - REF_BIAS);
+        /* DBG_LVL(3, "DCE: Setting mark for PHI(%d,%d): %d\n", */
+        /*         irref_int(IR(phiref)->op1), */
+        /*         irref_int(IR(phiref)->op2), */
+        /*         irref_int(phiref)); */
         irt_setmark(IR(phiref)->t);
         break;
       }
@@ -382,12 +385,14 @@ markIRRef(JitState *J, IRRef ref, IRRef site)
 //
 // Allocation sinking is done in a separate pass.
 
-INLINE_HEADER void markSnapshot(JitState *J, SnapShot *snap);
-INLINE_HEADER void markIRIns(JitState *J, IRRef ref);
+INLINE_HEADER void markSnapshot(JitState *J, SnapShot *snap, bool post_sink);
+INLINE_HEADER void markIRIns(JitState *J, IRRef ref, bool post_sink);
 //
 LC_FASTCALL void
-optDeadCodeElim(JitState *J)
+optDeadCodeElim(JitState *J, bool post_sink)
 {
+  IRRef ref;
+
   // Marking works in two steps.
   //
   // a. Mark all variables mentioned in snapshots.
@@ -405,61 +410,252 @@ optDeadCodeElim(JitState *J)
   // needed to deal effectively with PHI references.  See comments in
   // [markIRIns].
   int snapidx = J->cur.nsnap - 1;
-  IRRef ref;
 
   // Mark unrolled loop
   for ( ; snapidx >= 0 && J->cur.snap[snapidx].ref > J->cur.nloop;
        snapidx--)
-    markSnapshot(J, &J->cur.snap[snapidx]);
+    markSnapshot(J, &J->cur.snap[snapidx], post_sink);
 
   for (ref = J->cur.nins - 1; ref > J->cur.nloop; ref--)
-    markIRIns(J, ref);
+    markIRIns(J, ref, post_sink);
 
   // Mark loop header
   for ( ; snapidx >= 0; snapidx--)
-    markSnapshot(J, &J->cur.snap[snapidx]);
+    markSnapshot(J, &J->cur.snap[snapidx], post_sink);
 
   for (ref = J->cur.nloop - 1; ref >= REF_FIRST; ref--)
-    markIRIns(J, ref);
+    markIRIns(J, ref, post_sink);
 
-  // 4. Replace all unmarked instructions by NOPs
-  //
-  // We also need to fix up the previous pointer and [J->chain.]
-  memset(J->chain, 0, sizeof(J->chain));
+  IF_DBG_LVL(3, printIRBuffer(J));
 
-  for (ref = REF_FIRST; ref < J->cur.nins; ref++) {
+  /* 4. Replace all unmarked instructions by NOPs
+  
+     We also need to fix up the previous pointer and [J->chain.]
+     Note, that we don't bother updating the [J->chain] entries for
+     NOPs, though.  (We never traverse the NOP chain, so this avoids
+     unnecessary work.)
+  */
+
+  /* 4.a
+
+     In pre-allocation-sinking mode we are very conservative about
+     which nodes to keep.  We don't know yet which allocations
+     need to be sunken, so we have to be prepared for both cases:
+
+       - if the allocation is sunken, we need PHI nodes for all
+         fields, but not for the allocated pointer itself
+
+       - if the allocation is NOT sunken we need a PHI node only
+         for the allocated pointer.  (Some fields may require PHI
+         nodes for other reasons, though)
+     
+     Thusly, wek keep a PHI node if any of its arguments is used.
+     Also make sure that both arguments are marked.  i.e.,
+
+       marked(PHI(a,b)) => marked(a) /\ marked(b)
+
+
+     In post-allocation-sinking mode, we are more aggressive.  Since
+     at this point we know exactly which allocations have been sunken.
+     We "look through" sunken allocations and mark PHI nodes on the
+     way (see [markSnapshot], [markIRIns]).  At the end, only marked
+     PHI nodes are truly needed.
+
+  */
+  IRRef1 *phi_parent = &J->chain[IR_PHI];
+  IRRef lastphi = J->cur.nins;
+  IRRef next;
+
+  LC_ASSERT(checkPerOpcodeLinks(J));
+
+  for (ref = J->chain[IR_PHI]; ref; ref = next) {
     IRIns *ir = IR(ref);
-    if (!irt_getmark(ir->t) && ir->o != IR_LOOP) {
-      // Remove PHI tag from arguments if we're deleting a PHI node.
-      if (ir->o == IR_PHI) {
-	DBG_PR("DCE: Deleting PHI for %d, %d\n", ir->op1 - REF_BIAS, ir->op2 - REF_BIAS);
-        irt_clearphi(IR(ir->op1)->t);
-        //irt_clearphi(IR(ir->op2)->t);
-      } else {
-	DBG_PR("DCE: Deleting node %d\n", irref_int(ref));
-      }
+    next = ir->prev;
+    /* LOOP INVARIANTS: all PHIs + chain insertion */
+    LC_ASSERT(ir->o == IR_PHI);
+    LC_ASSERT(phi_parent != NULL && *phi_parent == ref);
+
+    bool remove_phi, set_mark;
+    
+    if (post_sink) {
+      remove_phi = !irt_getmark(ir->t);
+      set_mark = false;
+    } else {
+      bool mark1 = irt_getmark(IR(ir->op1)->t);
+      bool mark2 = irt_getmark(IR(ir->op2)->t);
+      
+      remove_phi = !(mark1 || mark2) || irt_type(ir->t) == IRT_VOID;
+      set_mark = !(mark1 && mark2);
+    }
+
+    if (remove_phi) {     /* PHI node unnecessary */
+      DBG_LVL(3, "DCE%c: Deleting PHI node: %d\n",
+              post_sink ? '2' : '1',
+              irref_int(ref));
       ir->o = IR_NOP;
       ir->t = IRT_VOID;
-      ir->prev = J->chain[IR_NOP];
-      J->chain[IR_NOP] = ref;
+
+      *phi_parent = ir->prev;   /* remove from PHI chain */
+
+    } else {
+      DBG_LVL(3, "DCE: Keeping PHI node: %d\n", irref_int(ref));
+      if (set_mark) { /* set mark on both if necessary */
+        irt_setmark(IR(ir->op1)->t);
+        irt_setmark(IR(ir->op2)->t);
+      }
+      phi_parent = &ir->prev;
+      lastphi = ref;
+    }
+    irt_clearmark(ir->t);
+  }
+
+  /* Clear marks for all but the PHI chain (already handled above) */
+  IRRef1 orig_phi_chain = J->chain[IR_PHI];
+  memset(J->chain, 0, sizeof(J->chain));
+
+  for (ref = REF_FIRST; ref < lastphi; ref++) {
+    IRIns *ir = IR(ref);
+    if (!irt_getmark(ir->t) && ir->o != IR_LOOP) {
+      LC_ASSERT(ir->o != IR_PHI);
+      DBG_PR("DCE: Deleting node %d\n", irref_int(ref));
+      ir->o = IR_NOP;
+      ir->t = IRT_VOID;
     } else {
       ir->prev = J->chain[ir->o];
       J->chain[ir->o] = ref;
     }
     irt_clearmark(ir->t);
   }
+
+  /* Fix up chain for PHI */
+  J->chain[IR_PHI] = orig_phi_chain;
+
+  LC_ASSERT(checkPerOpcodeLinks(J));
 }
 
-INLINE_HEADER void markSnapshot(JitState *J, SnapShot *snap)
+
+#if 0
+LC_FASTCALL void
+deadPhiElim(JitState *J)
+{
+  IRRef ref, next;
+  IRRef1 *phi_parent = &J->chain[IR_PHI];
+
+  for (ref = J->chain[IR_PHI]; ref; ref = next) {
+    IRIns *ir = IR(ref);
+    next = ir->prev;
+    /* LOOP INVARIANTS: all PHIs + chain insertion */
+    LC_ASSERT(ir->o == IR_PHI);
+    LC_ASSERT(phi_parent != NULL && *phi_parent == ref);
+    
+    bool sunken1 = IR(ir->op1)->o == IR_NEW && ir_issunken(IR(ir->op1));
+    bool sunken2 = IR(ir->op2)->o == IR_NEW && ir_issunken(IR(ir->op2));
+    
+    DBG_LVL(3, "DPE: PHI %d => Sunken: %d=%d, %d=%d\n",
+            irref_int(ref),
+            irref_int(ir->op1), sunken1,
+            irref_int(ir->op2), sunken2);
+    /* LC_ASSERT((sunken1 == sunken2) && */
+    /*           "Cannot have PHI node where only one node is sunken"); */
+    if (sunken1 && sunken2) {
+      DBG_LVL(3, "DPE: Deleting PHI node: %d\n", irref_int(ref));
+      ir->o = IR_NOP;
+      ir->t = IRT_VOID;
+
+      *phi_parent = ir->prev;   /* remove from PHI chain */
+    } else {
+      /* DBG_LVL(3, "DPE: Keeping PHI node: %d\n", irref_int(ref)); */
+      phi_parent = &ir->prev;
+    }
+  }
+}
+#endif
+
+bool
+checkPerOpcodeLinks(JitState *J)
+{
+  IRRef1 chain[IR__MAX];
+  IRRef ref;
+  bool ok = true;
+  memset(chain, 0, sizeof(chain));
+  for (ref = REF_FIRST; ref < J->cur.nins; ref++) {
+    IRIns *ir = IR(ref);
+    if (ir->prev != chain[ir->o] && ir->o != IR_NOP) {
+      fprintf(stderr, "Inconsistent prev field for: %d (expected: %d, found: %d)\n",
+              irref_int(ref), irref_int(chain[ir->o]), irref_int(ir->prev));
+      printIR(&J->cur, *ir);
+      ok = false;
+    }
+    chain[ir->o] = ref;
+  }
+
+  /* Dirty, dirty hack.  Ignore the NOP chain */
+  chain[IR_NOP] = J->chain[IR_NOP];
+
+  int o;
+  for (o = IR_NOP + 1; o < IR__MAX; o++) {
+    if (chain[o] != J->chain[o] &&
+        o != IR_BASE && o != IR_KWORD && o != IR_HEAPCHK) {
+      fprintf(stderr, "Chain entry for %s does not match. "
+              "Got %d, expected %d\n",
+              ir_name[o], irref_int(chain[o]),
+              irref_int(J->chain[o]));
+      ok = false;
+    }
+  }
+  return ok;
+}
+
+/* Mark a sunken node by "looking through" it.
+
+   The main reason is that we don't mark the PHI node for a sunken
+   ref, but we *do* mark PHI nodes for its fields.
+*/
+LC_FASTCALL void
+markSunkenNode(JitState *J, IRIns *ir, IRRef site)
+{
+  LC_ASSERT(ir->o == IR_NEW && ir_issunken(ir));
+  /* If it the node is sunken, mark its fields instead.  These
+     may be sunken as well. */
+  HeapInfo *hpi = getHeapInfo(&J->cur, ir);
+  int i;
+  for (i = 0; i < hpi->nfields; i++) {
+            
+    IRRef ref = getHeapInfoField(&J->cur, hpi, i);
+    IRIns *ir2 = IR(ref);
+    DBG_LVL(3, "DCE2: Marking %d due to sunken %d, refsite = %d\n",
+            irref_int(ref), irref_int(hpi->ref), irref_int(site));
+    if (!irt_getmark(ir2->t)) {
+      if (ir2->o == IR_NEW && ir_issunken(ir2)) {
+        irt_setmark(ir2->t);
+        markSunkenNode(J, ir2, site);
+      }
+      else
+        markIRRef(J, ref, site);
+    }
+  }
+}
+
+INLINE_HEADER void
+markSnapshot(JitState *J, SnapShot *snap, bool post_sink)
 {
   int j;
   SnapEntry *se = &J->cur.snapmap[snap->mapofs];
   for (j = 0; j < snap->nent; j++, se++) {
-    markIRRef(J, snap_ref(*se), snap->ref);
+    IRRef ref = snap_ref(*se);
+    IRIns *ir = IR(ref);
+
+    if (post_sink && ir->o == IR_NEW && ir_issunken(ir)) {
+      irt_setmark(ir->t);
+      markSunkenNode(J, ir, snap->ref);
+    } else {
+      markIRRef(J, ref, snap->ref);
+    }
   }
 }
 
-INLINE_HEADER void markIRIns(JitState *J, IRRef ref)
+INLINE_HEADER void
+markIRIns(JitState *J, IRRef ref, bool post_sink)
 {
   int i;
   IRIns *ir = IR(ref);
@@ -471,9 +667,14 @@ INLINE_HEADER void markIRIns(JitState *J, IRRef ref)
     if (irm_op2(ir_mode[ir->o]) == IRMref)
       markIRRef(J, ir->op2, ref);
     if (ir->o == IR_NEW) {
-      HeapInfo *h = &J->cur.heap[ir->op2];
-      for (i = 0; i < h->nfields; i++) {
-        markIRRef(J, getHeapInfoField(&J->cur, h, i), ref);
+      if (post_sink && ir_issunken(ir)) {
+        irt_setmark(ir->t);
+        markSunkenNode(J, ir, ref);
+      } else {
+        HeapInfo *h = &J->cur.heap[ir->op2];
+        for (i = 0; i < h->nfields; i++) {
+          markIRRef(J, getHeapInfoField(&J->cur, h, i), ref);
+        }
       }
     }
   }
@@ -578,6 +779,8 @@ compactPhis(JitState *J)
 
   DBG_LVL(3, "Compacting PHIs\n");
 
+  LC_ASSERT(checkPerOpcodeLinks(J));
+
   if (!J->chain[IR_PHI]) {      /* Trivial case. */
     J->cur.nphis = 0;
     return;
@@ -599,12 +802,12 @@ compactPhis(JitState *J)
     DBG_LVL(3, "CPHI: First %d := %d\n",
             irref_int(dstref), irref_int(srcref));
     LC_ASSERT(dstref <= srcref);
-    if (dstref == srcref) {
+    if (IR(srcref)->o != IR_PHI) {
+      continue;
+    } else if (dstref == srcref) {
       IR(dstref)->prev = J->chain[IR_PHI];
       J->chain[IR_PHI] = dstref;
       dstref++;
-      continue;
-    } else if (IR(srcref)->o != IR_PHI) {
       continue;
     } else {
       *IR(dstref) = *IR(srcref);
@@ -623,6 +826,8 @@ compactPhis(JitState *J)
   DBG_LVL(3, "CPHI: nphis = %d\n", (int)nphis);
   J->cur.nins = dstref;
   J->cur.nphis = nphis;
+
+  LC_ASSERT(checkPerOpcodeLinks(J));
 }
 
 /*

@@ -20,6 +20,8 @@
 // Forward declarations
 
 void debugIRDeps(JitState *J);
+bool checkAllMarksClear(JitState *J);
+
 
 // -------------------------------------------------------------------
 
@@ -274,7 +276,7 @@ dfs1(JitState *J, SccData *D, u2 n)
 
     // Traverse all children of the node we were update with (if any)
     if (hp->ind && IR(hp->ind)->o == IR_NEW)
-      hp = getHeapInfo(J, IR(hp->ind));
+      hp = getHeapInfo(&J->cur, IR(hp->ind));
     else
       hp = NULL;
   } while (hp);
@@ -636,7 +638,7 @@ heapSCCs(JitState *J)
     DBG_LVL(3, "UNSINK: Traversing UPDATE %d\n", irref_int(ref));
     IRIns *ir = IR(ref);
     if (IR(ir->op1)->o != IR_NEW && IR(ir->op2)->o == IR_NEW) {
-      HeapInfo *hp = getHeapInfo(J, IR(ir->op2));
+      HeapInfo *hp = getHeapInfo(&J->cur, IR(ir->op2));
       DBG_LVL(3, "UNSINK: Stored into external reference: %d\n",
               irref_int(ref));
       hp->loop |= UNSINK_LOOP;
@@ -653,7 +655,7 @@ heapSCCs(JitState *J)
           LC_ASSERT(phiref != 0);  // Loop invariant
 
           if (IR(ref1)->o == IR_NEW) {
-            HeapInfo *hp = getHeapInfo(J, IR(ref1));
+            HeapInfo *hp = getHeapInfo(&J->cur, IR(ref1));
             DBG_LVL(3, "UNSINK: Updated PHI node: %d\n", irref_int(ref1));
             if ((hp->loop & UNSINK_VISITED) == 0) {
               hp->loop |= UNSINK_LOOP | UNSINK_VISITED;
@@ -670,7 +672,7 @@ heapSCCs(JitState *J)
           } else {
             phiref = 0;
             if (IR(ref2)->o == IR_NEW) {
-              HeapInfo *hp = getHeapInfo(J, IR(ref2));
+              HeapInfo *hp = getHeapInfo(&J->cur, IR(ref2));
               DBG_LVL(3, "UNSINK: Updated PHI node: %d\n", irref_int(ref2));
               hp->loop |= UNSINK_LOOP | UNSINK_VISITED;
             }
@@ -692,11 +694,26 @@ heapSCCs(JitState *J)
   destroyStack(&D.s);
   destroyStack(&D.p);
 
+
+  /* At this point all unsinkable nodes have their mark set; any other
+     nodes are sinkable.  Now transfer this information so that it can
+     be picked up by [ir_issunken].  At the end of this step all nodes
+     will be unmarked. 
+  */
+  for (ref = J->chain[IR_NEW]; ref; ref = IR(ref)->prev) {
+    IRIns *ir = IR(ref);
+    if (irt_getmark(ir->t))
+      irt_clearmark(ir->t);
+    else
+      ir_setsunken(ir);
+  }
+
   // Restore prev field of PHI nodes.
   ref = J->chain[IR_PHI];
   if (ref) {
     for (;;) {
       IRIns *ir = IR(ref);
+      irt_clearmark(ir->t);
       DBG_LVL(3, "SCC: Relink PHIs %d %p\n", irref_int(ref), lastir);
       if (ir->o == IR_PHI) {
         if (lastir) {
@@ -717,6 +734,8 @@ heapSCCs(JitState *J)
     }
   }
 
+  LC_ASSERT(checkAllMarksClear(J));
+  LC_ASSERT(checkPerOpcodeLinks(J));
   debugIRDeps(J);
 }
 
@@ -763,7 +782,7 @@ fixHeapOffsets(JitState *J)
      TODO: probably could traverse the heap infos directly.
   */
   for (ref = J->chain[IR_NEW]; ref > J->cur.nloop; ref = IR(ref)->prev) {
-    HeapInfo *hp = getHeapInfo(J, IR(ref));
+    HeapInfo *hp = getHeapInfo(&J->cur, IR(ref));
     if (!ir_issunken(IR(ref))) {
       hpmax += hp->nfields + 1;
     } else {
@@ -780,7 +799,7 @@ fixHeapOffsets(JitState *J)
 
     int total = 1;
     for (ref = J->chain[IR_NEW]; ref > J->cur.nloop; ref = IR(ref)->prev) {
-      HeapInfo *hp = getHeapInfo(J, IR(ref));
+      HeapInfo *hp = getHeapInfo(&J->cur, IR(ref));
       if (!ir_issunken(IR(ref))) {
         hp->hp_offs = total - hp->nfields - 1;
         total -= hp->nfields + 1;
@@ -794,7 +813,7 @@ fixHeapOffsets(JitState *J)
       LC_ASSERT(hpchk_snap >= 0);
     }
     LC_ASSERT(J->cur.snap[hpchk_snap].ref == hpchk_post);
-    J->cur.snap[hpchk_snap].nent = 0;
+    J->cur.snap[hpchk_snap].removed = 1;
     hpchk_snap--;
   }
 
@@ -805,7 +824,7 @@ fixHeapOffsets(JitState *J)
   */
   hpmax = 0;
   for (ref = ref_firstpreloop; ref > REF_FIRST; ref = IR(ref)->prev) {
-    HeapInfo *hp = getHeapInfo(J, IR(ref));
+    HeapInfo *hp = getHeapInfo(&J->cur, IR(ref));
     if (!ir_issunken(IR(ref))) {
       hpmax += hp->nfields + 1;
     } else {
@@ -821,7 +840,7 @@ fixHeapOffsets(JitState *J)
 
     int total = 1;
     for (ref = ref_firstpreloop; ref > REF_FIRST; ref = IR(ref)->prev) {
-      HeapInfo *hp = getHeapInfo(J, IR(ref));
+      HeapInfo *hp = getHeapInfo(&J->cur, IR(ref));
       if (!ir_issunken(IR(ref))) {
         hp->hp_offs = total - hp->nfields - 1;
         total -= hp->nfields + 1;
@@ -834,7 +853,7 @@ fixHeapOffsets(JitState *J)
       LC_ASSERT(hpchk_snap >= 0);
     }
     LC_ASSERT(J->cur.snap[hpchk_snap].ref == hpchk_pre);
-    J->cur.snap[hpchk_snap].nent = 0;
+    J->cur.snap[hpchk_snap].removed = 1;
   }
 }
 
@@ -862,7 +881,7 @@ debugIRDeps(JitState *J)
   for (ref = J->chain[IR_NEW]; ref >= REF_FIRST; ref = IR(ref)->prev) {
     fprintf(f, "\t%d [label=\"%d: new\"];\n",
 	    irref_int(ref), irref_int(ref));
-    HeapInfo *hp = getHeapInfo(J, IR(ref));
+    HeapInfo *hp = getHeapInfo(&J->cur, IR(ref));
     u4 i;
     for (i = 0; i < hp->nfields; i++) {
       IRRef fref = getHeapInfoField(&J->cur, hp, i);
@@ -886,6 +905,20 @@ debugIRDeps(JitState *J)
   fflush(f);
   fclose(f);
   DBG_PR("Wrote file: %s\n", buf);
+}
+
+bool
+checkAllMarksClear(JitState *J)
+{
+  IRRef ref;
+  bool res = true;
+  for (ref = REF_FIRST; ref < J->cur.nins; ref++) {
+    if (irt_getmark(IR(ref)->t)) {
+      DBG_PR("CKM: Mark not cleared for: %d\n", irref_int(ref));
+      res = false;
+    }
+  }
+  return res;
 }
 
 #undef HP

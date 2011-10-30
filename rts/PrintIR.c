@@ -251,7 +251,7 @@ printedByPretty(Fragment *F, IRRef ref)
 
   if (ir->o == IR_NEW) {
     return 1;
-    LC_ASSERT(ir->op2 < F->nheap);
+    //LC_ASSERT(ir->op2 < F->nheap);
 
     if (!(F->heap[ir->op2].loop & 1))
       return 0;
@@ -352,8 +352,7 @@ printPrettyIRIns(Fragment *F, IRRef ref)
     fprintf(stderr, "new ");
     printPrettyIRRef(F, ir->op1);
     {
-      LC_ASSERT(ir->op2 < F->nheap);
-      HeapInfo *hp = &F->heap[ir->op2];
+      HeapInfo *hp = getHeapInfo(F, ir);
       int i;
       fputc('(', stderr);
       for (i = 0; i < hp->nfields; i++) {
@@ -389,7 +388,7 @@ printPrettyIR(Fragment *F, int fragment_id)
          fragment_id);
   for (ref = REF_FIRST; ref < F->nins; ref++) {
     printPrettyIRIns(F, ref);
-    if (s < F->nsnap && F->snap[s].ref == ref) {
+    if (s < F->nsnap && F->snap[s].ref == ref && !F->snap[s].removed) {
       int fst = 1;
       fprintf(stderr, "|          " COL_YELLOW "{");
       SnapEntry *se = &F->snapmap[F->snap[s].mapofs];

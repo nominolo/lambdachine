@@ -34,7 +34,7 @@ typedef struct _SnapShot {
   IRRef1 ref;    // First IR reference for this snapshot
   u1     nslots; // Number of valid slots;
   u1     nent;   // Number of compressed entries.
-  u1     unused1;
+  u1     removed;
   u1     count;  // Number of taken exits for this snapshot.
 } SnapShot;
 
@@ -256,7 +256,9 @@ RecordResult recordIns(JitState *J);
 LC_FASTCALL TRef optFold(JitState *J);
 LC_FASTCALL TRef optCSE(JitState *);
 LC_FASTCALL void optUnrollLoop(JitState *J);
-LC_FASTCALL void optDeadCodeElim(JitState *J);
+#define PRE_ALLOC_SINK   false
+#define POST_ALLOC_SINK  true
+LC_FASTCALL void optDeadCodeElim(JitState *J, bool post_sink);
 LC_FASTCALL void optDeadAssignElim(JitState *J);
 LC_FASTCALL TRef optForward(JitState *J);
 LC_FASTCALL void compactPhis(JitState *J);
@@ -339,4 +341,6 @@ typedef enum {
 
 extern u4 G_jitstep;
 
+void printIRBuffer(JitState *J);
+bool checkPerOpcodeLinks(JitState *J);
 #endif

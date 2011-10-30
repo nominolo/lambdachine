@@ -393,7 +393,7 @@ restoreValue(Fragment *F, Word *vals, IRRef ref)
   if (ir->o != IR_NEW)
     return vals[ref];
 
-  hp = &F->heap[ir->op2];
+  hp = getHeapInfo(F, ir);
   // Store has *not* been sunken, i.e., allocation occurred on-trace
   if (!ir_issunken(ir))
     return vals[ref];
@@ -406,8 +406,10 @@ restoreValue(Fragment *F, Word *vals, IRRef ref)
   setInfo(cl, (InfoTable*)vals[ir->op1]);
   DBG_PR("(alloc[%lu])", wordsof(ClosureHeader) + hp->nfields);
 
-  for (j = 0; j < hp->nfields; j++)
+  for (j = 0; j < hp->nfields; j++) {
+    DBG_LVL(3, "{%d:%d}", j, irref_int(getHeapInfoField(F, hp, j)));
     cl->payload[j] = restoreValue(F, vals, getHeapInfoField(F, hp, j));
+  }
 
   return (Word)cl;
 }

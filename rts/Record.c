@@ -1025,10 +1025,11 @@ finishRecording(JitState *J)
   printHeapInfo(stderr, J);
 #endif
 
-  optDeadCodeElim(J);
-  compactPhis(J);               /* useful for IR interpreter */
+  optDeadCodeElim(J, PRE_ALLOC_SINK);
   heapSCCs(J);
   fixHeapOffsets(J);
+  optDeadCodeElim(J, POST_ALLOC_SINK);
+  compactPhis(J);               /* useful for IR interpreter */
 
   DBG_PR("*** Stopping to record.\n");
 

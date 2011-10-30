@@ -135,6 +135,9 @@ addSnapshot(JitState *J)
 void
 printSnapshot(JitState *J, SnapShot *snap, SnapEntry *map)
 {
+  if (snap->removed)
+    return;
+
   SnapEntry *p = &map[snap->mapofs];
   int i;
   u4 nent = snap->nent;

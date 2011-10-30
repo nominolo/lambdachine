@@ -150,6 +150,8 @@ typedef enum {
 } IRMode;
 #define IRM___   IRMnone
 
+extern const char *ir_name[];
+
 // Flags
 //
 // TODO: We probably want something different here than LuaJIT
@@ -242,9 +244,17 @@ static LC_AINLINE int ir_sideeff(IRIns *ir)
   return ((irt_isguard(ir->t)) ||  (ir_mode[ir->o] & IRM_S));
 }
 
-static LC_AINLINE int ir_issunken(IRIns *ir)
+#define HEAP_NODE_SUNKEN   0x8000
+#define HEAP_INFO_MASK     0x7fff
+
+static LC_AINLINE void ir_setsunken(IRIns *ir)
 {
-  return !irt_getmark(ir->t);
+  ir->op2 |= HEAP_NODE_SUNKEN;
+}
+
+static LC_AINLINE bool ir_issunken(IRIns *ir)
+{
+  return (ir->op2 & HEAP_NODE_SUNKEN) != 0;
 }
 
 #endif /* _LAMBDACHINE_IR_H */

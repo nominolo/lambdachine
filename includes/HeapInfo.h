@@ -14,12 +14,14 @@ void heapSCCs(JitState *J);
 void fixHeapOffsets(JitState *J);
 
 INLINE_HEADER HeapInfo *
-getHeapInfo(JitState *J, IRIns *ir)
+getHeapInfo(Fragment *F, IRIns *ir)
 {
+  u2 ofs;
   switch (ir->o) {
   case IR_NEW:
-    LC_ASSERT(ir->op2 < J->cur.nheap);
-    return &J->cur.heap[ir->op2];
+    ofs = ir->op2 & HEAP_INFO_MASK;
+    LC_ASSERT(ofs < F->nheap);
+    return &F->heap[ofs];
   default:
     LC_ASSERT(0); return NULL;
   }
