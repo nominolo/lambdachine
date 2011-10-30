@@ -360,7 +360,7 @@ printPrettyIRIns(Fragment *F, IRRef ref)
         printPrettyIRRef(F, getHeapInfoField(F, hp, i));
       }
       fprintf(stderr, ")%s",
-              irt_getmark(ir->t) ? "" : " [sunken]");
+              !ir_issunken(ir) ? "" : " [sunken]");
 
       if (irt_getmark(ir->t)) {
         fprintf(stderr, " Hp[%d]", hp->hp_offs);
