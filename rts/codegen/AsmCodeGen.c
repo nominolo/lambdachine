@@ -508,6 +508,38 @@ static void asm_snap_alloc1(ASMState *as, IRRef ref)
   }
 }
 
+LC_AINLINE int is_sunken_alloc_todo(IRIns *ins)
+{
+  return ins->o == IR_NEW && ir_issunken(ins) && ins->r != RID_HP;
+}
+
+/* Allocate registers for fields mentioned by sunken allocations.
+
+   Note: Must recall itself recursively for fields.  References may by
+   cyclic. We therefore mark sunken allocations to use the Heap
+   pointer register to distinguish them from unvisited sunken
+   allocations.
+
+*/
+static void asm_snap_sunken_alloc(ASMState *as, IRIns *ins)
+{
+  LC_ASSERT(is_sunken_alloc_todo(ins));
+  Fragment *F   = as->T;
+  HeapInfo *hpi = getHeapInfo(F, ins);
+  int j;
+  ins->r = RID_HP;  /* Mark as visited, ignored by codegen */
+  
+  for (j = 0; j < hpi->nfields; j++) {
+    IRRef ref = getHeapInfoField(F, hpi, j);
+    IRIns *ins2 = IR(ref);
+    if (is_sunken_alloc_todo(ins2)) {
+      asm_snap_sunken_alloc(as, ins2);
+    } else if (!irref_islit(ref)) {
+      asm_snap_alloc1(as, ref);
+    }
+  }
+}
+
 /* Allocate refs escaping to a snapshot. */
 static void asm_snap_alloc(ASMState *as)
 {
@@ -519,7 +551,14 @@ static void asm_snap_alloc(ASMState *as)
     SnapEntry sn = map[n];
     IRRef ref = snap_ref(sn);
     if (!irref_islit(ref)) {
-      asm_snap_alloc1(as, ref);
+      IRIns *ins = IR(ref);
+      /* If an allocation has been sunken, keep all its fields
+         alive in the snapshot. */
+      if (is_sunken_alloc_todo(ins)) {
+        asm_snap_sunken_alloc(as, ins);
+      } else {
+        asm_snap_alloc1(as, ref);
+      }
     }
   }
 }
@@ -543,6 +582,7 @@ static void asm_snap_prep(ASMState *as)
 */
 static void asm_guardcc(ASMState *as, int cc)
 {
+  RA_DBGX((as, "<<guard exit: $x>>", as->snapno));
   MCode *target = exitstub_addr(as->J, as->snapno);
   emit_jcc(as, cc, target);
 }
@@ -932,10 +972,6 @@ asm_heapstore(ASMState *as, IRRef ref, int32_t ofs, Reg base, RegSet allow){
   }
 }
 
-static void asm_hpalloc(ASMState *as, uint32_t bytes) {
-  emit_gri(as, XG_ARITHi(XOg_ADD), RID_HP|REX_64, bytes);
-}
-
 /* -- Specific instructions  ---------------------------------------------- */
 static void asm_update(ASMState *as, IRIns *ir) {
   RA_DBGX((as, "<<UPDATE $f $f>>", ir->op1, ir->op2));
@@ -949,34 +985,86 @@ static void asm_update(ASMState *as, IRIns *ir) {
   emit_loadu64(as, r|REX_64, (Word)&stg_IND_info);
 }
 
+/* Perform a heap overflow check and bump the heap pointer.
+
+Pseudo code (current implementation):
+
+  Hp += bytes;
+  if (Hp > HpLim) goto exit_N;
+
+The [restoreSnapshot] function checks for (Hp > HpLim) again and then
+does the necessary memory management work.  It can figure out the
+original value of Hp by using the snapshot to find the corresponding
+IR instruction.
+
+Currently, we don't have a way to go back to the trace in the common
+case that we just reached the end of the current block.
+
+.--------------------------
+TODO: Better code would be:
+
+  Hp += bytes;
+  if (Hp > HpLim) goto stub1;
+ cont:
+  
+
+stub1:
+  Hp -= bytes;
+  <try grabbing new block>
+  if (grabbed new block) goto cont;
+  goto exit_N;
+
+There will be at most two of those stubs needed per trace.
+`-------------------------
+
+ */
+static void asm_heapcheck(ASMState *as, IRIns *ir)
+{
+  RA_DBGX((as, "<<HEAPCHK $x>>", ir->u));
+
+  int32_t bytes = sizeof(Word) * ir->u; /* check for integer
+                                           overflow? */
+  asm_guardcc(as, CC_A);
+  
+  // HpLim == [rsp + HPLIM_SP_OFFS]
+  emit_rmro(as, XO_CMP, RID_HP|REX_64, RID_ESP|REX_64, HPLIM_SP_OFFS);
+
+  // Alternative method:  lea hp, [hp + bytes]
+  //  emit_rmro(as, XO_LEA, RID_HP|REX_64, RID_HP|REX_64, bytes);
+  emit_gri(as, XG_ARITHi(XOg_ADD), RID_HP|REX_64, bytes);
+}
+
+/* Emit an allocation instruction.  In fact, the memory has already
+   been allocated by the heap check.  At this point we only need to
+   initialise the fields. */
 static void asm_new(ASMState *as, IRIns *ir) {
-    RA_DBGX((as, "<<NEW $f>>", ir->op1));
-    Fragment *F  = as->T;
-    HeapInfo *hp = &F->heap[ir->op2];
-    int j;
-    int32_t ofs = wordsof(ClosureHeader) * sizeof(Word);
-    int32_t numBytes = sizeof(Word) * (wordsof(ClosureHeader) + hp->nfields);
+  if (ir_issunken(ir))
+    return;                     /* Nothing to do */
+  
+  RA_DBGX((as, "<<NEW $f>>", ir->op1));
+  Fragment *F  = as->T;
+  HeapInfo *hp = getHeapInfo(F, ir);
+  int j;
+  i4 offs_lo = (hp->hp_offs - 1) * sizeof(Word);
+  i4 offs = offs_lo + (1 + hp->nfields - 1) * sizeof(Word);
 
-    /* allocate a register for the result */
-    RegSet allow = RSET_GPR;
-    Reg dest = ra_dest(as, ir, allow);
-    rset_clear(allow, dest);
+  RegSet allow = RSET_GPR;
+  Reg dest = ra_dest(as, ir, allow);
+  //rset_clear(allow, dest);
 
-    /* do the allocation by bumping heap pointer */
-    asm_hpalloc(as, numBytes);
+  /* Finally, put address of initialised object into [dest] */
+  emit_rmro(as, XO_LEA, dest|REX_64, RID_HP|REX_64, offs_lo);
+  
+  /* Next, initialise all fields */
+  for (j = hp->nfields - 1;
+       j >= 0 && offs >= offs_lo;
+       j--, offs -= sizeof(Word)) {
+    IRRef ref = getHeapInfoField(F, hp, j);
+    asm_heapstore(as, ref, offs, RID_HP, allow);
+  }
 
-    /* store each field as an offset from the pre-bumped heap pointer */
-    for (j = 0; j < hp->nfields; j++) {
-      IRRef ref = getHeapInfoField(F, hp, j);
-      asm_heapstore(as, ref, ofs, dest, allow);
-      ofs += sizeof(Word);
-    }
-
-    /* store the closure header */
-    asm_heapstore(as, ir->op1, 0, dest, allow);
-
-    /* save current heap pointer as the result of the allocation */
-    emit_movrr(as, dest, RID_HP);
+  /* First, write info table */
+  asm_heapstore(as, ir->op1, offs_lo, RID_HP, allow);
 }
 
 static void asm_intarith(ASMState *as, IRIns *ir, x86Arith xa) {
@@ -1163,6 +1251,9 @@ static void asm_ir(ASMState *as, IRIns *ir) {
     case IR_MUL:
       asm_intarith(as, ir, XOg_X_IMUL);
       break;
+    case IR_HEAPCHK:
+      asm_heapcheck(as, ir);
+      break;
     case IR_NEW:
       asm_new(as, ir);
       break;
@@ -1217,7 +1308,7 @@ void genAsm(JitState *J, Fragment *T) {
     //if (!ra_used(ir) && !ir_sideeff(ir)){
     //  continue;  /* Dead-code elimination can be soooo easy. */
     //}
-    if (irt_isguard(ir->t)){ asm_snap_prep(as); }
+    if (irt_isguard(ir->t)) { asm_snap_prep(as); }
     asm_ir(as, ir);
   }
 

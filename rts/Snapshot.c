@@ -10,8 +10,12 @@
 #include "Snapshot.h"
 #include "PrintIR.h"
 #include "Thread.h"
+#include "Stats.h"
 #if LC_HAS_ASM_BACKEND
 #include "AsmTarget.h"
+#include "StorageManager.h"
+#include "HeapInfo.h"
+#include "AsmTarget_x64.h"
 #endif
 
 #include <stdlib.h>
@@ -107,6 +111,7 @@ snapshotStack(JitState *J, SnapShot *snap, Word nsnapmap)
   snap->nslots = (u1)nslots;
   snap->nent = (u1)nent;
   snap->count = 0;
+  snap->removed = 0;
   J->cur.nsnapmap = nsnapmap + nent + 2;
   IF_DBG_LVL(1, fprintf(stderr, "Created snapshot:\n  ");
              printSnapshot(J, snap, J->cur.snapmap));
@@ -135,8 +140,10 @@ addSnapshot(JitState *J)
 void
 printSnapshot(JitState *J, SnapShot *snap, SnapEntry *map)
 {
-  if (snap->removed)
+  if (snap->removed) {
+    //    DBG_PR("Not printing snapshot %p\n", snap);
     return;
+  }
 
   SnapEntry *p = &map[snap->mapofs];
   int i;
@@ -185,6 +192,77 @@ static RegSP snap_renameref(Fragment *F, SnapNo lim, IRRef ref, RegSP rs)
   return rs;
 }
 
+#ifndef NDEBUG
+/* Names of registers.  Only needed for debug output. */
+#define RIDNAME(name)	#name,
+static const char *const ra_regname[] = {
+  GPRDEF(RIDNAME)
+  FPRDEF(RIDNAME)
+  NULL
+};
+#undef RIDNAME
+#endif
+
+static Word
+snap_restoreval(Fragment *F, IRRef ref,
+                ExitState *ex, Word *base,
+                BloomFilter rfilt, SnapNo snapno)
+{
+  IRIns *ir = &F->ir[ref];
+
+  if(irref_islit(ref)) { /* restore constant ref */
+    switch(ir->o) {
+    case IR_KINT:
+      return ir->i;
+    case IR_KWORD:
+      return F->kwords[ir->u];
+    case IR_KBASEO:
+      //TODO: why is KBASEO against base[0], but other offsets are
+      // against base[-1]??
+      return (Word)&base[ir->i + 1];
+    default:
+      LC_ASSERT(0 && "Unexpected constant ref");
+    }
+  }
+  else { /* non-const reference */
+    if (ir->o == IR_NEW && ir_issunken(ir)) {
+      HeapInfo *hpi = getHeapInfo(F, ir);
+      int j;
+      Closure *cl = allocClosure(wordsof(ClosureHeader) + hpi->nfields);
+      LC_ASSERT(irref_islit(ir->op1));
+      setInfo(cl, (InfoTable*)snap_restoreval(F, ir->op1, ex, base,
+                                              rfilt, snapno));
+      for (j = 0; j < hpi->nfields; j++) {
+        DBG_LVL(3, "{%d:%d}", j, irref_int(getHeapInfoField(F, hpi, j)));
+        cl->payload[j] = snap_restoreval(F, getHeapInfoField(F, hpi, j),
+                                         ex, base, rfilt, snapno);
+      }
+      return (Word)cl;
+    } else {
+
+      RegSP rs = ir->prev;
+
+      /* check for rename */
+      if (LC_UNLIKELY(bloomtest(rfilt, ref))){
+        rs = snap_renameref(F, snapno, ref, rs);
+      }
+
+      /* restore from spill slot */
+      if(ra_hasspill(regsp_spill(rs))) {
+        DBG_LVL(3, "{spilled: %d}", regsp_spill(rs));
+        return ex->spill[regsp_spill(rs)];
+      }
+      /* or restore from register */
+      else {
+        DBG_LVL(3, "{reg: %s}", ra_regname[regsp_reg(rs)]);
+        Reg r = regsp_reg(rs);
+        LC_ASSERT(ra_hasreg(r));
+        return ex->gpr[r];
+      }
+    }
+  }
+}
+
 void restoreSnapshot(SnapNo snapno, void *exptr) {
   ExitState *ex = (ExitState *)exptr;
   Thread *T   = ex->T;
@@ -193,6 +271,36 @@ void restoreSnapshot(SnapNo snapno, void *exptr) {
   u1 n, nent = snap->nent;
   SnapEntry *smap = &F->snapmap[snap->mapofs];
   BloomFilter rfilt = snap_renamefilter(F, snapno);
+  bool need_gc = false;
+
+  DBG_LVL(1, "Restoring Snapshot: %d\n", snapno);
+
+  recordEvent(EV_EXIT, snap->nent);
+
+  G_storage.gc_inhibited = 1;
+  G_storage.hp = (Word*)ex->gpr[RID_HP];
+  G_storage.limit = ex->hplim;
+
+  /* If (Hp > HpLim) then we had a heap overflow, look at the snapshot
+     to figure out how much memory we actually wanted to allocate. */
+
+  if (LC_UNLIKELY(G_storage.hp > G_storage.limit)) {
+    DBG_PR("Trace exited (#%d) due to heap overflow check.\n",
+           snapno);
+    IRIns *ir = &F->ir[snap->ref];
+    LC_ASSERT(ir->o == IR_HEAPCHK);
+    G_storage.hp -= ir->u;      /* Reset Hp to pre-bumped value. */
+
+    markCurrentBlockFull(&G_storage);
+    makeCurrent(&G_storage, getEmptyBlock(&G_storage));
+
+    if (G_storage.nfull >= G_storage.nextgc) {
+      need_gc = true;
+    }
+  }
+
+  DBG_LVL(1, "POST trace: Hp = %p, HpLim = %p\n",
+          G_storage.hp, G_storage.limit);
 
   /* Recall the base pointer we had on entry */
   Word *base = (Word *)ex->gpr[RID_BASE];
@@ -203,44 +311,8 @@ void restoreSnapshot(SnapNo snapno, void *exptr) {
     BCReg s    = snap_slot(se);
     IRRef ref  = snap_ref(se);
     Word *bval = &base[s];
-    IRIns *ir  = &F->ir[ref];
 
-    if(irref_islit(ref)) { /* restore constant ref */
-      switch(ir->o) {
-        case IR_KINT:
-          *bval = ir->i;
-          break;
-        case IR_KWORD:
-          *bval = F->kwords[ir->u];
-          break;
-        case IR_KBASEO:
-          //TODO: why is KBASEO against base[0], but other offsets are
-          // against base[-1]??
-          *bval = (Word)&base[ir->i + 1];
-          break;
-        default:
-          LC_ASSERT(0 && "Unexpected constant ref");
-      }
-    }
-    else { /* non-const reference */
-      RegSP rs = ir->prev;
-
-      /* check for rename */
-      if (LC_UNLIKELY(bloomtest(rfilt, ref))){
-        rs = snap_renameref(F, snapno, ref, rs);
-      }
-
-      /* restore from spill slot */
-      if(ra_hasspill(regsp_spill(rs))) {
-        *bval = ex->spill[regsp_spill(rs)];
-      }
-      /* or restore from register */
-      else {
-        Reg r = regsp_reg(rs);
-	LC_ASSERT(ra_hasreg(r));
-        *bval = ex->gpr[r];
-      }
-    }
+    *bval = snap_restoreval(F, ref, ex, base, rfilt, snapno);
 
     IF_DBG_LVL(1,
                fprintf(stderr, "base[%d] = ", s - 1);
@@ -249,11 +321,19 @@ void restoreSnapshot(SnapNo snapno, void *exptr) {
     );
   }
 
+  G_storage.gc_inhibited = 0;
+  if (need_gc) {
+    /* Force a GC next time an allocation is triggered. */
+    G_storage.limit = G_storage.hp;
+  }
+
   /* Restore pc, base, and top pointers for the thread */
   DBG_PR("Base slot: %d\n", smap[nent+1]);
   T->pc   = (BCIns *)F->startpc + (int)smap[nent];
   T->base = base + smap[nent+1];
   T->top  = base + snap->nslots;
+
+  // exit(0xac);
 }
 #endif	/* LC_HAS_ASM_BACKEND */
 

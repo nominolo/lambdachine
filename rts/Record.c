@@ -864,7 +864,7 @@ recordIns(JitState *J)
       // expecting.  Usually, this will be optimised away.
       emit(J, IRT(IR_EQ, IRT_CMP), rb, rinfo);
 
-      emit(J, IRT(IR_HEAPCHK, IRT_VOID), 2, 0);
+      emit(J, IRT(IR_HEAPCHK, IRT_CMP), 2, 0);
       rc = getSlot(J, bc_c(ins));
       rnew = emit(J, IRT(IR_NEW, IRT_CLOS), rinfo, 2);
       setSlot(J, bc_a(ins), rnew);

@@ -14,13 +14,16 @@
 static void enterTrace(JitState *J, Fragment *F);
 static void dumpAsm(MCode* mcode, MSize sz, FILE* out);
 static void dumpExitStubs(JitState *J);
-extern void asmEnter(Fragment *F, Thread *T, Word *spillArea, Word *base, MCode* code);
+extern void asmEnter(Fragment *F, Thread *T, Word *spillArea,
+                     Word *hp, Word *hplim, MCode* code);
 
 void asmEngine(Capability *cap, Fragment *F) {
   JitState *J = &cap->J;
 
   IF_DBG_LVL(1,dumpAsm(F->mcode, F->szmcode, NULL /* use a new FILE */));
   IF_DBG_LVL(1,dumpExitStubs(J));
+
+  //exit(42);
   enterTrace(J, F);
 }
 
@@ -64,10 +67,11 @@ static void enterTrace(JitState *J, Fragment *F) {
   }
   T->top += spillSizeArea;
   Word *spillArea = (T->base - 1) + F->framesize;
+  Word *hp = G_storage.hp;
 
+  DBG_LVL(1, "Pre trace: Hp = %p, HpLim = %p\n", hp, G_storage.limit);
 
-  Word *hp = allocClosure(0x1000); //TODO: get a real heap pointer
-  asmEnter(F, T, spillArea, hp, F->mcode);
+  asmEnter(F, T, spillArea, hp, G_storage.limit, F->mcode);
 }
 
 static void LC_USED
@@ -92,13 +96,19 @@ exitTrace(ExitNo n, ExitState* s) {
     1 Fragment pointer
     1 Thread pointer
     1 spill area pointer
+    1 currently unused
+    1 Heap Limit pointer
     --------------------
-    8 values * 8 bytes each = 64 bytes
+    10 values * 8 bytes each = 80 bytes
+
+IMPORTANT: When changing this value, make sure to also change [ExitState]
+and [HPLIM_SP_OFFS] in AsmTarget_<arch>.h
 */
-#define SAVE_SIZE 64
+#define SAVE_SIZE 80
 
 static void LC_USED
-asmEnterIsImplementedInAssembly(Fragment *F, Thread *T, Word *spillArea, Word *hp, MCode *code) {
+asmEnterIsImplementedInAssembly(Fragment *F, Thread *T, Word *spillArea,
+                                Word *hp, Word *hplim, MCode *code) {
   asm volatile(
     ".globl " ASM_ENTER "\n"
     ASM_ENTER ":\n\t"
@@ -119,6 +129,8 @@ asmEnterIsImplementedInAssembly(Fragment *F, Thread *T, Word *spillArea, Word *h
     "movq %%rdi,-48(%%rax)\n\t" /* F */
     "movq %%rsi,-56(%%rax)\n\t" /* T */
     "movq %%rdx,-64(%%rax)\n\t" /* S */
+    "movq %%r8,-80(%%rax)\n\t"  /* HpLim */
+    /* &HpLim = [rsp + 0] */
 
     /* load base pointer */
     "movq %%rsi,%%rbp\n\t"   /* rbp = &T         :: (Thread *)*/
@@ -130,7 +142,7 @@ asmEnterIsImplementedInAssembly(Fragment *F, Thread *T, Word *spillArea, Word *h
     "movq %%rcx,%%r12\n\t"   /* r12 = hp */
 
     /* jump to code */
-    "jmp *%%r8\n\t"
+    "jmp *%%r9\n\t"
 
     : : "i"(SAVE_SIZE /*stack frame size*/),
         "i"(offsetof(struct Thread_,base)),
@@ -177,6 +189,7 @@ asmExitIsImplementedInAssembly() {
     /* save the xmm registers */
     "sub   $128, %%rsp\n\t"  /* make room for them on the stack */
     "add  $-128, %%rbp\n\t"  /* skip past the int regs */
+
     /* For now, we don't actually save the xmm registers because
      * we don't support floating point operations. We still need to
      * make space for them on the stack so that the ExitState data
