@@ -28,7 +28,7 @@ EXTRA_CFLAGS := $(EXTRA_CFLAGS) -DLC_HAS_ASM_BACKEND=0
 endif
 
 HSBUILDDIR = $(DIST)/build
-LCC = $(HSBUILDDIR)/lcc
+LCC = $(HSBUILDDIR)/lcc/lcc
 CABAL ?= cabal
 
 DEPDIR = $(DIST)/.deps
@@ -74,7 +74,7 @@ interp: $(SRCS:.c=.o)
 	@$(CC) -Wl,-no_pie -o $@ $^
 
 lcc: $(LCC)
-	ln -s $(LCC) $@
+	ln -fs $(LCC) $@
 
 # Building a C file automatically generates dependencies as a side
 # effect.  This only works with `gcc'.
@@ -133,9 +133,13 @@ HSSRCS := $(shell find compiler -name '*.hs')
 # is pretty quick.
 
 # .PHONY:
-$(LCC): $(HSSRCS) compiler/Opcodes.h
+
+$(HSBUILDDIR)/setup-config: lambdachine.cabal
+	$(CABAL) configure
+
+$(LCC): $(HSSRCS) compiler/Opcodes.h $(HSBUILDDIR)/setup-config
 	@mkdir -p $(HSBUILDDIR)
-	$(HC) --make $(HSFLAGS)  compiler/Main.hs -o $@
+	$(CABAL) build
 
 .PHONY: clean-interp
 clean-interp:

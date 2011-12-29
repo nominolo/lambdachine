@@ -9,8 +9,8 @@ Category:            Compiler
 Build-type:          Simple
 Cabal-version:       >=1.10
 
-Executable lambdachine
-  Build-depends:    ghc
+Executable lcc
+  Build-depends:    ghc             == 7.0.*
                   , base
                   , filepath
                   , process
@@ -31,3 +31,6 @@ Executable lambdachine
                   , value-supply    == 0.6.*
                   , graph-serialize >= 0.1.5
                   , temporary       == 1.1.*
+  Hs-Source-Dirs:   compiler
+  Main-Is:          Main.hs
+  Default-Language: Haskell2010
