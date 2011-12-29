@@ -160,6 +160,7 @@ typedef struct _JitState {
   u4 flags;
   u4 mode;
   u4 framedepth;
+  u4 unroll;
 
   // IR Buffer.
   //
@@ -242,12 +243,17 @@ typedef enum {
   REC_MASK  = 0xff
 } RecordResult;
 
+typedef enum {
+  UNROLL_DISABLED = 0,
+  UNROLL_ONCE = 1
+} UnrollLevel;
+
 INLINE_HEADER FragmentId getFragmentId(RecordResult r) { return (u4)r >> 8; }
 
 void initJitState(JitState *J, const Opts* opts);
 LC_FASTCALL void startRecording(JitState *J, BCIns *, Thread *, Word *base);
 void recordSetup(JitState *J, Thread *T);
-FragmentId finishRecording(JitState *J);
+FragmentId finishRecording(JitState *J, UnrollLevel unroll);
 LC_FASTCALL TRef emitIR(JitState *J);
 LC_FASTCALL TRef emitLoadSlot(JitState *J, i4 slot);
 LC_FASTCALL TRef emitKWord(JitState *J, Word w, LitType lt);

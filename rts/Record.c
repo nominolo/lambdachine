@@ -231,6 +231,7 @@ recordSetup(JitState *J, Thread *T)
   J->needsnap = 0;
 }
 
+/* Returns reference for next allocated literal */
 INLINE_HEADER IRRef
 nextLit(JitState *J)
 {
@@ -506,6 +507,8 @@ recordBuildEvalFrame(JitState *J, TRef node, ThunkInfoTable *info,
   return 1;
 }
 
+/* Record a single bytecode instruction (before it is being
+   executed.) */
 RecordResult
 recordIns(JitState *J)
 {
@@ -516,17 +519,17 @@ recordIns(JitState *J)
   TRef ra, rb, rc;
 
   if (LC_UNLIKELY(J->pc == J->startpc)) {
-      // We're back at the point where we started recording from.
-      // 
-      // TODO: If the stack-level is not the one that we started with,
-      // we currently simply abort.  This needs to change.
-      if (J->framedepth != 0) {
-        fprintf(stderr, "ABORT: Non-constant stack loop: %d\n.", J->framedepth);
-        goto abort_recording;
-      }
-
-      FragmentId id = finishRecording(J);
-      return (u4)REC_LOOP | ((u4)id << 8);
+    // We're back at the point where we started recording from.
+    FragmentId id = 0;
+    if (J->framedepth > 0) {
+      id = finishRecording(J, UNROLL_DISABLED);
+    } else if (J->framedepth < 0) {
+      fprintf(stderr, "ABORT: Decreasing stack loop: %d\n.", J->framedepth);
+      goto abort_recording;
+    } else {
+      id = finishRecording(J, UNROLL_ONCE);
+    }
+    return (u4)REC_LOOP | ((u4)id << 8);
   }
 
   if (J->needsnap) {
@@ -885,7 +888,7 @@ recordIns(JitState *J)
       rinfo = emitKWord(J, (Word)info, LIT_INFO);
       rb = getSlot(J, bc_b(ins));
       emit(J, IRT(IR_EQ, IRT_CMP), rb, rinfo);
-      u4 h = newHeapInfo(J, rnew, info);
+      u4 h = newHeapInfo(J, 0, info);
       HeapInfo *hp = &J->cur.heap[h];
       for (i = 0; i < size; i++, arg++) {
         rc = getSlot(J, *arg);
@@ -1012,12 +1015,14 @@ startRecording(JitState *J, BCIns *startpc, Thread *T, Word *base)
 }
 
 FragmentId
-finishRecording(JitState *J)
+finishRecording(JitState *J, UnrollLevel unrollLevel)
 {
-  // int i;
   addSnapshot(J);
   J->cur.nloop = tref_ref(emit_raw(J, IRT(IR_LOOP, IRT_VOID), 0, 0));
-  optUnrollLoop(J);
+  if (unrollLevel == UNROLL_ONCE) {
+    // int i;
+    optUnrollLoop(J);
+  }
 
 #ifndef NDEBUG
   printPrettyIR(&J->cur, J->nfragments);
@@ -1026,10 +1031,12 @@ finishRecording(JitState *J)
 #endif
 
   optDeadCodeElim(J, PRE_ALLOC_SINK);
-  heapSCCs(J);
-  fixHeapOffsets(J);
-  optDeadCodeElim(J, POST_ALLOC_SINK);
-  compactPhis(J);               /* useful for IR interpreter */
+  if (unrollLevel == UNROLL_ONCE) {
+    heapSCCs(J);
+    fixHeapOffsets(J);
+    optDeadCodeElim(J, POST_ALLOC_SINK);
+    compactPhis(J);               /* useful for IR interpreter */
+  }
 
   DBG_PR("*** Stopping to record.\n");
 
@@ -1043,6 +1050,10 @@ finishRecording(JitState *J)
   *J->startpc = BCINS_AD(BC_JFUNC, 0, J->nfragments);
   DBG_PR("Overwriting startpc = %p, with: %x\n",
          J->startpc, *J->startpc);
+
+  if (unrollLevel != UNROLL_ONCE) {
+    sayonara("Not yet implemented -- non-unrollable loops.");
+  }
 
 #if LC_HAS_ASM_BACKEND
   if(J->param[JIT_P_enableasm]) {

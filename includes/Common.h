@@ -214,6 +214,12 @@ INLINE_HEADER void xfree(void *p)
   free(p);
 }
 
+#include <stdio.h>
+
+INLINE_HEADER void sayonara(const char *last_words) {
+  fprintf(stderr, "*** FATAL: %s\nExiting...\n", last_words);
+  exit(EXIT_FAILURE);
+}
 
 /* -- Debugging --------------------------------------------------- */
 
@@ -278,4 +284,4 @@ typedef Word BloomFilter;
 #define bloomtest(b, x)	((b) & bloombit((x)))
 
 
-#endif
+#endif /* LC_COMMON_H */
