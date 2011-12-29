@@ -123,6 +123,7 @@ compiler/Opcodes.h
 interp
 lcc
 dist/
+cabal-dev/
 dump.s
 _T*.*
 tests/lit.user.cfg
