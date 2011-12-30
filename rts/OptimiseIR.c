@@ -36,6 +36,14 @@ followAbstractINDs(JitState *J, IRIns *ir)
   return ir;
 }
 
+INLINE_HEADER Word
+loadWordConstant(JitState *J, IRRef ref)
+{
+  IRIns *ir = IR(ref);
+  LC_ASSERT(ir->o == IR_KWORD);
+  return J->cur.kwords[ir->u];
+}
+
 
 // -------------------------------------------------------------------
 
@@ -116,9 +124,7 @@ optFold(JitState *J)
   case IR_ILOAD:
     //  iload_again:
     if (irref_islit(foldIns->op1)) {
-      IRIns ir = J->cur.ir[foldIns->op1];
-      LC_ASSERT(ir.o == IR_KWORD);
-      Closure *c = (Closure*)J->cur.kwords[ir.u];
+      Closure *c = (Closure*)loadWordConstant(J, foldIns->op1);
       DBG_PR("FOLD: ILOAD for static closure\n%s", "");
       return emitKWord(J, (Word)getFInfo(c), LIT_INFO);
     } else {
@@ -148,6 +154,18 @@ optFold(JitState *J)
       } else {
         DBG_PR("FOLD: new HEAPCHECK %u\n", foldIns->u);
         return emitIR(J);
+      }
+    }
+    break;
+  case IR_FLOAD:
+    {
+      /* Detect when we're loading a field from a static constant. */
+      IRIns *fref = IR(foldIns->op1);
+      if (fref->o == IR_FREF && irref_islit(fref->op1)) {
+	Closure *c = (Closure*)loadWordConstant(J, fref->op1);
+	// TODO: assert correct offset
+	u4 field = fref->op2 - 1;
+	return emitKWord(J, (Word)c->payload[field], LIT_WORD);
       }
     }
     break;
