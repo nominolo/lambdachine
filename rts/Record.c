@@ -330,11 +330,11 @@ emitKWord(JitState *J, Word w, LitType lt)
 LC_FASTCALL TRef
 emitKBaseOffset(JitState *J, i4 offs)
 {
-  IRIns *ir, *cir = J->cur.ir;
+  IRIns *ir;
   IRRef ref;
 
-  for (ref = J->chain[IR_KBASEO]; ref; ref = cir[ref].prev)
-    if (cir[ref].i == offs)
+  for (ref = J->chain[IR_KBASEO]; ref; ref = IR(ref)->prev)
+    if (IR(ref)->i == offs)
       goto found;
 
   ref = nextLit(J);
@@ -343,11 +343,11 @@ emitKBaseOffset(JitState *J, i4 offs)
   ir->o = IR_KBASEO;
   ir->t = IRT_PTR;
   ir->prev = J->chain[IR_KBASEO];
-  J->chain[IR_KBASEO] = ir->prev;
+  J->chain[IR_KBASEO] = (IRRef1)ref;
   DBG_LVL(2, "emitted: %5d ", (IRRef1)ref - REF_BIAS);
   IF_DBG_LVL(2, printIR(&J->cur, *ir));
  found:
-  return TREF(ref, ir->t);
+  return TREF(ref, IRT_PTR);
 }
 
 // Emit load of a field.
