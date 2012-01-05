@@ -124,7 +124,8 @@ typedef union IRIns {
   _(RLOAD,   L,   ___, ___) \
   _(NEW,     A,   ref, lit) \
   _(FSTORE,  S,   ref, ref) \
-  _(UPDATE,  S,   ref, ref)
+  _(UPDATE,  S,   ref, ref) \
+  _(SAVE,    S,   lit, ___)
 
 typedef enum {
 #define IRENUM(name,flags,arg1,arg2) IR_##name,
@@ -141,6 +142,11 @@ LC_STATIC_ASSERT((IR_EQ ^ 1) == IR_NE);
 LC_STATIC_ASSERT((IR_LT & 1) == 0);
 LC_STATIC_ASSERT((IR_LT + 2) == IR_LE);
 LC_STATIC_ASSERT((IR_LE + 2) == IR_EQ);
+
+INLINE_HEADER bool isConstIROp(IROp op)
+{
+  return IR_KINT <= op && op <= IR_KBASEO;
+}
 
 typedef enum {
   IRMref,  // IR reference

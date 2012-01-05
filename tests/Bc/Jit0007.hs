@@ -19,7 +19,19 @@ loop (I# n#) =
   let !(I# n'') = loop n' in
   I# (n# +# n'')
 
-test = loop2 15 == 120
+loop3 :: Int -> Int
+loop3 (I# 0#) = (I# 0#)
+loop3 (I# n#) =
+  let !n' = (I# (n# -# 1#)) in
+  let !(I# n'') = loop3 n' in
+  postwork n# n''
+
+{-# NOINLINE postwork #-}
+postwork :: Int# -> Int# -> Int
+postwork n# n'' = I# (n# +# n'')
+
+--test = loop2 15 == 120
+test = let n = 15 in (n `timesInt` (n + 1)) `divInt` 2 == loop2 n
 
 loop2 :: Int -> Int
 loop2 0 = 0

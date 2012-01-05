@@ -429,19 +429,22 @@ optDeadCodeElim(JitState *J, bool post_sink)
   // [markIRIns].
   int snapidx = J->cur.nsnap - 1;
 
-  // Mark unrolled loop
-  for ( ; snapidx >= 0 && J->cur.snap[snapidx].ref > J->cur.nloop;
-       snapidx--)
-    markSnapshot(J, &J->cur.snap[snapidx], post_sink);
+  if (J->cur.nloop) {
+    // Mark unrolled loop
+    for ( ; snapidx >= 0 && J->cur.snap[snapidx].ref > J->cur.nloop;
+	  snapidx--)
+      markSnapshot(J, &J->cur.snap[snapidx], post_sink);
 
-  for (ref = J->cur.nins - 1; ref > J->cur.nloop; ref--)
-    markIRIns(J, ref, post_sink);
+    for (ref = J->cur.nins - 1; ref > J->cur.nloop; ref--)
+      markIRIns(J, ref, post_sink);
+  }
 
   // Mark loop header
   for ( ; snapidx >= 0; snapidx--)
     markSnapshot(J, &J->cur.snap[snapidx], post_sink);
 
-  for (ref = J->cur.nloop - 1; ref >= REF_FIRST; ref--)
+  for (ref = (J->cur.nloop ? J->cur.nloop : J->cur.nins) - 1;
+       ref >= REF_FIRST; ref--)
     markIRIns(J, ref, post_sink);
 
   IF_DBG_LVL(3, printIRBuffer(J));
@@ -613,7 +616,7 @@ checkPerOpcodeLinks(JitState *J)
   int o;
   for (o = IR_NOP + 1; o < IR__MAX; o++) {
     if (chain[o] != J->chain[o] &&
-        o != IR_BASE && o != IR_KWORD && o != IR_HEAPCHK) {
+        o != IR_BASE && !isConstIROp(o) && o != IR_HEAPCHK) {
       fprintf(stderr, "Chain entry for %s does not match. "
               "Got %d, expected %d\n",
               ir_name[o], irref_int(chain[o]),

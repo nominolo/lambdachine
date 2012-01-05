@@ -769,7 +769,15 @@ fixHeapOffsets(JitState *J)
   IRRef hpchk_post = 0, hpchk_pre = 0;
   int hpchk_snap = J->cur.nsnap - 1;
 
-  for (ref = J->chain[IR_HEAPCHK]; ref > REF_FIRST; ref = IR(ref)->prev) {
+  /* TODO: This is a hack that allows us to use the same code for
+     unrolled traces and simple traces.  There must be a better
+     way. */
+  IRRef old_nloop = J->cur.nloop;
+  if (!J->cur.nloop) {
+    J->cur.nloop = J->cur.nins;	/* Reset at the end. */
+  }
+
+  for (ref = J->chain[IR_HEAPCHK]; ref >= REF_FIRST; ref = IR(ref)->prev) {
     if (ref > J->cur.nloop)
       hpchk_post = ref;
     else
@@ -855,6 +863,9 @@ fixHeapOffsets(JitState *J)
     LC_ASSERT(J->cur.snap[hpchk_snap].ref == hpchk_pre);
     J->cur.snap[hpchk_snap].removed = 1;
   }
+
+  /* TODO: part of hack mentioned above */
+  J->cur.nloop = old_nloop;
 }
 
 void

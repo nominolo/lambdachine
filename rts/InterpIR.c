@@ -58,7 +58,7 @@ irEngine(Capability *cap, Fragment *F)
          "***   pc    = %p\n"
          "***   pcmax = %p (%d)\n"
          "***   loop  = %p (%d)\n",
-         base, pc, pcmax, (int)(pcmax - pc), pcloop, (int)(pcloop - pc));
+         T->base, pc, pcmax, (int)(pcmax - pc), pcloop, (int)(pcloop - pc));
 
   for (ref = F->nk; ref < REF_BIAS; ref++) {
     switch (IR(ref)->o) {
@@ -81,7 +81,7 @@ irEngine(Capability *cap, Fragment *F)
     else \
       DBG_LVL(2, "         ===> 0x%" FMT_WordX "\n", vals[pcref]); } \
   ++pc; ++pcref; \
-  if (LC_UNLIKELY(pc >= pcmax)) { pc = pcloop; pcref = F->nloop + 1; } \
+  if (LC_UNLIKELY(pc >= pcmax)) { pc = pcloop; pcref = F->nloop ? F->nloop + 1 : REF_FIRST; } \
   if (pc->o != IR_NOP) { \
     DBG_LVL(2, "[%d] ", pcref - REF_BIAS); \
     IF_DBG_LVL(2, printIR(F, *pc)); } \
@@ -276,15 +276,18 @@ irEngine(Capability *cap, Fragment *F)
     HeapInfo *hpi = &F->heap[pc->op2];
     int j;
     recordEvent(EV_ALLOC, hpi->nfields + 1);
+    LC_ASSERT(hpi->hp_offs < 0);
     Closure *cl = (Closure*)(hp + (hpi->hp_offs - 1));
     //Closure *cl = allocClosure(wordsof(ClosureHeader) + hpi->nfields);
     setInfo(cl, (InfoTable*)vals[pc->op1]);
     for (j = 0; j < hpi->nfields; j++) {
+      DBG_LVL(3, "    field %d: %d, %" FMT_WordX "\n", j,
+	      irref_int(getHeapInfoField(F, hpi, j)),
+	      vals[getHeapInfoField(F, hpi, j)]);
       cl->payload[j] = vals[getHeapInfoField(F, hpi, j)];
     }
     /* DBG_LVL(3, "Hp = %p size=%d offs=%d Clos=%p\n", */
     /*         hp, hpi->nfields, hpi->hp_offs, cl); */
-    /* IF_DBG_LVL(3, printClosure(cl)); */
     vals[pcref] = (Word)cl;
   } else {
     vals[pcref] = 0;  // to trigger an error if accessed
@@ -300,6 +303,58 @@ irEngine(Capability *cap, Fragment *F)
     oldnode->payload[0] = (Word)newnode;
     DISPATCH_NEXT;
   }
+
+ op_SAVE:
+  /*
+
+     SAVE <snap_id:16>
+
+     Write all values mentioned in the snapshot to the stack and
+     adjust the BASE pointer to the value specified in the snapshot.
+
+     This is used to implement traces which increase the stack during
+     execution.
+
+  */
+  {
+    //static int countdown = 10;
+    u4 snapid = pc->op1;
+    SnapShot *snap = &F->snap[snapid];
+    SnapEntry *p = &F->snapmap[snap->mapofs];
+    u4 nent = snap->nent;
+    u4 nslots = snap->nslots;
+    u4 baseslot = (u4)p[nent + 1];
+    Word *realbase = base + 1;
+    int i;
+    for (i = 0; i < nent; i++, p++) {
+      //doWeNeedToChangeTheTypeOf_snap_slot_fromByteToWord16
+      int reg = (int)snap_slot(*p) - 1;
+      IRRef ref = snap_ref(*p);
+      DBG_LVL(2, "Storing %" FMT_WordX " into base[%d]\n",
+	      vals[ref], reg);
+      if (IR(ref)->o == IR_KBASEO) {
+	base[reg + 1] = realbase + IR(ref)->i;
+      } else {
+	base[reg + 1] = vals[ref];
+      }
+    }
+
+    if (stackOverflow(T, T->top, nslots))
+      sayonara("Stack Overflow");
+
+    Word *old_base = base;
+    T->top = base + 1 + nslots;
+    base += baseslot - 1;
+    T->base = base + 1;
+    //    vals[REF_BASE] = T->base;
+    //    sayonara("Need to treat KBASEO differently!");
+
+    DBG_LVL(2, "base goes from %p to %p (delta: %d), top = %p (%d)\n",
+	    old_base + 1, base + 1, baseslot - 1, T->top, nslots );
+    IF_DBG_LVL(2, printFrame(stderr, old_base + 1, T->top));
+    //if (--countdown == 0) sayonara("Testing");
+  }
+  DISPATCH_NEXT;
 
  op_RLOAD:
  op_FSTORE:

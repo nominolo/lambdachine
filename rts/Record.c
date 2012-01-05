@@ -710,6 +710,10 @@ recordIns(JitState *J)
         u4 framesize = info->code.framesize;
         BCIns *ap_return_pc;
         Closure *ap_closure;
+	DBG_LVL(2, "Recording overapplication %d + %d\n",
+		farity, extra_args);
+	IF_DBG_LVL(1, printSlots(J));
+
         getApContClosure(&ap_closure, &ap_return_pc, extra_args,
                          pointer_mask >> (nargs - extra_args));
 
@@ -744,6 +748,8 @@ recordIns(JitState *J)
           setSlot(J, i, extras[i]);
         setSlot(J, extra_args, 0); // Clear slot, used for result
 
+	IF_DBG_LVL(1, printSlots(J));
+
         // Finally, update meta info
         J->baseslot += topslot + 3;
         J->base = J->slot + J->baseslot;
@@ -752,6 +758,8 @@ recordIns(JitState *J)
         for (i = nargs; i < framesize; i++)
           setSlot(J, i, 0); // clear other slots
         J->framedepth++;
+
+	IF_DBG_LVL(1, printSlots(J));
 
       } else {
         // Partial Application
@@ -834,6 +842,10 @@ recordIns(JitState *J)
       i4 basediff = tbase - return_base;
       int i;
 
+      DBG_LVL(2, "Recording return: %d\n", basediff);
+
+      IF_DBG_LVL(1, printSlots(J));
+
       J->framedepth--;
       if (J->framedepth < 0) { 
         DBG_PR("ABORT: Returning outside of original frame (B).\n");
@@ -852,6 +864,8 @@ recordIns(JitState *J)
       J->base = J->slot + J->baseslot;
       J->maxslot = basediff - 3;
       emit_raw(J, IRT(IR_RET, IRT_VOID), basediff, 0);
+
+      IF_DBG_LVL(1, printSlots(J));
 
       //printSlots(J);
     }
@@ -1018,7 +1032,11 @@ FragmentId
 finishRecording(JitState *J, UnrollLevel unrollLevel)
 {
   addSnapshot(J);
-  J->cur.nloop = tref_ref(emit_raw(J, IRT(IR_LOOP, IRT_VOID), 0, 0));
+  if (unrollLevel == UNROLL_ONCE) {
+    J->cur.nloop = tref_ref(emit_raw(J, IRT(IR_LOOP, IRT_VOID), 0, 0));
+  } else {
+    emit_raw(J, IRT(IR_SAVE, IRT_VOID), J->cur.nsnap - 1, 0);
+  }
   if (unrollLevel == UNROLL_ONCE) {
     // int i;
     optUnrollLoop(J);
@@ -1030,12 +1048,15 @@ finishRecording(JitState *J, UnrollLevel unrollLevel)
   printHeapInfo(stderr, J);
 #endif
 
-  optDeadCodeElim(J, PRE_ALLOC_SINK);
   if (unrollLevel == UNROLL_ONCE) {
+    optDeadCodeElim(J, PRE_ALLOC_SINK);
     heapSCCs(J);
     fixHeapOffsets(J);
     optDeadCodeElim(J, POST_ALLOC_SINK);
     compactPhis(J);               /* useful for IR interpreter */
+  } else {
+    fixHeapOffsets(J);
+    optDeadCodeElim(J, POST_ALLOC_SINK);
   }
 
   DBG_PR("*** Stopping to record.\n");
@@ -1051,9 +1072,17 @@ finishRecording(JitState *J, UnrollLevel unrollLevel)
   DBG_PR("Overwriting startpc = %p, with: %x\n",
          J->startpc, *J->startpc);
 
+/*
   if (unrollLevel != UNROLL_ONCE) {
+    IRRef ref;
+    for (ref = J->chain[IR_NEW]; ref >= REF_FIRST; ref = IR(ref)->prev) {
+      HeapInfo *hpi = getHeapInfo(&J->cur, IR(ref));
+      DBG_LVL(1, "is_sunken = %d, hp_offs = %d\n",
+	      ir_issunken(IR(ref)), hpi->hp_offs);
+    }
     sayonara("Not yet implemented -- non-unrollable loops.");
-  }
+  } 
+*/
 
 #if LC_HAS_ASM_BACKEND
   if(J->param[JIT_P_enableasm]) {
