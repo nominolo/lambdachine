@@ -8,6 +8,7 @@
 #include "StorageManager.h"
 #include "Stats.h"
 #include "PrintClosure.h"
+#include "Snapshot.h"
 
 /**
 
@@ -319,8 +320,8 @@ irEngine(Capability *cap, Fragment *F)
   {
     //static int countdown = 10;
     u4 snapid = pc->op1;
-    SnapShot *snap = &F->snap[snapid];
-    SnapEntry *p = &F->snapmap[snap->mapofs];
+    SnapShot *snap = getSnapshot(F, snapid);
+    SnapEntry *p = getSnapshotEntries(F, snap);
     u4 nent = snap->nent;
     u4 nslots = snap->nslots;
     u4 baseslot = (u4)p[nent + 1];

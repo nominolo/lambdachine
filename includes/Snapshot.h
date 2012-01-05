@@ -22,4 +22,16 @@ INLINE_HEADER void growSnapshotMapBuffer(JitState *J, Word needed)
     growSnapshotMapBuffer_(J, needed);
 }
 
+INLINE_HEADER SnapShot* getSnapshot(Fragment *F, SnapNo snapno)
+{
+  LC_ASSERT(0 <= snapno && snapno < F->nsnap);
+  return &F->snap[snapno];
+}
+
+INLINE_HEADER SnapEntry* getSnapshotEntries(Fragment *F, SnapShot *snap)
+{
+  LC_ASSERT(snap && snap->mapofs < F->nsnapmap);
+  return &F->snapmap[snap->mapofs];
+}
+
 #endif
