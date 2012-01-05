@@ -364,8 +364,9 @@ build_bind_code fwd_env env fvi closures locs0 = do
          bcis3 = bcis2 <*> add_fw_refs x rslt locs2
      go bcis3 locs2 (fvs `mappend` fvs1) objs
 
-   -- 
-   go bcis locs0 fvs ((x, FunObj _arity info_tbl0 args ty) : objs) = do
+   -- allocate a thunk
+   go bcis locs0 fvs ((x, FunObj _arity info_tbl0 args ty) : objs)
+    | length args > 0 = do
      let info_tbl = mkInfoTableId (idName info_tbl0)
      (bcis1, locs1, fvs1, regs)
        <- transArgs (map Ghc.Var args) env fvi locs0
@@ -381,6 +382,15 @@ build_bind_code fwd_env env fvi closures locs0 = do
          locs2 = updateLoc locs1 x (InVar rslt)
          bcis3 = bcis2 <*> add_fw_refs x rslt locs2
      go bcis3 locs2 (fvs `mappend` fvs1) objs
+
+   -- If args is [], then we are loading a reference to a CAF, no
+   -- allocation necessary.
+   go bcis0 locs0 fvs (obj@(x, FunObj _arity info_tbl0 args ty) : objs)
+    | otherwise = do
+     reg <- mbFreshLocal ty Nothing
+     let bcis2 = bcis0 <*> insLoadGbl reg (mkTopLevelId (idName info_tbl0))
+         locs2 = updateLoc locs0 x (InVar reg)
+     go bcis2 locs2 fvs objs
 
    add_fw_refs x r locs =
      case Ghc.lookupVarEnv fwd_env x of
@@ -429,7 +439,8 @@ transBind x (viewGhcLam -> (bndrs, body)) env0 = do
                               | (n, v) <- zip [1..] vars ]
   let bco = BcObject { bcoType = if arity > 0 then
                                    BcoFun arity arg_types
-                                  else Thunk
+                                  else if length vars > 0
+                                        then Thunk else CAF
                      , bcoCode = g
                      , bcoConstants = []
                      , bcoGlobalRefs = toList gbls
