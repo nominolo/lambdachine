@@ -15,6 +15,7 @@
 #include "InterpAsm.h" // to see asmExit function
 #include "HeapInfo.h"
 #include "MiscClosures.h" // for stg_IND_info
+#include "Snapshot.h"
 
 #include <string.h> // for memset
 
@@ -198,8 +199,7 @@ static Reg ra_rematk(ASMState *as, IRRef ref)
 
   if (ir->o == IR_KINT) {
     emit_loadi(as, r, ir->i);
-  }
-  else if (ir->o == IR_KWORD) {
+  } else if (ir->o == IR_KWORD) {
     emit_loadu64(as, r|REX_64, as->T->kwords[ir->u]);
   } else if(ir->o == IR_KBASEO) {
     emit_rmro(as, XO_LEA, r|REX_64, RID_BASE, baseo_scale(ir->i));
@@ -923,6 +923,8 @@ static void asm_loop_fixup(ASMState *as) {
   MCode *p = as->mctop;
   MCode *target = as->mcp;
 
+  RA_DBGX((as, "jmp $x / $x", target, target - p));
+
   p[-5] = XI_JMP;
   *(int32_t *)(p-4) = (int32_t)(target - p);
 }
@@ -953,22 +955,85 @@ static void asm_loop(ASMState *as)
 }
 
 /* -- Allocations --------------------------------------------------------- */
-static void
+
+/**
+ * @param as the assembler state.
+ * @param ref the reference whose output we want to store into the heap.
+ * @param ofs the offset (in bytes) of where to store the object.
+ * @param base the base pointer relative to which the offset is interpreted.
+ * @param allow if ref does not yet have a register assigned, use any of
+ *        these.
+ * @return the register that has been allocated for ref or RID_NONE if
+ *         none has been allocated.
+ */
+static Reg
 asm_heapstore(ASMState *as, IRRef ref, int32_t ofs, Reg base, RegSet allow){
   if(irref_islit(ref)) {
     int32_t k;
     Reg r = ra_allock(as, ref, allow, &k);
     if(ra_noreg(r)) {
+      /* Move 32 bit constants directly into target */
       emit_movmroi(as, base, ofs, k);
     }
     else {
+      /* 64 bit constants need to be loaded into a register first. */
       emit_rmro(as, XO_MOVto, REX_64|r, REX_64|base, ofs);
       ra_rematk(as, ref);
     }
+    return r;
   }
   else {
     Reg r = ra_alloc(as, ref, allow);
     emit_rmro(as, XO_MOVto, REX_64|r, REX_64|base, ofs);
+    return r;
+  }
+}
+
+/**
+ * Implements the SAVE instruction.
+ *
+ * We store all values mentioned in the snapshot to the locations
+ * assigned in the stack slot and increment the base pointer.  The
+ * general pattern is as follows:
+ *
+ *     mov tmp, <64bit-constant>  ; for constants
+ *     mov [rbp + <offs>], tmp
+ *
+ *     mov [rbp + <offs>], <reg>  ; for trace computations
+ *
+ *     lea tmp, [rbp + <delta>]   ; for frame pointers
+ *     mov [rbp + <offs>], tmp
+ *
+ *     add rbp, <offset-to-new-base>
+ *
+ * TODO:
+ *   Not tested, what happens if we run out of registers?  Can
+ *   spill be put into the heap?  Use liveness info to fill dead
+ *   stack slots?
+ *
+ * @param as the assembler state.
+ * @param ir a pointer to the SAVE instruction.
+ */
+static void asm_save(ASMState *as, IRIns *ir) {
+  SnapShot *snap = getSnapshot(&as->J->cur, ir->op1);
+  SnapEntry *entry = getSnapshotEntries(&as->J->cur, snap);
+  Reg baseslot = (u4)entry[snap->nent + 1];
+  u4 i;
+
+  /* Last, we increment the base pointer, so emit that code first. */
+  emit_gri(as, XG_ARITHi(XOg_ADD), RID_BASE|REX_64,
+	   (baseslot - 1) * sizeof(Word));
+
+  for (i = 0; i < snap->nent; i++, entry++) {
+    int slot = (int)snap_slot(*entry);
+    IRRef ref = snap_ref(*entry);
+    IRIns *ir2 = IR(ref);
+    RegSet allow = RSET_GPR;
+
+    Reg r = asm_heapstore(as, ref, slot * sizeof(Word), RID_BASE, allow);
+    rset_clear(allow, r);
+
+    RA_DBGX((as, "save_slot $i $s", ir2, slot));
   }
 }
 
@@ -1266,6 +1331,9 @@ static void asm_ir(ASMState *as, IRIns *ir) {
     case IR_LOOP:
       asm_loop(as);
       break;
+    case IR_SAVE:
+      asm_save(as, ir);
+      break;
     case IR_FRAME: case IR_NOP: case IR_RET:
       break;
     default:
@@ -1314,6 +1382,12 @@ void genAsm(JitState *J, Fragment *T) {
 
   /* Add renames for any phis spilled outside the loop */
   asm_phi_spill_fixup(as);
+
+  /* If our trace ends with a SAVE instruction, we loop back to
+     the beginning. */
+  if (!J->cur.nloop && J->chain[IR_SAVE]) {
+    asm_loop_fixup(as);
+  }
 
   /* Sanity check. Should never happen. */
   if (as->freeset != RSET_ALL)

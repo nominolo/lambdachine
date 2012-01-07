@@ -12,7 +12,6 @@
 #include "Snapshot.h"
 
 static void enterTrace(JitState *J, Fragment *F);
-static void dumpAsm(MCode* mcode, MSize sz, FILE* out);
 static void dumpExitStubs(JitState *J);
 extern void asmEnter(Fragment *F, Thread *T, Word *spillArea,
                      Word *hp, Word *hplim, MCode* code);
@@ -27,7 +26,7 @@ void asmEngine(Capability *cap, Fragment *F) {
   enterTrace(J, F);
 }
 
-static void dumpAsm(MCode* mcode, MSize sz, FILE* out) {
+void dumpAsm(MCode* mcode, MSize sz, FILE* out) {
   MSize i;
   int close = 0;
   if(out == NULL) {out = fopen("dump.s", "w"); close = 1;};

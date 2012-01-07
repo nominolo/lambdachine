@@ -10,5 +10,6 @@
 #include "Jit.h"
 
 void genAsm(JitState *J, Fragment *T);
+void dumpAsm(MCode* mcode, MSize sz, FILE* out);
 
 #endif
