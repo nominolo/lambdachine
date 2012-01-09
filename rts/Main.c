@@ -181,5 +181,6 @@ main(int argc, char *argv[])
 
 void loadWiredInModules()
 {
+  loadModule("GHC.Bool");
   loadModule("Control.Exception.Base");
 }
