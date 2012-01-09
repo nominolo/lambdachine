@@ -191,6 +191,7 @@ recordSetup(JitState *J, Thread *T)
   J->baseslot = 1;  // base[baseslot] == r0, base[-1] == Node
   J->base = J->slot + J->baseslot;
   J->maxslot = T->top - T->base;
+  J->framesize = T->top - T->base;
 
   J->T = T;
 
@@ -1088,7 +1089,8 @@ finishRecording(JitState *J, UnrollLevel unrollLevel)
   if(J->param[JIT_P_enableasm]) {
     //TODO: compute the actual framsize of a trace
     //This number needs to be computed before a call to genAsm
-    J->cur.framesize = MAX_SLOTS;
+    J->cur.framesize = J->framesize + 1;
+    DBG_LVL(2, "Framesize %d\n", J->framesize);
     genAsm(J, &J->cur);
   }
 #endif

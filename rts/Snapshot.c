@@ -93,6 +93,7 @@ snapshotFrame(JitState *J, SnapEntry *map)
   //printf("d = %d, base = %d\n", (i4)d, J->baseslot);
   map[0] = (SnapEntry)d;
   map[1] = J->baseslot;
+  J->framesize = MAX(J->framesize, J->baseslot + J->maxslot - 1);
 }
 
 static void

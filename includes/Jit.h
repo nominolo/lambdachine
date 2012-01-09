@@ -156,6 +156,7 @@ typedef struct _JitState {
   BCReg baseslot;  // current base pointer as offset into slot
   BCReg maxslot;   // size of the current frame
                    // INVARIANT: baseslot + maxslot < MAX_SLOTS
+  u4 framesize;	   /* Max. stack used by this trace. */
   TRef last_result;
   u4 flags;
   u4 mode;

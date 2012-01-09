@@ -114,6 +114,8 @@ enum { false = 0, true = 1 };
 #define SET_FLAG(dst, f)   ((dst) |= (f))
 #define CLEAR_FLAG(dst, f) ((dst) &= ~(f))
 
+/* Note: a and b must not have side effects. */
+#define MAX(a, b) ((a) < (b) ? (b) : (a));
 
 /*  
 Inlining 
