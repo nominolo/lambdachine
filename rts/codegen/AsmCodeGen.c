@@ -1399,6 +1399,7 @@ void genAsm(JitState *J, Fragment *T) {
   /* Save the trace's machine code */
   T->mcode = as->mcp;
   T->szmcode = (MSize)((char *)as->mctop - (char *)as->mcp);
+  T->spills = as->spill;
   mcodeCommit(J, T->mcode);
   RA_DBG_FLUSH();
 }

@@ -111,6 +111,7 @@ typedef struct _Fragment {
   HeapInfo *heap;
   HeapEntry *heapmap;
   u4 framesize; // Number of frame slots used by this fragment (before RA)
+  u4 spills;    // Number of spill slots used (added by RA)
 
   MCode *mcode;  // Machine code for the trace
   MSize szmcode; // Size of machine code

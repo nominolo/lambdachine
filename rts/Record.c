@@ -206,6 +206,7 @@ recordSetup(JitState *J, Thread *T)
   J->cur.nk = REF_BASE;
   J->cur.nloop = 0;
   J->cur.nphis = 0;
+  J->cur.spills = 0;
   // Emit BASE.  Causes buffer allocation.
   emit_raw(J, IRT(IR_BASE, IRT_PTR), 0, 0);
   J->last_result = 0;
@@ -1162,6 +1163,7 @@ registerCurrentFragment(JitState *J)
   memcpy(F->heapmap, J->cur.heapmap, F->nheapmap * sizeof(HeapEntry));
 
   F->framesize = J->cur.framesize;
+  F->spills = J->cur.spills;
   F->mcode = J->cur.mcode;
   F->szmcode = J->cur.szmcode;
 

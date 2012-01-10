@@ -56,15 +56,18 @@ static void dumpExitStubs(JitState *J) {
 
 static void enterTrace(JitState *J, Fragment *F) {
   // Jump to trace machine code
-  const int spillSizeArea = 256;
+  int spillSizeArea = F->spills;
   Thread *T  = J->T;
 
+  DBG_LVL(3, "framesize = %d, spillsize = %d\n",
+	  F->framesize, spillSizeArea);
+
   // Allocate spill area
-  if(stackOverflow(T, T->top, spillSizeArea)) {
+  if(stackOverflow(T, T->top, F->framesize + spillSizeArea)) {
     LC_ASSERT(0 && "Stack overflow");
     traceError(NULL, 1);
   }
-  T->top += spillSizeArea;
+  T->top += F->framesize + spillSizeArea;
   Word *spillArea = (T->base - 1) + F->framesize;
   Word *hp = G_storage.hp;
 
