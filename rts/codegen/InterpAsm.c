@@ -14,7 +14,7 @@
 static void enterTrace(JitState *J, Fragment *F);
 static void dumpExitStubs(JitState *J);
 extern void asmEnter(Fragment *F, Thread *T, Word *spillArea,
-                     Word *hp, Word *hplim, MCode* code);
+                     Word *hp, Word *hplim, Word *stacklim, MCode* code);
 
 void asmEngine(Capability *cap, Fragment *F) {
   JitState *J = &cap->J;
@@ -70,7 +70,8 @@ static void enterTrace(JitState *J, Fragment *F) {
 
   DBG_LVL(1, "Pre trace: Hp = %p, HpLim = %p\n", hp, G_storage.limit);
 
-  asmEnter(F, T, spillArea, hp, G_storage.limit, F->mcode);
+  asmEnter(F, T, spillArea, hp, G_storage.limit, T->stack + T->stack_size,
+	   F->mcode);
 }
 
 static void LC_USED
@@ -95,7 +96,7 @@ exitTrace(ExitNo n, ExitState* s) {
     1 Fragment pointer
     1 Thread pointer
     1 spill area pointer
-    1 currently unused
+    1 Stack Limit pointer
     1 Heap Limit pointer
     --------------------
     10 values * 8 bytes each = 80 bytes
@@ -107,13 +108,16 @@ and [HPLIM_SP_OFFS] in AsmTarget_<arch>.h
 
 static void LC_USED
 asmEnterIsImplementedInAssembly(Fragment *F, Thread *T, Word *spillArea,
-                                Word *hp, Word *hplim, MCode *code) {
+                                Word *hp, Word *hplim, Word *stacklim,
+                                MCode *code) {
   asm volatile(
     ".globl " ASM_ENTER "\n"
     ASM_ENTER ":\n\t"
 
      /* save %rbp and also makes %rsp 16-byte aligned */
     "push %%rbp\n\t"
+
+    "movq 16(%%rsp),%%r10\n\t"	/* r10 = code :: (MCode *) */
 
     /* save other callee saved regs */
     "movq %%rsp, %%rax\n\t"
@@ -128,6 +132,7 @@ asmEnterIsImplementedInAssembly(Fragment *F, Thread *T, Word *spillArea,
     "movq %%rdi,-48(%%rax)\n\t" /* F */
     "movq %%rsi,-56(%%rax)\n\t" /* T */
     "movq %%rdx,-64(%%rax)\n\t" /* S */
+    "movq %%r9,-72(%%rax)\n\t"	/* StackLim */
     "movq %%r8,-80(%%rax)\n\t"  /* HpLim */
     /* &HpLim = [rsp + 0] */
 
@@ -141,11 +146,11 @@ asmEnterIsImplementedInAssembly(Fragment *F, Thread *T, Word *spillArea,
     "movq %%rcx,%%r12\n\t"   /* r12 = hp */
 
     /* jump to code */
-    "jmp *%%r9\n\t"
+    "jmp *%%r10\n\t"
 
-    : : "i"(SAVE_SIZE /*stack frame size*/),
-        "i"(offsetof(struct Thread_,base)),
-        "i"(sizeof(Word))
+    : : "i"(SAVE_SIZE /*stack frame size*/), /* %0 */
+        "i"(offsetof(struct Thread_,base)), /* %1 */
+        "i"(sizeof(Word))		    /* %2 */
     );
 }
 

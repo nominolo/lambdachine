@@ -106,7 +106,7 @@ typedef struct {
   double   fpr[RID_NUM_FPR];    /* Floating-point registers. */
   Word     gpr[RID_NUM_GPR];    /* General-purpose registers. */
   Word     *hplim;              /* Heap Limit */
-  Word     unused;              /* needed for 16-byte alignment */
+  Word     *stacklim;           /* Stack Limit */
   Word     *spill;              /* Spill slots. */
   Thread   *T;                  /* Currently executing thread */
   Fragment *F;                  /* Fragment under execution */
