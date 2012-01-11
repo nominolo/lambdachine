@@ -990,6 +990,40 @@ asm_heapstore(ASMState *as, IRRef ref, int32_t ofs, Reg base, RegSet allow){
 }
 
 /**
+ * Emits a stack overflow check.
+ *
+ * The check we're performing is:
+ *
+ *     if (base + FRAMESIZE + SPILLS >= stacklim) goto exit;
+ *
+ * In assembly this reads as:
+ *
+ *     lea tmp, [ebp + FRAMESIZE + SPILLS]
+ *     cmp tmp, [esp + 8]  ; stacklim
+ *     ja exit
+ *
+ * @param as the assembler state.
+ * @param snapno the exit number corresponding to the stack check.
+ *     The IR instruction for this snapshot should be of type IR_SAVE.
+ * @param framesize the required space (in bytes) of the new frame.
+ */
+static void
+asm_stackcheck(ASMState *as, SnapNo snapno, u4 framesize)
+{
+  MCode *target = exitstub_addr(as->J, snapno);
+  Reg r = ra_scratch(as, RSET_GPR);
+
+  RA_DBGX((as, "<<guard exit: $x>>", snapno));
+
+  emit_jcc(as, CC_A, target);
+
+  RA_DBGX((as, "<<stack check: $x words>>", framesize));
+
+  emit_rmro(as, XO_CMP, r|REX_64, RID_ESP|REX_64, STACKLIM_SP_OFFS);
+  emit_rmro(as, XO_LEA, r|REX_64, RID_BASE|REX_64, sizeof(Word) * framesize);
+}
+
+/**
  * Implements the SAVE instruction.
  *
  * We store all values mentioned in the snapshot to the locations
@@ -1014,13 +1048,19 @@ asm_heapstore(ASMState *as, IRRef ref, int32_t ofs, Reg base, RegSet allow){
  * @param as the assembler state.
  * @param ir a pointer to the SAVE instruction.
  */
-static void asm_save(ASMState *as, IRIns *ir) {
-  SnapShot *snap = getSnapshot(&as->J->cur, ir->op1);
+static void
+asm_save(ASMState *as, IRIns *ir) {
+  SnapNo snapno = ir->op1;
+  SnapShot *snap = getSnapshot(&as->J->cur, snapno);
   SnapEntry *entry = getSnapshotEntries(&as->J->cur, snap);
   Reg baseslot = (u4)entry[snap->nent + 1];
   u4 i;
 
-  /* Last, we increment the base pointer, so emit that code first. */
+  /* Perform the stack check *after* incrementing the base pointer. */
+  asm_stackcheck(as, snapno, as->T->framesize + as->spill);
+
+  /* Increment the base pointer. */
+  RA_DBGX((as, "<<base += $x words>>", (baseslot - 1)));
   emit_gri(as, XG_ARITHi(XOg_ADD), RID_BASE|REX_64,
 	   (baseslot - 1) * sizeof(Word));
 

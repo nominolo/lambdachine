@@ -80,7 +80,8 @@ enum {
 #define rset_picktop(rs)	(lc_fls(lc_bswap(rs)) ^ 0x18)
 
 /* Offset (in bytes) of HpLim from stack pointer inside trace. */
-#define HPLIM_SP_OFFS   0
+#define HPLIM_SP_OFFS    0
+#define STACKLIM_SP_OFFS 8
 
 /* -- Spill slots --------------------------------------------------------- */
 

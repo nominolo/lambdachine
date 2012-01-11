@@ -164,7 +164,7 @@ printSnapshot(JitState *J, SnapShot *snap, SnapEntry *map)
     } else
       fprintf(stderr, "---- ");
   }
-  fprintf(stderr, "pc = %p\n", pc);
+  fprintf(stderr, "pc = %p, ref = %d\n", pc, irref_int(snap->ref));
 }
 
 #if LC_HAS_ASM_BACKEND
@@ -277,6 +277,12 @@ void restoreSnapshot(SnapNo snapno, void *exptr) {
   DBG_LVL(1, "Restoring Snapshot: %d\n", snapno);
 
   recordEvent(EV_EXIT, snap->nent);
+
+  /* A SAVE snapshot exit is only ever triggered if we have a stack
+     overflow. */
+  if (F->ir[snap->ref].o == IR_SAVE) {
+    sayonara("Stack overflow\n");
+  }
 
   G_storage.gc_inhibited = 1;
   G_storage.hp = (Word*)ex->gpr[RID_HP];
