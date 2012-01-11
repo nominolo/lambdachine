@@ -9,8 +9,8 @@
 # define LC_HAS_ASM_BACKEND 1
 #endif
 
-#undef NDEBUG
-#define DEBUG
+/* #undef NDEBUG */
+/* #define DEBUG */
 
 #ifndef LC_DEBUG_LEVEL
 # ifdef NDEBUG
