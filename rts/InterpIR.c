@@ -334,7 +334,7 @@ irEngine(Capability *cap, Fragment *F)
       DBG_LVL(2, "Storing %" FMT_WordX " into base[%d]\n",
 	      vals[ref], reg);
       if (IR(ref)->o == IR_KBASEO) {
-	base[reg + 1] = realbase + IR(ref)->i;
+	base[reg + 1] = (Word)(realbase + IR(ref)->i);
       } else {
 	base[reg + 1] = vals[ref];
       }
