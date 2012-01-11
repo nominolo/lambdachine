@@ -142,7 +142,7 @@ int engine(Capability *cap)
   Word callt_temp[BCMAX_CALL_ARGS];
   LcCode *code = NULL;
 
-#if (LC_DEBUG_LEVEL >= 1)
+#if (LC_DEBUG_LEVEL >= 2)
 # define DBG_IND(stmt) \
   do { printIndent(stderr, base - T->stack, '.'); stmt;} while (0)
 # define DBG_ENTER(info) \
