@@ -7,16 +7,19 @@
 void printIR(Fragment *, IRIns ir);
 void printIRRef(Fragment *, IRRef1 ref);
 
-void printPrettyIR(Fragment *F, int fragment_id);
-void printPrettyIRRef_(Fragment *F, IRRef ref, int follow);
-void printPrettyIRIns(Fragment *F, IRRef ref);
+void printPrettyIR_(FILE *out, Fragment *F, int fragment_id);
+void printPrettyIRRef_(FILE *out, Fragment *F, IRRef ref, int follow);
 
 INLINE_HEADER void
-printPrettyIRRef(Fragment *F, IRRef ref)
+printPrettyIRRef(FILE *out, Fragment *F, IRRef ref)
 {
-  printPrettyIRRef_(F, ref, 1);
+  printPrettyIRRef_(out, F, ref, 1);
 }
 
-
+INLINE_HEADER void
+printPrettyIR(Fragment *F, int fragment_id)
+{
+  printPrettyIR_(stderr, F, fragment_id);
+}
 
 #endif

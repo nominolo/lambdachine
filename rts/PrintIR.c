@@ -188,7 +188,7 @@ INLINE_HEADER char irt_chr(IRType irt)
 }
 
 void
-printPrettyIRRef_(Fragment *F, IRRef ref, int follow)
+printPrettyIRRef_(FILE *out, Fragment *F, IRRef ref, int follow)
 {
   LC_ASSERT(F->nk <= ref && ref < F->nins);
 
@@ -197,32 +197,32 @@ printPrettyIRRef_(Fragment *F, IRRef ref, int follow)
   if (ref >= REF_BIAS) {
     int n = ref - REF_BIAS;
     if (follow && ir->o == IR_ILOAD) {
-      fprintf(stderr, "getInfo(");
-      printPrettyIRRef_(F, ir->op1, 1);
+      fprintf(out, "getInfo(");
+      printPrettyIRRef_(out, F, ir->op1, 1);
       fputc(')', stderr);
       return;
     }
-    fprintf(stderr, COLOURED(COL_GREEN, "%c%03d"), irt_chr(ir->t), n);
+    fprintf(out, COLOURED(COL_GREEN, "%c%03d"), irt_chr(ir->t), n);
   } else {
     int n = REF_BIAS - ref;
     if (ir->o == IR_KWORD) {
       switch (irt_type(ir->t)) {
       case IRT_I32:
-        fprintf(stderr, COLOURED(COL_BLUE, "%" FMT_Int),
+        fprintf(out, COLOURED(COL_BLUE, "%" FMT_Int),
                (WordInt)F->kwords[ir->u]);
         break;
       case IRT_INFO:
         {
           FuncInfoTable *info = (FuncInfoTable*)F->kwords[ir->u];
           LC_ASSERT(info != NULL && info->name != NULL);
-          fprintf(stderr, COLOURED(COL_BLUE, "%s"), info->name);
+          fprintf(out, COLOURED(COL_BLUE, "%s"), info->name);
         }
         break;
       default:
-        fprintf(stderr, COLOURED(COL_BLUE, "%cK%02d"), irt_chr(ir->t), n);
+        fprintf(out, COLOURED(COL_BLUE, "%cK%02d"), irt_chr(ir->t), n);
       }
     } else {
-      fprintf(stderr, COLOURED(COL_BLUE, "%cK%02d"), irt_chr(ir->t), n);
+      fprintf(out, COLOURED(COL_BLUE, "%cK%02d"), irt_chr(ir->t), n);
     }
   }
 }
@@ -269,7 +269,7 @@ const char *ir_op_name[IR__MAX] = {
 };
 
 void
-printPrettyIRIns(Fragment *F, IRRef ref)
+printPrettyIRIns(FILE *out, Fragment *F, IRRef ref)
 {
   LC_ASSERT(F->nk < ref && ref < F->nins);
 
@@ -278,42 +278,42 @@ printPrettyIRIns(Fragment *F, IRRef ref)
   if (!printedByPretty(F, ref))
     return;
 
-  fprintf(stderr, "| ");
+  fprintf(out, "| ");
   if ((ir->t & IRT_TYPE) != IRT_VOID && ir->o != IR_PHI) {
-    printPrettyIRRef_(F, ref, 0);
-    fprintf(stderr, " = ");
+    printPrettyIRRef_(out, F, ref, 0);
+    fprintf(out, " = ");
   } else
-    fprintf(stderr, "       ");
+    fprintf(out, "       ");
 
   switch (ir->o) {
   case IR_SLOAD:
-    fprintf(stderr, "base[%d]", (int)(ir->op1 - 1));
+    fprintf(out, "base[%d]", (int)(ir->op1 - 1));
     break;
   case IR_ADD: case IR_SUB: case IR_MUL: case IR_DIV: case IR_REM:
-    printPrettyIRRef(F, ir->op1);
-    fprintf(stderr, " %s ", ir_op_name[ir->o]);
-    printPrettyIRRef(F, ir->op2);
+    printPrettyIRRef(out, F, ir->op1);
+    fprintf(out, " %s ", ir_op_name[ir->o]);
+    printPrettyIRRef(out, F, ir->op2);
     break;
   case IR_LT: case IR_GT: case IR_LE:
   case IR_GE: case IR_EQ: case IR_NE:
-    fprintf(stderr, "guard (");
-    printPrettyIRRef(F, ir->op1);
-    fprintf(stderr, " %s ", ir_cmp_name[ir->o - IR_LT]);
-    printPrettyIRRef(F, ir->op2);
-    fputc(')', stderr);
+    fprintf(out, "guard (");
+    printPrettyIRRef(out, F, ir->op1);
+    fprintf(out, " %s ", ir_cmp_name[ir->o - IR_LT]);
+    printPrettyIRRef(out, F, ir->op2);
+    fputc(')', out);
     // TODO: Print snapshot / live-outs
     break;
   case IR_HEAPCHK:
-    fprintf(stderr, "guard (Hp + %u < HpLim)", ir->u);
+    fprintf(out, "guard (Hp + %u < HpLim)", ir->u);
     break;
   case IR_FLOAD:
     ir = IR(ir->op1);
-    printPrettyIRRef(F, ir->op1);
-    fprintf(stderr, "[%d]", (int)ir->op2);
+    printPrettyIRRef(out, F, ir->op1);
+    fprintf(out, "[%d]", (int)ir->op2);
     break;
   case IR_LOOP:
     // TODO: Print PHIs here
-    fprintf(stderr, "--- LOOP --------");
+    fprintf(out, "--- LOOP --------");
     {
       IRRef firstphi = REF_DROP;
       IRRef phiref;
@@ -329,83 +329,88 @@ printPrettyIRIns(Fragment *F, IRRef ref)
         IRIns *phi = IR(phiref);
         if (phi->o == IR_PHI && printedByPretty(F, phi->op1)
             && printedByPretty(F, phi->op2)) {
-          fprintf(stderr, "\n| ");
-          printPrettyIRRef(F, phi->op1);
-          fprintf(stderr, " = phi(");
-          printPrettyIRRef(F, phi->op1);
-          fprintf(stderr, ", ");
-          printPrettyIRRef(F, phi->op2);
-          fputc(')', stderr);
+          fprintf(out, "\n| ");
+          printPrettyIRRef(out, F, phi->op1);
+          fprintf(out, " = phi(");
+          printPrettyIRRef(out, F, phi->op1);
+          fprintf(out, ", ");
+          printPrettyIRRef(out, F, phi->op2);
+          fputc(')', out);
         }
       }
     }
     break;
   case IR_UPDATE:
-    fprintf(stderr, "update(");
-    printPrettyIRRef(F, ir->op1);
-    fputc(',', stderr);
-    printPrettyIRRef(F, ir->op2);
-    fputc(')', stderr);
+    fprintf(out, "update(");
+    printPrettyIRRef(out, F, ir->op1);
+    fputc(',', out);
+    printPrettyIRRef(out, F, ir->op2);
+    fputc(')', out);
     break;
 
   case IR_NEW:
-    fprintf(stderr, "new ");
-    printPrettyIRRef(F, ir->op1);
+    fprintf(out, "new ");
+    printPrettyIRRef(out, F, ir->op1);
     {
       HeapInfo *hp = getHeapInfo(F, ir);
       int i;
-      fputc('(', stderr);
+      fputc('(', out);
       for (i = 0; i < hp->nfields; i++) {
-        if (i != 0) fprintf(stderr, ", ");
-        printPrettyIRRef(F, getHeapInfoField(F, hp, i));
+        if (i != 0) fprintf(out, ", ");
+        printPrettyIRRef(out, F, getHeapInfoField(F, hp, i));
       }
-      fprintf(stderr, ")%s",
+      fprintf(out, ")%s",
               !ir_issunken(ir) ? "" : " [sunken]");
 
       if (irt_getmark(ir->t)) {
-        fprintf(stderr, " Hp[%d]", hp->hp_offs);
+        fprintf(out, " Hp[%d]", hp->hp_offs);
       }
       
       if (hp->ind) {
-        fprintf(stderr, " upd=>");
-        printPrettyIRRef(F, hp->ind);
+        fprintf(out, " upd=>");
+        printPrettyIRRef(out, F, hp->ind);
       }
     }
     break;
+  case IR_SAVE:
+    fprintf(out, "save");
+    break;
   default:
-    fprintf(stderr, "{TODO: %s}", ir_name[ir->o]);
+    fprintf(out, "{TODO: %s}", ir_name[ir->o]);
   }
-  fputc('\n', stderr);
+  fputc('\n', out);
 }
 
 void
-printPrettyIR(Fragment *F, int fragment_id)
+printPrettyIR_(FILE *out, Fragment *F, int fragment_id)
 {
   IRRef ref;
   int i, s = 0;
 
-  fprintf(stderr, "+==== Fragment: %04d =============================\n",
-         fragment_id);
+  fprintf(out, "+==== Fragment: %04d =============================\n",
+	  fragment_id);
   for (ref = REF_FIRST; ref < F->nins; ref++) {
-    printPrettyIRIns(F, ref);
+    printPrettyIRIns(out, F, ref);
     if (s < F->nsnap && F->snap[s].ref == ref && !F->snap[s].removed) {
+      SnapShot *snap = &F->snap[s];
+      SnapEntry *se = &F->snapmap[snap->mapofs];
+      const BCIns *pc = F->startpc + (ptrdiff_t)(i4)se[snap->nent];
       int fst = 1;
-      fprintf(stderr, "|          " COL_YELLOW "{");
-      SnapEntry *se = &F->snapmap[F->snap[s].mapofs];
+      fprintf(out, "|          " COL_YELLOW "{");
       for (i = 0; i < F->snap[s].nent; i++, se++) {
         IRRef r = snap_ref(*se);
         if (!irref_islit(r)) {
-          fprintf(stderr, COL_YELLOW);
-          if (fst) fst = 0; else fprintf(stderr, ", ");
-          fprintf(stderr, "%d:", snap_slot(*se) - 1);
-          printPrettyIRRef(F, r);
+          fprintf(out, COL_YELLOW);
+          if (fst) fst = 0; else fprintf(out, ", ");
+          fprintf(out, "%d:", snap_slot(*se) - 1);
+          printPrettyIRRef(out, F, r);
         }
       }
-      fprintf(stderr, COL_YELLOW "}" COL_RESET "\n");
+      fprintf(out, COL_YELLOW "}" COL_RESET " pc=%p\n", pc);
       s++;
     }
   }
-  fprintf(stderr, "+=================================================\n");
+  fprintf(out, "+=================================================\n");
 }
 
 #undef IR
