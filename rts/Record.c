@@ -1138,11 +1138,11 @@ registerCurrentFragment(JitState *J)
   F->nk = J->cur.nk;
   F->nins = J->cur.nins;  // TODO: remove NOPs
   F->nloop = J->cur.nloop;
-  F->ir = xmalloc((F->nins - F->nk) * sizeof(IRIns));
-  F->ir = F->ir + F->nk - REF_BIAS;
+  u4 szins = (F->nins - F->nk);
+  F->ir = xmalloc(szins * sizeof(IRIns));
   F->nphis = J->cur.nphis;
-  memcpy(F->ir + F->nk, J->cur.ir + J->cur.nk,
-         (F->nins - F->nk) * sizeof(IRIns));
+  memcpy(F->ir, J->cur.ir + J->cur.nk, szins * sizeof(IRIns));
+  F->ir -= F->nk;
 
   F->nkwords = J->cur.nkwords;
   F->kwords = xmalloc(F->nkwords * sizeof(Word));
