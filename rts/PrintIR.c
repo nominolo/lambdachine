@@ -2,6 +2,7 @@
 #include "InfoTables.h"
 #include "PrintClosure.h"
 #include "HeapInfo.h"
+#include "codegen/AsmTarget.h"
 
 #include <stdio.h>
 
@@ -100,12 +101,33 @@ printIRRef(Fragment *F, IRRef1 ref)
     fprintf(stderr, "%04d ", (int)(ref - REF_BIAS));
 }
 
+/**
+ * Formats the IR instruction's register or stack slot as a string.
+ *
+ * @param dest the target buffer.
+ * @param len the size of the target buffer.  This function prints
+ *     at most len - 1 characters and a terminating '\0'.
+ * @param ir the IR instruction
+ */
+void
+printRegister(char *dest, size_t len, IRIns ir)
+{
+  Reg r = ir.r & RID_MASK;
+  if (r <= RID_MAX) {
+    snprintf(dest, len, "%s", ra_regname[r]);
+  } else {
+    snprintf(dest, len, "[%d]", (int)ir.s);
+  }
+}
+
 #define MAX_COMMENT 100
+#define MAX_REGNAME_LEN 6
 
 void
 printIR(Fragment *F, IRIns ir)
 {
   char comment[MAX_COMMENT];
+  char regname[MAX_REGNAME_LEN];
   int  lencomment = 0;
 
   if (ir.o == IR_LOOP) {
@@ -113,10 +135,18 @@ printIR(Fragment *F, IRIns ir)
     return;
   }
 
-  fprintf(stderr, "%3s %s%s%-8s ", irt_str(ir.t),
-         irt_getphi(ir.t) ? "%" : " ",
-         irt_getmark(ir.t) ? "*" : " ",
-         ir_name[ir.o]);
+  if (F->mcode != NULL) {
+    printRegister(regname, MAX_REGNAME_LEN, ir);
+  } else {
+    regname[0] = '\0';
+  }
+
+  fprintf(stderr, "%-5s%3s %s%s%-8s ",
+	  regname,
+	  irt_str(ir.t),
+	  irt_getphi(ir.t) ? "%" : " ",
+	  irt_getmark(ir.t) ? "*" : " ",
+	  ir_name[ir.o]);
   fflush(stderr);
   switch (irm_op1(ir_mode[ir.o])) {
   case IRMref:
