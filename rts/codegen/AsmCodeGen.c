@@ -1444,6 +1444,14 @@ void genAsm(JitState *J, Fragment *T) {
   RA_DBG_FLUSH();
 }
 
+#define RIDNAME(name)	#name,
+const char *const ra_regname[] = {
+  GPRDEF(RIDNAME)
+  FPRDEF(RIDNAME)
+  NULL
+};
+#undef RIDNAME
+
 #undef IR
 
 #endif

@@ -193,17 +193,6 @@ static RegSP snap_renameref(Fragment *F, SnapNo lim, IRRef ref, RegSP rs)
   return rs;
 }
 
-#ifndef NDEBUG
-/* Names of registers.  Only needed for debug output. */
-#define RIDNAME(name)	#name,
-static const char *const ra_regname[] = {
-  GPRDEF(RIDNAME)
-  FPRDEF(RIDNAME)
-  NULL
-};
-#undef RIDNAME
-#endif
-
 static Word
 snap_restoreval(Fragment *F, IRRef ref,
                 ExitState *ex, Word *base,

@@ -124,6 +124,9 @@ typedef uint32_t RegCost;
 
 /* -- Target-specific definitions ----------------------------------------- */
 
+/* Register name strings, for debugging. */
+extern const char *const ra_regname[];
+
 #if LAMBDACHINE_TARGET == LAMBDACHINE_ARCH_X64
 #include "AsmTarget_x64.h"
 #else

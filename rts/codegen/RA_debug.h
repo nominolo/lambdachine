@@ -4,14 +4,6 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-#define RIDNAME(name)	#name,
-static const char *const ra_regname[] = {
-  GPRDEF(RIDNAME)
-  FPRDEF(RIDNAME)
-  NULL
-};
-#undef RIDNAME
-
 static char ra_dbg_buf[65536];
 static char *ra_dbg_p;
 static char *ra_dbg_merge;
