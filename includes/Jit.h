@@ -94,6 +94,7 @@ typedef struct _Fragment {
   IRRef nk;    // Lowest IR literal
   IRRef nloop; // Reference to LOOP instruction (if any)
   u2 nphis;    // Number of PHI nodes (only needed by IR interpreter)
+  u2 fragmentid;
 
   Word *kwords; // Constant words
   u4 nkwords;

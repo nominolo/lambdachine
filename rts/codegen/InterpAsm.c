@@ -12,46 +12,48 @@
 #include "Snapshot.h"
 
 static void enterTrace(JitState *J, Fragment *F);
-static void dumpExitStubs(JitState *J);
 extern void asmEnter(Fragment *F, Thread *T, Word *spillArea,
                      Word *hp, Word *hplim, Word *stacklim, MCode* code);
 
 void asmEngine(Capability *cap, Fragment *F) {
   JitState *J = &cap->J;
 
-  IF_DBG_LVL(1,dumpAsm(F->mcode, F->szmcode, NULL /* use a new FILE */));
-  IF_DBG_LVL(1,dumpExitStubs(J));
-
   //exit(42);
   enterTrace(J, F);
 }
 
-void dumpAsm(MCode* mcode, MSize sz, FILE* out) {
+void dumpAsm(Fragment *F, FILE *out)
+{
   MSize i;
-  int close = 0;
-  if(out == NULL) {out = fopen("dump.s", "w"); close = 1;};
+  fprintf(out, ".text\nfragment_%d:", (int)F->fragmentid);
+  for (i = 0; i < F->szmcode; i++) {
+    fprintf(out, "\t.byte 0x%x\n", F->mcode[i]);
+  }
+  fprintf(out, "\n");
+}
+
+
+void dumpAsmRange(MCode* mcode, MSize sz, FILE* out) {
+  MSize i;
   fprintf(out, ".text\n");
   for(i = 0; i < sz; i++) {
     fprintf(out, "\t.byte 0x%x\n", mcode[i]);
   }
   fprintf(out, "\n");
-  if(close){fclose(out);}
 }
 
-static void dumpExitStubs(JitState *J) {
+void dumpExitStubs(JitState *J, FILE *out) {
   ExitNo i;
-  FILE* out = fopen("dump.s", "a");
   fprintf(out, "\n#\n# EXIT STUBS\n#\n");
   for(i = 0; i < LC_MAX_EXITSTUBGR; i++) {
     if(J->exitstubgroup[i] != NULL) {
       MCode *code = exitstub_addr(J, i);
       fprintf(out, "#Staring addr %p\n", code);
-      dumpAsm(code, EXITSTUB_SPACING * EXITSTUBS_PER_GROUP + 5, out);
+      dumpAsmRange(code, EXITSTUB_SPACING * EXITSTUBS_PER_GROUP + 5, out);
         /* +5 for the jump to asmExit at the end of the exit group */
     }
   }
   fprintf(out, "\n");
-  fclose(out);
 }
 
 static void enterTrace(JitState *J, Fragment *F) {

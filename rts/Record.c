@@ -215,6 +215,7 @@ recordSetup(JitState *J, Thread *T)
   J->sizekwords = 500;
   J->cur.kwords = J->kwordsbuf = xmalloc(J->sizekwords * sizeof(Word));
   J->cur.nkwords = 0;
+  J->cur.mcode = NULL;
 
   J->needsnap = 0;
   J->mergesnap = 1;
@@ -1094,6 +1095,8 @@ finishRecording(JitState *J, UnrollLevel unrollLevel)
     DBG_LVL(2, "Framesize %d\n", J->framesize);
     genAsm(J, &J->cur);
   }
+  printIRBuffer(J);
+
 #endif
   return registerCurrentFragment(J);
 }
@@ -1174,7 +1177,19 @@ registerCurrentFragment(JitState *J)
     exit(1);
   }
   J->fragment[J->nfragments] = F;
-  return J->nfragments++;
+  F->fragmentid = J->nfragments++;
+
+  if (LC_DEBUG_LEVEL >= 2) {
+    FILE *traces = fopen("traces.pretty.txt", F->fragmentid == 0 ? "w" : "a");
+    printPrettyIR_(traces, F, F->fragmentid);
+    fclose(traces);
+
+    FILE *dump = fopen("traces.s", F->fragmentid == 0 ? "w" : "a");
+    dumpAsm(F, dump);
+    fclose(dump);
+  }
+
+  return F->fragmentid;
 }
 
 #undef IR

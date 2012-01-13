@@ -10,6 +10,7 @@
 #include "Jit.h"
 
 void genAsm(JitState *J, Fragment *T);
-void dumpAsm(MCode* mcode, MSize sz, FILE* out);
+void dumpAsm(Fragment *F, FILE *out);
+void dumpExitStubs(JitState *J, FILE *out);
 
 #endif
