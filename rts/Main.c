@@ -11,8 +11,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <getopt.h>
+#include <ctype.h>
+#include <limits.h>
 
 #define MAX_CLOSURE_NAME_LEN 512
+#define MAX_STACK_SIZE (1024*1024)
+#define MIN_STACK_SIZE (1024*sizeof(Word))
 
 static Opts opts = {
   .input_file = "Bc0005",
@@ -21,12 +25,15 @@ static Opts opts = {
   .print_loader_state = 0,
   .disable_jit = 0,
   .enable_asm  = 0,
-  .step_opts = 0
+  .step_opts = 0,
+  .stack_size = 1024,
 };
 
 u4 G_jitstep = 0;
 
 void loadWiredInModules();
+long parseMemorySize(const char *str);
+
 
 int
 main(int argc, char *argv[])
@@ -46,6 +53,7 @@ main(int argc, char *argv[])
     {"base",               required_argument, 0, 'B'},
     {"help",               no_argument, 0, 'h'},
     {"step",               required_argument, 0, 'S'},
+    {"stack",              required_argument, 0, 's'},
     {0, 0, 0, 0}
   };
 
@@ -72,6 +80,13 @@ main(int argc, char *argv[])
       fprintf(stderr, "base = %s\n", optarg);
       opts.base_path = optarg;
       break;
+    case 's':
+      opts.stack_size = parseMemorySize(optarg);
+      if (opts.stack_size < 0) {
+	fprintf(stderr, "Could not parse stack size.  Using default.\n");
+	opts.stack_size = MIN_STACK_SIZE;
+      }
+      break;
     case 'S':
       opts.step_opts = optarg;
       break;
@@ -90,6 +105,7 @@ main(int argc, char *argv[])
              "     --asm        Generate native code.\n"
              "  -B --base       Set loader base dir (default: cwd).\n"
              "                  Separate multiple paths with \":\""
+	     "     --stack=SIZE Specify the stack size in bytes, valid units are K,M,b,G.\n"
              "\n",
              argv[0]);
       exit(0);
@@ -168,7 +184,15 @@ main(int argc, char *argv[])
   if (opts.disable_jit)
     G_cap0->flags |= CF_NO_JIT;
 
-  T0 = createThread(G_cap0, 1024);
+  if (opts.stack_size > MAX_STACK_SIZE) {
+    fprintf(stderr, "Stack size too large, using 1M\n");
+    opts.stack_size = MAX_STACK_SIZE;
+  } else if (opts.stack_size < MIN_STACK_SIZE) {
+    fprintf(stderr, "Stack size too small, using %ld\n", MIN_STACK_SIZE);
+    opts.stack_size = MIN_STACK_SIZE;
+  }
+
+  T0 = createThread(G_cap0, opts.stack_size / sizeof(Word));
   clos0 = startThread(T0, clos0);
   printf("@Result@ "); printClosure_(stdout, clos0, 1);
   printEvents();
@@ -183,4 +207,65 @@ void loadWiredInModules()
 {
   loadModule("GHC.Bool");
   loadModule("Control.Exception.Base");
+}
+
+#define MAX_LE
+
+/**
+ * Parses a memory size description.  For example:
+ *
+ *     "5K" -> 5120
+ *     "3M" -> 3145728
+ *
+ * More formally, a memory size descriptor satisfies the regular
+ * expression `[1-9][0-9]*[kKmMGgBb]?`.
+ *
+ * @param str the string to parse.  Note that there must not be
+ *     leading or trailing whitespace.
+ * @returns the parsed value if it fits within a long, otherwise
+ *     LONG_MAX; or -1 if no parse was found.
+ */
+long
+parseMemorySize(const char *str)
+{
+  char *end = NULL;
+  long ans = -1;
+  int shift = 0;
+
+  if (!isdigit(*str)) {
+    return -1;
+  }
+
+  ans = strtol(str, &end, 10);
+  if (end == str) {		/* No parse */
+    return -1;
+  }
+
+  switch (*end) {
+  case 'b': case 'B':
+    shift = 0;
+    break;
+  case 'k': case 'K':
+    shift = 10;
+    break;
+  case 'm': case 'M':
+    shift = 20;
+    break;
+  case 'g': case 'G':
+    shift = 30;
+    break;
+  default:
+    return -1;
+  }
+  ++end;
+
+  if (*end != '\0') {
+    return -1;
+  }
+
+  if (ans <= (LONG_MAX >> shift)) {
+    return ans << shift;
+  } else {
+    return LONG_MAX;
+  }
 }

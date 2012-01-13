@@ -8,5 +8,6 @@ typedef struct {
   int          disable_jit;
   int          enable_asm;  /* enable machine code generation */
   const char  *step_opts;   /* Allow stepping through JIT phases */
+  long         stack_size;
 } Opts;
 #endif
