@@ -99,6 +99,9 @@ enum { false = 0, true = 1 };
 #define WORD_ALIGNED_SIZE(x) \
   ((sizeof(x) & ((1 << LC_ARCH_BYTES_LOG2) - 1)) == 0)
 
+#define is_word_aligned(x) \
+  ((((Word)(x)) & (sizeof(Word) - 1)) == 0)
+
 #if __GNUC__ >= 3
 /* Assume that a flexible array member at the end of a struct
  * can be defined thus: T arr[]; */

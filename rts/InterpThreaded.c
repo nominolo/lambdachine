@@ -679,6 +679,7 @@ int engine(Capability *cap)
     } else {
       Word *top = T->top; //base + node->info->code.framesize;
       ThunkInfoTable *info = (ThunkInfoTable*)getInfo(tnode);
+      LC_ASSERT(is_word_aligned(info));
       recordEvent(EV_EVAL_THUNK, 0);
 
       // NOTE: At this poin we would normally overwrite the info table
