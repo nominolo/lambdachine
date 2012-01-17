@@ -409,6 +409,7 @@ evacuate(Closure **p)
 
   q = *p;
 
+  LC_ASSERT(q != NULL);
   DBG_LVL(2, "~~ Evac: " COLOURED(COL_RED,"%p"), q);
 
  loop:
