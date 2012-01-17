@@ -1264,12 +1264,14 @@ int engine(Capability *cap)
 
     LC_ASSERT(nargs >= 1);
 
-    Closure *cl = allocClosure(wordsof(ClosureHeader) + nargs + 1);
+    u1 *args = (u1 *)pc;
+    pc += 1 + BC_ROUND(nargs + 1);
+
+    Closure *cl = allocClosure_(wordsof(ClosureHeader) + nargs + 1,
+                                T, pc, base);
     InfoTable *info = getApInfoTable(nargs, pointer_mask);
     setInfo(cl, info);
 
-    u1 *args = (u1 *)pc;
-    pc += 1 + BC_ROUND(nargs + 1);
     for (i = 0; i < nargs + 1; i++, args++)
       cl->payload[i] = base[*args];
 
