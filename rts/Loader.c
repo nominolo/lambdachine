@@ -45,7 +45,7 @@ GlobalLoaderState *G_loader = NULL;
 //--------------------------------------------------------------------
 
 //
-void printModule(Module *mdl);
+void printModule(FILE *out, Module *mdl);
 void printStringTable(StringTabEntry *tbl, u4 len);
 void bufferOverflow(int sz, int bufsize);
 
@@ -457,38 +457,33 @@ loadModuleBody(const char *filename, FILE *f, Module *mdl)
   }
 }
 
-void printInfoTable1(InfoTable *info)
+void
+printModule(FILE *out, Module* mdl)
 {
-  printInfoTable(stderr, info);
+  fprintf(out, "--- Module: %s ---\n", mdl->name);
+  fprintf(out, "  info tables: %d\n", mdl->numInfoTables);
+  fprintf(out, "  closures:    %d\n", mdl->numClosures);
+  fprintf(out, "--- Info Tables ----------------\n");
+  HashTable_print(out, G_loader->infoTables, (HashValuePrinter)printInfoTable);
+  fprintf(out, "--- Closures (%d) ---------------\n", HashTable_entries(G_loader->closures));
+  HashTable_print(out, G_loader->closures, (HashValuePrinter)printClosure);
 }
 
 void
-printModule(Module* mdl)
+printClosure1(FILE *out, const char *const name, Closure *cl)
 {
-  fprintf(stderr, "--- Module: %s ---\n", mdl->name);
-  fprintf(stderr, "  info tables: %d\n", mdl->numInfoTables);
-  fprintf(stderr, "  closures:    %d\n", mdl->numClosures);
-  fprintf(stderr, "--- Info Tables ----------------\n");
-  HashTable_print(G_loader->infoTables, (HashValuePrinter)printInfoTable1);
-  fprintf(stderr, "--- Closures (%d) ---------------\n", HashTable_entries(G_loader->closures));
-  HashTable_print(G_loader->closures, (HashValuePrinter)printClosure);
+  fprintf(out, "%s: [%p]: ", name, cl);
+  printClosure_(out, cl, true);
 }
 
 void
-printClosure1(void *unused, const char *const name, Closure *cl)
+printLoaderState(FILE *out)
 {
-  fprintf(stderr, "%s: [%p]: ", name, cl);
-  printClosure(cl);
-}
-
-void
-printLoaderState()
-{
-  fprintf(stderr, "--- Info Tables ----------------\n");
-  HashTable_print(G_loader->infoTables, (HashValuePrinter)printInfoTable1);
-  fprintf(stderr, "--- Closures (%d) ---------------\n", HashTable_entries(G_loader->closures));
+  fprintf(out, "--- Info Tables ----------------\n");
+  HashTable_print(out, G_loader->infoTables, (HashValuePrinter)printInfoTable);
+  fprintf(out, "--- Closures (%d) ---------------\n", HashTable_entries(G_loader->closures));
   HashTable_foreach(G_loader->closures,
-                    (HashValueCallback)printClosure1, NULL);
+                    (HashValueCallback)printClosure1, out);
   //  HashTable_print(G_loader->closures, (HashValuePrinter)printClosure);
 }
 

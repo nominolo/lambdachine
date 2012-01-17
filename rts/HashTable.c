@@ -145,12 +145,12 @@ HashTable_foreach(HashTable *ht, HashValueCallback f, void *env)
 }
 
 void
-HashTable_print(HashTable *ht, HashValuePrinter printValue)
+HashTable_print(FILE *out, HashTable *ht, HashValuePrinter printValue)
 {
   u4 size = ht->size;
   u4 i;
   
-  printf("HashTable [size: %d, ents: %d] {\n", size, ht->entries);
+  fprintf(out, "HashTable [size: %d, ents: %d] {\n", size, ht->entries);
   
   for (i = 0; i < size; ++i) {
     HashEntry *p = ht->table[i];
@@ -158,16 +158,16 @@ HashTable_print(HashTable *ht, HashValuePrinter printValue)
       continue;
     //    printf("  %d -> [ ", i);
     for ( ; p != NULL; p = p->next) {
-      printf("\"%s\":", p->key);
+      fprintf(out, "\"%s\":", p->key);
       if (printValue != NULL) {
-        printf("\n");
-        printValue(p->value);
+        fprintf(out, "\n");
+        printValue(out, p->value);
       } else
-        printf("%p ", p->value);
+        fprintf(out, "%p ", p->value);
     }
     //    printf("]\n");
   }
-  printf("}\n");
+  fprintf(out, "}\n");
 }
 
 

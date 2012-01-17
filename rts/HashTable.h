@@ -3,6 +3,8 @@
 
 #include "Common.h"
 
+#include <stdio.h>
+
 typedef struct _HashEntry {
   const char        *key;
   void              *value;
@@ -18,14 +20,14 @@ typedef struct _HashTable {
 
 typedef void (*HashFreeFunc)(const char *key, void *value);
 typedef void (*ValueFreeFunc)(void *value);
-typedef void (*HashValuePrinter)(void *value);
+typedef void (*HashValuePrinter)(FILE *out, void *value);
 typedef void (*HashValueCallback)(void *env, const char *const key, void *value);
 
 HashTable *HashTable_create();
 void      *HashTable_insert(HashTable *, const char *key, void *value);
 void      *HashTable_lookup(HashTable *, const char *key);
 void      *HashTable_update(HashTable *, char *key, void *value);
-void       HashTable_print(HashTable *, HashValuePrinter);
+void       HashTable_print(FILE *out, HashTable *, HashValuePrinter);
 u4         HashTable_entries(HashTable *);
 void       HashTable_destroy(HashTable *, HashFreeFunc);
 void       HashTable_foreach(HashTable *ht, HashValueCallback f, void *env);

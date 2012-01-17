@@ -5,9 +5,9 @@
 
 #include <stdio.h>
 
-void printClosure_(FILE *f, Closure* cl, int add_newline);
+void printClosure_(FILE *f, Closure* cl, bool add_newline);
 INLINE_HEADER void printClosure(Closure* cl) {
-  printClosure_(stderr, cl, 1);
+  printClosure_(stderr, cl, true);
 }
 void printInfoTable(FILE *stream, InfoTable* info0);
 

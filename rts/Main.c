@@ -22,12 +22,16 @@ static Opts opts = {
   .input_file = "Bc0005",
   .base_path  = ".",
   .main_closure = "test",
-  .print_loader_state = 0,
+  .print_loader_state = NULL,
   .disable_jit = 0,
   .enable_asm  = 0,
   .step_opts = 0,
   .stack_size = 1024,
 };
+
+typedef enum {
+  OPT_PRINT_LOADER_STATE = 0x1000,
+} OptionFlags;
 
 u4 G_jitstep = 0;
 
@@ -45,7 +49,7 @@ main(int argc, char *argv[])
   // TODO: Parse flags
 
   static struct option long_options[] = {
-    {"print-loader-state", no_argument, &opts.print_loader_state, 1},
+    {"print-loader-state", optional_argument, NULL, OPT_PRINT_LOADER_STATE},
     {"no-jit",             no_argument, &opts.disable_jit, 1},
     {"asm",                no_argument, &opts.enable_asm, 1},
     {"no-run",             no_argument, 0, 'l'},
@@ -71,6 +75,13 @@ main(int argc, char *argv[])
       /* If this option set a flag, do nothing else now. */
       if (long_options[option_index].flag != 0)
         break;
+      break;
+    case OPT_PRINT_LOADER_STATE:
+      if (optarg == NULL) {
+	opts.print_loader_state = "";
+      } else {
+	opts.print_loader_state = optarg;
+      }
       break;
     case 'e':
       fprintf(stderr, "entry = %s\n", optarg);
@@ -99,8 +110,8 @@ main(int argc, char *argv[])
              "  -h --help       Print this help.\n"
              "  -e --entry      Set entry point (default: test)\n"
              "     --no-run     Load module only.\n"
-             "     --print-loader-state\n"
-             "                  Print static closures and info tables after loading.\n"
+             "     --print-loader-state[=FILE]\n"
+             "                  Print static closures and info tables after loading (to stderr or given file).\n"
              "     --no-jit     Don't enable JIT.\n"
              "     --asm        Generate native code.\n"
              "  -B --base       Set loader base dir (default: cwd).\n"
@@ -164,9 +175,23 @@ main(int argc, char *argv[])
   loadWiredInModules();
   loadModule(opts.input_file);
 
-  if (opts.print_loader_state) {
-    printLoaderState();
-    fflush(stdout);
+  if (opts.print_loader_state != NULL) {
+    FILE *out;
+    if (*opts.print_loader_state != '\0') {
+      out = fopen(opts.print_loader_state, "w");
+      if (out == NULL) {
+	fprintf(stderr, "Could not write to file: %s",
+		opts.print_loader_state);
+	exit(1);
+      }
+    } else {
+      out = stderr;
+    }
+    printLoaderState(out);
+    fflush(out);
+    if (out != stderr) {
+      fclose(out);
+    }
   }
 
   if (opts.main_closure == NULL) // Nothing to run, just quit.
