@@ -315,24 +315,6 @@ int engine(Capability *cap)
   base[opA] = (WordInt)opC;
   DISPATCH_NEXT;
 
- op_NEW_INT:
-  // A = result (IntClosure*)
-  // C/D = value
-  DECODE_AD;
-  {
-    WordInt val = base[opC];
-
-    if (val >= -128 && val <= 127) {
-      base[opA] = (Word)&smallInt(val);
-    } else {
-      IntClosure *cl = allocClosure(wordsof(IntClosure));
-      base[opA] = (Word)cl;
-      cl->info = &stg_Izh_con_info;
-      cl->val = val;
-    }
-    DISPATCH_NEXT;
-  }
-
  op_NOT:
   DECODE_AD;
   recordEvent(EV_ALU, 0);
@@ -1295,6 +1277,7 @@ int engine(Capability *cap)
   }
 
  op_INITF:
+ op_NEW_INT:
   return INTERP_UNIMPLEMENTED;
 }
 
