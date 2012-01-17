@@ -299,7 +299,10 @@ irEngine(Capability *cap, Fragment *F)
   {
     recordEvent(EV_UPDATE, 0);
     Closure *oldnode = (Closure *)vals[pc->op1];
-    Closure *newnode = (Closure *)base[pc->op2];
+    Closure *newnode = (Closure *)vals[pc->op2];
+    DBG_LVL(3, "Writing IND: old = %p, new = %p\n", oldnode, newnode);
+    LC_ASSERT(oldnode != NULL);
+    LC_ASSERT(newnode != NULL);
     setInfo(oldnode, (InfoTable*)&stg_IND_info);
     oldnode->payload[0] = (Word)newnode;
     DISPATCH_NEXT;
