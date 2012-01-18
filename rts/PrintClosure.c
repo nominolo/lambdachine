@@ -131,7 +131,7 @@ printInstruction_aux(FILE *stream, const BCIns *ins /*in*/, int oneline)
         fprintf(stream, "ALLOCAP\tr%d", bc_a(i));
         u1 ptrmask = bc_b(i);
         fprintf(stream, ", r%d", *arg++);
-        for (j = 1; j < bc_c(i); j++, arg++) {
+        for (j = 1; j < bc_c(i) + 1; j++, arg++) {
           fprintf(stream, ", r%d%c", *arg, ptrmask & 1 ? '*' : ' ');
           ptrmask >>= 1;
         }
