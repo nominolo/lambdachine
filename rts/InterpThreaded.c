@@ -1091,7 +1091,9 @@ int engine(Capability *cap)
 	top[1] = (Word)(pc + BC_ROUND(nargs - 1) + 1);
 	top[2] = (Word)ap_closure;
 	for (i = 0; i < nargs; i++, args++)
-	  top[3 + i] = *args;
+	  top[3 + i] = base[*args];
+        // framesize of an ap closure is nargs + 1
+	nargs += 1;
 
 	// Put UPDATE and EVAL frames on top
 	top[3 + nargs + 0] = (Word)&top[3];
