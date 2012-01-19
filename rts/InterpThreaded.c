@@ -801,7 +801,7 @@ int engine(Capability *cap)
     switch (getInfo(fnode)->type) {
     case PAP:
       {
-	PapClosure *pap = (PapClosure*)fnode;
+	pap = (PapClosure*)fnode;
 	fnode = pap->fun;
 	LC_ASSERT(getInfo(fnode)->type == FUN);
 	info = getFInfo(fnode);
