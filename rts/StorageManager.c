@@ -211,6 +211,48 @@ addStaticClosuresBlock(StorageManagerState *M)
   M->staticClosures = blk;
 }
 
+/**
+ * Try to allocate objects on the heap.  May fail if there is no room
+ * left in the current block.  In that case, call
+ * currentBlockFullInterpSync.
+ *
+ * @param nwords number of words to allocate (including object header).
+ * @return a pointer to the newly allocated memory or NULL if there
+ *     was no room in the current block.
+ */
+void *tryAllocClosure(u4 nwords)
+{
+  if (nwords == 1) nwords = 2;  // Silly hack
+  if (LC_LIKELY(G_storage.hp + nwords <= G_storage.limit)) {
+    void *p = G_storage.hp;
+    G_storage.hp += nwords;
+    //printf(">> Allocated closure: %p-%p (%u)\n",
+    //	   p, G_storage.hp, nwords);
+    DBG_PR("allocClosure_(%d,...) => %p\n", nwords, p);
+    return p;
+  } else {
+    return NULL;
+  }
+}
+
+/**
+ * Called from the interpreter if allocation failed.  Synchronises the
+ * thread state with the internal interpreter state and grabs the next
+ * empty block or performs a garbage collection.
+ *
+ * @param T pointer to the calling thread.
+ * @param pc pointer to the next instruction. In case of garbage
+ *     collection this is used to find the live pointers of the stack
+ *     frame.
+ * @param base the current base pointer.
+ */
+void currentBlockFullInterpSync(Thread *T, BCIns *pc, Word *base)
+{
+  T->pc = pc;
+  T->base = base;
+  currentBlockFull(&G_storage);
+}
+
 // Used by the interpreter.  Ensures thread state is in sync with
 // interpreter state when GC is triggered.
 //

@@ -88,6 +88,8 @@ void* allocInfoTable(u4 nwords);
 void* allocStaticClosure(u4 nwords);
 void* allocClosure(u4 nwords);
 void* allocClosure_(u4 nwords, Thread *T, BCIns *pc, Word *base);
+void *tryAllocClosure(u4 nwords);
+void currentBlockFullInterpSync(Thread *T, BCIns *pc, Word *base);
 void *allocClosureDuringGC(u4 nwords);
 char *allocString(u4 len);
 int looksLikeInfoTable(void *);

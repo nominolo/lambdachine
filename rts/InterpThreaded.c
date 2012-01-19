@@ -657,11 +657,12 @@ int engine(Capability *cap)
     // opA = thing to evaluate
     Closure *tnode = (Closure *)base[opA];
 
+    DBG_IND(fprintf(stderr, "evaluating: %p\n", tnode));
+
     LC_ASSERT(tnode != NULL);
     LC_ASSERT(!looksLikeInfoTable((void*)tnode));
     LC_ASSERT(getInfo(tnode) != NULL);
 
-    DBG_IND(fprintf(stderr, "evaluating: %p\n", tnode));
     DBG_IND(fprintf(stderr, "closure: ");printClosure(tnode);fprintf(stderr, "\n"););
     DBG_IND(fprintf(stderr, "itbl %p\n", getFInfo(tnode)->name));
 
@@ -789,9 +790,12 @@ int engine(Capability *cap)
     u4 callargs = opC; // arguments from this call
     u4 pointer_mask = opB; // pointer mask for callargs
     u4 nargs = callargs; // arguments including PAP arguments
-    Closure *fnode = (Closure *)base[opA];
-    u4 i;
     recordEvent(EV_CALL, callargs);
+    Closure *fnode;
+    u4 i;
+  op_CALLT_retry:
+
+    fnode = (Closure *)base[opA];
 
     LC_ASSERT(fnode != NULL);
     LC_ASSERT(callargs <= BCMAX_CALL_ARGS);
@@ -867,7 +871,15 @@ int engine(Capability *cap)
     //      from this instruction)
 
     if (nargs < info->code.arity) { // Partial application
-      PapClosure *new_pap = allocClosure(wordsof(PapClosure) + nargs);
+      PapClosure *new_pap = tryAllocClosure(wordsof(PapClosure) + nargs);
+      if (new_pap == NULL) {
+	/* Potentially causes GC and thereby moving of objects, the
+	   simplest way to handle this is to just rerun the full
+	   instruction.  This, of course, is only safe if we haven't
+	   performed any observable side effects, yet. */
+	currentBlockFullInterpSync(T, NULL, base);
+	goto op_CALLT_retry;
+      }
       setInfo(new_pap, (InfoTable*)&stg_PAP_info);
       new_pap->arity = info->code.arity - nargs;
       new_pap->nargs = nargs;
@@ -1043,10 +1055,15 @@ int engine(Capability *cap)
     u4       pointer_mask = opB;  // of the arguments
     recordEvent(EV_CALL, callargs);
     // Total number of arguments, including PAP arguments.
-    u4       nargs = callargs;
-    Closure *fnode = (Closure *)base[opA];
-    Word    *top   = T->top;
+    u4       nargs;
+    Closure *fnode;
+    Word    *top;
     u4 i;
+
+  op_CALL_retry:
+    nargs = callargs;
+    fnode = (Closure *)base[opA];
+    top = T->top;
 
     LC_ASSERT(fnode != NULL);
     LC_ASSERT(callargs < BCMAX_CALL_ARGS);
@@ -1079,6 +1096,8 @@ int engine(Capability *cap)
         Closure *ap_closure;
 	int i;
 	u1 *args = (u1*)pc;
+
+	DBG_IND("Calling a thunk");
 
         recordEvent(EV_EVAL_THUNK, 0);
         DBG_ENTER(info);
@@ -1126,7 +1145,13 @@ int engine(Capability *cap)
       // allocate a new PAP and copy over the old args and the args
       // from this call.
 
-      PapClosure *new_pap = allocClosure(wordsof(PapClosure) + nargs);
+      PapClosure *new_pap = tryAllocClosure(wordsof(PapClosure) + nargs);
+      if (new_pap == NULL) {
+	/* See note at CALLT. */
+	currentBlockFullInterpSync(T, pc + BC_ROUND(nargs) + 1, base);
+	goto op_CALL_retry;
+      }
+
       setInfo(new_pap, (InfoTable*)&stg_PAP_info);
       new_pap->arity = info->code.arity - nargs;
       new_pap->nargs = nargs;
@@ -1257,7 +1282,7 @@ int engine(Capability *cap)
   {
     DECODE_BC;
     // A = result register
-    // C = number of arguments (*excluding* function), always >= 1
+    // C = number of arguments - 1 (*excluding* function), always >= 1
     // B = pointer mask for arguments
     u4 nargs = opC;
     u4 pointer_mask = opB;
