@@ -1088,7 +1088,7 @@ int engine(Capability *cap)
 
 	// Build APK frame
 	top[0] = (Word)base;
-	top[1] = (Word)(pc + BC_ROUND(nargs - 1) + 1);
+	top[1] = (Word)(pc + BC_ROUND(nargs) + 1);
 	top[2] = (Word)ap_closure;
 	for (i = 0; i < nargs; i++, args++)
 	  top[3 + i] = base[*args];
