@@ -1179,15 +1179,19 @@ registerCurrentFragment(JitState *J)
   J->fragment[J->nfragments] = F;
   F->fragmentid = J->nfragments++;
 
-  if (LC_DEBUG_LEVEL >= 2) {
+#ifndef NDEBUG
+  {
     FILE *traces = fopen("traces.pretty.txt", F->fragmentid == 0 ? "w" : "a");
     printPrettyIR_(traces, F, F->fragmentid);
     fclose(traces);
 
-    FILE *dump = fopen("traces.s", F->fragmentid == 0 ? "w" : "a");
-    dumpAsm(F, dump);
-    fclose(dump);
+    if (F->mcode != NULL) {
+      FILE *dump = fopen("traces.s", F->fragmentid == 0 ? "w" : "a");
+      dumpAsm(F, dump);
+      fclose(dump);
+    }
   }
+#endif
 
   return F->fragmentid;
 }
