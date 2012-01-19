@@ -453,6 +453,15 @@ evacuate(Closure **p)
     copy(p, info, q, FUN_SIZE(info));
     return;
 
+  case PAP:
+    {
+      PapClosure *pap = (PapClosure*)q;
+      u4 size = wordsof(PapClosure) + pap->nargs;
+      DBG_LVL(2, " -PAP(%d)-> ", size);
+      copy(p, info, q, size);
+      return;
+    }
+
   case IND:
     q = cast(IndClosure*,q)->indirectee;
     DBG_LVL(2, " -I-> %p", q);
@@ -513,6 +522,39 @@ scavengeBlock(BlockDescr *bd)
         if (info->size == 0) p++;
       }
       break;
+    case PAP:
+      {
+	/* PAPs use a non-standard closure layout.  The size is
+	   stored in the closure itself (instead of the info table) and
+	   the pointerhood of the payload is determined from the
+	   function parameter (we cannot have nested PAPs). */
+	PapClosure *pap = (PapClosure*)p;
+	Closure *fun = pap->fun;
+	LC_ASSERT(fun != NULL);
+
+	const FuncInfoTable *finfo = getFInfo(fun);
+	LC_ASSERT(finfo != NULL && finfo->i.type == FUN);
+	LC_ASSERT(finfo->code.arity == pap->arity + pap->nargs);
+	LC_ASSERT(finfo->code.arity <= 32);
+
+	u4 bitmap = finfo->i.layout.bitmap;
+	LC_ASSERT(bitmap < (1 << finfo->code.arity));
+
+	evacuate(&pap->fun);
+
+	int i = pap->nargs;
+	Closure **payload = (Closure **)&pap->payload[0];
+	while (i > 0 && bitmap != 0) {
+	  if (bitmap & 1) {
+	    evacuate(payload);
+	  }
+	  --i;
+	  bitmap >>= 1;
+	  ++payload;
+	}
+	p += wordsof(PapClosure) + pap->nargs;
+	break;
+      }
     default:
       fprintf(stderr, "Don't know how to scavenge objects of type %d, yet\n",
               info->type);
