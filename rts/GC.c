@@ -223,12 +223,9 @@ performGC(Capability *cap)
 {
   Thread *T = cap->T;
   Word *lo = T->stack;
-  Word *hi;
   Word *base = T->base;
   BCIns *pc = T->pc;
-  u4 i;
   StorageManagerState *M = &G_storage;
-  u2 bitmap, *bitmaps;
 
   LC_ASSERT(M->current == NULL);
 
@@ -403,9 +400,6 @@ evacuate(Closure **p)
   Closure *q;
   const InfoTable *info;
   BlockDescr *bd;
-  u4 n;
-  Word bitmap;
-  Word *f;
 
   q = *p;
 
@@ -480,8 +474,6 @@ void
 scavengeBlock(BlockDescr *bd)
 {
   Word *p, *q;
-  Word *scan;
-  Word *lim;
   const InfoTable *info;
   int i;
   u4 bitmap;
