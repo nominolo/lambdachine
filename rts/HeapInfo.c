@@ -821,7 +821,7 @@ fixHeapOffsets(JitState *J)
       LC_ASSERT(hpchk_snap >= 0);
     }
     LC_ASSERT(J->cur.snap[hpchk_snap].ref == hpchk_post);
-    J->cur.snap[hpchk_snap].removed = 1;
+    snapShotMarkRemoved(&J->cur.snap[hpchk_snap]);
     hpchk_snap--;
   }
 
@@ -861,7 +861,7 @@ fixHeapOffsets(JitState *J)
       LC_ASSERT(hpchk_snap >= 0);
     }
     LC_ASSERT(J->cur.snap[hpchk_snap].ref == hpchk_pre);
-    J->cur.snap[hpchk_snap].removed = 1;
+    snapShotMarkRemoved(&J->cur.snap[hpchk_snap]);
   }
 
   /* TODO: part of hack mentioned above */

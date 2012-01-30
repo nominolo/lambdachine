@@ -326,8 +326,8 @@ irEngine(Capability *cap, Fragment *F)
     SnapShot *snap = getSnapshot(F, snapid);
     SnapEntry *p = getSnapshotEntries(F, snap);
     u4 nent = snap->nent;
-    u4 nslots = snap->nslots;
-    u4 baseslot = (u4)p[nent + 1];
+    u4 nslots = (int)snap->nslots - (int)snap->minslot;
+    int baseslot = (int)p[nent + 1];
     Word *realbase = base + 1;
     int i;
     for (i = 0; i < nent; i++, p++) {
@@ -397,6 +397,7 @@ irEngine(Capability *cap, Fragment *F)
       }
     }
     LC_ASSERT(snap != 0);
+    IF_DBG_LVL(2, printSnapshot(F, snap, F->snapmap));
     int snap_id = i;
     snap->count++;
     se = F->snapmap + snap->mapofs;
@@ -404,7 +405,7 @@ irEngine(Capability *cap, Fragment *F)
            snap_id, snap->nent, snap->nslots);
     recordEvent(EV_EXIT, snap->nent);
     for (i = 0; i < snap->nent; i++, se++) {
-      BCReg s = snap_slot(*se);
+      int s = (int)snap_slot(*se);
       IRRef r = snap_ref(*se);
 
       DBG_PR("base[%d] = ", s - 1);
@@ -416,7 +417,7 @@ irEngine(Capability *cap, Fragment *F)
     DBG_PR("Base slot: %d\n", se[1]);
     //    se[1] = 
     T->pc = (BCIns *)F->startpc + (int)se[0];
-    T->base = base + se[1];
+    T->base = base + (int)se[1];
     T->top = base + snap->nslots;
 
     if (heapcheck_failed) {

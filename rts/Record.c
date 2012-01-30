@@ -76,7 +76,8 @@ emitLoadSlot(JitState *J, i4 slot)
     else
       ty = IRT_UNK;
   }
-  TRef ref = emit_raw(J, IRT(IR_SLOAD, ty), (i4)J->baseslot + slot, 0);
+  TRef ref = emit_raw(J, IRT(IR_SLOAD, ty),
+                      (i4)J->baseslot + slot - INITIAL_BASE, 0);
   J->base[slot] = ref;
   //  if (slot >= J->maxslot) J->maxslot = slot + 1;
   return ref;
@@ -188,7 +189,8 @@ recordSetup(JitState *J, Thread *T)
   memset(J->slot, 0, sizeof(J->slot));
   memset(J->chain, 0, sizeof(J->chain));
 
-  J->baseslot = 1;  // base[baseslot] == r0, base[-1] == Node
+  J->baseslot = INITIAL_BASE + 1; // base[baseslot] == r0, base[-1] == Node
+  J->minslot = J->baseslot - 1;
   J->base = J->slot + J->baseslot;
   J->maxslot = T->top - T->base;
   J->framesize = T->top - T->base;
@@ -378,11 +380,11 @@ void
 printSlots(JitState *J)
 {
   //printf("slots: %d, %d\n", J->baseslot, J->maxslot);
-  u4 i, j;
-  for (i = 0; i < J->baseslot + J->maxslot; i++) {
+  int i;
+  for (i = J->minslot; i < J->baseslot + J->maxslot; i++) {
     IRRef1 ref = J->slot[i];
 
-    j = i - J->baseslot;
+    int j = i - J->baseslot;
     if ((j & 0x03) == 0)
       fprintf(stderr, "[%d]:", j);
 
@@ -419,7 +421,7 @@ printIRBuffer(JitState *J)
 
     if (ref == nextsnap) {
       fprintf(stderr, "     S:%02d  ",snapno);
-      printSnapshot(J, snap, J->cur.snapmap);
+      printSnapshot(&J->cur, snap, J->cur.snapmap);
       ++snap;
       ++snapno;
       if (snap >= J->cur.snap + J->cur.nsnap) {
@@ -835,10 +837,7 @@ recordIns(JitState *J)
 
 
     do_return:
-      if (J->framedepth <= 0) {
-        DBG_PR("ABORT: Returning outside of original frame.\n");
-        goto abort_recording; // for now
-      }
+      ;
 
       Word return_pc = tbase[-2];
       Word *return_base = (Word*)tbase[-3];
@@ -850,20 +849,23 @@ recordIns(JitState *J)
       IF_DBG_LVL(1, printSlots(J));
 
       J->framedepth--;
-      if (J->framedepth < 0) { 
-        DBG_PR("ABORT: Returning outside of original frame (B).\n");
-        goto abort_recording;
-      }
-
       guardEqualKWord(J, getSlot(J, -2), return_pc, LIT_PC);
 
-      for (i = -3; i < (int)J->maxslot; i++)
-        J->base[i] = 0;
+      if (J->framedepth < 0 && J->baseslot == INITIAL_BASE + 1) {
+        DBG_PR("ABORT: Returning outside of original frame (B).\n");
+        goto abort_recording;
+      } else {
+	J->baseslot -= basediff;
+      }
+
+      /* Clear all slots and the frame of the return target. The
+	 result has been saved in J->last_result and will be loaded
+	 via BC_MOV_RES. */
+      memset(&J->base[-3], 0, ((int)J->maxslot + 3) * sizeof(TRef));
 
       // TODO: Do something with slot(-3)?
-      J->baseslot -= basediff;
       DBG_LVL(2, "baseslot = %d\n", J->baseslot);
-      if (J->baseslot < 1) goto abort_recording;
+      if (J->baseslot < INITIAL_BASE + 1) goto abort_recording;
       J->base = J->slot + J->baseslot;
       J->maxslot = basediff - 3;
       emit_raw(J, IRT(IR_RET, IRT_VOID), basediff, 0);
@@ -980,6 +982,8 @@ recordIns(JitState *J)
     LC_ASSERT(0);
     break;
   }
+
+  IF_DBG_LVL(2, printSlots(J));
 
   if (J->cur.nins >= REF_BIAS + MAX_TRACE_LENGTH)
     goto abort_recording;

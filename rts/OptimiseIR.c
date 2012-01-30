@@ -136,8 +136,10 @@ optFold(JitState *J)
     }
     break;
   case IR_SLOAD:
-    if (J->slot[foldIns->op1])
-      return J->slot[foldIns->op1];
+    {
+      if (J->slot[(int)foldIns->op1 + INITIAL_BASE])
+	return J->slot[(int)foldIns->op1 + INITIAL_BASE];
+    }
     break;
   case IR_HEAPCHK:
     {
@@ -234,7 +236,7 @@ optUnrollLoop(JitState *J)
       for (i = 0; i < snap->nent; i++, p++) {
         IRRef1 r = RENAME(snap_ref(*p));
         IRIns *ir = IR(r);
-        int slot = snap_slot(*p);
+        int slot = (int)snap_slot(*p) + INITIAL_BASE;
         //printf("setting slot %d, to %d, %d\n", slot, r - REF_BIAS, ir->t);
         J->slot[slot] = TREF(r, ir->t);
       }

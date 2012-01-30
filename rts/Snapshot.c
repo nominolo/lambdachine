@@ -62,20 +62,29 @@ growSnapshotMapBuffer_(JitState *J, Word needed)
 
 // -- Snapshot creation ----------------------------------------------
 
+/**
+ * Creates snapshot entries for all slots between J->minslot and
+ * J->baseslot + J->maxslot.
+ *
+ * @param J the JIT state.
+ * @param map entries are added to this array. Assumes that there is
+ *     enough space in that array.
+ */
 static Word
-snapshotSlots(JitState *J, SnapEntry *map, BCReg nslots)
+snapshotSlots(JitState *J, SnapEntry *map)
 {
-  BCReg s;
+  i2 s;
   Word n = 0;
 
-  for (s = 0; s < nslots; s++) {
+  for (s = J->minslot; s < J->baseslot + J->maxslot; s++) {
     TRef tr = J->slot[s];
     IRRef ref = tref_ref(tr);
+    i2 relslot = s - INITIAL_BASE;
 
     if (ref) {
-      SnapEntry sn = SNAP_TR(s, tr);
+      SnapEntry sn = SNAP_TR(relslot, tr);
       IRIns *ir = IR(ref);
-      if (ir->o == IR_SLOAD && ir->op1 == s)
+      if (ir->o == IR_SLOAD && ir->op1 == relslot)
 	continue;  // Slot has only been read, not modified
       // TODO: There may be cases where we don't need to save the
       // slot.
@@ -92,30 +101,35 @@ snapshotFrame(JitState *J, SnapEntry *map)
   LC_ASSERT(in_range_i4(d));
   //printf("d = %d, base = %d\n", (i4)d, J->baseslot);
   map[0] = (SnapEntry)d;
-  map[1] = J->baseslot;
-  J->framesize = MAX(J->framesize, J->baseslot + J->maxslot - 1);
+  map[1] = (int)J->baseslot - (int)INITIAL_BASE;
+  // Note that framesize denotes the maximum size of *our* frame.
+  // If we go below INITIAL_BASE it means we are manipulating an existing
+  // frame.  We don't need to allocate anything for that.
+  J->framesize = MAX(J->framesize,
+		     J->baseslot + J->maxslot - 1 - INITIAL_BASE);
 }
 
 static void
 snapshotStack(JitState *J, SnapShot *snap, Word nsnapmap)
 {
-  BCReg nslots = J->baseslot + J->maxslot;
+  // Maximum possible number of stack slots needed by this snapshot.
+  int nslots = (int)J->baseslot + (int)J->maxslot - (int)J->minslot;
   Word nent;
   SnapEntry *p;
 
   growSnapshotMapBuffer(J, nsnapmap + nslots + 2);
   p = &J->cur.snapmap[nsnapmap];
-  nent = snapshotSlots(J, p, nslots);
+  nent = snapshotSlots(J, p);
   snapshotFrame(J, p + nent);
   snap->mapofs = (u2)nsnapmap;
   snap->ref = (IRRef1)J->cur.nins;
   snap->nslots = (u1)nslots;
   snap->nent = (u1)nent;
   snap->count = 0;
-  snap->removed = 0;
+  snap->minslot = J->minslot - INITIAL_BASE;
   J->cur.nsnapmap = nsnapmap + nent + 2;
   IF_DBG_LVL(1, fprintf(stderr, "Created snapshot:\n  ");
-             printSnapshot(J, snap, J->cur.snapmap));
+             printSnapshot(&J->cur, snap, J->cur.snapmap));
 }
 
 void
@@ -139,9 +153,9 @@ addSnapshot(JitState *J)
 }
 
 void
-printSnapshot(JitState *J, SnapShot *snap, SnapEntry *map)
+printSnapshot(Fragment *F, SnapShot *snap, SnapEntry *map)
 {
-  if (snap->removed) {
+  if (snapShotRemoved(snap)) {
     //    DBG_PR("Not printing snapshot %p\n", snap);
     return;
   }
@@ -149,17 +163,18 @@ printSnapshot(JitState *J, SnapShot *snap, SnapEntry *map)
   SnapEntry *p = &map[snap->mapofs];
   int i;
   u4 nent = snap->nent;
-  u4 nslots = snap->nslots;
-  u4 baseslot = (u4)p[nent + 1];
-  const BCIns *pc = J->cur.startpc + (ptrdiff_t)(i4)p[nent];
+  int nslots = snap->nslots;
+  int minslot = snap->minslot;
+  int baseslot = (int)p[nent + 1];
+  const BCIns *pc = F->startpc + (ptrdiff_t)(i4)p[nent];
 
-  for (i = 0; i < nslots; i++) {
-    int j = i - baseslot;
-    if ((j & 3) == 0)
-      fprintf(stderr, "[%d]:", j);
+  for (i = minslot; i < minslot + nslots; i++) {
+    int slot_id = i - baseslot;
+    if ((slot_id & 3) == 0)
+      fprintf(stderr, "[%d]:", slot_id);
 
     if (nent > 0 && snap_slot(*p) == i) {
-      printIRRef(&J->cur, snap_ref(*p));
+      printIRRef(F, snap_ref(*p));
       ++p;
     } else
       fprintf(stderr, "---- ");
@@ -304,7 +319,7 @@ void restoreSnapshot(SnapNo snapno, void *exptr) {
   /* Fill stack slots with data from the registers and spill slots. */
   for (n = 0; n < nent; n++) {
     SnapEntry se = smap[n];
-    BCReg s    = snap_slot(se);
+    i2 s    = snap_slot(se);
     IRRef ref  = snap_ref(se);
     Word *bval = &base[s];
 

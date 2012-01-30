@@ -421,7 +421,8 @@ printPrettyIR_(FILE *out, Fragment *F, int fragment_id)
 	  fragment_id);
   for (ref = REF_FIRST; ref < F->nins; ref++) {
     printPrettyIRIns(out, F, ref);
-    if (s < F->nsnap && F->snap[s].ref == ref && !F->snap[s].removed) {
+    if (s < F->nsnap && F->snap[s].ref == ref &&
+	!snapShotRemoved(&F->snap[s])) {
       SnapShot *snap = &F->snap[s];
       SnapEntry *se = &F->snapmap[snap->mapofs];
       const BCIns *pc = F->startpc + (ptrdiff_t)(i4)se[snap->nent];
@@ -432,7 +433,7 @@ printPrettyIR_(FILE *out, Fragment *F, int fragment_id)
         if (!irref_islit(r)) {
           fprintf(out, COL_YELLOW);
           if (fst) fst = 0; else fprintf(out, ", ");
-          fprintf(out, "%d:", snap_slot(*se) - 1);
+          fprintf(out, "%d:", (int)snap_slot(*se) - 1);
           printPrettyIRRef(out, F, r);
         }
       }

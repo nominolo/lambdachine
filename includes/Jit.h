@@ -11,7 +11,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define MAX_SLOTS    100
+#define INITIAL_BASE 100
+#define MAX_SLOTS    200
 #define MAX_TRACE_LENGTH 2000
 
 // -- Hot counters ---------------------------------------------------
@@ -34,18 +35,26 @@ typedef struct _SnapShot {
   IRRef1 ref;    // First IR reference for this snapshot
   u1     nslots; // Number of valid slots;
   u1     nent;   // Number of compressed entries.
-  u1     removed;
+  i1     minslot; // Slots captured are in [minslot, minslot + nslots - 1]
   u1     count;  // Number of taken exits for this snapshot.
 } SnapShot;
+
+INLINE_HEADER bool snapShotRemoved(SnapShot *snap) {
+  return snap->nslots == 0;
+}
+
+INLINE_HEADER void snapShotMarkRemoved(SnapShot *snap) {
+  snap->nslots = 0;
+}
 
 typedef u4 SnapEntry;
 
 // Construct SnapEntry from a slot and a tagged reference.
 #define SNAP_TR(slot, tr) \
-  (((SnapEntry)(slot) << 24) | ((SnapEntry)tref_ref(tr)))
+  (((SnapEntry)(slot) << 16) | ((SnapEntry)tref_ref(tr)))
 
 #define snap_ref(sn)            ((sn) & 0xffff)
-#define snap_slot(sn)           (cast(BCReg, ((sn) >> 24)))
+#define snap_slot(sn)           (cast(i2, ((sn) >> 16)))
 
 /* 
  * Heap Info
@@ -155,14 +164,15 @@ typedef struct _JitState {
   // Virtual/Recorder State
   TRef *base;      // current base pointer as pointer into slots
   TRef slot[MAX_SLOTS];   // virtual register contents
-  BCReg baseslot;  // current base pointer as offset into slot
-  BCReg maxslot;   // size of the current frame
+  u1 baseslot;  // current base pointer as offset into slot
+  u1 maxslot;   // size of the current frame
                    // INVARIANT: baseslot + maxslot < MAX_SLOTS
+  u1 minslot;   // index into slot, INV: minslot >= 0 && minslot < baseslot
   u4 framesize;	   /* Max. stack used by this trace. */
   TRef last_result;
   u4 flags;
   u4 mode;
-  u4 framedepth;
+  i4 framedepth;
   u4 unroll;
 
   // IR Buffer.
