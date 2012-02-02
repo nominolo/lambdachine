@@ -913,7 +913,7 @@ recordIns(JitState *J)
         rc = getSlot(J, *arg);
         setHeapInfoField(&J->cur, hp, i, rc);
       }
-      emit(J, IRT(IR_HEAPCHK, IRT_VOID), size + 1, 0);
+      emit(J, IRT(IR_HEAPCHK, IRT_CMP), size + 1, 0);
       rnew = emit(J, IRT(IR_NEW, IRT_CLOS), rinfo, h);
       hp->ref = rnew;
       setSlot(J, bc_a(ins), rnew);
@@ -931,7 +931,7 @@ recordIns(JitState *J)
       HeapInfo *hp;
       u1 *arg = (u1*)(pc + 1);
 
-      emit(J, IRT(IR_HEAPCHK, IRT_VOID), nargs + 2, 0);
+      emit(J, IRT(IR_HEAPCHK, IRT_CMP), nargs + 2, 0);
 
       rinfo = emitKWord(J, (Word)info, LIT_INFO);
       h = newHeapInfo(J, 0, info);
