@@ -797,12 +797,19 @@ int engine(Capability *cap)
 
     fnode = (Closure *)base[opA];
 
+  op_CALLT_IND_retry:
+
     LC_ASSERT(fnode != NULL);
     LC_ASSERT(callargs <= BCMAX_CALL_ARGS);
 
     FuncInfoTable *info;
     PapClosure *pap = NULL;
     switch (getInfo(fnode)->type) {
+
+    case IND:
+      fnode = (Closure*)fnode->payload[0];
+      goto op_CALLT_IND_retry;
+
     case PAP:
       {
 	pap = (PapClosure*)fnode;
@@ -861,6 +868,7 @@ int engine(Capability *cap)
       }
     default:
       fprintf(stderr, "FATAL: Function argument to CALLT not FUN or PAP.\n");
+      printClosure(fnode);
       exit(1);
     }
 
