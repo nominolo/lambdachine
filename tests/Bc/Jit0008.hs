@@ -16,7 +16,7 @@ loop (I# n#) =
   let !(I# n'') = loop n' in
   I# (n# +# n'')
 
-test = let n = 15 in loop2 n == (n `timesInt` (n + 1)) `divInt` 2
+test = let n = 80 in loop2 n == (n `timesInt` (n + 1)) `divInt` 2
 
 loop2 :: Int -> Int
 loop2 0 = 0
