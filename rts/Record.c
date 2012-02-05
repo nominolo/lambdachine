@@ -76,9 +76,13 @@ emitLoadSlot(JitState *J, i4 slot)
     else
       ty = IRT_UNK;
   }
-  TRef ref = emit_raw(J, IRT(IR_SLOAD, ty),
-                      (i4)J->baseslot + slot - INITIAL_BASE, 0);
+  i2 relslot = (i2)J->baseslot + slot - INITIAL_BASE;
+  TRef ref = emit_raw(J, IRT(IR_SLOAD, ty), relslot, 0);
   J->base[slot] = ref;
+  DBG_PR("minslot: %d, baseslot: %d, slot: %d\n", J->minslot, J->baseslot, slot);
+  if (J->minslot > (int)J->baseslot + slot) {
+    sayonara("minslot issue");
+  }
   //  if (slot >= J->maxslot) J->maxslot = slot + 1;
   return ref;
 }
@@ -190,7 +194,7 @@ recordSetup(JitState *J, Thread *T)
   memset(J->chain, 0, sizeof(J->chain));
 
   J->baseslot = INITIAL_BASE + 1; // base[baseslot] == r0, base[-1] == Node
-  J->minslot = J->baseslot - 1;
+  J->minslot = J->baseslot - 3;
   J->base = J->slot + J->baseslot;
   J->maxslot = T->top - T->base;
   J->framesize = T->top - T->base;
@@ -523,14 +527,17 @@ recordIns(JitState *J)
   BCOp op;
   TRef ra, rb, rc;
 
-  if (LC_UNLIKELY(J->pc == J->startpc)) {
+  if (LC_UNLIKELY(J->pc == J->startpc && J->cur.nins > REF_FIRST)) {
     // We're back at the point where we started recording from.
+    DBG_LVL(1, "Found actual loop\n");
     FragmentId id = 0;
     if (J->framedepth > 0) {
       id = finishRecording(J, UNROLL_DISABLED);
-    } else if (J->framedepth < 0) {
-      fprintf(stderr, "ABORT: Decreasing stack loop: %d\n.", J->framedepth);
-      goto abort_recording;
+    } else if (J->framedepth < 0 && J->cur.traceType == RETURN_TRACE) {
+      id = finishRecording(J, UNROLL_DISABLED);
+      //sayonara("sanity check return trace");
+      //      fprintf(stderr, "ABORT: Decreasing stack loop: %d\n.", J->framedepth);
+      //      goto abort_recording;
     } else {
       id = finishRecording(J, UNROLL_ONCE);
     }
@@ -851,11 +858,15 @@ recordIns(JitState *J)
       J->framedepth--;
       guardEqualKWord(J, getSlot(J, -2), return_pc, LIT_PC);
 
-      if (J->framedepth < 0 && J->baseslot == INITIAL_BASE + 1) {
+      if (J->framedepth < 0 && J->cur.traceType != RETURN_TRACE) {
         DBG_PR("ABORT: Returning outside of original frame (B).\n");
         goto abort_recording;
       } else {
 	J->baseslot -= basediff;
+      }
+
+      if (J->minslot > J->baseslot - 3) {
+	J->minslot = J->baseslot - 3;
       }
 
       /* Clear all slots and the frame of the return target. The
@@ -865,7 +876,7 @@ recordIns(JitState *J)
 
       // TODO: Do something with slot(-3)?
       DBG_LVL(2, "baseslot = %d\n", J->baseslot);
-      if (J->baseslot < INITIAL_BASE + 1) goto abort_recording;
+      //if (J->baseslot < INITIAL_BASE + 1) goto abort_recording;
       J->base = J->slot + J->baseslot;
       J->maxslot = basediff - 3;
       emit_raw(J, IRT(IR_RET, IRT_VOID), basediff, 0);
@@ -974,7 +985,14 @@ recordIns(JitState *J)
     break;
 
   case BC_JFUNC:
+  case BC_JRET:
     // TODO: Should we link traces here?
+    goto abort_recording;
+    break;
+
+  case BC__MAX:
+    /* We might be in recording mode when reaching the STOP instruction. */
+    goto abort_recording;
     break;
 
   default:
@@ -1015,6 +1033,8 @@ initJitState(JitState *J, const Opts* opts)
   J->fragment = xmalloc(J->sizefragment * sizeof(*J->fragment));
   J->nfragments = 0;
 
+  J->loghandle = (LC_DEBUG_LEVEL > 0) ? stderr : NULL;
+
   // Initialize jit parameters
   memcpy(J->param, jit_param_default, sizeof(J->param));
   J->param[JIT_P_enableasm] = opts->enable_asm;
@@ -1024,15 +1044,25 @@ initJitState(JitState *J, const Opts* opts)
 }
 
 LC_FASTCALL void
-startRecording(JitState *J, BCIns *startpc, Thread *T, Word *base)
+startRecording(JitState *J, BCIns *startpc, Thread *T, Word *base,
+	       TraceType type)
 {
   T->base = base;
   J->startpc = startpc;
   J->startbase = base;
   J->cur.startpc = startpc;
+  J->cur.traceType = type;
   J->mode = 1;
+  if (J->loghandle) {
+    FuncInfoTable *info = getFInfo(base[-1]);
+    LOG_JIT(J, "Starting trace at%s: %s (pc=%p)\n",
+	    type == RETURN_TRACE ? " return point in" : " ",
+	    info->name, startpc);
+  }
+  if (type == RETURN_TRACE) {
+    DBG_LVL(2, "Starting a return trace");
+  }
   recordSetup(J, T);
-  DBG_PR("*** Starting to record at: %p, base = %p\n", startpc, base);
 }
 
 FragmentId
@@ -1075,9 +1105,17 @@ finishRecording(JitState *J, UnrollLevel unrollLevel)
 #endif
 
   J->cur.orig = *J->startpc;
-  *J->startpc = BCINS_AD(BC_JFUNC, 0, J->nfragments);
-  DBG_PR("Overwriting startpc = %p, with: %x\n",
-         J->startpc, *J->startpc);
+
+  if (J->cur.traceType == FUNCTION_TRACE) {
+    *J->startpc = BCINS_AD(BC_JFUNC, 0, J->nfragments);
+    DBG_PR("Overwriting startpc = %p, with: %x\n",
+	   J->startpc, *J->startpc);
+  } else if (J->cur.traceType == RETURN_TRACE) {
+    LC_ASSERT(bc_op(J->cur.orig) == BC_RET1);
+    *J->startpc = BCINS_AD(BC_JRET, bc_a(J->cur.orig), J->nfragments);
+    DBG_PR("Overwriting startpc = %p, with: %x\n",
+	   J->startpc, *J->startpc);
+  }
 
 /*
   if (unrollLevel != UNROLL_ONCE) {

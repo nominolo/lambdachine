@@ -130,6 +130,7 @@ int engine(Capability *cap)
     // Disable the JIT by overriding the places where a new trace may
     // be started.
     disp1[BC_FUNC] = disp1[BC_IFUNC];
+    disp1[BC_RET1] = disp1[BC_IRET];
   }
 
 #endif
@@ -460,6 +461,7 @@ int engine(Capability *cap)
   }
 
  op_JFUNC:
+ op_JRET:
 
 #if LC_HAS_JIT
   {
@@ -489,7 +491,7 @@ int engine(Capability *cap)
       irEngine(cap, F);
     }
 #else
-      irEngine(cap, F);
+    irEngine(cap, F);
 #endif
     DBG_PR("*** Continuing at: pc = %p, base = %p\n", T->pc, T->base);
 
@@ -497,7 +499,20 @@ int engine(Capability *cap)
     base = T->base;
     cl = (Closure*)base[-1];
     code = &getFInfo(cl)->code;
-    DISPATCH_NEXT;
+
+    // Custom version of DISPATCH_NEXT
+    // When we're returning to a JRET we don't want to re-enter the
+    // trace.  Instead we want to execute it as a RET1.
+    opcode = bc_op(*pc);
+    recordEvent(EV_DISPATCH, 0);
+    opA = bc_a(*pc);
+    opC = bc_d(*pc);
+    ++pc;
+    if (opcode == BC_JRET) {
+      goto *disp[BC_RET1];
+    } else {
+      goto *disp[opcode];
+    }
   }
 #else
   DISPATCH_NEXT;
@@ -522,13 +537,12 @@ int engine(Capability *cap)
     DBG_PR("HOT_TICK: [%d] = %d\n", hotcount_hash(pc-1), c);
     if (LC_UNLIKELY(c == 0)) {   // Target has become hot.
       hotcount_set(cap, pc-1, HOTCOUNT_DEFAULT); // Reset hotcount
-      startRecording(J, pc-1, cap->T, base);
+      startRecording(J, pc-1, cap->T, base, FUNCTION_TRACE);
       disp = disp_record;
       if (G_jitstep & STEP_START_RECORDING) {
         fprintf(stderr, "Starting to record trace at PC: %p", pc - 1);
         getchar();
       }
-
     }
   }
 #endif
@@ -758,11 +772,44 @@ int engine(Capability *cap)
     goto do_return;
   }
 
+ op_IRET:
+  T->last_result = base[opA];
+  goto do_return;
+
  op_RET1:
   // opA = result
   //
   // The return address is on the stack. just jump to it.
   T->last_result = base[opA];
+
+  if (J->mode == 0) {  // only if in interpreter mode
+    HotCount c = --cap->hotcount[hotcount_hash(pc-1)];
+    if (LC_UNLIKELY(c == 0)) {
+      /* What a RETURN trace looks like:
+
+	 - First thing is a guard for the return address.  This allows
+           for a quick exit if we're in a different context.
+
+         - If the return address guard fails we fall back to the
+  	   interpreter to execute the RET1 address.  But we've overwritten
+           the RET1 with a JFUNC!  Therefore this case is handled in the
+	   trace exit handler.
+
+         - Therefore: a set J->last_result + move result is atomic
+           w.r.t. the trace -- we don't need to synchronise it with
+           T->last_result;
+
+         - We don't need pointer info because there's no GC possible.
+      */
+      DBG_LVL(1, "Starting to record RETURN trace.");
+      hotcount_set(cap, pc-1, HOTCOUNT_DEFAULT); // Reset hotcount
+      startRecording(J, pc-1, cap->T, base, RETURN_TRACE);
+      disp = disp_record;
+      pc = pc - 1;  // restart instruction
+      DISPATCH_NEXT;
+    }
+  }
+
  do_return:
   T->top = base - 3;
   pc = (BCIns*)base[-2];

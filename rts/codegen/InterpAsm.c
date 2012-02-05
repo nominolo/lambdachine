@@ -61,7 +61,7 @@ static void enterTrace(JitState *J, Fragment *F) {
   int spillSizeArea = F->spills;
   Thread *T  = J->T;
 
-  DBG_LVL(3, "framesize = %d, spillsize = %d\n",
+  DBG_LVL(2, "framesize = %d, spillsize = %d\n",
 	  F->framesize, spillSizeArea);
 
   // Allocate spill area

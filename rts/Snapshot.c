@@ -84,7 +84,7 @@ snapshotSlots(JitState *J, SnapEntry *map)
     if (ref) {
       SnapEntry sn = SNAP_TR(relslot, tr);
       IRIns *ir = IR(ref);
-      if (ir->o == IR_SLOAD && ir->op1 == relslot)
+      if (ir->o == IR_SLOAD && (i2)ir->op1 == relslot)
 	continue;  // Slot has only been read, not modified
       // TODO: There may be cases where we don't need to save the
       // slot.
@@ -105,13 +105,16 @@ snapshotFrame(JitState *J, SnapEntry *map)
   // Note that framesize denotes the maximum size of *our* frame.
   // If we go below INITIAL_BASE it means we are manipulating an existing
   // frame.  We don't need to allocate anything for that.
-  J->framesize = MAX(J->framesize,
-		     J->baseslot + J->maxslot - 1 - INITIAL_BASE);
+  int new_framesize = J->baseslot + J->maxslot - 1 - INITIAL_BASE;
+  if (new_framesize > 0) {
+    J->framesize = MAX(J->framesize, (u4)new_framesize);
+  }
 }
 
 static void
 snapshotStack(JitState *J, SnapShot *snap, Word nsnapmap)
 {
+  LC_ASSERT(J->minslot <= J->baseslot);
   // Maximum possible number of stack slots needed by this snapshot.
   int nslots = (int)J->baseslot + (int)J->maxslot - (int)J->minslot;
   Word nent;
@@ -135,7 +138,8 @@ snapshotStack(JitState *J, SnapShot *snap, Word nsnapmap)
 void
 addSnapshot(JitState *J)
 {
-  DBG_PR("Adding snapshot:\n%s", "");
+  DBG_PR("Adding snapshot: base=%d+%d, min=%d\n",
+	 J->baseslot, J->maxslot, J->minslot);
   Word nsnap = J->cur.nsnap;
   Word nsnapmap = J->cur.nsnapmap;
   // Merge snapshots if:
@@ -179,7 +183,8 @@ printSnapshot(Fragment *F, SnapShot *snap, SnapEntry *map)
     } else
       fprintf(stderr, "---- ");
   }
-  fprintf(stderr, "pc = %p, ref = %d\n", pc, irref_int(snap->ref));
+  fprintf(stderr, "pc = %p, ref = %d, base = %d\n",
+	  pc, irref_int(snap->ref), baseslot);
 }
 
 #if LC_HAS_ASM_BACKEND
@@ -341,7 +346,7 @@ void restoreSnapshot(SnapNo snapno, void *exptr) {
   /* Restore pc, base, and top pointers for the thread */
   DBG_PR("Base slot: %d\n", smap[nent+1]);
   T->pc   = (BCIns *)F->startpc + (int)smap[nent];
-  T->base = base + smap[nent+1];
+  T->base = base + (int)smap[nent+1];
   T->top  = base + snap->nslots;
 
   // exit(0xac);

@@ -196,7 +196,7 @@ irEngine(Capability *cap, Fragment *F)
 
  op_SLOAD:
   recordEvent(EV_LOAD, 0);
-  vals[pcref] = base[pc->op1];
+  vals[pcref] = base[(i2)pc->op1];
   DISPATCH_NEXT;
 
  op_ILOAD:
@@ -421,6 +421,8 @@ irEngine(Capability *cap, Fragment *F)
     T->top = base + snap->nslots;
 
     if (heapcheck_failed) {
+      DBG_PR("Trace exited (#%d) due to heap overflow check.\n",
+           snap_id);
       /* Force a GC next time an allocation is triggered. */
       G_storage.limit = G_storage.hp;
       heapcheck_failed = 0;

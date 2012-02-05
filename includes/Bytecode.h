@@ -125,7 +125,9 @@ interpreter, and all bytecode files.
   /* Function headers */ \
   _(FUNC,    ___) \
   _(IFUNC,   ___) \
-  _(JFUNC,   ___)
+  _(JFUNC,   ___) \
+  _(JRET,    RN) \
+  _(IRET,    RN)
 
 
 

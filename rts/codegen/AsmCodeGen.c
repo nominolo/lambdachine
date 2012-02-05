@@ -1006,10 +1006,16 @@ asm_heapstore(ASMState *as, IRRef ref, int32_t ofs, Reg base, RegSet allow){
  * @param snapno the exit number corresponding to the stack check.
  *     The IR instruction for this snapshot should be of type IR_SAVE.
  * @param framesize the required space (in bytes) of the new frame.
+ *     This might be <= zero in which case we don't generate any code.
  */
 static void
-asm_stackcheck(ASMState *as, SnapNo snapno, u4 framesize)
+asm_stackcheck(ASMState *as, SnapNo snapno, i4 framesize)
 {
+  if (framesize < 0) {
+    RA_DBGX((as, "<<no stack check needed: $x>>", framesize));
+    return;
+  }
+
   MCode *target = exitstub_addr(as->J, snapno);
   Reg r = ra_scratch(as, RSET_GPR);
 
@@ -1053,7 +1059,7 @@ asm_save(ASMState *as, IRIns *ir) {
   SnapNo snapno = ir->op1;
   SnapShot *snap = getSnapshot(&as->J->cur, snapno);
   SnapEntry *entry = getSnapshotEntries(&as->J->cur, snap);
-  Reg baseslot = (u4)entry[snap->nent + 1];
+  int baseslot = (int)entry[snap->nent + 1];
   u4 i;
 
   /* Perform the stack check *after* incrementing the base pointer. */
@@ -1321,7 +1327,7 @@ static void asm_iload(ASMState *as, IRIns *ir) {
 static void asm_sload(ASMState *as, IRIns *ir)
 {
   RA_DBGX((as, "<<SLOAD 0x$x>>", ir->op1));
-  int32_t ofs = SLOT_SIZE * ir->op1;
+  int32_t ofs = SLOT_SIZE * (i2)ir->op1;
   Reg base = RID_BASE;
   RegSet allow = RSET_GPR;
   Reg dest = ra_dest(as, ir, allow);

@@ -154,7 +154,7 @@ printIR(Fragment *F, IRIns ir)
     break;
   case IRMlit:
     if (ir.o == IR_SLOAD)
-      fprintf(stderr, "%4d ", (IRRef1)ir.op1 - 1);
+      fprintf(stderr, "%4d ", (i2)ir.op1 - 1);
     else
       fprintf(stderr, "%4d ", (IRRef1)ir.op1);
     break;
@@ -317,7 +317,7 @@ printPrettyIRIns(FILE *out, Fragment *F, IRRef ref)
 
   switch (ir->o) {
   case IR_SLOAD:
-    fprintf(out, "base[%d]", (int)(ir->op1 - 1));
+    fprintf(out, "base[%d]", (i2)ir->op1 - 1);
     break;
   case IR_ADD: case IR_SUB: case IR_MUL: case IR_DIV: case IR_REM:
     printPrettyIRRef(out, F, ir->op1);

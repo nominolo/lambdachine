@@ -137,8 +137,8 @@ optFold(JitState *J)
     break;
   case IR_SLOAD:
     {
-      if (J->slot[(int)foldIns->op1 + INITIAL_BASE])
-	return J->slot[(int)foldIns->op1 + INITIAL_BASE];
+      if (J->slot[(i2)foldIns->op1 + INITIAL_BASE])
+	return J->slot[(i2)foldIns->op1 + INITIAL_BASE];
     }
     break;
   case IR_HEAPCHK:

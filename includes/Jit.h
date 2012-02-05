@@ -94,6 +94,11 @@ typedef u4 ExitNo; /* Trace exit numbers */
 typedef u1 MCode;  /* Type for storing Machine code */
 typedef u4 MSize;  /* Machine code size */
 
+typedef enum {
+  FUNCTION_TRACE,
+  RETURN_TRACE
+} TraceType;
+
 /* Fragments */
 typedef u2 FragmentId;
 
@@ -125,6 +130,7 @@ typedef struct _Fragment {
 
   MCode *mcode;  // Machine code for the trace
   MSize szmcode; // Size of machine code
+  u2 traceType;
 } Fragment;
 
 /* Fold state is used to fold instructions on-the-fly. */
@@ -213,6 +219,8 @@ typedef struct _JitState {
   FoldState fold;
   IRRef1 chain[IR__MAX];
 
+  FILE *loghandle;
+
   // Code cache
   Fragment **fragment;
   u4 nfragments;       // number of entries used
@@ -232,6 +240,9 @@ typedef struct _JitState {
   int32_t param[JIT_P__MAX];  /* JIT engine parameters. */
 } JitState;
 
+#define LOG_JIT(J, ...) \
+  do { if ((J)->loghandle) { fprintf((J)->loghandle, __VA_ARGS__); } }	\
+  while(0)
 
 /* Trivial PRNG e.g. used for penalty randomization. */
 static LC_AINLINE uint32_t LC_PRNG_BITS(JitState *J, int bits)
@@ -264,7 +275,8 @@ typedef enum {
 INLINE_HEADER FragmentId getFragmentId(RecordResult r) { return (u4)r >> 8; }
 
 void initJitState(JitState *J, const Opts* opts);
-LC_FASTCALL void startRecording(JitState *J, BCIns *, Thread *, Word *base);
+LC_FASTCALL void startRecording(JitState *J, BCIns *, Thread *, Word *base,
+				TraceType type);
 void recordSetup(JitState *J, Thread *T);
 FragmentId finishRecording(JitState *J, UnrollLevel unroll);
 LC_FASTCALL TRef emitIR(JitState *J);
