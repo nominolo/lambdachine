@@ -1393,9 +1393,7 @@ shortName(char *rslt, u4 maxlen, const char *str)
 
 void printIndent(FILE *stream, int i, char c)
 {
-  while (i-- > 0) {
-    fputc(c, stream);
-  }
+  fprintf(stream, "%04d | ", i);
 }
 
 void
