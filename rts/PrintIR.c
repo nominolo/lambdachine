@@ -427,7 +427,7 @@ printPrettyIR_(FILE *out, Fragment *F, int fragment_id)
       SnapEntry *se = &F->snapmap[snap->mapofs];
       const BCIns *pc = F->startpc + (ptrdiff_t)(i4)se[snap->nent];
       int fst = 1;
-      fprintf(out, "|          " COL_YELLOW "{");
+      fprintf(out, "|       #%d " COL_YELLOW "{", s);
       for (i = 0; i < F->snap[s].nent; i++, se++) {
         IRRef r = snap_ref(*se);
         if (!irref_islit(r)) {
