@@ -585,6 +585,15 @@ markUnsinkable2(JitState *J, IRRef ref)
 }
 
 void
+markUnsinkable3(JitState *J, IRRef ref) {
+  IRIns *ir = IR(ref);
+  if (!irt_getmark(ir->t)) {
+    LC_ASSERT(ir->o == IR_NEW);
+    markUnsinkable2_aux(J, ref);
+  }
+}
+
+void
 heapSCCs(JitState *J)
 {
   SccData D;
@@ -640,7 +649,7 @@ heapSCCs(JitState *J)
     if (IR(ir->op1)->o != IR_NEW && IR(ir->op2)->o == IR_NEW) {
       HeapInfo *hp = getHeapInfo(&J->cur, IR(ir->op2));
       DBG_LVL(3, "UNSINK: Stored into external reference: %d\n",
-              irref_int(ref));
+              irref_int(ir->op2));
       hp->loop |= UNSINK_LOOP;
     } else if (ref > J->cur.nloop) {
       // We might be updating a PHI node.
@@ -689,6 +698,24 @@ heapSCCs(JitState *J)
   // may reach any other node, but not necessarily vice versa.
   for (ref = J->chain[IR_NEW]; ref; ref = IR(ref)->prev) {
     markUnsinkable2(J, ref);
+  }
+
+  // 4. For all PHI nodes make sure that if either argument is
+  // unsinkable, then so is the other.
+  for (ref = J->chain[IR_PHI];
+       IR(ref)->o == IR_PHI || IR(ref)->o == IR_NOP;
+       ref--) {
+    IRIns *ir = IR(ref);
+    IRIns *ir1 = IR(ir->op1);
+    IRIns *ir2 = IR(ir->op2);
+    if (ir->o == IR_PHI &&
+	ir1->o == IR_NEW && ir2->o == IR_NEW &&
+	(!!irt_getmark(ir1->t) + !!irt_getmark(ir2->t)) == 1) {
+      DBG_LVL(3, "One of two PHI arguments is unsinkable, unsink both: (%d,%d)\n",
+	      irref_int(ir->op1), irref_int(ir->op2));
+      markUnsinkable3(J, ir->op1);
+      markUnsinkable3(J, ir->op2);
+    }
   }
 
   destroyStack(&D.s);
