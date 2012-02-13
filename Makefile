@@ -9,6 +9,7 @@ DIST := $(shell pwd)/dist
 endif
 
 HC ?= ghc
+HC_PKG ?= ghc-pkg
 CC ?= gcc
 
 ifeq "$(strip $(PerformanceBuild))" "Yes"
@@ -135,7 +136,7 @@ HSSRCS := $(shell find compiler -name '*.hs')
 # .PHONY:
 
 $(HSBUILDDIR)/setup-config: lambdachine.cabal
-	$(CABAL) configure
+	$(CABAL) configure -v --with-compiler=$(HC) --with-hc-pkg=$(HC_PKG)
 
 $(LCC): $(HSSRCS) compiler/Opcodes.h $(HSBUILDDIR)/setup-config
 	@mkdir -p $(HSBUILDDIR)
@@ -154,7 +155,8 @@ clean:
 
 .PHONY: install-deps
 install-deps:
-	$(CABAL) install --only-dependencies
+	$(CABAL) install --only-dependencies --with-compiler=$(HC) \
+	  --with-hc-pkg=$(HC_PKG)
 # find compiler -name "*.hi" -delete
 
 # Rules for building built-in packages
