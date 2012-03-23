@@ -18,10 +18,11 @@
 #endif
 
 #define MMAP_FLAGS              (MAP_PRIVATE|MAP_ANONYMOUS)
-#define MMAP_REGION_START       ((char*)0x10000)
 #if LC_ARCH_BITS == 32
+# define MMAP_REGION_START      ((char*)0x10000)
 # define MMAP_REGION_END        ((char*)0x80000000)
 #elif LC_ARCH_BITS == 64
+# define MMAP_REGION_START      ((char*)0x100000000)
 # define MMAP_REGION_END        ((char*)(1ul << 40))
 #endif
 
