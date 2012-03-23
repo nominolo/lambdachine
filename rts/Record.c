@@ -559,8 +559,10 @@ recordIns(JitState *J)
       //sayonara("sanity check return trace");
       //      fprintf(stderr, "ABORT: Decreasing stack loop: %d\n.", J->framedepth);
       //      goto abort_recording;
-    } else {
+    } else if (J->baseslot == INITIAL_BASE + 1) {
       id = finishRecording(J, UNROLL_ONCE);
+    } else {
+      id = finishRecording(J, UNROLL_DISABLED);
     }
     return (u4)REC_LOOP | ((u4)id << 8);
   }
