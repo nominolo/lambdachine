@@ -138,6 +138,8 @@ BCDEF(BCENUM)
   BC__MAX
 } BCOp;
 
+#define BC_STOP  BC__MAX
+
 typedef enum {
   IFM_J,
   IFM_R,

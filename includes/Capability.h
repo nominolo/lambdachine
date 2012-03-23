@@ -12,7 +12,8 @@ typedef int AsmFunction;
 #define DISPATCH_TABLE_LEN   64
 
 typedef enum {
-  CF_NO_JIT = 1
+  CF_NO_JIT = 1,
+  CF_SINGLE_STEP = 2,
 } CapabilityFlag;
 
 /* The VM state associated with an OS thread. */
@@ -24,6 +25,8 @@ struct Capability_ {
 #if LC_HAS_JIT
   JitState  J;
   HotCount  hotcount[HOTCOUNT_SIZE]; /* Hot counters. */
+  Word      step_result;             /* Saved code pointer.  For
+                                        verification mode only. */
 #endif
 };
 

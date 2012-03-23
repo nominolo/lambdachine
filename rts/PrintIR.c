@@ -154,9 +154,9 @@ printIR(Fragment *F, IRIns ir)
     break;
   case IRMlit:
     if (ir.o == IR_SLOAD)
-      fprintf(stderr, "%4d ", (i2)ir.op1 - 1);
+      fprintf(stderr, "%4d ", (int)(i2)ir.op1 - 1);
     else
-      fprintf(stderr, "%4d ", (IRRef1)ir.op1);
+      fprintf(stderr, "%4d ", (int)(IRRef1)ir.op1);
     break;
   case IRMcst:
     if (ir.o == IR_KWORD) {
@@ -171,7 +171,7 @@ printIR(Fragment *F, IRIns ir)
   case IRMref:
     printIRRef_(F, ir.op2, comment, &lencomment, MAX_COMMENT);
     break;
-  case IRMlit: fprintf(stderr, "%4d ", (IRRef1)ir.op2); break;
+  case IRMlit: fprintf(stderr, "%4d ", (int)(IRRef1)ir.op2); break;
   case IRMcst: fprintf(stderr, "%11d ", ir.i); break;
   case IRMnone:
     if (irm_op1(ir_mode[ir.o]) != IRMcst) fprintf(stderr, "     ");
@@ -257,13 +257,15 @@ printPrettyIRRef_(FILE *out, Fragment *F, IRRef ref, int follow)
   }
 }
 
-const char *ir_cmp_name[IR_NE - IR_LT + 1] = {
+const char *ir_cmp_name[IR_EQINFO - IR_LT + 1] = {
   [IR_LT - IR_LT] = "< ",
   [IR_GE - IR_LT] = ">=",
   [IR_LE - IR_LT] = "<=",
   [IR_GT - IR_LT] = "> ",
   [IR_EQ - IR_LT] = "==",
-  [IR_NE - IR_LT] = "!="
+  [IR_NE - IR_LT] = "!=",
+  [IR_EQRET - IR_LT] = "==",
+  [IR_EQINFO - IR_LT] = "==",
 };
 
 INLINE_HEADER int
@@ -326,6 +328,7 @@ printPrettyIRIns(FILE *out, Fragment *F, IRRef ref)
     break;
   case IR_LT: case IR_GT: case IR_LE:
   case IR_GE: case IR_EQ: case IR_NE:
+  case IR_EQRET: case IR_EQINFO:
     fprintf(out, "guard (");
     printPrettyIRRef(out, F, ir->op1);
     fprintf(out, " %s ", ir_cmp_name[ir->o - IR_LT]);
@@ -430,7 +433,7 @@ printPrettyIR_(FILE *out, Fragment *F, int fragment_id)
       fprintf(out, "|       #%d " COL_YELLOW "{", s);
       for (i = 0; i < F->snap[s].nent; i++, se++) {
         IRRef r = snap_ref(*se);
-        if (!irref_islit(r)) {
+        if (1 || !irref_islit(r)) {
           fprintf(out, COL_YELLOW);
           if (fst) fst = 0; else fprintf(out, ", ");
           fprintf(out, "%d:", (int)snap_slot(*se) - 1);

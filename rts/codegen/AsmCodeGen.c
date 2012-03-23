@@ -1347,6 +1347,10 @@ static void asm_ir(ASMState *as, IRIns *ir) {
     case IR_EQ: case IR_LT: case IR_GE: case IR_LE: case IR_GT: case IR_NE:
       asm_cmp(as, ir, asm_cmpmap(ir->o));
       break;
+    case IR_EQINFO:
+    case IR_EQRET:
+      asm_cmp(as, ir, CC_NE);
+      break;
     case IR_FREF:
       asm_fref(as, ir);
       break;

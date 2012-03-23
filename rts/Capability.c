@@ -14,6 +14,10 @@ initVM(const Opts* opts)
   int i;
   G_cap0 = xmalloc(sizeof(Capability));
 
+#ifdef LC_SELF_CHECK_MODE
+  initShadowHeap();
+#endif
+
   initialiseCapability(G_cap0, opts);
 
   for (i = -128; i < 128; i++) {

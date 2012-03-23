@@ -172,6 +172,9 @@ main(int argc, char *argv[])
   initStorageManager();
   initVM(&opts);
   initLoader(&opts);
+#ifdef LC_SELF_CHECK_MODE
+  initShadowHeap();
+#endif
   loadWiredInModules();
   loadModule(opts.input_file);
 

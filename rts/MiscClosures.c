@@ -268,7 +268,7 @@ initUpdateClosure(void)
   info->name = "stg_UPD";
   info->code.framesize = 2;
   info->code.arity = 1;  // kind of bogus, since we never call it
-  info->code.sizecode = 4;
+  info->code.sizecode = 5;
   info->code.sizelits = 0;
   info->code.sizebitmaps = 2;
   info->code.lits = NULL;
@@ -285,6 +285,15 @@ initUpdateClosure(void)
   code[1] = cast(BCIns, byte_offset(&code[1], bitmasks));
   code[2] = BCINS_AD(BC_MOV_RES, 1, 0);
   code[3] = BCINS_AD(BC_UPDATE, 0, 1);
+  /*
+    If the update is executed by the interpreter then this return will never be
+    executed (because update will perform the return on its own).  If the update
+    becomes part of a trace, though, then the guard that gets emitted as part of
+    the return may fail.  We arrange it so that in that case we don't re-execute
+    the UPDATE instruction but instead the failing guard transfers execution to
+    just the RETURN instruction below.
+  */
+  code[4] = BCINS_AD(BC_IRET, 1, 0);
   bitmasks += encodeBitmask(bitmasks, 1); // reg 0 is a pointer
   bitmasks += encodeBitmask(bitmasks, 1); // reg 0 is live
 

@@ -99,6 +99,8 @@ typedef union IRIns {
   _(GT,      G,   ref, ref) \
   _(EQ,      G,   ref, ref) \
   _(NE,      G,   ref, ref) \
+  _(EQRET,  G,   ref, ref) \
+  _(EQINFO, G,   ref, ref) \
   _(HEAPCHK, G,   cst, ___) \
    \
   _(BNOT,    N,   ref, ___) \
@@ -238,6 +240,8 @@ enum {
 typedef u4 TRef;
 
 #define TREF_REFMASK   0x0000ffff
+
+#define TREF_WRITTEN   0x00010000
 
 #define TREF(ref, t)   ((TRef)((ref) + ((t)<<24)))
 

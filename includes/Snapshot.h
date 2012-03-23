@@ -34,4 +34,16 @@ INLINE_HEADER SnapEntry* getSnapshotEntries(Fragment *F, SnapShot *snap)
   return &F->snapmap[snap->mapofs];
 }
 
+INLINE_HEADER BCIns *getSnapshotPC(Fragment *F, SnapShot *snap)
+{
+  SnapEntry *smap = &F->snapmap[snap->mapofs];
+  return (BCIns *)F->startpc + (int)smap[(int)snap->nent];
+}
+
+INLINE_HEADER int getSnapshotBaseSlot(Fragment *F, SnapShot *snap)
+{
+  SnapEntry *smap = &F->snapmap[snap->mapofs];
+  return (int)smap[(int)snap->nent + 1];
+}
+
 #endif

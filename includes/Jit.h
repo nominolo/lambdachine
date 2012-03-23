@@ -158,6 +158,26 @@ JIT_PARAMDEF(JIT_PARAMENUM)
 #define JIT_PARAMSTR(len, name, value)	#len #name
 #define JIT_P_STRING	JIT_PARAMDEF(JIT_PARAMSTR)
 
+// -- Optimisations --------------------------------------------------
+// Perform dead code elimination
+#define JIT_OPT_DCE             (1UL<<0)
+
+// Loop unrolling (if possible)
+#define JIT_OPT_UNROLL          (1UL<<1)
+
+// Try to eliminate allocations by delaying them (only available when
+// unrolling loops).
+#define JIT_OPT_SINK_ALLOC      (1UL<<2)
+
+#define JIT_OPT_DEFAULT   (JIT_OPT_DCE|JIT_OPT_UNROLL)
+
+
+typedef enum {
+  JIT_MODE_NORMAL,
+  JIT_MODE_RECORDING,
+  JIT_MODE_VERIFY,
+} JitMode;
+
 /* JIT compiler state. */
 typedef struct _JitState {
   Fragment cur;
@@ -237,6 +257,7 @@ typedef struct _JitState {
 
   uint32_t prngstate;	/* PRNG state. */
 
+  Word optimizations;
   int32_t param[JIT_P__MAX];  /* JIT engine parameters. */
 } JitState;
 
@@ -307,9 +328,14 @@ INLINE_HEADER void setSlot(JitState *J, int slot, TRef ref)
 {
   //printf("Setting slot: %d (%ld) to %d\n",
   //       slot, &J->base[slot] - J->slot, (IRRef1)ref - REF_BIAS);
-  J->base[slot] = ref;
+  J->base[slot] = ref != 0 ? (ref | TREF_WRITTEN) : ref;
   if (slot >= J->maxslot) J->maxslot = slot + 1;
 }
+
+INLINE_HEADER void clearSlot(JitState *J, int slot) {
+  setSlot(J, slot, 0);
+}
+
 
 // Put instruction in the folding slot.
 INLINE_HEADER void setFoldIR(JitState *J, u2 ot, IRRef1 a, IRRef1 b)
@@ -374,4 +400,27 @@ extern u4 G_jitstep;
 
 void printIRBuffer(JitState *J);
 bool checkPerOpcodeLinks(JitState *J);
+
+
+#ifdef LC_SELF_CHECK_MODE
+
+#define MAX_SHADOW_HEAP_SIZE (1 << 16)
+
+void initShadowHeap(void);
+Word lookupShadowHeap(Word *address);
+void writeToShadowHeap(Word *address, Word value);
+void resetShadowHeap(Word *hp, Word *hp_lim);
+Word *allocOnShadowHeap(Word nwords);
+bool verifyShadowHeap();
+void printShadowHeap(FILE *stream);
+void initShadowStack(u4 size, Word *stack, Word *base);
+Word readStack(Word *base, int slot);
+void writeStack(Word *base, int slot, Word value);
+bool checkShadowSlot(Word *slot);
+bool verifyShadowStack();
+bool verifyShadowHeap();
+
+#endif
+
+
 #endif

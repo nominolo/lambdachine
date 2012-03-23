@@ -9,6 +9,7 @@
 #include "Stats.h"
 #include "PrintClosure.h"
 #include "Snapshot.h"
+#include "Interp.h"
 
 /**
 
@@ -23,8 +24,84 @@ typedef void* Inst;
 
 #define IR(ref)     (&F->ir[(ref)])
 
+int
+restoreStack(Fragment *F, Word *base, Word *vals, Word *hp, Word *hplim,
+	     IRRef pcref, Thread *T);
 Word restoreValue(Fragment *F, Word *vals, IRRef ref);
 
+#ifdef LC_SELF_CHECK_MODE
+static bool verifyStack(Fragment *F, Word *vals, IRRef pcref, Word *base);
+#else
+static inline bool verifyStack(Fragment *F, Word *vals, IRRef pcref,
+                               Word *base) {
+  return 1;
+}
+#endif
+
+
+#ifdef LC_SELF_CHECK_MODE
+# define READ_HEAP(addr)         lookupShadowHeap((addr))
+# define WRITE_HEAP(addr, value) writeToShadowHeap((addr), (value))
+# define READ_STACK(base, offset) readStack((base), (offset))
+# define WRITE_STACK(base, offset, value) \
+  writeStack((base), (offset), (value))
+#else
+# define READ_HEAP(addr)         (*(addr))
+# define WRITE_HEAP(addr, value) (*(addr) = (value))
+# define READ_STACK(base, offset) ((base)[(offset)])
+# define WRITE_STACK(base, offset, value) ((base)[(offset)] = (value))
+#endif
+
+#define GET_INFO(addr)       ((InfoTable*)READ_HEAP(addr))
+#define SET_INFO(addr, info)  WRITE_HEAP(((Word*)(addr)), ((Word)(info)))
+
+
+Word *runInterpreter(Capability *cap, BCIns *pcto)
+{
+  JitState *J = &cap->J;
+  LC_ASSERT(J->mode == JIT_MODE_NORMAL);
+  J->mode = JIT_MODE_VERIFY;
+
+  /* Run interpreter in single-stepping mode until we reach the desired PC. 
+     Note that the starting PC might be the same as the finishing PC, so we
+     check for a repeating PC only after executing the first instruction.
+  */
+  cap->flags |= CF_SINGLE_STEP;
+  Thread *T = cap->T;
+  DBG_LVL(1, "Running interpreter from %p to %p\n", cap->T->pc, pcto);
+
+  do {
+    int result = engine(cap);
+    if (result != INTERP_OUT_OF_STEPS) {
+      if (result == INTERP_OK) {
+        fprintf(stderr, "Verifying interpreter reached STOP instruction.\n");
+        exit(2);
+      } else {
+        fprintf(stderr, "Verifying interpreter did not exit normally. (%d)\n",
+                result);
+        exit(22);
+      }
+    }
+  } while (T->pc != pcto);
+
+  cap->flags &= ~CF_SINGLE_STEP;
+  J->mode = JIT_MODE_NORMAL;
+  
+  /* //BCIns *old_pc = cap->T->pc; */
+  /* BCIns saved_stop_ins = *pcto; */
+  /* *pcto = BCINS_AD(BC_STOP, 0, 0); */
+  /* DBG_LVL(1, "Running interpreter from %p to %p\n", cap->T->pc, pcto); */
+  /* int result = engine(cap); */
+  /* if (result != 0) { */
+  /*   fprintf(stderr, "Verifying interpreter did not exit normally.\n (%d)", */
+  /*           result); */
+  /*   exit(22); */
+  /* } */
+  /* *pcto = saved_stop_ins; */
+  /* J->mode = JIT_MODE_NORMAL; */
+  /* cap->T->pc = pcto; */
+  return T->base;
+}
 
 int
 irEngine(Capability *cap, Fragment *F)
@@ -53,6 +130,10 @@ irEngine(Capability *cap, Fragment *F)
   IRIns *pcmax = F->ir + F->nins;
   IRIns *pcloop = F->nloop ? F->ir + F->nloop + 1 : pc;
   //int count = 100;
+#ifdef LC_SELF_CHECK_MODE
+  resetShadowHeap(hp, hplim);
+  initShadowStack(T->stack_size, T->stack, T->base);
+#endif
 
   DBG_PR("*** Executing trace.\n"
          "***   base  = %p\n"
@@ -119,30 +200,44 @@ irEngine(Capability *cap, Fragment *F)
 
  op_LT:
   recordEvent(EV_CMP, 0);
+  verifyStack(F, vals, pcref, base);
   if (!((WordInt)vals[pc->op1] < (WordInt)vals[pc->op2]))
     goto guard_failed;
   DISPATCH_NEXT;
 
  op_GE:
   recordEvent(EV_CMP, 0);
+  verifyStack(F, vals, pcref, base);
   if (!((WordInt)vals[pc->op1] >= (WordInt)vals[pc->op2]))
     goto guard_failed;
   DISPATCH_NEXT;
 
  op_LE:
   recordEvent(EV_CMP, 0);
+  verifyStack(F, vals, pcref, base);
   if (!((WordInt)vals[pc->op1] <= (WordInt)vals[pc->op2]))
     goto guard_failed;
   DISPATCH_NEXT;
 
  op_GT:
   recordEvent(EV_CMP, 0);
+  verifyStack(F, vals, pcref, base);
   if (!((WordInt)vals[pc->op1] > (WordInt)vals[pc->op2]))
     goto guard_failed;
   DISPATCH_NEXT;
 
  op_EQ:
+ op_EQINFO:
   recordEvent(EV_CMP, 0);
+  verifyStack(F, vals, pcref, base);
+  if (!((WordInt)vals[pc->op1] == (WordInt)vals[pc->op2])) {
+    goto guard_failed;
+  }
+  DISPATCH_NEXT;
+
+ op_EQRET:
+  recordEvent(EV_CMP, 0);
+  verifyStack(F, vals, pcref, base);
   if (!((WordInt)vals[pc->op1] == (WordInt)vals[pc->op2])) {
     goto guard_failed;
   }
@@ -150,6 +245,7 @@ irEngine(Capability *cap, Fragment *F)
 
  op_NE:
   recordEvent(EV_CMP, 0);
+  verifyStack(F, vals, pcref, base);
   if (!((WordInt)vals[pc->op1] != (WordInt)vals[pc->op2]))
     goto guard_failed;
   DISPATCH_NEXT;
@@ -191,17 +287,17 @@ irEngine(Capability *cap, Fragment *F)
 
  op_FLOAD:
   recordEvent(EV_LOAD, 0);
-  vals[pcref] = *((Word*)vals[pc->op1]);
+  vals[pcref] = READ_HEAP((Word*)vals[pc->op1]);
   DISPATCH_NEXT;
 
  op_SLOAD:
   recordEvent(EV_LOAD, 0);
-  vals[pcref] = base[(i2)pc->op1];
+  vals[pcref] = READ_STACK(base, (i2)pc->op1);
   DISPATCH_NEXT;
 
  op_ILOAD:
   recordEvent(EV_LOAD, 0);
-  vals[pcref] = (Word)getInfo(vals[pc->op1]);
+  vals[pcref] = (Word)GET_INFO((Word*)vals[pc->op1]);
   DISPATCH_NEXT;
 
  op_HEAPCHK:
@@ -216,6 +312,7 @@ irEngine(Capability *cap, Fragment *F)
     M->limit = hplim;
     markCurrentBlockFull(M);
 
+#ifndef LC_SELF_CHECK_MODE
     if (M->nfull < M->nextgc) {
       /* We just reached the end of the current block, no full GC
          necessary, yet.  Just grab a new block and re-enter trace.
@@ -236,37 +333,36 @@ irEngine(Capability *cap, Fragment *F)
       /* NOTE: We cannot get into an infinite loop here because on
          each but the last iteration we increment M->nfull */
 
-    } else {
-      
-      /* GC necessary.  It's easiest to just force execution back to
-         the interpreter.  Eventually, the interpreter will try to
-         allocate an object, fail the heap check, and trigger a
-         garbage collection.
-
-         NOTE: Just exiting the trace may trigger allocation due to
-         sunken allocations.  This means, we could run out of memory
-         while allocating an object from the heap snapshot.  To avoid
-         this, we temporarily suppress GC until after the snapshot has
-         been restored.  We then set `G_storage.limit = G_storage.hp`
-         which will trigger garbage at the next allocation
-         instruction executed by the interpreter.
-
-         There is one degenerate case here.  Consider these events:
-         
-           1. We exit a trace
-
-           2. The interpreter continues execution but doesn't perform
-              any allocations.
-
-           3. The interpreter finds another trace entrance 
-         
-      */
-      makeCurrent(M, getEmptyBlock(M));
-      heapcheck_failed = 1;
-      goto guard_failed;
-      /* fprintf(stderr, "Exiting due to failed on-trace heap check.\n"); */
-      /* exit(123);  */
     }
+#endif      
+    /* GC necessary.  It's easiest to just force execution back to
+       the interpreter.  Eventually, the interpreter will try to
+       allocate an object, fail the heap check, and trigger a
+       garbage collection.
+
+       NOTE: Just exiting the trace may trigger allocation due to
+       sunken allocations.  This means, we could run out of memory
+       while allocating an object from the heap snapshot.  To avoid
+       this, we temporarily suppress GC until after the snapshot has
+       been restored.  We then set `G_storage.limit = G_storage.hp`
+       which will trigger garbage at the next allocation
+       instruction executed by the interpreter.
+
+       There is one degenerate case here.  Consider these events:
+       
+         1. We exit a trace
+
+         2. The interpreter continues execution but doesn't perform
+            any allocations.
+
+         3. The interpreter finds another trace entrance 
+       
+    */
+    makeCurrent(M, getEmptyBlock(M));
+    heapcheck_failed = 1;
+    goto guard_failed;
+    /* fprintf(stderr, "Exiting due to failed on-trace heap check.\n"); */
+    /* exit(123);  */
   }
   fprintf(stderr, "FATAL: unreachable in op_HEAPCHK\n");
   exit(13);
@@ -280,12 +376,12 @@ irEngine(Capability *cap, Fragment *F)
     LC_ASSERT(hpi->hp_offs < 0);
     Closure *cl = (Closure*)(hp + (hpi->hp_offs - 1));
     //Closure *cl = allocClosure(wordsof(ClosureHeader) + hpi->nfields);
-    setInfo(cl, (InfoTable*)vals[pc->op1]);
+    SET_INFO(cl, (InfoTable*)vals[pc->op1]);
     for (j = 0; j < hpi->nfields; j++) {
       DBG_LVL(3, "    field %d: %d, %" FMT_WordX "\n", j,
 	      irref_int(getHeapInfoField(F, hpi, j)),
 	      vals[getHeapInfoField(F, hpi, j)]);
-      cl->payload[j] = vals[getHeapInfoField(F, hpi, j)];
+      WRITE_HEAP(&cl->payload[j], vals[getHeapInfoField(F, hpi, j)]);
     }
     /* DBG_LVL(3, "Hp = %p size=%d offs=%d Clos=%p\n", */
     /*         hp, hpi->nfields, hpi->hp_offs, cl); */
@@ -303,8 +399,8 @@ irEngine(Capability *cap, Fragment *F)
     DBG_LVL(3, "Writing IND: old = %p, new = %p\n", oldnode, newnode);
     LC_ASSERT(oldnode != NULL);
     LC_ASSERT(newnode != NULL);
-    setInfo(oldnode, (InfoTable*)&stg_IND_info);
-    oldnode->payload[0] = (Word)newnode;
+    SET_INFO(oldnode, (InfoTable*)&stg_IND_info);
+    WRITE_HEAP(&oldnode->payload[0], (Word)newnode);
     DISPATCH_NEXT;
   }
 
@@ -380,7 +476,49 @@ irEngine(Capability *cap, Fragment *F)
   DBG_PR("Exiting at %d\n", pcref - REF_BIAS);
 
   {
-    int i;
+    int snap_id = restoreStack(F, base, vals, hp, hplim, pcref, T);
+
+    if (heapcheck_failed) {
+      DBG_PR("Trace exited (#%d) due to heap overflow check.\n",
+           snap_id);
+      /* Force a GC next time an allocation is triggered. */
+      G_storage.limit = G_storage.hp;
+      heapcheck_failed = 0;
+      // DBG_PR("GC no longer inhibited\n");
+    }
+
+    if (G_jitstep & STEP_EXIT_TRACE) {
+      fprintf(stderr, "Exited trace: at exit %d", snap_id);
+      getchar();
+    }
+
+    // printShadowHeap(stderr);
+
+    //printFrame(T->base, T->top);
+    return 0;
+  }
+
+ stop:
+  return 1;
+}
+
+SnapShot *
+findSnapShot(Fragment *F, IRRef pcref)
+{
+  SnapNo snapno;
+  for (snapno = 0; snapno < F->nsnap; snapno++) {
+    if (F->snap[snapno].ref == pcref) {
+      return &F->snap[snapno];
+    }
+  }
+  return NULL;
+}
+
+
+int
+restoreStack(Fragment *F, Word *base, Word *vals, Word *hp, Word *hplim,
+	     IRRef pcref, Thread *T) {
+      int i;
     SnapShot *snap = 0;
     SnapEntry *se;
     /* Reconstructing from the snapshot may cause allocation
@@ -390,16 +528,13 @@ irEngine(Capability *cap, Fragment *F)
     G_storage.gc_inhibited = 1;
     G_storage.hp = hp;
     G_storage.limit = hplim;
-    for (i = 0; i < F->nsnap; i++) {
-      if (F->snap[i].ref == pcref) {
-        snap = &F->snap[i];
-        break;
-      }
-    }
+
+    snap = findSnapShot(F, pcref);
     LC_ASSERT(snap != 0);
     IF_DBG_LVL(2, printSnapshot(F, snap, F->snapmap));
-    int snap_id = i;
+    int snap_id = F->snap - snap;;
     snap->count++;
+
     se = F->snapmap + snap->mapofs;
     DBG_PR("Snapshot: %d, Snap entries: %d, slots = %d\n",
            snap_id, snap->nent, snap->nslots);
@@ -411,36 +546,20 @@ irEngine(Capability *cap, Fragment *F)
       DBG_PR("base[%d] = ", s - 1);
       base[s] = restoreValue(F, vals, r);
 
+      //#if !defined(LC_SELF_CHECK_MODE)
       IF_DBG_LVL(1, printSlot(stderr, base + s); fprintf(stderr, "\n"));
+      //#endif
       //DBG_PR("0x%" FMT_WordX "\n", base[s]);
     }
     DBG_PR("Base slot: %d\n", se[1]);
     //    se[1] = 
     T->pc = (BCIns *)F->startpc + (int)se[0];
     T->base = base + (int)se[1];
-    T->top = base + snap->nslots;
+    T->top = base + snap->minslot + snap->nslots;
 
-    if (heapcheck_failed) {
-      DBG_PR("Trace exited (#%d) due to heap overflow check.\n",
-           snap_id);
-      /* Force a GC next time an allocation is triggered. */
-      G_storage.limit = G_storage.hp;
-      heapcheck_failed = 0;
-      // DBG_PR("GC no longer inhibited\n");
-    }
     G_storage.gc_inhibited = 0;
 
-    if (G_jitstep & STEP_EXIT_TRACE) {
-      fprintf(stderr, "Exited trace: at exit %d", snap_id);
-      getchar();
-    }
-
-    //printFrame(T->base, T->top);
-    return 0;
-  }
-
- stop:
-  return 1;
+    return snap_id;
 }
 
 Word
@@ -466,7 +585,7 @@ restoreValue(Fragment *F, Word *vals, IRRef ref)
   recordEvent(EV_ALLOC, 1 + hp->nfields);
   cl = allocClosure(wordsof(ClosureHeader) + hp->nfields);
   setInfo(cl, (InfoTable*)vals[ir->op1]);
-  DBG_PR("(alloc[%lu])", wordsof(ClosureHeader) + hp->nfields);
+  DBG_LVL(2, "(alloc[%lu])", wordsof(ClosureHeader) + hp->nfields);
 
   for (j = 0; j < hp->nfields; j++) {
     DBG_LVL(3, "{%d:%d}", j, irref_int(getHeapInfoField(F, hp, j)));
@@ -474,6 +593,76 @@ restoreValue(Fragment *F, Word *vals, IRRef ref)
   }
 
   return (Word)cl;
+}
+
+/* How do we verify the stack and how does the shadow stack and shadow
+heap come into play?  */
+
+void verifySlot(Fragment *F, Word *vals, IRRef ref, Word *base, int slot);
+
+static bool verifyStack(Fragment *F, Word *vals, IRRef pcref, Word *base)
+{
+  SnapShot *snap = findSnapShot(F, pcref);
+  SnapEntry *se;
+  int i;
+  LC_ASSERT(snap != 0);
+
+  if (F->startpc == getSnapshotPC(F, snap) && (!F->nloop || pcref < F->nloop)) {
+    return true;
+  }
+
+  DBG_LVL(1, "~~~ Verifying at %d, snap #%d ~~~ \n", irref_int(pcref),
+          cast(int, snap - F->snap));
+  printSnapshot(F, snap, F->snapmap);
+
+  Word *interp_base = runInterpreter(G_cap0, getSnapshotPC(F, snap));
+
+  DBG_LVL(2, " - verifying base: JIT: %p == Interp: %p?\n",
+          base + getSnapshotBaseSlot(F, snap), interp_base);
+
+  /* 1. Verify actual stack contents against contents of "registers", i.e., 
+        local variables of the trace.
+   */
+  se = F->snapmap + snap->mapofs;
+  for (i = 0; i < snap->nent; i++, se++) {
+    int slot = (int)snap_slot(*se);
+    DBG_LVL(2, " - verifying slot %d\n", slot);
+
+    IRRef ref = snap_ref(*se);
+    verifySlot(F, vals, ref, base, slot);
+  }
+ 
+  /* 2. Verify contents of shadow stack and shadow heap against real
+        stack and real heap. */
+  bool res = verifyShadowStack() && verifyShadowHeap();
+  if (!res) {
+    DBG_LVL(1, "~~~ Verification at %d, snap #%d : FAILURE ~~~ \n",
+            irref_int(pcref), cast(int, snap - F->snap));
+    exit(77);
+  } else {
+    DBG_LVL(1, "~~~ Verification at %d, snap #%d : SUCCESS ~~~ \n",
+            irref_int(pcref), cast(int, snap - F->snap));
+    return res;
+  }
+}
+
+void verifySlot(Fragment *F, Word *vals, IRRef ref, Word *base, int slot) {
+  IRIns *ir = IR(ref);
+  if (ir->o != IR_NEW) {
+    Word got = vals[ref];
+    Word expected = base[slot];
+    if (got != expected) {
+      if (expected == MARKER_UNUSED) {
+        fprintf(stderr, "WARNING: JIT writes undefined slot %d (%d)\n",
+                slot, irref_int(ref));
+      } else {
+        fprintf(stderr, "   MISMATCH: slot %d (%d) JIT: %" FMT_WordX
+                " Interp: %" FMT_WordX "\n", slot, irref_int(ref),
+                got, expected);
+        exit(96);
+      }
+    }
+  }
 }
 
 #undef IR

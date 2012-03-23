@@ -47,6 +47,7 @@ typedef int64_t  WordInt;
 #define FMT_Int   FMT_Int64
 #define FMT_WordLen "16"
 #define LC_ARCH_BITS_LOG2 6
+#define MARKER_UNUSED  0xfefefefe0badda7a
 
 #else
 #error "Only 32 bit and 64 bit architectures supported."

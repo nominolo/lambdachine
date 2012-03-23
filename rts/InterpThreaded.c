@@ -15,9 +15,11 @@
 #include "StorageManager.h"
 #include "Jit.h"
 #include "Stats.h"
+#include "Capability.h"
 #if LC_HAS_ASM_BACKEND
 #include "InterpAsm.h"
 #endif
+#include "Interp.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -58,17 +60,9 @@ as follows:
 
 *********************************************************************/
 
-int engine(Capability *);
 void printStack(FILE *, Word *base, Word *bottom);
 void printFrame(FILE *, Word *base, Word *top);
 void invalidateDeadSlots(Word *from, Word *to, BCIns *pc);
-
-enum {
-  INTERP_OK = 0,
-  INTERP_OUT_OF_STEPS = 1,
-  INTERP_STACK_OVERFLOW = 2,
-  INTERP_UNIMPLEMENTED = 3
-} InterpExitCode;
 
 Closure *
 startThread(Thread *T, Closure *cl)
@@ -103,28 +97,40 @@ typedef void* Inst;
 
 void printIndent(FILE *stream, int i, char c);
 
-int engine(Capability *cap)
+InterpExitCode
+engine(Capability *cap)
 {
   Thread *T = cap->T;
   int maxsteps = 100000000;
+
+  /* Dispatch table for the regular interpreter. */
   static Inst disp1[] = {
 #define BCIMPL(name,_) &&op_##name,
     BCDEF(BCIMPL)
 #undef BCIMPL
     &&stop
   };
+
+  /* Dispatch table for recording mode. */
+  static Inst disp_record[] = {
+#define BCIMPL(name,_) &&recording,
+    BCDEF(BCIMPL)
+#undef BCIMPL
+    &&stop
+  };
+
+  /* Dispatch table for single-stepping mode. */
+  static Inst disp_step[] = {
+#define BCIMPL(name,_) &&stop_single_step,
+    BCDEF(BCIMPL)
+#undef BCIMPL
+    &&stop_single_step
+  };
+
   Inst *disp = disp1;
 
-  Inst *disp_record;
 #if LC_HAS_JIT
   JitState *J = &cap->J;
-  //  initJitState(J);
-  {
-    int i;
-    disp_record = xmalloc(sizeof(disp1));
-    for (i = 0; i < countof(disp1); i++)
-      disp_record[i] = &&recording;
-  }
 
   if (cap->flags & CF_NO_JIT) {
     // Disable the JIT by overriding the places where a new trace may
@@ -139,7 +145,6 @@ int engine(Capability *cap)
   // decoded.
   u4 *pc = T->pc;
   u4 opA, opB, opC, opcode;
-  T->last_result = 0;
   Word callt_temp[BCMAX_CALL_ARGS];
   LcCode *code = NULL;
 
@@ -163,6 +168,15 @@ int engine(Capability *cap)
 # define DBG_RETURN(info, pc)
 # define DBG_STACK
 #endif
+
+# define DEBUG_INSTR(pc) \
+    if (LC_DEBUG_LEVEL >= 2) { \
+      fprintf(stderr, COL_YELLOW);                                       \
+      DBG_IND(fprintf(stderr, "    "); printFrame(stderr, base, T->top)); \
+      DBG_IND(printInstructionOneLine(stderr, pc));         \
+      fprintf(stderr, COL_RESET);                            \
+    }
+
   /*
     At the beginning of an instruction the following holds:
     - pc points to the next instruction.
@@ -172,12 +186,7 @@ int engine(Capability *cap)
   */
 # define DISPATCH_NEXT \
     opcode = bc_op(*pc); \
-    if (LC_DEBUG_LEVEL >= 2) { \
-      fprintf(stderr, COL_YELLOW);                                       \
-      DBG_IND(fprintf(stderr, "    "); printFrame(stderr, base, T->top)); \
-      DBG_IND(printInstructionOneLine(stderr, pc));         \
-      fprintf(stderr, COL_RESET);                            \
-    } \
+    if (!(cap->flags & CF_SINGLE_STEP)) { DEBUG_INSTR(pc); } \
     maxsteps--;  if (maxsteps == 0) return INTERP_OUT_OF_STEPS; \
     recordEvent(EV_DISPATCH, 0); \
     opA = bc_a(*pc); \
@@ -192,8 +201,24 @@ int engine(Capability *cap)
 # define DECODE_AD \
     ;
 
-  // Dispatch first instruction
-  DISPATCH_NEXT;
+  if (cap->flags & CF_SINGLE_STEP) {
+    Closure *cl = (Closure*)base[-1];
+    code = &getFInfo(cl)->code;
+    disp = disp_step;
+    opcode = bc_op(*pc);
+    if (LC_DEBUG_LEVEL >= 2) {
+      fprintf(stderr, "STEP:\n");
+    }
+    DEBUG_INSTR(pc);
+    opA = bc_a(*pc);
+    opC = bc_d(*pc);
+    ++pc;
+    goto *disp1[opcode];
+  } else {
+    T->last_result = 0;
+    // Dispatch first instruction
+    DISPATCH_NEXT;
+  }
 
 #if LC_HAS_JIT
  recording:
@@ -259,8 +284,13 @@ int engine(Capability *cap)
  stop:
   T->pc = pc;
   T->base = base;
-  fprintf(stderr, ">>> Steps Left: %d\n", maxsteps);
   return INTERP_OK;
+
+ stop_single_step:
+  DBG_LVL(2, "Leaving at pc = %p, base = %p:\n", pc, base);
+  T->pc = pc - 1;
+  T->base = base;
+  return INTERP_OUT_OF_STEPS;
 
  op_ADDRR:
   DECODE_BC;
@@ -464,7 +494,7 @@ int engine(Capability *cap)
  op_JRET:
 
 #if LC_HAS_JIT
-  {
+  if (J->mode == JIT_MODE_NORMAL) {
     u4 frag_id = opC;
     Fragment *F = J->fragment[frag_id];
     Closure *cl;
@@ -513,9 +543,11 @@ int engine(Capability *cap)
     } else {
       goto *disp[opcode];
     }
+  } else if (opcode == BC_JRET) {
+    DBG_LVL(2, "JRET as RET\n");
+    T->last_result = base[opA];
+    goto do_return;
   }
-#else
-  DISPATCH_NEXT;
 #endif
 
  op_FUNC:
@@ -523,7 +555,7 @@ int engine(Capability *cap)
   recordEvent(EV_TICK, 0);
   {
     // Ignore if we're already recording.
-    if (LC_UNLIKELY(J->mode != 0)) {
+    if (LC_UNLIKELY(J->mode != JIT_MODE_NORMAL)) {
       DISPATCH_NEXT;
     }
 
@@ -726,7 +758,7 @@ int engine(Capability *cap)
       top[1] = (Word)return_pc;
       top[2] = (Word)&stg_UPD_closure;
       top[3] = (Word)tnode; // reg0
-      top[4] = 0;           // reg1
+      top[4] = 1234;           // reg1
       top[5] = (Word)&top[3];
       top[6] = (Word)stg_UPD_return_pc;
       top[7] = (Word)tnode;
@@ -767,9 +799,11 @@ int engine(Capability *cap)
       oldnode->payload[1] = (Word)G_cap0->static_objs;
       G_cap0->static_objs = oldnode;
     }
+
+    DISPATCH_NEXT;
     
-    T->last_result = (Word)newnode;
-    goto do_return;
+    /* T->last_result = (Word)newnode; */
+    /* goto do_return; */
   }
 
  op_IRET:
@@ -782,7 +816,10 @@ int engine(Capability *cap)
   // The return address is on the stack. just jump to it.
   T->last_result = base[opA];
 
-  if (J->mode == 0) {  // only if in interpreter mode
+  DBG_LVL(2, "RET1: base = %p, top = %p\n", base, T->top);
+  printFrame(stderr, base, T->top);
+
+  if (J->mode == JIT_MODE_NORMAL) {
     HotCount c = --cap->hotcount[hotcount_hash(pc-1)];
     if (LC_UNLIKELY(c == 0)) {
       /* What a RETURN trace looks like:
@@ -1363,6 +1400,7 @@ int engine(Capability *cap)
  op_INITF:
  op_NEW_INT:
   return INTERP_UNIMPLEMENTED;
+
 }
 
 int
@@ -1393,6 +1431,7 @@ printFrame(FILE *stream, Word *base, Word *top)
 {
   u4 i = -1;
   fprintf(stream, "[%p](%ld)", base, (long)(top - base));
+  fprintf(stream, "<%ld>", base - (Word*)base[-3]);
   base--;
   while (base < top) {
     fprintf(stream, " %d:", i);
@@ -1408,6 +1447,7 @@ void
 printSlot(FILE *stream, Word *slot)
 {
   if (looksLikeClosure((void*)*slot)) {
+    fprintf(stream,"%" FMT_WordX "=", *slot);
     Closure *cl = (Closure*)(*slot);
     ConInfoTable *info = (ConInfoTable*)getInfo(cl);
     char name[10];
@@ -1476,7 +1516,7 @@ invalidateDeadSlots(Word *from, Word *to, BCIns *ret_pc)
   while (from < to) {
     if ((m & 1) == 0) { // not live
       DBG_PR("INV: %p\n", from);
-      *from = 0;
+      *from = MARKER_UNUSED;
     }
     from++;
     m >>= 1;

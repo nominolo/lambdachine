@@ -116,6 +116,8 @@ optFold(JitState *J)
   // again:
   switch (op) {
   case IR_EQ:
+  case IR_EQRET:
+  case IR_EQINFO:
     if (foldIns->op1 == foldIns->op2) {
       DBG_PR("FOLD: trivial guard. %s\n", "EQ");
       return 0;
@@ -238,7 +240,7 @@ optUnrollLoop(JitState *J)
         IRIns *ir = IR(r);
         int slot = (int)snap_slot(*p) + INITIAL_BASE;
         //printf("setting slot %d, to %d, %d\n", slot, r - REF_BIAS, ir->t);
-        J->slot[slot] = TREF(r, ir->t);
+        J->slot[slot] = TREF(r, ir->t) | TREF_WRITTEN;
       }
       J->pc = J->cur.startpc + (ptrdiff_t)(i4)(*p);
       // base slot is updated separately via ENTER and RET instructions.
@@ -852,6 +854,12 @@ compactPhis(JitState *J)
   J->cur.nphis = nphis;
 
   LC_ASSERT(checkPerOpcodeLinks(J));
+}
+
+int
+optimiseIR(JitState *J, UnrollLevel unroll, u4 optimisations) {
+
+  return 0;
 }
 
 /*

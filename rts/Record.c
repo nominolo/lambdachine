@@ -78,7 +78,8 @@ emitLoadSlot(JitState *J, i4 slot)
   }
   i2 relslot = (i2)J->baseslot + slot - INITIAL_BASE;
   TRef ref = emit_raw(J, IRT(IR_SLOAD, ty), relslot, 0);
-  J->base[slot] = ref;
+  J->base[slot] = ref;          /* Don't mark as written */
+  if (slot >= J->maxslot) J->maxslot = slot + 1;
   DBG_PR("minslot: %d, baseslot: %d, slot: %d\n", J->minslot, J->baseslot, slot);
   if (J->minslot > (int)J->baseslot + slot) {
     sayonara("minslot issue");
@@ -119,7 +120,7 @@ emitIR(JitState *J)
   ir->t = foldIns->t;
   ir->op1 = foldIns->op1;
   ir->op2 = foldIns->op2;
-  DBG_LVL(2, COL_GREEN "emitted: %5d ", ref - REF_BIAS);
+  DBG_LVL(2, COL_GREEN "emitted: %5d ", irref_int(ref));
   IF_DBG_LVL(2, printIR(&J->cur, *ir));
   DBG_LVL(2, COL_RESET);
 
@@ -207,6 +208,7 @@ recordSetup(JitState *J, Thread *T)
 
   J->irmin = 0;
   J->irmax = 0;
+  J->cur.mcode = NULL;
   J->cur.ir = J->irbuf = NULL;
   J->cur.nins = REF_BASE;
   J->cur.nk = REF_BASE;
@@ -221,7 +223,6 @@ recordSetup(JitState *J, Thread *T)
   J->sizekwords = 500;
   J->cur.kwords = J->kwordsbuf = xmalloc(J->sizekwords * sizeof(Word));
   J->cur.nkwords = 0;
-  J->cur.mcode = NULL;
 
   J->needsnap = 0;
   J->mergesnap = 1;
@@ -380,13 +381,30 @@ guardEqualKWord(JitState *J, TRef ref, Word k, LitType lt)
   emit(J, IRT(IR_EQ, IRT_CMP), ref, kref);
 }
 
+static inline void
+guardEqualRetAddr(JitState *J, TRef ref, Word ret_addr) {
+  TRef kref = emitKWord(J, ret_addr, LIT_PC);
+  emit(J, IRT(IR_EQRET, IRT_CMP), ref, kref);
+}
+
+static inline void
+guardEqualInfo(JitState *J, TRef ref, const InfoTable *info) {
+  TRef expected_info = emitKWord(J, (Word)info, LIT_INFO);
+  TRef actual_info = emit(J, IRT(IR_ILOAD, IRT_INFO), ref, 0);
+  emit(J, IRT(IR_EQ, IRT_CMP), actual_info, expected_info);
+}
+
 void
 printSlots(JitState *J)
 {
   //printf("slots: %d, %d\n", J->baseslot, J->maxslot);
   int i;
   for (i = J->minslot; i < J->baseslot + J->maxslot; i++) {
-    IRRef1 ref = J->slot[i];
+    IRRef1 ref = tref_ref(J->slot[i]);
+    int written = J->slot[i] & TREF_WRITTEN;
+
+    if (!written && ref)
+      fprintf(stderr, COL_RED);
 
     int j = i - J->baseslot;
     if ((j & 0x03) == 0)
@@ -398,6 +416,9 @@ printSlots(JitState *J)
       fprintf(stderr, "%04d ", ref - REF_BIAS);
     else
       fprintf(stderr, "K%03d ", REF_BIAS - ref);
+
+    if (!written && ref)
+      fprintf(stderr, COL_RESET);
   }
   fprintf(stderr, "\n");
 }
@@ -549,8 +570,8 @@ recordIns(JitState *J)
     IF_DBG_LVL(1,
                fprintf(stderr, COL_GREEN);
                printSlots(J);
-               addSnapshot(J);
                fprintf(stderr, COL_RESET));
+    addSnapshot(J);
     J->mergesnap = 1;
   }
 
@@ -646,9 +667,7 @@ recordIns(JitState *J)
 
       // Specialise on info table:  Emit guard to check for same info
       // table as the one we encountered at recording time.
-      rc = emitKWord(J, (Word)ninfo, LIT_INFO);
-      rb = emit(J, IRT(IR_ILOAD, IRT_INFO), ra, 0);
-      emit(J, IRT(IR_EQ, IRT_CMP), rb, rc);
+      guardEqualInfo(J, ra, ninfo);
 
       if (closure_HNF(node)) {
         // ra is in normal form.  Guard makes sure of that, so we now just
@@ -833,30 +852,39 @@ recordIns(JitState *J)
       ra = getSlot(J, bc_a(ins));
       rb = getSlot(J, bc_d(ins));
       emit(J, IRT(IR_UPDATE, IRT_VOID), ra, rb);
-      J->last_result = rb;
-      J->needsnap = 1;
-      goto do_return;
+      break;
+      /* J->last_result = rb; */
+      /* J->needsnap = 1; */
+      /* goto do_return; */
     }
 
+  case BC_IRET:
   case BC_RET1:
     {
+      /* Clear all slots but the result slot. */
+      int i;
+      for (i = 0; i < J->maxslot; i++) {
+        if (i != bc_a(ins)) {
+          clearSlot(J, i);
+        }
+      }
       J->last_result = getSlot(J, bc_a(ins));
-
-
-    do_return:
-      ;
 
       Word return_pc = tbase[-2];
       Word *return_base = (Word*)tbase[-3];
       i4 basediff = tbase - return_base;
-      int i;
 
       DBG_LVL(2, "Recording return: %d\n", basediff);
 
       IF_DBG_LVL(1, printSlots(J));
 
       J->framedepth--;
-      guardEqualKWord(J, getSlot(J, -2), return_pc, LIT_PC);
+      guardEqualRetAddr(J, getSlot(J, -2), return_pc);
+
+      /* Clear all slots and the frame of the return target. The
+	 result has been saved in J->last_result and will be loaded
+	 via BC_MOV_RES. */
+      memset(&J->base[-3], 0, 3 * sizeof(TRef));
 
       if (J->framedepth < 0 && J->cur.traceType != RETURN_TRACE) {
         DBG_PR("ABORT: Returning outside of original frame (B).\n");
@@ -868,11 +896,6 @@ recordIns(JitState *J)
       if (J->minslot > J->baseslot - 3) {
 	J->minslot = J->baseslot - 3;
       }
-
-      /* Clear all slots and the frame of the return target. The
-	 result has been saved in J->last_result and will be loaded
-	 via BC_MOV_RES. */
-      memset(&J->base[-3], 0, ((int)J->maxslot + 3) * sizeof(TRef));
 
       // TODO: Do something with slot(-3)?
       DBG_LVL(2, "baseslot = %d\n", J->baseslot);
@@ -1027,6 +1050,7 @@ initJitState(JitState *J, const Opts* opts)
 {
   J->mode = 0;
   J->startpc = 0;
+  J->optimizations = JIT_OPT_DEFAULT;
 
   J->sizefragment = 256;
   //  J->maskfragment = J->sizefragment - 1;
@@ -1069,12 +1093,13 @@ FragmentId
 finishRecording(JitState *J, UnrollLevel unrollLevel)
 {
   addSnapshot(J);
-  if (unrollLevel == UNROLL_ONCE) {
+  bool unroll = (J->optimizations & JIT_OPT_UNROLL) && unrollLevel == UNROLL_ONCE;
+  if (unroll) {
     J->cur.nloop = tref_ref(emit_raw(J, IRT(IR_LOOP, IRT_VOID), 0, 0));
   } else {
     emit_raw(J, IRT(IR_SAVE, IRT_VOID), J->cur.nsnap - 1, 0);
   }
-  if (unrollLevel == UNROLL_ONCE) {
+  if (unroll) {
     // int i;
     optUnrollLoop(J);
   }
@@ -1085,9 +1110,11 @@ finishRecording(JitState *J, UnrollLevel unrollLevel)
   printHeapInfo(stderr, J);
 #endif
 
-  if (unrollLevel == UNROLL_ONCE) {
+  if (unroll) {
     optDeadCodeElim(J, PRE_ALLOC_SINK);
-    heapSCCs(J);
+    if (J->optimizations & JIT_OPT_SINK_ALLOC) {
+      heapSCCs(J);
+    }
     fixHeapOffsets(J);
     optDeadCodeElim(J, POST_ALLOC_SINK);
     compactPhis(J);               /* useful for IR interpreter */

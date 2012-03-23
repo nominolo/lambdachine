@@ -323,7 +323,7 @@ printCode(FILE *stream, LcCode *code)
     fprintf(stream, "\n");
   }
   fprintf(stream, "  code:\n");
-  while (nc < code->sizecode) {
+  while (nc < code->sizecode && bc_op(*c) != BC_STOP) {
     i = printInstruction(stream, c);
     c += i;
     nc += i;

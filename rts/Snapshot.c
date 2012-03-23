@@ -84,8 +84,8 @@ snapshotSlots(JitState *J, SnapEntry *map)
     if (ref) {
       SnapEntry sn = SNAP_TR(relslot, tr);
       IRIns *ir = IR(ref);
-      if (ir->o == IR_SLOAD && (i2)ir->op1 == relslot)
-	continue;  // Slot has only been read, not modified
+      if (!(tr & TREF_WRITTEN))
+        continue;  // Slot has only been read, not modified
       // TODO: There may be cases where we don't need to save the
       // slot.
       map[n++] = sn;
@@ -331,7 +331,7 @@ void restoreSnapshot(SnapNo snapno, void *exptr) {
     *bval = snap_restoreval(F, ref, ex, base, rfilt, snapno);
 
     IF_DBG_LVL(1,
-               fprintf(stderr, "base[%d] = ", s - 1);
+               fprintf(stderr, "base[%d]/%p = ", s - 1, base + s);
                printSlot(stderr, base + s);
                fprintf(stderr, "\n")
     );
@@ -345,7 +345,7 @@ void restoreSnapshot(SnapNo snapno, void *exptr) {
 
   /* Restore pc, base, and top pointers for the thread */
   DBG_PR("Base slot: %d\n", smap[nent+1]);
-  T->pc   = (BCIns *)F->startpc + (int)smap[nent];
+  T->pc   = getSnapshotPC(F, snap);
   T->base = base + (int)smap[nent+1];
   T->top  = base + snap->nslots;
 

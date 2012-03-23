@@ -62,7 +62,7 @@ SRCS = rts/Bytecode.c rts/Capability.c rts/ClosureFlags.c \
        rts/InterpIR.c rts/Stats.c \
        rts/codegen/MCode.c rts/codegen/InterpAsm.c \
        rts/codegen/AsmCodeGen.c \
-       rts/GC.c
+       rts/GC.c rts/ShadowHeap.c
 
 UTILSRCS = utils/genopcodes.c
 
@@ -135,10 +135,10 @@ HSSRCS := $(shell find compiler -name '*.hs')
 
 # .PHONY:
 
-$(HSBUILDDIR)/setup-config: lambdachine.cabal
-	$(CABAL) configure -v --with-compiler=$(HC) --with-hc-pkg=$(HC_PKG)
+$(DIST)/setup-config: lambdachine.cabal
+	$(CABAL) configure --with-compiler=$(HC) --with-hc-pkg=$(HC_PKG)
 
-$(LCC): $(HSSRCS) compiler/Opcodes.h $(HSBUILDDIR)/setup-config
+$(LCC): $(HSSRCS) compiler/Opcodes.h $(DIST)/setup-config
 	@mkdir -p $(HSBUILDDIR)
 	$(CABAL) build
 
