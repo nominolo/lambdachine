@@ -1072,10 +1072,9 @@ int engine(Capability *cap)
       if (newframesize > curframesize) {
         if (stackOverflow(T, base, newframesize)) {
           return INTERP_STACK_OVERFLOW;
-        } else {
-          T->top = base + newframesize;
         }
       }
+      T->top = base + newframesize;
 
       if (!pap) {
 	// Arguments already in place.
