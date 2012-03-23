@@ -275,8 +275,9 @@ optUnrollLoop(JitState *J)
       // For NEW instructions we need to adjust the HeapInfo
     case IR_NEW:
       {
-        HeapInfo *hpold = &J->cur.heap[ir->op2];
+        /* NOTE: cloneHeapInfo may change J->cur.heap! */
         u2 entry = cloneHeapInfo(J, tref_ref(renaming[ref]), ir->op2);
+        HeapInfo *hpold = &J->cur.heap[ir->op2];
         HeapInfo *hpnew = &J->cur.heap[entry];
         IRIns *ir2 = IR(tref_ref(renaming[ref]));
         u2 i;
