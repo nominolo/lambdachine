@@ -419,6 +419,7 @@ void writeStack(Word *base, int slot, Word value);
 bool checkShadowSlot(Word *slot);
 bool verifyShadowStack();
 bool verifyShadowHeap();
+void clearShadowStack(void);
 
 #endif
 

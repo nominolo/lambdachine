@@ -74,6 +74,10 @@ void initShadowStack(u4 size, Word *stack, Word *base)
   G_shadowStack.base = stack - base;
 }
 
+void clearShadowStack(void) {
+  clearBitset(G_shadowStack.bitset, G_shadowStack.size);
+}
+
 bool checkShadowSlot(Word *slot)
 {
   Word offset = slot - G_shadowStack.origStack;

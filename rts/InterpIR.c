@@ -31,9 +31,17 @@ Word restoreValue(Fragment *F, Word *vals, IRRef ref);
 
 #ifdef LC_SELF_CHECK_MODE
 static bool verifyStack(Fragment *F, Word *vals, IRRef pcref, Word *base);
+static bool verifyStackWithSnapshot(Fragment *F, Word *vals, IRRef pcref,
+                                    Word *base, SnapShot *snap);
+
 #else
 static inline bool verifyStack(Fragment *F, Word *vals, IRRef pcref,
                                Word *base) {
+  return 1;
+}
+
+static bool verifyStackWithSnapshot(Fragment *F, Word *vals, IRRef pcref,
+                                    Word *base, SnapShot *snap) {
   return 1;
 }
 #endif
@@ -56,7 +64,8 @@ static inline bool verifyStack(Fragment *F, Word *vals, IRRef pcref,
 #define SET_INFO(addr, info)  WRITE_HEAP(((Word*)(addr)), ((Word)(info)))
 
 
-Word *runInterpreter(Capability *cap, BCIns *pcto)
+static Word *
+runInterpreter(Capability *cap, BCIns *pcto)
 {
   JitState *J = &cap->J;
   LC_ASSERT(J->mode == JIT_MODE_NORMAL);
@@ -427,17 +436,28 @@ irEngine(Capability *cap, Fragment *F)
     Word *realbase = base + 1;
     int i;
     for (i = 0; i < nent; i++, p++) {
-      //doWeNeedToChangeTheTypeOf_snap_slot_fromByteToWord16
       int reg = (int)snap_slot(*p) - 1;
       IRRef ref = snap_ref(*p);
       DBG_LVL(2, "Storing %" FMT_WordX " into base[%d]\n",
 	      vals[ref], reg);
       if (IR(ref)->o == IR_KBASEO) {
-	base[reg + 1] = (Word)(realbase + IR(ref)->i);
+        WRITE_STACK(base, reg + 1, (Word)(realbase + IR(ref)->i));
+        //	base[reg + 1] = 
       } else {
-	base[reg + 1] = vals[ref];
+        WRITE_STACK(base, reg + 1, vals[ref]);
       }
     }
+
+#ifdef LC_SELF_CHECK_MODE
+    BCIns *snap_pc = getSnapshotPC(F, snap);
+    BCIns *prev_snap_pc =
+      snapid > 0 ? getSnapshotPC(F, getSnapshot(F, snapid - 1)) : NULL;
+    DBG_LVL(3, "prev PC = %p,  this PC = %p\n", prev_snap_pc, snap_pc);
+    if (snap_pc != prev_snap_pc) {
+      verifyStackWithSnapshot(F, vals, pcref, base, snap);
+    }
+    clearShadowStack();
+#endif
 
     if (stackOverflow(T, T->top, nslots))
       sayonara("Stack Overflow");
@@ -595,22 +615,20 @@ restoreValue(Fragment *F, Word *vals, IRRef ref)
   return (Word)cl;
 }
 
+#ifdef LC_SELF_CHECK_MODE
+
 /* How do we verify the stack and how does the shadow stack and shadow
 heap come into play?  */
 
 void verifySlot(Fragment *F, Word *vals, IRRef ref, Word *base, int slot);
 
-static bool verifyStack(Fragment *F, Word *vals, IRRef pcref, Word *base)
+static bool
+verifyStackWithSnapshot(Fragment *F, Word *vals, IRRef pcref, Word *base,
+                        SnapShot *snap)
 {
-  SnapShot *snap = findSnapShot(F, pcref);
   SnapEntry *se;
   int i;
   LC_ASSERT(snap != 0);
-
-  if (F->startpc == getSnapshotPC(F, snap) && (!F->nloop || pcref < F->nloop)) {
-    return true;
-  }
-
   DBG_LVL(1, "~~~ Verifying at %d, snap #%d ~~~ \n", irref_int(pcref),
           cast(int, snap - F->snap));
   printSnapshot(F, snap, F->snapmap);
@@ -626,7 +644,6 @@ static bool verifyStack(Fragment *F, Word *vals, IRRef pcref, Word *base)
   se = F->snapmap + snap->mapofs;
   for (i = 0; i < snap->nent; i++, se++) {
     int slot = (int)snap_slot(*se);
-    DBG_LVL(2, " - verifying slot %d\n", slot);
 
     IRRef ref = snap_ref(*se);
     verifySlot(F, vals, ref, base, slot);
@@ -646,10 +663,23 @@ static bool verifyStack(Fragment *F, Word *vals, IRRef pcref, Word *base)
   }
 }
 
+static bool verifyStack(Fragment *F, Word *vals, IRRef pcref, Word *base)
+{
+  SnapShot *snap = findSnapShot(F, pcref);
+
+  if (F->startpc == getSnapshotPC(F, snap) &&
+      (!F->nloop || pcref < F->nloop)) {
+    return true;
+  }
+
+  return verifyStackWithSnapshot(F, vals, pcref, base, snap);
+}
+
 void verifySlot(Fragment *F, Word *vals, IRRef ref, Word *base, int slot) {
+  DBG_LVL(2, " - verifying slot %d ..", slot);
   IRIns *ir = IR(ref);
   if (ir->o != IR_NEW) {
-    Word got = vals[ref];
+    Word got = ir->o != IR_KBASEO ? vals[ref] : (Word)(base + 1 + ir->i);
     Word expected = base[slot];
     if (got != expected) {
       if (expected == MARKER_UNUSED) {
@@ -661,8 +691,12 @@ void verifySlot(Fragment *F, Word *vals, IRRef ref, Word *base, int slot) {
                 got, expected);
         exit(96);
       }
+    } else {
+      DBG_LVL(2, "  OK: %" FMT_WordX "\n", got);
     }
   }
 }
+
+#endif  /* LC_SELF_CHECK_MODE */
 
 #undef IR
