@@ -26,6 +26,12 @@
 #
 # PerformanceBuild = Yes
 
+# Enable self-check mode.  The IR interpreter will verify
+# the JIT-compiled code against the interpreter's state.
+# This only really makes sense with a debug build.
+#
+# SelfCheck = Yes
+
 # The default debug level is 2.  Higher levels usually mean more debug
 # output.
 #

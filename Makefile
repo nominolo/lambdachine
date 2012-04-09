@@ -16,6 +16,10 @@ ifeq "$(strip $(PerformanceBuild))" "Yes"
 EXTRA_CFLAGS := $(EXTRA_CFLAGS) -DNDEBUG
 endif
 
+ifeq "$(strip $(SelfCheck))" "Yes"
+EXTRA_CFLAGS := $(EXTRA_CFLAGS) -DLC_SELF_CHECK_MODE
+endif
+
 ifeq "$(strip $(DisableJit))" "Yes"
 EXTRA_CFLAGS := $(EXTRA_CFLAGS) -DLC_HAS_JIT=0
 endif

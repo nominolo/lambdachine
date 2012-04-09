@@ -9,9 +9,7 @@
 # define LC_HAS_ASM_BACKEND 1
 #endif
 
-#ifndef LC_SELF_CHECK_MODE
-# define LC_SELF_CHECK_MODE 1
-#endif
+/* #define LC_SELF_CHECK_MODE */
 
 /* #undef NDEBUG */
 /* #define DEBUG */
