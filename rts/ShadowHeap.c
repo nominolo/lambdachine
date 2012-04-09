@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#ifdef LC_SELF_CHECK_MODE
+
 typedef struct {
   Word *address;
   Word value;
@@ -207,3 +209,5 @@ void printShadowHeap(FILE *stream) {
   fprintf(stream, "\n");
   fflush(stream);
 }
+
+#endif
