@@ -204,7 +204,6 @@ recordSetup(JitState *J, Thread *T)
 
   // J->{pc,func} is set by recording code
 
-  J->flags = 0; // TODO: Default flags
 
   J->irmin = 0;
   J->irmax = 0;

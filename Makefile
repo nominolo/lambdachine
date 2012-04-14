@@ -66,7 +66,8 @@ SRCS = rts/Bytecode.c rts/Capability.c rts/ClosureFlags.c \
        rts/InterpIR.c rts/Stats.c \
        rts/codegen/MCode.c rts/codegen/InterpAsm.c \
        rts/codegen/AsmCodeGen.c \
-       rts/GC.c rts/ShadowHeap.c
+       rts/GC.c rts/ShadowHeap.c \
+	rts/Jit.c
 
 UTILSRCS = utils/genopcodes.c
 

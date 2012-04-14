@@ -159,6 +159,9 @@ JIT_PARAMDEF(JIT_PARAMENUM)
 #define JIT_P_STRING	JIT_PARAMDEF(JIT_PARAMSTR)
 
 // -- Optimisations --------------------------------------------------
+
+#define JIT_OPT_FIRST           1
+
 // Perform dead code elimination
 #define JIT_OPT_DCE             (1UL<<0)
 
@@ -169,7 +172,15 @@ JIT_PARAMDEF(JIT_PARAMENUM)
 // unrolling loops).
 #define JIT_OPT_SINK_ALLOC      (1UL<<2)
 
-#define JIT_OPT_DEFAULT   (JIT_OPT_DCE|JIT_OPT_UNROLL)
+#define JIT_OPT_CALL_BY_NAME    (1UL<<3)
+
+#define JIT_OPT_CSE             (1UL<<4)
+
+#define JIT_OPT_DEFAULT \
+   (JIT_OPT_DCE|JIT_OPT_UNROLL|JIT_OPT_SINK_ALLOC|JIT_OPT_CSE)
+
+#define JIT_OPTSTRING \
+   "\3dce\6unroll\4sink\3cbn\3cse"
 
 
 typedef enum {
@@ -401,6 +412,8 @@ extern u4 G_jitstep;
 void printIRBuffer(JitState *J);
 bool checkPerOpcodeLinks(JitState *J);
 
+bool parseJitOpt(int32_t *param, uint32_t *flags, const char *str);
+void setJitOpts(JitState *J, int32_t *param, uint32_t flags);
 
 #ifdef LC_SELF_CHECK_MODE
 

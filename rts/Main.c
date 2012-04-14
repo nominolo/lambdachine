@@ -29,6 +29,14 @@ static Opts opts = {
   .stack_size = 1024,
 };
 
+static int32_t jitParams[JIT_P__MAX] = {
+#define JIT_PARAMDEFAULT(len, name, value) [JIT_P_##name] = value,
+  JIT_PARAMDEF(JIT_PARAMDEFAULT)
+#undef JIT_PARAMDEFAULT
+};
+
+static uint32_t jitFlags = JIT_OPT_DEFAULT;
+
 typedef enum {
   OPT_PRINT_LOADER_STATE = 0x1000,
 } OptionFlags;
@@ -65,7 +73,7 @@ main(int argc, char *argv[])
 
   while (1) {
     int option_index = 0;
-    c = getopt_long(argc, argv, "he:B:", long_options, &option_index);
+    c = getopt_long(argc, argv, "he:B:O:", long_options, &option_index);
 
     if (c == -1)
       break;
@@ -103,6 +111,11 @@ main(int argc, char *argv[])
       break;
     case 'l':
       opts.main_closure = NULL;
+      break;
+    case 'O':
+      if (!parseJitOpt(jitParams, &jitFlags, optarg)) {
+        fprintf(stderr, "Unrecognized value for -O\n");
+      }
       break;
     case 'h':
       printf("Usage: %s [options] MODULE_NAME\n\n"
@@ -171,6 +184,9 @@ main(int argc, char *argv[])
 
   initStorageManager();
   initVM(&opts);
+#ifdef LC_HAS_JIT
+  setJitOpts(&G_cap0->J, jitParams, jitFlags);
+#endif
   initLoader(&opts);
 #ifdef LC_SELF_CHECK_MODE
   initShadowHeap();
