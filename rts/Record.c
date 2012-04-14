@@ -850,9 +850,11 @@ recordIns(JitState *J)
 
   case BC_UPDATE:
     {
-      ra = getSlot(J, bc_a(ins));
-      rb = getSlot(J, bc_d(ins));
-      emit(J, IRT(IR_UPDATE, IRT_VOID), ra, rb);
+      if (!(J->flags & JIT_OPT_CALL_BY_NAME)) {
+        ra = getSlot(J, bc_a(ins));
+        rb = getSlot(J, bc_d(ins));
+        emit(J, IRT(IR_UPDATE, IRT_VOID), ra, rb);
+      }
       break;
       /* J->last_result = rb; */
       /* J->needsnap = 1; */
