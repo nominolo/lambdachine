@@ -466,7 +466,7 @@ irEngine(Capability *cap, Fragment *F)
     T->top = base + 1 + nslots;
     base += baseslot - 1;
     T->base = base + 1;
-    //    vals[REF_BASE] = T->base;
+    //    vals[REF_BASE] = T->base;  // doesn't seem to work
     //    sayonara("Need to treat KBASEO differently!");
 
     DBG_LVL(2, "base goes from %p to %p (delta: %d), top = %p (%d)\n",
@@ -554,6 +554,7 @@ restoreStack(Fragment *F, Word *base, Word *vals, Word *hp, Word *hplim,
     IF_DBG_LVL(2, printSnapshot(F, snap, F->snapmap));
     int snap_id = F->snap - snap;;
     snap->count++;
+    Word *realbase = base + 1;
 
     se = F->snapmap + snap->mapofs;
     DBG_PR("Snapshot: %d, Snap entries: %d, slots = %d\n",
@@ -564,7 +565,13 @@ restoreStack(Fragment *F, Word *base, Word *vals, Word *hp, Word *hplim,
       IRRef r = snap_ref(*se);
 
       DBG_PR("base[%d] = ", s - 1);
-      base[s] = restoreValue(F, vals, r);
+      if (IR(r)->o == IR_KBASEO) {
+        int offset = IR(r)->i;
+        base[s] = (Word)(realbase + offset);
+        DBG_PR("base%+d / %p\n", offset, (Word*)base[s]);
+      } else {
+        base[s] = restoreValue(F, vals, r);
+      }
 
       //#if !defined(LC_SELF_CHECK_MODE)
       IF_DBG_LVL(1, printSlot(stderr, base + s); fprintf(stderr, "\n"));

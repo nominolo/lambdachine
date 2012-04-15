@@ -680,6 +680,9 @@ recordIns(JitState *J)
 
       } else {
         //printSlots(J);
+        DBG_LVL(2, "Recording non HNF eval\n");
+        IF_DBG_LVL(2, printSlots(J));
+
         // Setup stack frame for evaluation.
         if (!recordBuildEvalFrame(J, ra, (ThunkInfoTable*)ninfo, J->pc + 2))
           goto abort_recording;
