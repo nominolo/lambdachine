@@ -496,6 +496,7 @@ irEngine(Capability *cap, Fragment *F)
   DBG_PR("Exiting at %d\n", pcref - REF_BIAS);
 
   {
+    /* TODO: Support linking traces. */
     int snap_id = restoreStack(F, base, vals, hp, hplim, pcref, T);
 
     if (heapcheck_failed) {
@@ -512,14 +513,17 @@ irEngine(Capability *cap, Fragment *F)
       getchar();
     }
 
-    // printShadowHeap(stderr);
-
-    //printFrame(T->base, T->top);
-    return 0;
+    if (F->snap[snap_id].count > 6) {
+      int res = (int)snap_id << 16;
+      res |= (int)(F->fragmentid & 0xffff);
+      return res;
+    } else {
+      return 0;
+    }
   }
 
  stop:
-  return 1;
+  return -1;
 }
 
 SnapShot *
@@ -541,6 +545,16 @@ restoreStack(Fragment *F, Word *base, Word *vals, Word *hp, Word *hplim,
       int i;
     SnapShot *snap = 0;
     SnapEntry *se;
+
+    snap = findSnapShot(F, pcref);
+    LC_ASSERT(snap != 0);
+    IF_DBG_LVL(2, printSnapshot(F, snap, F->snapmap));
+    int snap_id = snap - F->snap;;
+    LC_ASSERT(&F->snap[snap_id] == snap);
+    DBG_LVL(3, "::: exit count: %d\n", snap->count);
+    snap->count++;
+    Word *realbase = base + 1;
+
     /* Reconstructing from the snapshot may cause allocation
        which in turn may cause garbage collection.  We temporarily
        suppress GC to avoid having to attach pointer info
@@ -548,13 +562,6 @@ restoreStack(Fragment *F, Word *base, Word *vals, Word *hp, Word *hplim,
     G_storage.gc_inhibited = 1;
     G_storage.hp = hp;
     G_storage.limit = hplim;
-
-    snap = findSnapShot(F, pcref);
-    LC_ASSERT(snap != 0);
-    IF_DBG_LVL(2, printSnapshot(F, snap, F->snapmap));
-    int snap_id = F->snap - snap;;
-    snap->count++;
-    Word *realbase = base + 1;
 
     se = F->snapmap + snap->mapofs;
     DBG_PR("Snapshot: %d, Snap entries: %d, slots = %d\n",

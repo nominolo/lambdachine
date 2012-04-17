@@ -143,6 +143,7 @@ typedef struct _FoldState {
 /* Optimization parameters and their defaults. Length is a char in octal! */
 #define JIT_PARAMDEF(_) \
   _(\011, enableasm,	 0)	/* Generate machine code for traces. */ \
+  _(\012, enableside,    0)     /* Enable side traces. */ \
   /* Size of each machine code area (in KBytes). */ \
   _(\011, sizemcode,	64) \
   /* Max. total size of all machine code areas (in KBytes). */ \

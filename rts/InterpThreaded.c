@@ -128,6 +128,35 @@ incrementHotCounter(Capability *cap, JitState *J, BCIns *pc)
   return false;
 }
 
+static inline void
+enterCompiledCode(Capability *cap, JitState *J, Thread *T, FragmentId traceNo)
+{
+  Fragment *F = J->fragment[traceNo];
+  int hotexit = 0;
+  LC_ASSERT(F != NULL);
+  recordEvent(EV_TRACE, 0);
+#if LC_HAS_ASM_BACKEND
+  if(J->param[JIT_P_enableasm]) {
+    asmEngine(cap, F);
+  }
+  else {
+    hotexit = irEngine(cap, F);
+  }
+#else
+  hotexit = irEngine(cap, F);
+#endif
+  DBG_PR("*** Continuing at: pc = %p, base = %p, hotexit = %x\n",
+         T->pc, T->base, hotexit);
+
+  if (hotexit > 0 && J->param[JIT_P_enableside]) {
+    u2 fragmentId = hotexit & 0xffff;
+    u2 snap_id = hotexit >> 16;
+    DBG_LVL(2, "Side exit #%d of fragment #%d is hot.\n",
+            snap_id, fragmentId);
+    exit(4);
+  }
+}
+
 #define STACK_FRAME_SIZEW   3
 #define UPDATE_FRAME_SIZEW  (STACK_FRAME_SIZEW + 2)
 
@@ -288,26 +317,10 @@ engine(Capability *cap)
       case REC_LOOP:
         // We found a loop and want to immediately execute it.
         {
-          Fragment *F = J->fragment[getFragmentId(recstatus)];
-          Closure *cl;
-          LC_ASSERT(F != NULL);
-          recordEvent(EV_TRACE, 0);
-#if LC_HAS_ASM_BACKEND
-          if(J->param[JIT_P_enableasm]) {
-            asmEngine(cap, F);
-          }
-          else {
-            irEngine(cap, F);
-          }
-#else
-	  irEngine(cap, F);
-#endif
-          DBG_PR("*** Continuing at: pc = %p, base = %p\n",
-                 T->pc, T->base);
-          //LC_ASSERT(0);
+          enterCompiledCode(cap, J, T, getFragmentId(recstatus));
           pc = T->pc;
           base = T->base;
-          cl = (Closure*)base[-1];
+          Closure *cl = (Closure*)base[-1];
           code = &getFInfo(cl)->code;
           DISPATCH_NEXT;
         }
@@ -532,8 +545,6 @@ engine(Capability *cap)
 #if LC_HAS_JIT
   if (J->mode == JIT_MODE_NORMAL) {
     u4 frag_id = opC;
-    Fragment *F = J->fragment[frag_id];
-    Closure *cl;
 
     // Make sure thread data is consistent.
     T->base = base;
@@ -546,24 +557,12 @@ engine(Capability *cap)
       getchar();
     }
 
-
-    LC_ASSERT(F != NULL);
-    recordEvent(EV_TRACE, 0);
-#if LC_HAS_ASM_BACKEND
-    if(J->param[JIT_P_enableasm]) {
-      asmEngine(cap, F);
-    }
-    else {
-      irEngine(cap, F);
-    }
-#else
-    irEngine(cap, F);
-#endif
-    DBG_PR("*** Continuing at: pc = %p, base = %p\n", T->pc, T->base);
+    enterCompiledCode(cap, J, T, frag_id);
+    
 
     pc = T->pc;
     base = T->base;
-    cl = (Closure*)base[-1];
+    Closure *cl = (Closure*)base[-1];
     code = &getFInfo(cl)->code;
 
     // Custom version of DISPATCH_NEXT
