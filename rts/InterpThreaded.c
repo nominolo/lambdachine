@@ -90,10 +90,46 @@ startThread(Thread *T, Closure *cl)
   return (Closure*)T->stack[3];
 }
 
+typedef void* Inst;
+typedef Inst *DispatchTable;
+
+static inline void
+enterRecordingMode(Capability *cap, BCIns *pc, JitState *J,
+                   DispatchTable *disp, DispatchTable disp_record,
+                   Word *base, int mode)
+{
+  startRecording(J, pc, cap->T, base, FUNCTION_TRACE);
+  *disp = disp_record;
+  if (G_jitstep & STEP_START_RECORDING) {
+    fprintf(stderr, "Starting to record trace at PC: %p", pc);
+    getchar();
+  }
+}
+
+/**
+ * Increments the hot counter for the given PC.
+ *
+ * Returns true iff the counter has exceeded the hotness threshold.
+ */
+static inline bool
+incrementHotCounter(Capability *cap, JitState *J, BCIns *pc)
+{
+  // Ignore if we're already recording.
+  if (LC_UNLIKELY(J->mode != JIT_MODE_NORMAL)) {
+    return false;
+  }
+
+  HotCount c = --cap->hotcount[hotcount_hash(pc)];
+  DBG_PR("HOT_TICK: [%d] = %d\n", hotcount_hash(pc), c);
+  if (LC_UNLIKELY(c == 0)) {   // Target has become hot.
+    hotcount_set(cap, pc, HOTCOUNT_DEFAULT); // Reset hotcount
+    return true;
+  }
+  return false;
+}
+
 #define STACK_FRAME_SIZEW   3
 #define UPDATE_FRAME_SIZEW  (STACK_FRAME_SIZEW + 2)
-
-typedef void* Inst;
 
 void printIndent(FILE *stream, int i, char c);
 
@@ -553,29 +589,10 @@ engine(Capability *cap)
  op_FUNC:
 #if LC_HAS_JIT
   recordEvent(EV_TICK, 0);
-  {
-    // Ignore if we're already recording.
-    if (LC_UNLIKELY(J->mode != JIT_MODE_NORMAL)) {
-      DISPATCH_NEXT;
-    }
-
-    // Decrement hot counter for this PC
-    //
-    // We take the PC of this instruction to be the start of trace,
-    // but we start recording with the next instruction.  This is fine
-    // since from the trace recorder's point of view FUNC is a NOP.
-    //
-    HotCount c = --cap->hotcount[hotcount_hash(pc-1)];
-    DBG_PR("HOT_TICK: [%d] = %d\n", hotcount_hash(pc-1), c);
-    if (LC_UNLIKELY(c == 0)) {   // Target has become hot.
-      hotcount_set(cap, pc-1, HOTCOUNT_DEFAULT); // Reset hotcount
-      startRecording(J, pc-1, cap->T, base, FUNCTION_TRACE);
-      disp = disp_record;
-      if (G_jitstep & STEP_START_RECORDING) {
-        fprintf(stderr, "Starting to record trace at PC: %p", pc - 1);
-        getchar();
-      }
-    }
+  /* pc points to the following instruction.  We increment the hot counter
+     for this instruction instead, hence why we pass (pc - 1). */
+  if (incrementHotCounter(cap, J, pc - 1)) {
+    enterRecordingMode(cap, pc - 1, J, &disp, disp_record, base, FUNCTION_TRACE);
   }
 #endif
   DISPATCH_NEXT;
@@ -820,8 +837,7 @@ engine(Capability *cap)
   printFrame(stderr, base, T->top);
 
   if (J->mode == JIT_MODE_NORMAL) {
-    HotCount c = --cap->hotcount[hotcount_hash(pc-1)];
-    if (LC_UNLIKELY(c == 0)) {
+    if (incrementHotCounter(cap, J, pc - 1)) {
       /* What a RETURN trace looks like:
 
 	 - First thing is a guard for the return address.  This allows
@@ -839,9 +855,7 @@ engine(Capability *cap)
          - We don't need pointer info because there's no GC possible.
       */
       DBG_LVL(1, "Starting to record RETURN trace.");
-      hotcount_set(cap, pc-1, HOTCOUNT_DEFAULT); // Reset hotcount
-      startRecording(J, pc-1, cap->T, base, RETURN_TRACE);
-      disp = disp_record;
+      enterRecordingMode(cap, pc - 1, J, &disp, disp_record, base, RETURN_TRACE);
       pc = pc - 1;  // restart instruction
       DISPATCH_NEXT;
     }
