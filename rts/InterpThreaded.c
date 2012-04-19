@@ -235,7 +235,7 @@ engine(Capability *cap)
 #endif
 
 # define DEBUG_INSTR(pc) \
-    if (LC_DEBUG_LEVEL >= 2) { \
+    if (LC_DEBUG_LEVEL >= 3) { \
       fprintf(stderr, COL_YELLOW);                                       \
       DBG_IND(fprintf(stderr, "    "); printFrame(stderr, base, T->top)); \
       DBG_IND(printInstructionOneLine(stderr, pc));         \
