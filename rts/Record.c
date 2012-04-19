@@ -272,30 +272,12 @@ emitKInt(JitState *J, i4 k)
   return TREF(ref, IRT_I32);
 }
 
-INLINE_HEADER IRType
-litTypeToIRType(LitType lt)
-{
-  switch (lt) {
-  case LIT_INT:     return IRT_I32;
-  case LIT_STRING:  return IRT_PTR;
-  case LIT_CHAR:    return IRT_I32;
-  case LIT_WORD:    return IRT_U32;
-  case LIT_FLOAT:   return IRT_F32;
-  case LIT_INFO:    return IRT_INFO;
-  case LIT_CLOSURE: return IRT_CLOS;
-  case LIT_PC:      return IRT_PC;
-  default: LC_ASSERT(0); return 0;
-  }
-}
-
-LC_FASTCALL
-TRef
-emitKWord(JitState *J, Word w, LitType lt)
+LC_FASTCALL TRef
+emitKWord_(JitState *J, Word w, IRType t)
 {
   IRIns *ir, *cir = J->cur.ir;
   Word *kword = J->cur.kwords;
   IRRef ref;
-  IRType t = litTypeToIRType(lt);
 
   for (ref = J->chain[IR_KWORD]; ref; ref = cir[ref].prev)
     if (cir[ref].t == t && kword[cir[ref].u] == w)
@@ -1054,8 +1036,8 @@ JIT_PARAMDEF(JIT_PARAMINIT)
 void
 initJitState(JitState *J, const Opts* opts)
 {
-  J->mode = 0;
-  J->startpc = 0;
+  J->mode = JIT_MODE_NORMAL;
+  J->startpc = NULL;
   J->optimizations = JIT_OPT_DEFAULT;
 
   J->sizefragment = 256;
@@ -1082,7 +1064,7 @@ startRecording(JitState *J, BCIns *startpc, Thread *T, Word *base,
   J->startbase = base;
   J->cur.startpc = startpc;
   J->cur.traceType = type;
-  J->mode = 1;
+  J->mode = JIT_MODE_RECORDING;
   if (J->loghandle) {
     FuncInfoTable *info = getFInfo(base[-1]);
     LOG_JIT(J, "Starting trace at%s: %s (pc=%p)\n",
@@ -1184,7 +1166,7 @@ recordCleanup(JitState *J)
   xfree(J->irbuf + J->irmin);
   J->irbuf = J->cur.ir = NULL;
   J->irmin = J->irmax = 0;
-  J->mode = 0;
+  J->mode = JIT_MODE_NORMAL;
 
   xfree(J->snapbuf);
   xfree(J->snapmapbuf);
@@ -1269,6 +1251,65 @@ registerCurrentFragment(JitState *J)
 #endif
 
   return F->fragmentid;
+}
+
+#define SLOAD_INHERITED 1
+
+static void
+initSideTraceRecording(JitState *J, Fragment *parent, uint32_t exitno)
+{
+  SnapShot *snap = getSnapshot(parent, exitno);
+  SnapEntry *p = getSnapshotEntries(parent, snap);
+  int i, nent = snap->nent;
+  J->framedepth = 0;
+  DBG_LVL(2, "Initialising side trace from snapshot #%d\n", exitno);
+  IF_DBG_LVL(2, printSnapshot(parent, snap, parent->snapmap));
+  for (i = 0; i < nent; i++, p++) {
+    int slot = (int)snap_slot(*p) - 1;
+    IRRef ref = snap_ref(*p);
+    IRIns *ir = IR(ref);
+    TRef tr = 0;
+    if (irref_islit(ref)) {
+      switch (ir->o) {
+      case IR_KINT:
+        tr = emitKInt(J, ir->i);
+        break;
+      case IR_KWORD: {
+        Word *kwords = parent->kwords;
+        tr = emitKWord(J, kwords[ir->u], ir->t);
+        break;
+      }
+      case IR_KBASEO:
+        tr = emitKBaseOffset(J, ir->i);
+        break;
+      default:
+        fprintf(stderr, "FATAL: Unknown literal type in "
+                "initSideTraceRecording (%d).\n", ir->o);
+        exit(2);
+      }
+    } else {
+      /* TODO: handle sunken heap allocations. */
+      i2 relslot = (i2)J->baseslot + slot - INITIAL_BASE;
+      tr = emit_raw(J, IRT(IR_SLOAD, ir->t), relslot, SLOAD_INHERITED);
+    }
+    /* TODO: mark as written? */
+    setSlot(J, slot, tr);
+  }
+  IF_DBG_LVL(2, printIRBuffer(J));
+  IF_DBG_LVL(2, printSlots(J));
+  fprintf(stderr, "NYI: recording side traces\n");
+  exit(3);
+}
+
+LC_FASTCALL void
+startRecordingSideTrace(JitState *J, Thread *T, Word *base,
+                        Fragment *parent, uint32_t exitno)
+{
+  SnapShot *snap = getSnapshot(parent, exitno);
+  BCIns *pc = getSnapshotPC(parent, snap);
+  
+  startRecording(J, pc, T, base, SIDE_TRACE);
+  initSideTraceRecording(J, parent, exitno);
 }
 
 #undef IR

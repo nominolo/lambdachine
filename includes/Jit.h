@@ -96,7 +96,8 @@ typedef u4 MSize;  /* Machine code size */
 
 typedef enum {
   FUNCTION_TRACE,
-  RETURN_TRACE
+  RETURN_TRACE,
+  SIDE_TRACE
 } TraceType;
 
 /* Fragments */
@@ -310,11 +311,38 @@ INLINE_HEADER FragmentId getFragmentId(RecordResult r) { return (u4)r >> 8; }
 void initJitState(JitState *J, const Opts* opts);
 LC_FASTCALL void startRecording(JitState *J, BCIns *, Thread *, Word *base,
 				TraceType type);
+LC_FASTCALL void
+startRecordingSideTrace(JitState *J, Thread *T, Word *base,
+                        Fragment *parent, uint32_t exitno);
+
 void recordSetup(JitState *J, Thread *T);
 FragmentId finishRecording(JitState *J, UnrollLevel unroll);
 LC_FASTCALL TRef emitIR(JitState *J);
 LC_FASTCALL TRef emitLoadSlot(JitState *J, i4 slot);
-LC_FASTCALL TRef emitKWord(JitState *J, Word w, LitType lt);
+LC_FASTCALL TRef emitKWord_(JitState *J, Word w, IRType t);
+
+INLINE_HEADER IRType
+litTypeToIRType(LitType lt)
+{
+  switch (lt) {
+  case LIT_INT:     return IRT_I32;
+  case LIT_STRING:  return IRT_PTR;
+  case LIT_CHAR:    return IRT_I32;
+  case LIT_WORD:    return IRT_U32;
+  case LIT_FLOAT:   return IRT_F32;
+  case LIT_INFO:    return IRT_INFO;
+  case LIT_CLOSURE: return IRT_CLOS;
+  case LIT_PC:      return IRT_PC;
+  default: LC_ASSERT(0); return 0;
+  }
+}
+
+INLINE_HEADER
+TRef
+emitKWord(JitState *J, Word w, LitType lt) {
+  return emitKWord_(J, w, litTypeToIRType(lt));
+}
+
 RecordResult recordIns(JitState *J);
 
 LC_FASTCALL TRef optFold(JitState *J);

@@ -153,6 +153,7 @@ enterCompiledCode(Capability *cap, JitState *J, Thread *T, FragmentId traceNo)
     u2 snap_id = hotexit >> 16;
     DBG_LVL(2, "Side exit #%d of fragment #%d is hot.\n",
             snap_id, fragmentId);
+    startRecordingSideTrace(J, T, T->base, J->fragment[fragmentId], snap_id);
     exit(4);
   }
 }
