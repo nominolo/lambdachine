@@ -30,6 +30,12 @@ typedef u2 HotCount;
 // -- JIT stuff ------------------------------------------------------
 
 // The header structure describing the data in the snapshot map.
+//
+// In addition to the snapshot references, the snapshot map also
+// stores:
+//  - the program counter (as a 32bit offset from the startpc)
+//  - the base slot relative to INITIAL_BASE
+//  - all slots are relative to INITIAL_BASE, too
 typedef struct _SnapShot {
   u2     mapofs; // Start offset into snapshot map.
   IRRef1 ref;    // First IR reference for this snapshot
