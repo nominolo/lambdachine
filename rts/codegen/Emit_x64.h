@@ -296,6 +296,14 @@ static void emit_spstore(ASMState *as, IRIns *ir, Reg r, int32_t ofs)
     emit_rmro(as, XO_MOVSDto, r, RID_BASE, ofs);
 }
 
+/* Store a 64 bit value that can be encoded as a 32 bit signed
+   immediate.  I.e.:  Mem64[ptr + ofs] <- sign_extend(imm32) */
+static void emit_memstore_i32(ASMState *as, Reg ptr, int32_t ofs, int32_t imm32)
+{
+  emit_i32(as, imm32);
+  emit_rmro(as, XO_MOVmi, REX_64|0, ptr, ofs);
+}
+
 #define emit_spsub(as, ofs)	emit_addptr(as, RID_ESP|REX_64, -(ofs))
 
 /* Prefer rematerialization of BASE/L from global_State over spills. */

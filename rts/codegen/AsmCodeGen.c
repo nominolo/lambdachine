@@ -972,10 +972,9 @@ asm_heapstore(ASMState *as, IRRef ref, int32_t ofs, Reg base, RegSet allow){
     int32_t k;
     Reg r = ra_allock(as, ref, allow, &k);
     if(ra_noreg(r)) {
-      /* Move 32 bit constants directly into target */
-      emit_movmroi(as, base, ofs, k);
-    }
-    else {
+      /* Operand fits within signed 32 bit number.  Encode move directly. */
+      emit_memstore_i32(as, base, ofs, k);
+    } else {
       /* 64 bit constants need to be loaded into a register first. */
       emit_rmro(as, XO_MOVto, REX_64|r, REX_64|base, ofs);
       ra_rematk(as, ref);
