@@ -87,8 +87,8 @@ exitTrace(ExitNo n, ExitState* s) {
 /* Names of the machine code entry and exit functions. These are written in
  * assembly.
  * TODO: only some targets use leading underscores (works on mac os x)*/
-#define ASM_ENTER "_asmEnter"
-#define ASM_EXIT  "_asmExit"
+#define ASM_ENTER NAME_PREFIX "asmEnter"
+#define ASM_EXIT  NAME_PREFIX "asmExit"
 /* SAVE_SIZE is the extra stuff that we will keep on the C-stack.
     On entry to the function we automatically save rbp since it is a
     callee saved register and we want to get the stack aligned to 16-bytes. The
@@ -227,7 +227,7 @@ asmExitIsImplementedInAssembly() {
      * rdi = ExitNo
      * rsi = ExitState* (stored on the c-stack */
     "movq %%rsp, %%rsi\n\t"
-    "call _exitTrace\n\t"
+    "call " NAME_PREFIX "exitTrace\n\t"
 
     /* deallocate the stack used */
     "addq %0, %%rsp\n\t"

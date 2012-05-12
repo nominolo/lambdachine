@@ -27,7 +27,7 @@ Executable lcc
                   , ansi-wl-pprint  == 0.6.*
                   , binary          == 0.5.*
                   , uniplate        == 1.6.*
-                  , hoopl           >= 3.8.6.1 && < 3.8.7
+                  , hoopl           >= 3.8.7.1 && < 3.9
                   , value-supply    == 0.6.*
                   , graph-serialize >= 0.1.5
                   , temporary       == 1.1.*

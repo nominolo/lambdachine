@@ -32,6 +32,11 @@ ifeq "$(strip $(DisableAsm))" "Yes"
 EXTRA_CFLAGS := $(EXTRA_CFLAGS) -DLC_HAS_ASM_BACKEND=0
 endif
 
+ifeq "$(shell uname)" "Darwin"
+EXTRA_CFLAGS := $(EXTRA_CFLAGS) -DNEEDS_UNDERSCORE
+EXTRA_LDFLAGS := $(EXTRA_LDFLAGS) -Wl,-no_pie
+endif
+
 HSBUILDDIR = $(DIST)/build
 LCC = $(HSBUILDDIR)/lcc/lcc
 CABAL ?= cabal
@@ -76,8 +81,8 @@ echo:
 #SRCS = rts/Loader.c rts/HashTable.c
 
 interp: $(SRCS:.c=.o)
-	@echo "LINK $^ => $@"
-	@$(CC) -Wl,-no_pie -o $@ $^
+	@echo "LINK $(EXTRA_LDFLAGS) $^ => $@"
+	@$(CC) $(EXTRA_LDFLAGS) -o $@ $^
 
 lcc: $(LCC)
 	ln -fs $(LCC) $@

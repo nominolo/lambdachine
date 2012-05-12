@@ -59,4 +59,10 @@
 # define FMT_Int64      "lld"
 #endif
 
+#ifdef NEEDS_UNDERSCORE
+# define NAME_PREFIX "_"
+#else
+# define NAME_PREFIX ""
+#endif
+
 #endif
