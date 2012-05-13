@@ -524,7 +524,8 @@ loadId(FILE *f, const StringTabEntry *strings, const char* sep)
     }
   }
   *p = '\0';
-  LD_DBG_PR(3, "loadId: %lx, %s, %p\n", ftell(f), ident, ident);
+  LD_DBG_PR(3, "loadId: %lx, %s, " COLOURED(COL_BLUE, "%p") "\n",
+            ftell(f), ident, ident);
   return ident;
 }
 
@@ -620,6 +621,9 @@ loadInfoTable(const char *filename,
     HashTable_update(itbls, itbl_name, new_itbl);
     xfree(itbl_name);
   } else {
+    LD_DBG_PR(2, "loadInfoTable: %s " COLOURED(COL_YELLOW, "%p") "\n",
+              itbl_name, new_itbl);
+
     HashTable_insert(itbls, itbl_name, new_itbl);
   }
 
@@ -751,7 +755,8 @@ loadClosure(const char *filename,
     xfree(clos_name);
 
   } else {
-
+    LD_DBG_PR(2, "loadClosure: %s " COLOURED(COL_GREEN, "%p") "\n",
+              clos_name, cl);
     HashTable_insert(closures, clos_name, cl);
 
   }
