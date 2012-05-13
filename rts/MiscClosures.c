@@ -33,23 +33,8 @@ this should be changed to tell the scheduler to kill the thread.
 
 */
 
-static BCIns stop_code_insts[] =
-  { BCINS_AD(BC_EVAL, 0, 0),   // eval r0 ; no lives
-    8,
-    BCINS_AD(BC__MAX, 0, 0),    // stop
-    0x00010001  // r0 is live and a pointer
-  };
+const Closure *stg_STOP_closure_addr = NULL;
 
-/* LcInfoTable stg_STOP_info = */
-/*   DEF_INFO(FUN, 0, 0, stop_code_insts, 1, 1, "stg_STOP"); */
-
-ThunkInfoTable stg_STOP_info =
-  { .i = DEF_INFO_TABLE(FUN, 0, 0, 0),
-    .name = "stg_STOP",
-    .code = DEF_CODE(stop_code_insts, 1, 1)
-  };
-
-Closure stg_STOP_closure = DEF_CLOSURE(&stg_STOP_info, {});
 
 /*
 
@@ -61,7 +46,8 @@ Update frames
 
 // Both variables are initialized fully by initMiscClosures().
 BCIns *stg_UPD_return_pc = NULL;
-Closure stg_UPD_closure = DEF_CLOSURE(NULL, {});
+
+const Closure *stg_UPD_closure_addr = NULL;
 
 /*
 
@@ -298,7 +284,42 @@ initUpdateClosure(void)
   bitmasks += encodeBitmask(bitmasks, 1); // reg 0 is live
 
   stg_UPD_return_pc = &code[2];
-  setInfo(&stg_UPD_closure, (InfoTable*)info);
+
+  Closure *stg_UPD_closure = allocStaticClosure(wordsof(Closure));
+  setInfo(stg_UPD_closure, (InfoTable*)info);
+  stg_UPD_closure_addr = stg_UPD_closure;
+}
+
+void initStopClosure()
+{
+  FuncInfoTable *info = allocInfoTable(wordsof(ThunkInfoTable));
+  info->i.type = FUN;
+  info->i.size = 1;
+  info->i.tagOrBitmap = 0;
+  info->i.layout.bitmap = 0;
+  info->name = "stg_STOP";
+  info->code.framesize = 2;
+  info->code.arity = 1;
+  info->code.sizecode = 3;
+  info->code.sizelits = 0;
+  info->code.sizebitmaps = 2;
+  info->code.lits = NULL;
+  info->code.littypes = NULL;
+  info->code.code = xmalloc(info->code.sizecode * sizeof(BCIns) +
+			    info->code.sizebitmaps * sizeof(u2));
+  BCIns *code = info->code.code;
+  u2 *bitmasks = cast(u2*, code + info->code.sizecode);
+  
+  code[0] = BCINS_AD(BC_EVAL, 0, 0),   // eval r0 ; is r0 live here?
+  code[1] = cast(BCIns, byte_offset(&code[1], bitmasks));
+  code[2] = BCINS_AD(BC__MAX, 0, 0);   // stop execution
+ 
+  bitmasks += encodeBitmask(bitmasks, 1); // reg 0 is a pointer
+  bitmasks += encodeBitmask(bitmasks, 1); // reg 0 is live
+
+  Closure *stg_STOP_closure = allocStaticClosure(wordsof(Closure));
+  setInfo(stg_STOP_closure, (InfoTable*)info);
+  stg_STOP_closure_addr = stg_STOP_closure;
 }
 
 void
@@ -307,6 +328,7 @@ initMiscClosures(void)
   int i;
 
   initUpdateClosure();
+  initStopClosure();
 
   for (i = 0; i < sizeof(apk_info) / sizeof(APKInfo); i++) {
     apk_info[i].clos = NULL;

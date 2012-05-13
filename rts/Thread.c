@@ -27,11 +27,11 @@ createThread(Capability *cap, u4 size)
   T->stack_size = stack_size;
   T->stack[0] = (Word)NULL;  // previous base
   T->stack[1] = (Word)NULL;  // previous PC
-  T->stack[2] = (Word)&stg_STOP_closure;
+  T->stack[2] = (Word)stg_STOP_closure_addr;
   T->stack[3] = (Word)NULL;
   T->base = &T->stack[3];
   T->top = &T->stack[4];
-  T->pc = getFInfo(&stg_STOP_closure)->code.code;
+  T->pc = getFInfo(stg_STOP_closure_addr)->code.code;
 
   return T;
 }

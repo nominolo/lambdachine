@@ -773,7 +773,7 @@ engine(Capability *cap)
       // push update frame and enter thunk
       top[0] = (Word)base;
       top[1] = (Word)return_pc;
-      top[2] = (Word)&stg_UPD_closure;
+      top[2] = (Word)stg_UPD_closure_addr;
       top[3] = (Word)tnode; // reg0
       top[4] = 1234;           // reg1
       top[5] = (Word)&top[3];
@@ -951,7 +951,7 @@ engine(Capability *cap)
         base[-1] = (Word)ap_closure;
         top[0] = (Word)base;
         top[1] = (Word)ap_return_pc;
-        top[2] = (Word)&stg_UPD_closure;
+        top[2] = (Word)stg_UPD_closure_addr;
         top[3] = (Word)fnode;
         top[4] = 0;
         top[5] = (Word)&top[3];
@@ -1222,7 +1222,7 @@ engine(Capability *cap)
 	// Put UPDATE and EVAL frames on top
 	top[3 + nargs + 0] = (Word)&top[3];
 	top[3 + nargs + 1] = (Word)ap_return_pc;
-	top[3 + nargs + 2] = (Word)&stg_UPD_closure;
+	top[3 + nargs + 2] = (Word)stg_UPD_closure_addr;
 	top[3 + nargs + 3] = (Word)fnode; // reg0
 	top[3 + nargs + 4] = 0;           // reg1
 	top[3 + nargs + 5] = (Word)&top[3 + nargs + 3];

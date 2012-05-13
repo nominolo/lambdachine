@@ -488,11 +488,11 @@ recordBuildEvalFrame(JitState *J, TRef node, ThunkInfoTable *info,
   }
 
   const u2 *liveouts = getLivenessMask(return_pc);
-  fprintf(stderr, "LIVES: %p %x\n", return_pc, (int)liveouts);
+  fprintf(stderr, "LIVES: %p %lx\n", return_pc, (long)liveouts);
 
   setSlot(J, t + 0, emitKBaseOffset(J, b));
   setSlot(J, t + 1, emitKWord(J, (Word)return_pc, LIT_PC));
-  setSlot(J, t + 2, emitKWord(J, (Word)&stg_UPD_closure, LIT_CLOSURE));
+  setSlot(J, t + 2, emitKWord(J, (Word)stg_UPD_closure_addr, LIT_CLOSURE));
   setSlot(J, t + 3, node); // the thing to update
   setSlot(J, t + 4, 0); // undefined
   setSlot(J, t + 5, emitKBaseOffset(J, b + t + 3));

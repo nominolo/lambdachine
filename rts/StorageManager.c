@@ -385,8 +385,7 @@ int looksLikeClosure(void *p)
   return (isManagedMemory(p) &&
           (PTR_TO_BLOCK_DESCR(p)->flags & BF_CONTENTS_MASK) ==
 	  BF_CLOSURES)
-    || looksLikeStaticClosure(p)
-    || p == &stg_UPD_closure;
+    || looksLikeStaticClosure(p);
 }
 
 int looksLikeStaticClosure(void *p)

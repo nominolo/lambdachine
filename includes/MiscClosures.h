@@ -10,8 +10,8 @@ typedef struct _IntClosure {
 } IntClosure;
 
 extern ConInfoTable stg_IND_info;
-extern Closure stg_STOP_closure;
-extern Closure stg_UPD_closure;
+extern const Closure *stg_STOP_closure_addr;
+extern const Closure *stg_UPD_closure_addr;
 extern BCIns* stg_UPD_return_pc;
 extern IntClosure the_smallInt[256];
 extern ConInfoTable stg_Izh_con_info;
