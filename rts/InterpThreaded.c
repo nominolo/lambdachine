@@ -164,11 +164,8 @@ enterCompiledCode(Capability *cap, JitState *J, Thread *T, FragmentId traceNo)
 void printIndent(FILE *stream, int i, char c);
 
 InterpExitCode
-engine(Capability *cap)
+engine_impl(Capability *cap, EngineMessage msg)
 {
-  Thread *T = cap->T;
-  int maxsteps = 100000000;
-
   /* Dispatch table for the regular interpreter. */
   static Inst disp1[] = {
 #define BCIMPL(name,_) &&op_##name,
@@ -193,7 +190,26 @@ engine(Capability *cap)
     &&stop_single_step
   };
 
-  Inst *disp = disp1;
+  if (msg == EM_INIT) {
+    cap->dispatch_normal = disp1;
+    cap->dispatch_record = disp_record;
+    cap->dispatch_single_step = disp_step;
+    cap->dispatch = cap->dispatch_normal;
+    return 0;
+  }
+
+  LC_ASSERT(msg == EM_INTERP);
+
+  Thread *T;
+  int maxsteps = 100000000;
+  Inst *disp;
+  Word *base;
+  u4 *pc; /* program counter: always points to the *next* instruction
+             to be decoded. */
+  u4 opA, opB, opC, opcode;
+  Word callt_temp[BCMAX_CALL_ARGS];
+  LcCode *code = NULL;
+
 
 #if LC_HAS_JIT
   JitState *J = &cap->J;
@@ -204,15 +220,13 @@ engine(Capability *cap)
     disp1[BC_FUNC] = disp1[BC_IFUNC];
     disp1[BC_RET1] = disp1[BC_IRET];
   }
-
 #endif
-  Word *base = T->base;
-  // The program counter always points to the *next* instruction to be
-  // decoded.
-  u4 *pc = T->pc;
-  u4 opA, opB, opC, opcode;
-  Word callt_temp[BCMAX_CALL_ARGS];
-  LcCode *code = NULL;
+
+#define LOAD_STATE_FROM_CAP \
+  do { T = cap->T;  disp = cap->dispatch; \
+    base = T->base;  pc = T->pc; } while (0)
+
+  LOAD_STATE_FROM_CAP;
 
 #if (LC_DEBUG_LEVEL >= 2)
 # define DBG_IND(stmt) \

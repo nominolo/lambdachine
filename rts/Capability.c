@@ -3,6 +3,7 @@
 #include "Jit.h"
 #include "Stats.h"
 #include "Opts.h"
+#include "Interp.h"
 
 #include <stdlib.h>
 
@@ -36,6 +37,7 @@ initialiseCapability(Capability *cap, const Opts* opts)
 
   cap->flags = 0;
   cap->static_objs = NULL;
+  initDispatchTables(cap);
 
 #if LC_HAS_JIT
   // Initialise hot counters.

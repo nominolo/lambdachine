@@ -7,7 +7,7 @@
 #include "Jit.h"
 #include "Opts.h"
 
-typedef int AsmFunction;
+typedef void *AsmFunction;
 
 #define DISPATCH_TABLE_LEN   64
 
@@ -28,6 +28,12 @@ struct Capability_ {
   Word      step_result;             /* Saved code pointer.  For
                                         verification mode only. */
 #endif
+
+  AsmFunction *dispatch;        /* The current dispatch table. */
+  /* Pointers to the dispatch tables for various modes. */
+  const AsmFunction *dispatch_normal;
+  const AsmFunction *dispatch_record;
+  const AsmFunction *dispatch_single_step;
 };
 
 extern Capability* G_cap0;
