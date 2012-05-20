@@ -159,7 +159,7 @@ clean-interp:
 .PHONY: clean
 clean:
 	rm -f $(SRCS:%.c=%.o) utils/*.o interp compiler/.depend \
-		compiler/lcc lcc
+		compiler/lcc lcc $(DIST)/setup-config
 	rm -rf $(HSBUILDDIR)
 	$(MAKE) -C tests clean
 

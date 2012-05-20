@@ -8,6 +8,7 @@
 # HC=ghc-6.12.1
 # HC=ghc-7.0.1
 # HC=ghc
+# HC_PKG=ghc-pkg-7.0.1
 
 # We currently only have one interpreter
 #
