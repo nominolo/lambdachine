@@ -6,6 +6,7 @@
 
 #include "Jit.h"
 #include "Opts.h"
+#include "Stats.h"
 
 typedef void *AsmFunction;
 
@@ -29,11 +30,14 @@ struct Capability_ {
                                         verification mode only. */
 #endif
 
-  AsmFunction *dispatch;        /* The current dispatch table. */
+  const AsmFunction *dispatch;        /* The current dispatch table. */
   /* Pointers to the dispatch tables for various modes. */
   const AsmFunction *dispatch_normal;
   const AsmFunction *dispatch_record;
   const AsmFunction *dispatch_single_step;
+  /* If this special label is called, the state is reloaded from the
+     capability. */
+  BCIns *reload_state_pc;
 };
 
 extern Capability* G_cap0;
@@ -50,5 +54,31 @@ void *allocate(Capability *cap, u4 num_words);
 
 void initVM(const Opts* opts);
 void initialiseCapability(Capability *cap, const Opts* opts);
+
+/**
+ * Increments the hot counter for the given PC.
+ *
+ * @return true iff the counter has exceeded the hotness threshold.
+ */
+static inline bool
+incrementHotCounter(Capability *cap, JitState *J, const BCIns *pc)
+{
+  recordEvent(EV_TICK, 0);
+
+  // Ignore if we're already recording.
+  if (LC_UNLIKELY(J->mode != JIT_MODE_NORMAL)) {
+    return false;
+  }
+
+  HotCount c = --cap->hotcount[hotcount_hash(pc)];
+  DBG_PR("HOT_TICK: [%d] = %d\n", hotcount_hash(pc), c);
+  if (LC_UNLIKELY(c == 0)) {   // Target has become hot.
+    hotcount_set(cap, pc, HOTCOUNT_DEFAULT); // Reset hotcount
+    return true;
+  }
+  return false;
+}
+
+
 
 #endif

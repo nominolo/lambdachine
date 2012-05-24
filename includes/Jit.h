@@ -106,6 +106,11 @@ typedef enum {
   SIDE_TRACE
 } TraceType;
 
+typedef enum {
+  BRANCH_CALL,
+  BRANCH_RETURN
+} BranchType;
+
 /* Fragments */
 typedef u2 FragmentId;
 
@@ -449,6 +454,11 @@ bool checkPerOpcodeLinks(JitState *J);
 
 bool parseJitOpt(int32_t *param, uint32_t *flags, const char *str);
 void setJitOpts(JitState *J, int32_t *param, uint32_t flags);
+
+BCIns *
+interpreterBranch(Capability *cap, JitState *J, BCIns *src_pc,
+                  BCIns *dst_pc, Word *base, BranchType branchType);
+
 
 #ifdef LC_SELF_CHECK_MODE
 

@@ -1,5 +1,7 @@
 #include "Common.h"
 #include "Jit.h"
+#include "Capability.h"
+#include "Thread.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -85,4 +87,41 @@ void setJitOpts(JitState *J, int32_t *param, uint32_t flags) {
     J->param[i] = param[i];
   }
   J->flags = flags;
+}
+
+
+/**
+ * Called whenever the interpreter performs a non-local jump (i.e.,
+ * CALL[T], EVAL).
+ *
+ * Takes care of incrementing hotness counters and switching the
+ * interpreter mode.
+ *
+ * @return address where to continue interpreting.
+ */
+BCIns *
+interpreterBranch(Capability *cap, JitState *J, BCIns *src_pc,
+                  BCIns *dst_pc, Word *base, BranchType branchType)
+{
+  if (LC_UNLIKELY(J->mode == JIT_MODE_RECORDING)) {
+    /* TODO: check for recording termination. */
+    return dst_pc;
+  } else {
+    if (dst_pc < src_pc && bc_op(*dst_pc) != BC_JFUNC) {
+      if (incrementHotCounter(cap, J, dst_pc) && !(cap->flags & CF_NO_JIT)) {
+        /* It's hot now. */
+
+        /* Start recording mode. */
+        Thread *T = cap->T;
+        cap->dispatch = cap->dispatch_record;
+        T->pc = dst_pc;
+        TraceType traceType =
+          branchType == BRANCH_RETURN ? RETURN_TRACE : FUNCTION_TRACE;
+        startRecording(J, dst_pc, T, base, traceType);
+
+        return cap->reload_state_pc;
+      }
+    }
+    return dst_pc;
+  }
 }

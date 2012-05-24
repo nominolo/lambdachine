@@ -127,7 +127,8 @@ interpreter, and all bytecode files.
   _(IFUNC,   ___) \
   _(JFUNC,   ___) \
   _(JRET,    RN) \
-  _(IRET,    RN)
+  _(IRET,    RN) \
+  _(SYNC, ___)
 
 
 

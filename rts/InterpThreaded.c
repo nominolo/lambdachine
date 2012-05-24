@@ -91,7 +91,7 @@ startThread(Thread *T, Closure *cl)
 }
 
 typedef void* Inst;
-typedef Inst *DispatchTable;
+typedef const Inst *DispatchTable;
 
 static inline void
 enterRecordingMode(Capability *cap, BCIns *pc, JitState *J,
@@ -104,28 +104,6 @@ enterRecordingMode(Capability *cap, BCIns *pc, JitState *J,
     fprintf(stderr, "Starting to record trace at PC: %p", pc);
     getchar();
   }
-}
-
-/**
- * Increments the hot counter for the given PC.
- *
- * Returns true iff the counter has exceeded the hotness threshold.
- */
-static inline bool
-incrementHotCounter(Capability *cap, JitState *J, BCIns *pc)
-{
-  // Ignore if we're already recording.
-  if (LC_UNLIKELY(J->mode != JIT_MODE_NORMAL)) {
-    return false;
-  }
-
-  HotCount c = --cap->hotcount[hotcount_hash(pc)];
-  DBG_PR("HOT_TICK: [%d] = %d\n", hotcount_hash(pc), c);
-  if (LC_UNLIKELY(c == 0)) {   // Target has become hot.
-    hotcount_set(cap, pc, HOTCOUNT_DEFAULT); // Reset hotcount
-    return true;
-  }
-  return false;
 }
 
 static inline void
@@ -174,6 +152,12 @@ engine_impl(Capability *cap, EngineMessage msg)
     &&stop
   };
 
+  /* This code is called in order to synchronize the interpreter state
+     with the state stored in the capabilty (see op_SYNC below). */
+  static const BCIns trampoline[] = {
+    BCINS_AD(BC_SYNC, 0, 0)
+  };
+
   /* Dispatch table for recording mode. */
   static Inst disp_record[] = {
 #define BCIMPL(name,_) &&recording,
@@ -195,6 +179,7 @@ engine_impl(Capability *cap, EngineMessage msg)
     cap->dispatch_record = disp_record;
     cap->dispatch_single_step = disp_step;
     cap->dispatch = cap->dispatch_normal;
+    cap->reload_state_pc = (BCIns*)&trampoline[0];
     return 0;
   }
 
@@ -202,7 +187,7 @@ engine_impl(Capability *cap, EngineMessage msg)
 
   Thread *T;
   int maxsteps = 100000000;
-  Inst *disp;
+  const Inst *disp;
   Word *base;
   u4 *pc; /* program counter: always points to the *next* instruction
              to be decoded. */
@@ -213,13 +198,6 @@ engine_impl(Capability *cap, EngineMessage msg)
 
 #if LC_HAS_JIT
   JitState *J = &cap->J;
-
-  if (cap->flags & CF_NO_JIT) {
-    // Disable the JIT by overriding the places where a new trace may
-    // be started.
-    disp1[BC_FUNC] = disp1[BC_IFUNC];
-    disp1[BC_RET1] = disp1[BC_IRET];
-  }
 #endif
 
 #define LOAD_STATE_FROM_CAP \
@@ -273,6 +251,10 @@ engine_impl(Capability *cap, EngineMessage msg)
     opC = bc_d(*pc); \
     ++pc; \
     goto *disp[opcode]
+
+# define BRANCH_TO(dst_pc, branch_type) \
+  pc = interpreterBranch(cap, J, pc, (dst_pc), base, (branch_type)); \
+  DISPATCH_NEXT
 
 /* Decode the B and C operand from D. */
 # define DECODE_BC \
@@ -601,14 +583,12 @@ engine_impl(Capability *cap, EngineMessage msg)
 #endif
 
  op_FUNC:
-#if LC_HAS_JIT
-  recordEvent(EV_TICK, 0);
-  /* pc points to the following instruction.  We increment the hot counter
-     for this instruction instead, hence why we pass (pc - 1). */
-  if (incrementHotCounter(cap, J, pc - 1)) {
-    enterRecordingMode(cap, pc - 1, J, &disp, disp_record, base, FUNCTION_TRACE);
-  }
-#endif
+  /* This is currently only a place-holder instruction.  It is replaced
+     by JFUNC if the given trace becomes hot.
+
+     In the future it may be used to perform the stack check (if we use
+     a register window style calling convention).
+  */
   DISPATCH_NEXT;
     
  op_IFUNC:
@@ -799,9 +779,8 @@ engine_impl(Capability *cap, EngineMessage msg)
       base = top + STACK_FRAME_SIZEW + UPDATE_FRAME_SIZEW;
       T->top = base + framesize;
       code = &info->code;
-      pc = info->code.code;
-
-      DISPATCH_NEXT;
+      
+      BRANCH_TO(info->code.code, BRANCH_CALL);
     }
 
   }
@@ -975,8 +954,7 @@ engine_impl(Capability *cap, EngineMessage msg)
         base = top + STACK_FRAME_SIZEW + UPDATE_FRAME_SIZEW;
         T->top = base + framesize;
         code = &info->code;
-        pc = info->code.code;
-        DISPATCH_NEXT;
+        BRANCH_TO(info->code.code, BRANCH_CALL);
       }
     default:
       fprintf(stderr, "FATAL: Function argument to CALLT not FUN or PAP.\n");
@@ -1022,6 +1000,7 @@ engine_impl(Capability *cap, EngineMessage msg)
       // return pointer to new pap
       T->last_result = (Word)new_pap;
       T->top = base - 3;
+      /* Currently cannot cause a trace to start. */
       pc = (BCIns*)base[-2];
       base = (Word*)base[-3];
       { FuncInfoTable *info = getFInfo((Closure*)base[-1]);
@@ -1123,10 +1102,9 @@ engine_impl(Capability *cap, EngineMessage msg)
       base = top + 3;
       T->top = base + framesize;
       code = &info->code;
-      pc = info->code.code;
-
       DBG_STACK;
-      DISPATCH_NEXT;
+
+      BRANCH_TO(info->code.code, BRANCH_CALL);
 
     } else { // Exact application
       u4 curframesize = T->top - base;
@@ -1155,10 +1133,10 @@ engine_impl(Capability *cap, EngineMessage msg)
 
       base[-1] = (Word)fnode;
       code = &info->code;
-      pc = info->code.code;
 
       DBG_STACK;
-      DISPATCH_NEXT;
+
+      BRANCH_TO(info->code.code, BRANCH_CALL);
     }
   }
 
@@ -1246,9 +1224,8 @@ engine_impl(Capability *cap, EngineMessage msg)
 	base = &top[3 + nargs + 8];
 	T->top = base + framesize;
 	code = &info->code;
-	pc = info->code.code;
-
-	DISPATCH_NEXT;
+        
+        BRANCH_TO(info->code.code, BRANCH_CALL);
       }
     default:
       fprintf(stderr, "ERROR: CALL function argument not a PAP or FUN.\n");
@@ -1294,6 +1271,7 @@ engine_impl(Capability *cap, EngineMessage msg)
       // Return the PAP
       T->last_result = (Word)new_pap;
       T->top = base - 3;
+      /* Currently cannot cause another trace to start. */
       pc     = (BCIns*)base[-2];
       base   = (Word*)base[-3];
       { FuncInfoTable *info = getFInfo((Closure*)base[-1]);
@@ -1383,9 +1361,8 @@ engine_impl(Capability *cap, EngineMessage msg)
     T->base = base = top + STACK_FRAME_SIZEW;
     T->top = base + framesize;
     code = &info->code;
-    pc = info->code.code;
 
-    DISPATCH_NEXT;
+    BRANCH_TO(info->code.code, BRANCH_CALL);
   }
 
  op_LOADK:
@@ -1429,6 +1406,10 @@ engine_impl(Capability *cap, EngineMessage msg)
  op_NEW_INT:
   return INTERP_UNIMPLEMENTED;
 
+  /* Reload the interpreter state from the capability. */
+ op_SYNC:
+    LOAD_STATE_FROM_CAP;
+    DISPATCH_NEXT;
 }
 
 int
