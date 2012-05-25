@@ -441,7 +441,7 @@ printIRBuffer(JitState *J)
 }
 
 int
-evalNumComp(Word x, Word y, IROp op)
+evalNumComp(WordInt x, WordInt y, IROp op)
 {
   switch (op) {
   case IR_EQ: return (x == y);
