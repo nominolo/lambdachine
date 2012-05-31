@@ -127,3 +127,4 @@ cabal-dev/
 dump.s
 _T*.*
 tests/lit.user.cfg
+utils/gtest-*

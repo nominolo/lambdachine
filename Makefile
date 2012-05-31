@@ -11,6 +11,7 @@ endif
 HC ?= ghc
 HC_PKG ?= ghc-pkg
 CC ?= gcc
+CCC ?= g++
 
 ifeq "$(strip $(PerformanceBuild))" "Yes"
 EXTRA_CFLAGS := $(EXTRA_CFLAGS) -DNDEBUG
@@ -79,6 +80,31 @@ UTILSRCS = utils/genopcodes.c
 echo:
 	@echo "SRCS = $(SRCS)"
 #SRCS = rts/Loader.c rts/HashTable.c
+
+#
+# === GoogleTest =======================================================
+#
+
+GTEST_VERSION=1.6.0
+UNZIP=unzip
+AT=@
+GTEST_DEFS=-DGTEST_HAS_PTHREAD=0
+GTEST_DIR=utils/gtest-$(GTEST_VERSION)
+GTEST_A=$(GTEST_DIR)/libgtest.a
+
+$(GTEST_DIR): $(GTEST_DIR).zip
+	cd `dirname $(GTEST_DIR)` && $(UNZIP) `basename $<`
+
+${GTEST_DIR}/src/gtest-all.cc: ${GTEST_DIR} 
+
+$(GTEST_DIR)/src/gtest-all.o: ${GTEST_DIR}/src/gtest-all.cc 
+	@echo "Compiling googletest framework"
+	$(CCC) -I${GTEST_DIR}/include -I${GTEST_DIR} $(GTEST_DEFS) -c $< -o $@
+
+$(GTEST_A): $(GTEST_DIR)/src/gtest-all.o
+	ar -rv $@ $<
+
+# ======================================================================
 
 interp: $(SRCS:.c=.o)
 	@echo "LINK $(EXTRA_LDFLAGS) $^ => $@"
@@ -211,6 +237,9 @@ pr:
 clean-bytecode:
 	rm -f $(PRIM_MODULES)
 	$(MAKE) -C tests clean
+
+.PHONY: gtest
+gtest: $(GTEST_A)
 
 -include $(SRCS:%.c=$(DEPDIR)/%.P)
 -include $(UTILSRCS:%.c=$(DEPDIR)/%.P)
