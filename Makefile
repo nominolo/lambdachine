@@ -53,8 +53,9 @@ boot:
 	mkdir -p $(HSBUILDDIR)
 	mkdir -p $(DEPDIR)/rts
 	mkdir -p $(DEPDIR)/rts/codegen
+	mkdir -p $(DEPDIR)/vm
 	mkdir -p $(DEPDIR)/utils
-	touch mk/build.mk
+	test -f mk/build.mk || touch mk/build.mk
 
 INCLUDES = -Iincludes -Irts -Irts/codegen
 CFLAGS = -Wall -g $(EXTRA_CFLAGS)
@@ -126,6 +127,20 @@ lcc: $(LCC)
 	        -e '/^$$/ d' -e 's/$$/ :/' < $(df).d >> $(df).P; \
 	rm -f $(df).d
 
+%.o: %.cc mk/build.mk
+	@echo "CC $(CFLAGS) $< => $@"
+	@$(CCC) -c $(INCLUDES) -I$(GTEST_DIR)/include $(GTEST_DEFS) \
+	        -MD -MF $(patsubst %.cc,$(DEPDIR)/%.d,$<) $(CFLAGS) -o $@ $<
+	@cp $(df).d $(df).P; \
+	    sed -e 's/#.*//' -e 's/^[^:]*: *//' -e 's/ *\\$$//' \
+	        -e '/^$$/ d' -e 's/$$/ :/' < $(df).d >> $(df).P; \
+	rm -f $(df).d
+
+VM_SRCS = vm/thread.cc
+
+unittest: vm/unittest.o $(GTEST_A) $(VM_SRCS:.cc=.o)
+	@echo "LINK $^ => $@"
+	@$(CCC) -o $@ $^
 
 utils/genopcodes: utils/genopcodes.o
 	@echo "LINK $^ => $@"
@@ -185,7 +200,7 @@ clean-interp:
 .PHONY: clean
 clean:
 	rm -f $(SRCS:%.c=%.o) utils/*.o interp compiler/.depend \
-		compiler/lcc lcc $(DIST)/setup-config
+		compiler/lcc lcc $(DIST)/setup-config vm/*.o
 	rm -rf $(HSBUILDDIR)
 	$(MAKE) -C tests clean
 
