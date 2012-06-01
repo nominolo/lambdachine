@@ -114,6 +114,8 @@ interp: $(SRCS:.c=.o)
 lcc: $(LCC)
 	ln -fs $(LCC) $@
 
+vm/unittest.o: $(GTEST_A)
+
 # Building a C file automatically generates dependencies as a side
 # effect.  This only works with `gcc'.
 #
@@ -128,7 +130,7 @@ lcc: $(LCC)
 	rm -f $(df).d
 
 %.o: %.cc mk/build.mk
-	@echo "CC $(CFLAGS) $< => $@"
+	@echo "C++ $(CFLAGS) $< => $@"
 	@$(CCC) -c $(INCLUDES) -I$(GTEST_DIR)/include $(GTEST_DEFS) \
 	        -MD -MF $(patsubst %.cc,$(DEPDIR)/%.d,$<) $(CFLAGS) -o $@ $<
 	@cp $(df).d $(df).P; \
