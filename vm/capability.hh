@@ -2,8 +2,19 @@
 #define _CAPABILITY_H_
 
 #include "common.hh"
+#include "vm.hh"
+
+namespace lambdachine {
 
 class Capability {
+public:
+  explicit Capability();
+  ~Capability();
+  inline Thread *currentThread() { return currentThread_; }
+  
+private:
+  Thread *currentThread_;
+};
 
 }
 

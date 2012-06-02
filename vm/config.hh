@@ -22,4 +22,10 @@
 # endif
 #endif
 
+#define DEBUG_MEMORY_MANAGER 0x00000001L
+#define DEBUG_LOADER         0x00000002L
+#define DEBUG_INTERPRETER    0x00000004L
+
+#define DEBUG_COMPONENTS     0xffffffffL
+
 #endif

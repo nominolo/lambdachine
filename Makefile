@@ -138,11 +138,15 @@ vm/unittest.o: $(GTEST_A)
 	        -e '/^$$/ d' -e 's/$$/ :/' < $(df).d >> $(df).P; \
 	rm -f $(df).d
 
-VM_SRCS = vm/thread.cc
+VM_SRCS = vm/thread.cc vm/capability.cc vm/memorymanager.cc
 
 unittest: vm/unittest.o $(GTEST_A) $(VM_SRCS:.cc=.o)
 	@echo "LINK $^ => $@"
 	@$(CCC) -o $@ $^
+
+.PHONY: test
+test: unittest
+	@./unittest
 
 utils/genopcodes: utils/genopcodes.o
 	@echo "LINK $^ => $@"
