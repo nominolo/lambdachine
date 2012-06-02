@@ -146,7 +146,7 @@ unittest: vm/unittest.o $(GTEST_A) $(VM_SRCS:.cc=.o)
 
 .PHONY: test
 test: unittest
-	@./unittest
+	@./unittest 2> /dev/null # ignore debug output
 
 utils/genopcodes: utils/genopcodes.o
 	@echo "LINK $^ => $@"
