@@ -18,6 +18,7 @@ GHC 7, so you have to build that by hand:
     
 Now go back to the `lambdachine` directory and run:
 
+    $ ./boot
     $ make install-deps
     $ make boot
     $ make

@@ -1,0 +1,24 @@
+AC_PREREQ(2.57)
+AC_INIT([lambdachine], [0.1])
+AC_CONFIG_HEADER(vm/autoconfig.h)
+AC_CONFIG_FILES([Makefile])
+
+AC_PROG_CC
+AC_PROG_CXX
+AC_PROG_CPP
+
+AC_LANG([C++])
+
+# Figure out where hash_map lives and also hash_fun.h (or stl_hash_fun.h).
+# This also tells us what namespace hash code lives in.
+AC_CXX_STL_HASH
+# AC_CXX_STL_HASH_FUN
+
+AC_CHECK_PROGS([HC], [ghc-7.0.4 ghc-7.0.3 ghc-7.0.2 ghc-7.0.1], no)
+if test x"${HC}" == x"no" ; then
+  AC_MSG_ERROR([Lambdachine requires ghc-7.0])
+fi
+AC_CHECK_PROGS([HC_PKG], [ghc-pkg-7.0.4 ghc-pkg-7.0.3 ghc-pkg-7.0.2 ghc-pkg-7.0.1], no)
+AC_SUBST(HC)
+
+AC_OUTPUT

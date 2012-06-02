@@ -1,6 +1,8 @@
 #ifndef _LAMBDACHINE_CONFIG_H
 #define _LAMBDACHINE_CONFIG_H
 
+#include "autoconfig.h"
+
 #ifndef LC_HAS_JIT
 # define LC_HAS_JIT      1
 #endif

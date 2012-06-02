@@ -8,10 +8,10 @@ ifeq ($(DIST),)
 DIST := $(shell pwd)/dist
 endif
 
-HC ?= ghc
-HC_PKG ?= ghc-pkg
-CC ?= gcc
-CCC ?= g++
+HC ?= @HC@
+HC_PKG ?= @HC_PKG@
+CC ?= @CC@
+CXX ?= @CXX@
 
 ifeq "$(strip $(PerformanceBuild))" "Yes"
 EXTRA_CFLAGS := $(EXTRA_CFLAGS) -DNDEBUG
@@ -100,7 +100,7 @@ ${GTEST_DIR}/src/gtest-all.cc: ${GTEST_DIR}
 
 $(GTEST_DIR)/src/gtest-all.o: ${GTEST_DIR}/src/gtest-all.cc 
 	@echo "Compiling googletest framework"
-	$(CCC) -I${GTEST_DIR}/include -I${GTEST_DIR} $(GTEST_DEFS) -c $< -o $@
+	$(CXX) -I${GTEST_DIR}/include -I${GTEST_DIR} $(GTEST_DEFS) -c $< -o $@
 
 $(GTEST_A): $(GTEST_DIR)/src/gtest-all.o
 	ar -rv $@ $<
@@ -130,8 +130,8 @@ vm/unittest.o: $(GTEST_A)
 	rm -f $(df).d
 
 %.o: %.cc mk/build.mk
-	@echo "C++ $(CFLAGS) $< => $@"
-	@$(CCC) -c $(INCLUDES) -I$(GTEST_DIR)/include $(GTEST_DEFS) \
+	@echo "CXX $(CFLAGS) $< => $@"
+	@$(CXX) -c $(INCLUDES) -I$(GTEST_DIR)/include $(GTEST_DEFS) \
 	        -MD -MF $(patsubst %.cc,$(DEPDIR)/%.d,$<) $(CFLAGS) -o $@ $<
 	@cp $(df).d $(df).P; \
 	    sed -e 's/#.*//' -e 's/^[^:]*: *//' -e 's/ *\\$$//' \
@@ -142,7 +142,7 @@ VM_SRCS = vm/thread.cc vm/capability.cc vm/memorymanager.cc
 
 unittest: vm/unittest.o $(GTEST_A) $(VM_SRCS:.cc=.o)
 	@echo "LINK $^ => $@"
-	@$(CCC) -o $@ $^
+	@$(CXX) -o $@ $^
 
 .PHONY: test
 test: unittest
@@ -209,6 +209,11 @@ clean:
 		compiler/lcc lcc $(DIST)/setup-config vm/*.o
 	rm -rf $(HSBUILDDIR)
 	$(MAKE) -C tests clean
+
+.PHONY: distclean
+distclean: clean
+	rm -rf autom4te.cache
+	rm -f config.status configure config.log vm/autoconfig.h Makefile
 
 .PHONY: install-deps
 install-deps:
