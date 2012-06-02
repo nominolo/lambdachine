@@ -264,4 +264,5 @@ gtest: $(GTEST_A)
 
 -include $(SRCS:%.c=$(DEPDIR)/%.P)
 -include $(UTILSRCS:%.c=$(DEPDIR)/%.P)
-
+-include $(DEPDIR)/vm/unittest.P
+-include $(VM_SRCS:%.cc=$(DEPDIR)/%.P)
