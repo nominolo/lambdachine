@@ -36,6 +36,12 @@ const int kMMapFlags = MAP_PRIVATE | MAP_ANONYMOUS;
 
 Region *Region::newRegion(RegionType regionType) {
   // TODO: Grab a lock.
+  //
+  // TODO: This won't work if we allow giving back memory to the OS
+  // (because alloc_hint increases monotonically, so eventually we run
+  // out of address space.)  Solution: Maintain a list of munmapped
+  // regions and try to re-mmap them before trying to allocate at
+  // alloc_hint.
   static char *alloc_hint = alignToRegionBoundary(kMMapRegionStart);
   size_t size = kRegionSize;
   char *ptr;
@@ -80,7 +86,7 @@ void Region::initBlocks() {
   next_free_ = &blocks_[0];
 }
 
-static void Region::operator delete(void *p) {
+void Region::operator delete(void *p) {
   // destructor has already been called.  Nothing to be done here.
 }
 
@@ -98,7 +104,7 @@ Block *Region::grabFreeBlock() {
   next_free_ = b->link_;
   b->link_ = NULL;
 
-  DLOG("Returning block %p-%p\n", b->start(), b->end());
+  // DLOG("Returning block %p-%p\n", b->start(), b->end());
 
   return b;
 }
@@ -107,6 +113,8 @@ MemoryManager::MemoryManager()
   : full_(NULL), free_(NULL) {
   region_ = Region::newRegion(Region::kSmallObjectRegion);
   info_tables_ = grabFreeBlock(Block::kInfoTables);
+  static_closures_ = grabFreeBlock(Block::kStaticClosures);
+  closures_ = grabFreeBlock(Block::kClosures);
 }
 
 MemoryManager::~MemoryManager() {
@@ -118,7 +126,7 @@ MemoryManager::~MemoryManager() {
   }
 }
 
-Block *MemoryManager::grabFreeBlock(Block::BlockFlags flags) {
+Block *MemoryManager::grabFreeBlock(Block::Flags flags) {
   // 1. Try to grab a block from the free block list (very likely).
   Block *b = NULL;
   if (free_ != NULL) {
@@ -145,13 +153,70 @@ Block *MemoryManager::grabFreeBlock(Block::BlockFlags flags) {
   return b;
 }
 
-void *MemoryManager::allocInto(Block **block, size_t bytes) {
-  char *ptr = (*block)->alloc(bytes);
-  while (LC_UNLIKELY(ptr == NULL)) {
-    Block *b = grabFreeBlock((*block)->contents());
-    b->link_ = *block;
-    *block = b;
-    ptr = b->alloc(bytes);
+char *MemoryManager::blockFull(Block **block, size_t bytes) {
+  Block *fullBlock = *block;
+  Block *emptyBlock = grabFreeBlock(fullBlock->contents());
+  if (isGCd(fullBlock)) {
+    // Link block into full list.
+    emptyBlock->link_ = fullBlock->link_;
+    *block = emptyBlock;
+    fullBlock->link_ = full_;
+    full_ = fullBlock;
+  } else {
+    emptyBlock->link_ = *block;
+    *block = emptyBlock;
   }
-  return ptr;
+  return emptyBlock->alloc(bytes);
+}
+
+unsigned int MemoryManager::infoTables() {
+  Block *b = info_tables_;
+  unsigned int n = 0;
+  do {
+    n++;
+    b = b->link_;
+  } while (b != NULL);
+  return n;
+}
+
+static char blockContentShortname[][Block::kMaxContentType] = {
+#define DEF_CONTENT_STR(name, shortname) #shortname,
+  DEFINE_CONTENT_TYPE(DEF_CONTENT_STR)
+#undef DEF_CONTENT_STR
+};
+
+using namespace std;
+
+// Useful mainly for debugging.
+namespace lambdachine {
+
+std::ostream& operator<<(std::ostream& out, const Block& b) {
+  out << blockContentShortname[b.contents()]
+      << " [" << (void*)b.start() << '-' << (void*)b.end();
+  size_t blockSize = b.end() - b.start();
+  size_t blockFull = b.free() - b.start();
+  cout << " full:" << (100 * blockFull + (blockSize/2)) / blockSize
+       << "% link:" << (void*)(b.link_ != NULL ? b.link_->start() : NULL) << "]";
+  return out;
+}
+
+std::ostream& operator<<(std::ostream& out, const Region& r) {
+  const char *ptr = r.regionId();
+  out << "Region [" << (void*)ptr << "-"
+      << (void*)(ptr + Region::kRegionSize) << "]" << endl;
+  for (Word i = 0; i < Region::kBlocksPerRegion; i++) {
+    out << "  " << r.blocks_[i] << endl;
+  }
+  return out;
+}
+
+std::ostream& operator<<(std::ostream& out, const MemoryManager& mm) {
+  Region *r = mm.region_;
+  while (r != NULL) {
+    out << *r;
+    r = r->region_link_;
+  }
+  return out;
+}
+
 }

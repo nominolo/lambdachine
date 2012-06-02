@@ -1,7 +1,9 @@
 #include "gtest/gtest.h"
 #include "thread.hh"
 #include "memorymanager.hh"
+#include <iostream>
 
+using namespace std;
 using namespace lambdachine;
 
 TEST(ThreadTest, StartStop) {
@@ -26,10 +28,13 @@ TEST(MMTest, AllocBasic) {
 TEST(MMTest, AllocBasic2) {
   MemoryManager m;
   // Fill up at least one block.
-  for (size_t i = 0; i < (Block::kBlockSize / 10) + 10; i++) {
+  size_t i = 0;
+  for ( ; i < (Block::kBlockSize / 10) + 10; i++) {
     void *p = m.allocInfoTable(10);
     ASSERT_TRUE(p != NULL);
   }
+  //cout << i << "," << i * 10 * sizeof(Word) << endl << m;
+  ASSERT_GT(m.infoTables(), sizeof(Word));
 }
 
 int main(int argc, char *argv[]) {
