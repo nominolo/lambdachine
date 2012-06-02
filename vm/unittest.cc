@@ -1,6 +1,7 @@
 #include "gtest/gtest.h"
 #include "thread.hh"
 #include "memorymanager.hh"
+#include "loader.hh"
 #include <iostream>
 
 using namespace std;
@@ -35,6 +36,10 @@ TEST(MMTest, AllocBasic2) {
   }
   //cout << i << "," << i * 10 * sizeof(Word) << endl << m;
   ASSERT_GT(m.infoTables(), sizeof(Word));
+}
+
+TEST(LoaderTest, Simple) {
+  Loader l;
 }
 
 int main(int argc, char *argv[]) {

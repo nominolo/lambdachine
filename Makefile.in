@@ -138,7 +138,7 @@ vm/unittest.o: $(GTEST_A)
 	        -e '/^$$/ d' -e 's/$$/ :/' < $(df).d >> $(df).P; \
 	rm -f $(df).d
 
-VM_SRCS = vm/thread.cc vm/capability.cc vm/memorymanager.cc
+VM_SRCS = vm/thread.cc vm/capability.cc vm/memorymanager.cc vm/loader.cc
 
 unittest: vm/unittest.o $(GTEST_A) $(VM_SRCS:.cc=.o)
 	@echo "LINK $^ => $@"
