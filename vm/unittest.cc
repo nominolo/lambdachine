@@ -39,7 +39,15 @@ TEST(MMTest, AllocBasic2) {
 }
 
 TEST(LoaderTest, Simple) {
-  Loader l;
+  MemoryManager mm;
+  Loader l(&mm, "/usr/bin");
+  ASSERT_STREQ("/usr/bin", l.basePath(0));
+}
+
+TEST(LoaderTest, DefaultBasePath) {
+  MemoryManager mm;
+  Loader l(&mm, NULL);
+  ASSERT_TRUE(l.basePath(0) != NULL);
 }
 
 int main(int argc, char *argv[]) {
