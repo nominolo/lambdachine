@@ -50,6 +50,40 @@ TEST(LoaderTest, DefaultBasePath) {
   ASSERT_TRUE(l.basePath(0) != NULL);
 }
 
+TEST(LoaderTest, Load1) {
+  MemoryManager mm;
+  Loader l(&mm, "tests");
+  ASSERT_TRUE(l.loadModule("GHC.Bool"));
+  const Module *m = l.module("GHC.Bool");
+  ASSERT_TRUE(m != NULL);
+  ASSERT_STREQ("GHC.Bool", m->name());
+}
+
+TEST(LoaderTest, LoadIdempotent) {
+  MemoryManager mm;
+  Loader l(&mm, "tests");
+  const char *modname = "GHC.Bool";
+  ASSERT_TRUE(l.loadModule(modname));
+  const Module *m = l.module(modname);
+  
+  // Try loading the same module again.  Make sure the requested
+  // module name is not pointer identical.
+  char *modname2 = new char[strlen(modname) + 1];
+  strcpy(modname2, modname);
+  ASSERT_TRUE(modname != modname2);
+
+  ASSERT_TRUE(l.loadModule(modname2));
+  const Module *m2 = l.module(modname2);
+
+  ASSERT_TRUE(m == m2);         // pointer identity!
+}
+
+TEST(LoaderTest, Load2) {
+  MemoryManager mm;
+  Loader l(&mm, "tests");
+  ASSERT_TRUE(l.loadModule("GHC.Base"));
+}
+
 int main(int argc, char *argv[]) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
