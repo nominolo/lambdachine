@@ -115,6 +115,7 @@ MemoryManager::MemoryManager()
   info_tables_ = grabFreeBlock(Block::kInfoTables);
   static_closures_ = grabFreeBlock(Block::kStaticClosures);
   closures_ = grabFreeBlock(Block::kClosures);
+  strings_ = grabFreeBlock(Block::kStrings);
 }
 
 MemoryManager::~MemoryManager() {

@@ -149,6 +149,10 @@ public:
     return allocInto(&info_tables_, nwords * sizeof(Word));
   }
 
+  inline char *allocString(size_t length) {
+    return reinterpret_cast<char*>(allocInto(&strings_, length + 1));
+  }
+
   inline void *allocStaticClosure(Word nwords) {
     return allocInto(&static_closures_, nwords * sizeof(Word));
   }
@@ -186,6 +190,7 @@ private:
   Block *info_tables_;
   Block *static_closures_;
   Block *closures_;
+  Block *strings_;
 };
 
 }
