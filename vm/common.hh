@@ -9,7 +9,7 @@
 #include <cassert>
 #include <cstdio>
 
-namespace lambdachine {
+_START_LAMBDACHINE_NAMESPACE
 
 #if __GNUC__ >= 3
 /* Assume that a flexible array member at the end of a struct
@@ -295,6 +295,6 @@ typedef Word BloomFilter;
 #define bloomset(b, x)	((b) |= bloombit((x)))
 #define bloomtest(b, x)	((b) & bloombit((x)))
 
-}
+_END_LAMBDACHINE_NAMESPACE
 
 #endif /* LAMBDACHINE_COMMON_H */

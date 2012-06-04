@@ -3,12 +3,14 @@
 
 // Forward declarations.
 
-namespace lambdachine {
+#include "common.hh"
+
+_START_LAMBDACHINE_NAMESPACE
 
 class Thread;
 class Capability;
 class BcIns;
 
-}
+_END_LAMBDACHINE_NAMESPACE
 
 #endif /* _VM_H_ */

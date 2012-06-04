@@ -3,7 +3,7 @@
 
 #include "common.hh"
 
-namespace lambdachine {
+_START_LAMBDACHINE_NAMESPACE
 
 template <typename A> inline bool within(A low, A high, A value) {
   return low <= value && value <= high;
@@ -39,7 +39,6 @@ inline Word roundUpToPowerOf2(int power, Word value) {
   return (value + (1UL << power) - 1) & ~((1UL << power) - 1);
 }
 
-
-}
+_END_LAMBDACHINE_NAMESPACE
 
 #endif /* _UTILS_H_ */

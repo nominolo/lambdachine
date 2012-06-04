@@ -5,12 +5,11 @@
 #include "memorymanager.hh"
 
 #include <string.h>
-
 #include HASH_MAP_H
 
 using namespace HASH_NAMESPACE;
 
-namespace lambdachine {
+_START_LAMBDACHINE_NAMESPACE
 
 #define STR_SEC_HDR_MAGIC       MSB_u4('B','C','S','T')
 #define CLOS_SEC_HDR_MAGIC      MSB_u4('B','C','C','L')
@@ -94,8 +93,6 @@ private:
   BasePathEntry *basepaths_;
 };
 
-
-
-}
+_END_LAMBDACHINE_NAMESPACE
 
 #endif /* _LOADER_H_ */

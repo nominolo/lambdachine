@@ -6,7 +6,7 @@
 #include "objects.hh"
 #include <iostream>
 
-namespace lambdachine {
+_START_LAMBDACHINE_NAMESPACE
 
 class MemoryManager;
 
@@ -193,6 +193,6 @@ private:
   Block *strings_;
 };
 
-}
+_END_LAMBDACHINE_NAMESPACE
 
 #endif /* _MEMORYMANAGER_H_ */

@@ -1,6 +1,6 @@
 #include "fileutils.hh"
 
-namespace lambdachine {
+_START_LAMBDACHINE_NAMESPACE
 
 uint32_t fget_u4(FILE *f) {
   uint32_t hh = fget_u1(f);
@@ -37,4 +37,4 @@ bool fileExists(const char *path) {
   return S_ISREG(st.st_mode) != 0;
 }
 
-}
+_END_LAMBDACHINE_NAMESPACE

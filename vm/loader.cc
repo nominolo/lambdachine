@@ -13,7 +13,7 @@ using namespace std;
   if (DEBUG_COMPONENTS & DEBUG_LOADER) { \
     fprintf(stderr, "LD: " __VA_ARGS__); }
 
-namespace lambdachine {
+_START_LAMBDACHINE_NAMESPACE
 
 #define VERSION_MAJOR  0
 #define VERSION_MINOR  1
@@ -362,4 +362,4 @@ Module *Loader::loadModuleHeader(FILE *f, const char *filename)
   return mdl;
 }
 
-}
+_END_LAMBDACHINE_NAMESPACE

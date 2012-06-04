@@ -4,7 +4,7 @@
 #include "common.hh"
 #include "vm.hh"
 
-namespace lambdachine {
+_START_LAMBDACHINE_NAMESPACE
 
 class Capability {
 public:
@@ -16,6 +16,6 @@ private:
   Thread *currentThread_;
 };
 
-}
+_END_LAMBDACHINE_NAMESPACE
 
 #endif /* _CAPABILITY_H_ */

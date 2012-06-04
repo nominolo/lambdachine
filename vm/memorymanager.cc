@@ -9,7 +9,9 @@
   if (DEBUG_COMPONENTS & DEBUG_MEMORY_MANAGER) { \
     fprintf(stderr, "MM: " __VA_ARGS__); }
 
-using namespace lambdachine;
+_START_LAMBDACHINE_NAMESPACE
+
+using namespace std;
 
 #if !defined(MAP_ANONYMOUS) && defined(MAP_ANON)
 # define MAP_ANONYMOUS          MAP_ANON
@@ -186,10 +188,7 @@ static char blockContentShortname[][Block::kMaxContentType] = {
 #undef DEF_CONTENT_STR
 };
 
-using namespace std;
-
 // Useful mainly for debugging.
-namespace lambdachine {
 
 std::ostream& operator<<(std::ostream& out, const Block& b) {
   out << blockContentShortname[b.contents()]
@@ -220,4 +219,4 @@ std::ostream& operator<<(std::ostream& out, const MemoryManager& mm) {
   return out;
 }
 
-}
+_END_LAMBDACHINE_NAMESPACE

@@ -1,7 +1,7 @@
 #include "thread.hh"
 #include "utils.hh"
 
-using namespace lambdachine;
+_START_LAMBDACHINE_NAMESPACE
 
 Thread::Thread(Word stackSizeInWords)
   : header_(0), base_(NULL), top_(NULL), lastResult_(0), stack_(NULL) {
@@ -52,3 +52,5 @@ bool Thread::isValid() {
 #endif
   return true;
 }
+
+_END_LAMBDACHINE_NAMESPACE

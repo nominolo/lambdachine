@@ -2,19 +2,22 @@
 #ifndef _LAMBDACHINE_ARCH_H
 #define _LAMBDACHINE_ARCH_H
 
-namespace lambdachine {
+#define _START_LAMBDACHINE_NAMESPACE namespace lambdachine {
+#define _END_LAMBDACHINE_NAMESPACE   }
 
-  namespace arch {
+_START_LAMBDACHINE_NAMESPACE
 
-    typedef enum {
-      ENDIAN_LITTLE,
-      ENDIAN_BIG
-    } Endianness;
+namespace arch {
 
-    typedef enum {
-      X86 = 1,
-      X86_64,
-    } Arch;
+  typedef enum {
+    ENDIAN_LITTLE,
+    ENDIAN_BIG
+  } Endianness;
+
+  typedef enum {
+    X86 = 1,
+    X86_64,
+  } Arch;
 
 /* Target endianess. */
 #define LAMBDACHINE_LE	0
@@ -87,7 +90,8 @@ namespace lambdachine {
 # define NAME_PREFIX ""
 #endif
 
-  }
-}
+} // end of arch namespace
+
+_END_LAMBDACHINE_NAMESPACE
 
 #endif

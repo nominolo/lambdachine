@@ -5,7 +5,7 @@
 #include "vm.hh"
 #include "bytecode.hh"
 
-namespace lambdachine {
+_START_LAMBDACHINE_NAMESPACE
 
 class Thread {
 
@@ -49,6 +49,6 @@ private:
   Word *stack_;
 };
 
-}
+_END_LAMBDACHINE_NAMESPACE
 
 #endif /* _THREAD_H_ */

@@ -3,7 +3,7 @@
 
 #include "common.hh"
 
-namespace lambdachine {
+_START_LAMBDACHINE_NAMESPACE
 
 #define BCDEF(_) \
   /* Comparison ops. Order significant. */ \
@@ -136,6 +136,6 @@ class BcIns {
   uint32_t raw_;
 };
 
-}
+_END_LAMBDACHINE_NAMESPACE
 
 #endif /* _BYTECODE_H_ */

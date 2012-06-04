@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <sys/stat.h>
 
-namespace lambdachine {
+_START_LAMBDACHINE_NAMESPACE
 
 /* TODO: make Windows compatible */
 bool fileExists(const char *path);
@@ -39,7 +39,7 @@ inline Word fget_varuint(FILE *f)
     return fget_varuint_slow(f, b & 0x7f);
 }
 
-} // end of namspace
+_END_LAMBDACHINE_NAMESPACE
 
 
 #endif /* _FILEUTILS_H_ */

@@ -1,7 +1,9 @@
 #ifndef _OBJECTS_H_
 #define _OBJECTS_H_
 
-namespace lambdachine {
+#include "common.hh"
+
+_START_LAMBDACHINE_NAMESPACE
 
 class InfoTable {};
 
@@ -27,6 +29,6 @@ public:
   inline Word payload(int i) { return payload_[i]; }
 };
 
-}
+_END_LAMBDACHINE_NAMESPACE
 
 #endif /* _OBJECTS_H_ */
