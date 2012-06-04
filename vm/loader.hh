@@ -5,6 +5,7 @@
 #include "memorymanager.hh"
 
 #include <string.h>
+#include <stdio.h>
 #include HASH_MAP_H
 
 using namespace HASH_NAMESPACE;
@@ -67,6 +68,45 @@ private:
 
 typedef struct _BasePathEntry BasePathEntry;  // Defined in loader.cc
 
+class BytecodeFile {
+public:
+  BytecodeFile(const char *filename);
+  bool open();
+  void close();
+  inline const char *filename() const { return name_; }
+  inline uint8_t get_u1() { return (uint8_t)fgetc(f_); }
+  inline uint16_t get_u2() {
+    uint16_t hi = get_u1();
+    uint16_t lo = get_u1();
+    return hi << 8 | lo;
+  }
+  inline Word get_varuint() {
+    Word b = get_u1();
+    if ((b & 0x80) == 0)
+      return b;
+    else
+      return get_varuint_slow(b & 0x7f);
+  }
+  inline char *get_string(size_t len) {
+    char *p = new char[len + 1];
+    fread(p, 1, len, f_);
+    p[len] = '\0';
+    return p;
+  }
+  // Require the file to contain the exact byte sequence.
+  inline bool magic(const char *bytes);
+  inline void get_string(char *buf, size_t len) {
+    fread(buf, 1, len, f_);
+  }
+  uint32_t get_u4();
+  inline long offset() { return ftell(f_); }
+private:
+  Word get_varuint_slow(Word first);
+
+  const char *name_;
+  FILE *f_;
+};
+
 class Loader {
 public:
   Loader(MemoryManager *mm, const char* basepaths);
@@ -83,11 +123,13 @@ private:
   void initBasePath(const char *);
   void addBasePath(const char *);
   void appendBasePathEntry(BasePathEntry *entry);
-  void loadStringTabEntry(FILE *f, StringTabEntry *e /*out*/);
-  const char *loadId(FILE *f, const StringTabEntry *strings,
+
+  void loadStringTabEntry(BytecodeFile&, StringTabEntry *e /*out*/);
+  const char *loadId(BytecodeFile&, const StringTabEntry *strings,
                      const char* sep);
   bool loadModule(const char *moduleName, int);
-  Module *loadModuleHeader(FILE *f, const char *filename);
+  Module *loadModuleHeader(BytecodeFile&);
+
   MemoryManager *mm_;
   STRING_MAP(Module*) loadedModules_;
   BasePathEntry *basepaths_;
