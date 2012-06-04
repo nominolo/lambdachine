@@ -3,6 +3,9 @@
 
 #include <iostream>
 #include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <limits.h>
 
 using namespace std;
 
@@ -150,7 +153,6 @@ const char *const wired_in_packages[] =
   { "ghc-prim", "integer-gmp", "base" };
 
 char *Loader::findModule(const char *moduleName) {
-  int    i;
   char  *filename;
   char   base[PATH_MAX];
   BasePathEntry *b = basepaths_;
@@ -169,7 +171,7 @@ char *Loader::findModule(const char *moduleName) {
     // TODO: wired-in packages should probably only live in one
     // directory.  Otherwise, the user could accidentally shadow them.
 
-    for (i = 0; i < countof(wired_in_packages); i++) {
+    for (size_t i = 0; i < countof(wired_in_packages); i++) {
       snprintf(base, PATH_MAX, "%s/%s",
                b->path, wired_in_packages[i]);
       filename = moduleNameToFile(base, moduleName);
@@ -202,7 +204,6 @@ bool Loader::loadModule(const char *moduleName, int level) {
   char *filename;
   Module *mdl;
   FILE *f;
-  int i;
   
   mdl = loadedModules_[moduleName];
   
@@ -228,12 +229,11 @@ bool Loader::loadModule(const char *moduleName, int level) {
     return false;
 
   loadedModules_[moduleName] = mdl;
-  DLOG("=== %p\n", loadedModules_[moduleName]);
 
   // Load dependencies first.  This avoids creating many forward
   // references.  The downside is that we keep more file descriptors
   // open.
-  for (i = 0; i < mdl->numImports_; i++)
+  for (uint32_t i = 0; i < mdl->numImports_; i++)
     loadModule(mdl->imports_[i], level + 1);
 
   // loadModuleBody(filename, f, mdl);
@@ -303,7 +303,6 @@ Module *Loader::loadModuleHeader(FILE *f, const char *filename)
   Module *mdl;
   char magic[5];
   u2 major, minor;
-  u4 flags;
   u4 secmagic;
   u4 i;
 
@@ -331,7 +330,7 @@ Module *Loader::loadModuleHeader(FILE *f, const char *filename)
     return NULL;
   }
 
-  flags = fget_u4(f);
+  mdl->flags_         = fget_u4(f);
   mdl->numStrings_    = fget_u4(f);
   mdl->numInfoTables_ = fget_u4(f);
   mdl->numClosures_   = fget_u4(f);

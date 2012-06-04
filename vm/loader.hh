@@ -4,6 +4,8 @@
 #include "config.hh"
 #include "memorymanager.hh"
 
+#include <string.h>
+
 #include HASH_MAP_H
 
 using namespace HASH_NAMESPACE;
@@ -53,6 +55,7 @@ public:
   inline const char *name() const { return name_; }
 private:
   const char *name_;
+  uint32_t flags_;              // Currently unused
   uint32_t numInfoTables_;
   uint32_t numClosures_;
   uint32_t numStrings_;
