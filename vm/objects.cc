@@ -26,7 +26,7 @@ void CodeInfoTable::printCode(std::ostream &out) {
   const BcIns *ins = code()->code;
   while (ins < code()->code + code()->sizecode) {
     out << "  ";
-    ins = ins->debugPrint(out, ins);
+    ins = ins->debugPrint(out, ins, false, code()->code);
   }
 }
 

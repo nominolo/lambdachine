@@ -149,9 +149,12 @@ class BcIns {
     return static_cast<Opcode> (raw_ & 0xff);
   }
   
-  static const BcIns *debugPrint(std::ostream& out, const BcIns *ins, bool oneline);
-  static inline const BcIns *debugPrint(std::ostream& out, const BcIns *ins) {
-    return debugPrint(out, ins, false);
+  static const BcIns *debugPrint(
+    std::ostream& out, const BcIns *ins,
+    bool oneline, const BcIns *baseaddr);
+  static inline const BcIns *debugPrint(std::ostream& out,
+                                        const BcIns *ins) {
+    return debugPrint(out, ins, false, NULL);
   }
 
   

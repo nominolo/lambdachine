@@ -28,11 +28,22 @@ BcIns::InsFormat BcIns::format() const {
   return ins_format[opc];
 }
 
-const BcIns *BcIns::debugPrint(ostream &out, const BcIns *ins, bool oneline) {
+static ostream &printAddr(ostream &out,
+                          const BcIns *baseaddr, const BcIns *addr) {
+  if (!baseaddr) {
+    out << (addr);
+  } else {
+    out << (addr) - baseaddr;
+  }
+  return out;
+}
+
+const BcIns *BcIns::debugPrint(ostream &out, const BcIns *ins,
+                               bool oneline, const BcIns *baseaddr) {
   const BcIns *ins0 = ins;
   const BcIns i = *ins;
 
-  out << ins0 << ": ";
+  printAddr(out, baseaddr, ins0) << ": ";
   ++ins;
 
   switch (i.format()) {
@@ -40,7 +51,8 @@ const BcIns *BcIns::debugPrint(ostream &out, const BcIns *ins, bool oneline) {
     out << i.name() << "\tr" << (int)i.a() << endl;
     break;
   case IFM_RR:
-    out << i.name() << "\tr" << (int)i.a() << ", r" << (int)i.d() << endl;
+    out << i.name() << "\tr" << (int)i.a() << ", r" 
+        << (int)i.d() << endl;
     break;
   case IFM_RRR:
     out << i.name() << "\tr" << (int)i.a() << ", r" << (int)i.b()
@@ -57,11 +69,13 @@ const BcIns *BcIns::debugPrint(ostream &out, const BcIns *ins, bool oneline) {
         << ", " << (int)i.c()<< endl;
     break;
   case IFM_J:
-    out << i.name() << " ->" << ins + i.j() << endl;
+    out << i.name() << " ->";
+    printAddr(out, baseaddr, ins + i.j()) << endl;
     break;
   case IFM_RRJ:
     out << i.name() << "\tr" << (int)i.a() << ", r" << (int)i.d()
-        << " ->" << (ins + 1 + ins->j()) << endl;
+        << " ->";
+    printAddr(out, baseaddr, (ins + 1 + ins->j())) << endl;
     ++ins;
     break;
   case IFM____:
@@ -80,7 +94,8 @@ const BcIns *BcIns::debugPrint(ostream &out, const BcIns *ins, bool oneline) {
         if (!oneline) {
           for (u4 j = 0; j < ncases; j++, tgt++) {
             out << "           " << j + 1
-                << ": ->" << ins + (int)(*tgt) << endl;
+                << ": ->";
+            printAddr(out, baseaddr, ins + (int)(*tgt)) << endl;
           }
         }
       }
@@ -144,6 +159,7 @@ const BcIns *BcIns::debugPrint(ostream &out, const BcIns *ins, bool oneline) {
         for (u4 j = 0; j < i.c(); j++) {
           out << comma << 'r' << j;
           if (bitmask & 1) out << '*';
+          comma = ',';
           bitmask >>= 1;
         }
         out << ')' << endl;
