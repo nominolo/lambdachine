@@ -145,6 +145,10 @@ private:
   void loadLiteral(BytecodeFile &, u1 *littypes, Word *lits,
                    const StringTabEntry *strings);
   void loadClosure(BytecodeFile &, const StringTabEntry *strings);
+  void loadClosureReference(const char *name, Word *literal /* out */);
+  void fixClosureForwardReference(const char *name, Closure *cl);
+  void loadInfoTableReference(const char *name, Word *literal /* out */);
+  void fixInfoTableForwardReference(const char *name, InfoTable *info);
 
   MemoryManager *mm_;
   STRING_MAP(Module*) loadedModules_;

@@ -154,9 +154,10 @@ public:
     return reinterpret_cast<char*>(allocInto(&strings_, length + 1));
   }
 
-  inline Closure *allocStaticClosure(Word nwords) {
+  inline Closure *allocStaticClosure(size_t payloadSize) {
     return static_cast<Closure*>
-      (allocInto(&static_closures_, nwords * sizeof(Word)));
+      (allocInto(&static_closures_,
+                 (wordsof(ClosureHeader) + payloadSize) * sizeof(Word)));
   }
 
   inline void *allocCode(size_t instrs, size_t bitmaps) {
@@ -164,13 +165,12 @@ public:
                      sizeof(BcIns) * instrs + sizeof(u2) * bitmaps);
   }
 
-  inline Closure *allocClosure(InfoTable *info, Word nPayloadWords) {
+  inline Closure *allocClosure(InfoTable *info, size_t payloadWords) {
     Closure *cl = reinterpret_cast<Closure*>
-      (allocInto(&closures_, wordsof(ClosureHeader) + nPayloadWords * sizeof(Word)));
+      (allocInto(&closures_, wordsof(ClosureHeader) + payloadWords * sizeof(Word)));
     Closure::initHeader(cl, info);
     return cl;
   }
-
 
   unsigned int infoTables();
 

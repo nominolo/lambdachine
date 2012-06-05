@@ -336,8 +336,8 @@ const char *Loader::loadId(BytecodeFile &f, const StringTabEntry *strings,
     }
   }
   *p = '\0';
-  DLOG("loadId: %lx, %s, " COLOURED(COL_BLUE, "%p") "\n",
-       f.offset(), ident, ident);
+  // DLOG("loadId: %lx, %s, " COLOURED(COL_BLUE, "%p") "\n",
+  //      f.offset(), ident, ident);
   return ident;
 }
 
@@ -415,6 +415,10 @@ void Loader::loadModuleBody(BytecodeFile &f, Module *mdl) {
   }
 }
 
+#define FMT_INFO_PTR  COLOURED(COL_YELLOW, "%p")
+#define FMT_FWD_PTR   COLOURED(COL_RED, "%p")
+#define FMT_CLOS_PTR  COLOURED(COL_GREEN, "%p")
+
 InfoTable *Loader::loadInfoTable(BytecodeFile &f,
                                  const StringTabEntry *strings) {
   if (!f.magic("ITBL")) {
@@ -427,8 +431,6 @@ InfoTable *Loader::loadInfoTable(BytecodeFile &f,
   InfoTable *new_itbl = NULL;
   FwdRefInfoTable *old_itbl =
     static_cast<FwdRefInfoTable*>(infoTables_[itbl_name]);
-
-  DLOG("loadInfoTable %s => %p\n", itbl_name, old_itbl);
 
   if (old_itbl && old_itbl->type() != INVALID_OBJECT) {
     fprintf(stderr, "ERROR: Duplicate info table: %s\n", itbl_name);
@@ -476,27 +478,12 @@ InfoTable *Loader::loadInfoTable(BytecodeFile &f,
     fprintf(stderr, "ERROR: Unknown info table type (%d)", cl_type);
     exit(1);
   }
-  // new_itbl is the new info table.  There may have been forward
-  // references (even during loading the code for this info table).
-  if (old_itbl != NULL) {
-    DLOG("Fixing itable forward reference for: %s, %p\n", itbl_name, new_itbl);
-    void **p, *next;
-    LC_ASSERT(old_itbl->type() == INVALID_OBJECT);
+  
+  fixInfoTableForwardReference(itbl_name, new_itbl);
 
-    for (p = old_itbl->next; p != NULL; ) {
-      next = *p;
-      *p = (void*)new_itbl;
-      p = (void**)next;
-    }
-
-    // TODO: fixup forward refs
-    delete old_itbl;
-    infoTables_[itbl_name] = new_itbl;
-  } else {
-    DLOG("loadInfoTable: %s " COLOURED(COL_YELLOW, "%p") "\n",
-         itbl_name, new_itbl);
-    infoTables_[itbl_name] = new_itbl;
-  }
+  DLOG("loadInfoTable: %s " COLOURED(COL_YELLOW, "%p") "\n",
+       itbl_name, new_itbl);
+  infoTables_[itbl_name] = new_itbl;
 
   return new_itbl;
 }
@@ -532,7 +519,6 @@ void Loader::loadLiteral(BytecodeFile &f,
                          const StringTabEntry *strings) {
   u4 i;
   *littype = f.get_u1();
-  DLOG("loadLiteral: %d\n", *littype);
   switch (*littype) {
   case LIT_INT:
     *literal = (Word)f.get_varsint();
@@ -552,47 +538,12 @@ void Loader::loadLiteral(BytecodeFile &f,
     break;
   case LIT_CLOSURE:
     { const char *clname = loadId(f, strings, ".");
-      Closure *cl = closures_[clname];
-      if (cl == NULL) {
-        // 1st forward ref, create the link
-        cl = reinterpret_cast<Closure*>
-          (new Word[(wordsof(ClosureHeader) + 1)]);
-        cl->setInfo(NULL);
-        cl->payload_[0] = (Word)literal;
-        *literal = (Word)NULL;
-        DLOG("Creating forward reference %p for `%s', %p\n",
-             cl, clname, literal);
-        closures_[clname] = cl;
-      } else if (cl->info() == NULL) {
-        // forward ref (not the first), insert into linked list
-        DLOG("Linking forward reference %p (%s, target: %p)\n",
-             cl, clname, literal);
-        *literal = (Word)cl->payload_[0];
-        cl->payload_[0] = (Word)literal;
-      } else {
-        *literal = (Word)cl;
-      }
+      loadClosureReference(clname, literal);
     }
     break;
   case LIT_INFO:
     { const char *infoname = loadId(f, strings, ".");
-      InfoTable *info = infoTables_[infoname];
-      FwdRefInfoTable *info2;
-      if (info == NULL) {
-	// 1st forward ref
-        info2 = new FwdRefInfoTable();
-        info2->type_ = INVALID_OBJECT;
-        info2->next = (void**)literal;
-        *literal = (Word)NULL;
-        infoTables_[infoname] = info2;
-      } else if (info->type() == INVALID_OBJECT) {
-        // subsequent forward ref
-        info2 = (FwdRefInfoTable*)info;
-         *literal = (Word)info2->next;
-         info2->next = (void**)literal;
-      } else {
-	*literal = (Word)info;
-      }
+      loadInfoTableReference(infoname, literal);
     }
     break;
   default:
@@ -603,6 +554,149 @@ void Loader::loadLiteral(BytecodeFile &f,
   }
 }
 
+// Forward References
+// ------------------
+//
+// Like in any linker, it is possible that we load a reference to a
+// closure or info table that we haven't loaded yet and therefore
+// don't know the address of.  There may be multiple of such places;
+// once we know the real address we have to update all of them.
+//
+// We use an in-place scheme that avoids additional memory allocation
+// (but is perhaps a bit too clever).  We use info tables as an
+// example.  If we discover a reference to an info table that hasn't
+// been loaded yet we create a dummy info table entry which points to
+// the first location to be updated.  And initialize the value of that
+// location to NULL:
+//
+//     reference1:            infoTables_[infoTableName] =
+//
+//       +---------+             +----------------+
+//       |   NULL  |<---.        | type = INVALID | mark as fwd. ref
+//       +---------+    |        :                :
+//                      '--------* next           |
+//                               +----------------+
+// 
+// Now we encounter another forward reference:
+//
+//     reference1:            infoTables_[infoTableName] =
+//
+//       +---------+             +----------------+
+//       |   NULL  |<---.        | type = INVALID | mark as fwd. ref
+//       +---------+    |        :                :
+//                      |    .---* next           |
+//     reference2:      |    |   +----------------+
+//                      |    |
+//       +---------+    |    |
+//       |         *----'    |
+//       +---------+<--------'
+//
+// That is each location that needs to be update points to the next location
+// that needs to be updated.  The dummy entry in the info table hash map
+// points to the beginning of this linked list.
+//
+// Once the actual info table is loaded this list is traversed and each
+// reference is updated to point to the real location and the dummy info
+// table is discarded:
+//
+//     reference1:            infoTables_[infoTableName] =
+//
+//       +---------+             +----------------+
+//       |         *---------*-->| type = CONSTR  |
+//       +---------+         |   | ...            |
+//                           |   | name = "Foo"   |
+//     reference2:           |   +----------------+
+//                           |
+//       +---------+         |
+//       |         *---------'
+//       +---------+
+//
+// The same technique is used for closures, only that dummy closure references
+// are marked by having NULL as the info table pointer.
+//
+
+void Loader::loadClosureReference(const char *name, Word *literal /* out */) {
+  Closure *cl = closures_[name];
+  if (cl == NULL) {
+    // 1st forward ref, create the link
+    cl = reinterpret_cast<Closure*>
+      (new Word[(wordsof(ClosureHeader) + 1)]);
+    cl->setInfo(NULL);
+    cl->payload_[0] = (Word)literal;
+    *literal = (Word)NULL;
+    DLOG("Creating forward reference %p for `%s', " FMT_FWD_PTR "\n",
+         cl, name, literal);
+    closures_[name] = cl;
+  } else if (cl->info() == NULL) {
+    // forward ref (not the first), insert into linked list
+    DLOG("Addinging forward reference %p for `%s', " FMT_FWD_PTR ")\n",
+         cl, name, literal);
+    *literal = (Word)cl->payload_[0];
+    cl->payload_[0] = (Word)literal;
+  } else {
+    *literal = (Word)cl;
+  }
+}
+
+void Loader::fixClosureForwardReference(const char *name, Closure *cl) {
+  Closure *fwd_ref = closures_[name];
+  if (fwd_ref != NULL) {
+    // fixup forward refs
+    void **p, *next;
+    for (p = (void**)fwd_ref->payload_[0]; p != NULL;
+         p = (void**)next) {
+      next = *p;
+      DLOG("Fixing closure forward ref: %s, "
+           FMT_FWD_PTR " -> " FMT_CLOS_PTR "\n",
+           name, p, cl);
+      *p = (void*)cl;
+    }
+
+    delete[] (Word*)fwd_ref;
+  }
+}
+
+void Loader::loadInfoTableReference(const char *name, Word *literal) {
+  InfoTable *info = infoTables_[name];
+  FwdRefInfoTable *info2;
+  if (info == NULL) {
+    // 1st forward ref
+    info2 = new FwdRefInfoTable();
+    info2->type_ = INVALID_OBJECT;
+    info2->next = (void**)literal;
+    *literal = (Word)NULL;
+    infoTables_[name] = info2;
+  } else if (info->type() == INVALID_OBJECT) {
+    // subsequent forward ref
+    info2 = (FwdRefInfoTable*)info;
+    *literal = (Word)info2->next;
+    info2->next = (void**)literal;
+  } else {
+    *literal = (Word)info;
+  }
+}
+
+void Loader::fixInfoTableForwardReference(const char *name, InfoTable *info) {
+  FwdRefInfoTable *old_itbl =
+    static_cast<FwdRefInfoTable*>(infoTables_[name]);
+  // new_itbl is the new info table.  There may have been forward
+  // references (even during loading the code for this info table).
+  if (old_itbl != NULL) {
+    DLOG("Fixing itable forward reference for: %s, %p\n", name, info);
+    void **p, *next;
+    LC_ASSERT(old_itbl->type() == INVALID_OBJECT);
+
+    for (p = old_itbl->next; p != NULL; ) {
+      next = *p;
+      *p = (void*)info;
+      p = (void**)next;
+    }
+
+    delete old_itbl;
+  }
+}
+
+
 void Loader::loadClosure(BytecodeFile &f,
                          const StringTabEntry *strings) {
   if (!f.magic("CLOS"))
@@ -610,14 +704,14 @@ void Loader::loadClosure(BytecodeFile &f,
   const char *clos_name = loadId(f, strings, ".");
   u4 payloadsize = f.get_varuint();
   const char *itbl_name = loadId(f, strings, ".");
-  Closure *cl =
-    mm_->allocStaticClosure(wordsof(ClosureHeader) + payloadsize);
-  Closure *fwd_ref;
+  Closure *cl = mm_->allocStaticClosure(payloadsize);
   InfoTable *info = infoTables_[itbl_name];
+  
+  // Info tables must all be fully loaded by now.
   LC_ASSERT(info != NULL && info->type() != INVALID_OBJECT);
 
-  // Fill in closure payload.  May create forward references to
-  // the current closure.
+  // Fill in closure payload.  May create forward references to the
+  // current closure.
   cl->setInfo(info);
   for (u4 i = 0; i < payloadsize; i++) {
     DLOG("Loading payload for: %s [%d]\n", clos_name, i);
@@ -625,22 +719,11 @@ void Loader::loadClosure(BytecodeFile &f,
     loadLiteral(f, &dummy, &cl->payload_[i], strings);
   }
 
-  fwd_ref = closures_[clos_name];
-  if (fwd_ref != NULL) {
-    DLOG("Fixing closure forward ref: %s, %p -> %p\n",
-         clos_name, fwd_ref, cl);
-    // fixup forward refs
-    void **p, *next;
-    for (p = (void**)fwd_ref->payload_[0]; p != NULL;
-         p = (void**)next) {
-      next = *p;
-      *p = (void*)cl;
-    }
+  fixClosureForwardReference(clos_name, cl);
 
-    delete[] (Word*)fwd_ref;
-  }
   DLOG("loadClosure: %s " COLOURED(COL_GREEN, "%p") "\n",
        clos_name, cl);
   closures_[clos_name] = cl;
 }
+
 _END_LAMBDACHINE_NAMESPACE
