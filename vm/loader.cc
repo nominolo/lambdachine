@@ -66,8 +66,9 @@ bool BytecodeFile::magic(const char *bytes) {
 #define VERSION_MAJOR  0
 #define VERSION_MINOR  1
 
-Loader::Loader(MemoryManager *mm, const char* basepaths) 
-  : mm_(mm), loadedModules_(10), basepaths_(NULL) {
+Loader::Loader(MemoryManager *mm, const char* basepaths)
+  : mm_(mm), loadedModules_(10), infoTables_(100), closures_(100),
+    basepaths_(NULL) {
   initBasePath(basepaths);
 }
 
@@ -126,7 +127,7 @@ void Loader::initBasePath(const char *path)
     path_end = strchr(path, ':');
     path_len = (path_end != NULL) ? path_end - path : strlen(path);
     int is_last_path = path_end == NULL;
-    
+
     if (path_len == 0) {
       if (is_last_path) {
         // Add default path (current working directory)
@@ -204,11 +205,11 @@ char *Loader::findModule(const char *moduleName) {
   char  *filename;
   char   base[PATH_MAX];
   BasePathEntry *b = basepaths_;
-  
+
   while (b) {
     // 1. Try to find module in base directory
     filename = moduleNameToFile(b->path, moduleName);
-    
+
     DLOG(".. Searching for `%s' in `%s'\n", moduleName, filename);
 
     if (fileExists(filename)) {
@@ -251,14 +252,14 @@ bool Loader::loadModule(const char *moduleName)
 bool Loader::loadModule(const char *moduleName, int level) {
   char *filename;
   Module *mdl;
-  
+
   mdl = loadedModules_[moduleName];
-  
+
   if (mdl != NULL) {            // Already loaded
     DLOG("[%d] Already loaded: %s\n", level, moduleName);
     return true;
   }
- 
+
   filename = findModule(moduleName);
   if (!filename)
     return false;
@@ -281,7 +282,7 @@ bool Loader::loadModule(const char *moduleName, int level) {
   for (uint32_t i = 0; i < mdl->numImports_; i++)
     loadModule(mdl->imports_[i], level + 1);
 
-  // loadModuleBody(filename, f, mdl);
+  loadModuleBody(f, mdl);
 
   f.close();
   DLOG("[%d] DONE (%s)\n", level, moduleName);
@@ -399,6 +400,247 @@ Module *Loader::loadModuleHeader(BytecodeFile &f)
   return mdl;
 }
 
-// void loadModule
+void Loader::loadModuleBody(BytecodeFile &f, Module *mdl) {
+  bool module_header_magic_ok = f.magic("BCCL");
+  assert(module_header_magic_ok);
 
+  DLOG("Loading module body...");
+
+  for (u4 i = 0; i < mdl->numInfoTables_; ++i) {
+    loadInfoTable(f, mdl->strings_);
+  }
+
+  for (u4 i = 0; i < mdl->numClosures_; ++i) {
+    loadClosure(f, mdl->strings_);
+  }
+}
+
+InfoTable *Loader::loadInfoTable(BytecodeFile &f,
+                                 const StringTabEntry *strings) {
+  if (!f.magic("ITBL")) {
+    fprintf(stderr, "Wrong magic for info table\n");
+    exit(1);
+  }
+
+  const char *itbl_name = loadId(f, strings, ".");
+  u2 cl_type = f.get_varuint();
+  InfoTable *new_itbl = NULL;
+  FwdRefInfoTable *old_itbl =
+    static_cast<FwdRefInfoTable*>(infoTables_[itbl_name]);
+
+  DLOG("loadInfoTable %s => %p\n", itbl_name, old_itbl);
+
+  if (old_itbl && old_itbl->type() != INVALID_OBJECT) {
+    fprintf(stderr, "ERROR: Duplicate info table: %s\n", itbl_name);
+    exit(1);
+  }
+
+  switch (cl_type) {
+  case CONSTR:
+    // A statically allocated constructor
+    {
+      DLOG("itbl.CONSTR %s\n", itbl_name);
+      ConInfoTable *info = static_cast<ConInfoTable*>
+        (mm_->allocInfoTable(wordsof(ConInfoTable)));
+      info->type_ = cl_type;
+      info->tagOrBitmap_ = f.get_varuint();  // tag
+      Word sz = f.get_varuint();
+      assert(sz <= 32);
+      info->size_ = sz;
+      info->layout_.bitmap = sz > 0 ? f.get_u4() : 0;
+      // info->i.layout.payload.ptrs = fget_varuint(f);
+      // info->i.layout.payload.nptrs = fget_varuint(f);
+      info->name_ = loadId(f, strings, ".");
+      new_itbl = (InfoTable*)info;
+    }
+    break;
+  case CAF:
+  case THUNK:
+  case FUN:
+    {
+      DLOG("itbl.FUN/CAF/THK %s\n", itbl_name);
+      CodeInfoTable *info = static_cast<CodeInfoTable*>
+        (mm_->allocInfoTable(wordsof(CodeInfoTable)));
+      info->type_ = cl_type;
+      info->tagOrBitmap_ = 0; // TODO: anything useful to put in here?
+      Word sz = f.get_varuint();
+      assert(sz <= 32);
+      info->size_ = sz;
+      info->layout_.bitmap = sz > 0 ? f.get_u4() : 0;
+      info->name_ = loadId(f, strings, ".");
+      loadCode(f, &info->code_, strings);
+      new_itbl = (InfoTable*)info;
+    }
+    break;
+  default:
+    fprintf(stderr, "ERROR: Unknown info table type (%d)", cl_type);
+    exit(1);
+  }
+  // new_itbl is the new info table.  There may have been forward
+  // references (even during loading the code for this info table).
+  if (old_itbl != NULL) {
+    DLOG("Fixing itable forward reference for: %s, %p\n", itbl_name, new_itbl);
+    void **p, *next;
+    LC_ASSERT(old_itbl->type() == INVALID_OBJECT);
+
+    for (p = old_itbl->next; p != NULL; ) {
+      next = *p;
+      *p = (void*)new_itbl;
+      p = (void**)next;
+    }
+
+    // TODO: fixup forward refs
+    delete old_itbl;
+    infoTables_[itbl_name] = new_itbl;
+  } else {
+    DLOG("loadInfoTable: %s " COLOURED(COL_YELLOW, "%p") "\n",
+         itbl_name, new_itbl);
+    infoTables_[itbl_name] = new_itbl;
+  }
+
+  return new_itbl;
+}
+
+void Loader::loadCode(BytecodeFile &f, Code *code /* out */,
+                      const StringTabEntry *strings) {
+  u2 *bitmaps = NULL;
+  DLOG("loadCode: %p\n", code);
+  code->framesize = f.get_varuint();
+  code->arity = f.get_varuint();
+  code->sizelits = f.get_varuint();
+  code->sizecode = f.get_u2();
+  code->sizebitmaps = f.get_u2();
+  code->lits = new Word[code->sizelits];
+  code->littypes = new u1[code->sizelits];
+  for (u2 i = 0; i < code->sizelits; ++i) {
+    loadLiteral(f, &code->littypes[i], &code->lits[i], strings);
+  }
+  code->code = static_cast<BcIns*>
+    (mm_->allocCode(code->sizecode, code->sizebitmaps));
+  for (u2 i = 0; i < code->sizecode; ++i) {
+    code->code[i] = f.get_u4();
+  }
+  bitmaps = (u2*)&code->code[code->sizecode];
+  for (u2 i = 0; i < code->sizebitmaps; i++) {
+    *bitmaps = f.get_u2();
+    ++bitmaps;
+  }
+}
+
+void Loader::loadLiteral(BytecodeFile &f,
+                         u1 *littype, Word *literal,
+                         const StringTabEntry *strings) {
+  u4 i;
+  *littype = f.get_u1();
+  DLOG("loadLiteral: %d\n", *littype);
+  switch (*littype) {
+  case LIT_INT:
+    *literal = (Word)f.get_varsint();
+    break;
+  case LIT_CHAR:
+    *literal = (Word)f.get_varuint();
+    break;
+  case LIT_WORD:
+    *literal = (Word)f.get_varuint();
+    break;
+  case LIT_FLOAT:
+    *literal = (Word)f.get_u4();
+    break;
+  case LIT_STRING:
+    i = f.get_varuint();
+    *literal = (Word)strings[i].str;
+    break;
+  case LIT_CLOSURE:
+    { const char *clname = loadId(f, strings, ".");
+      Closure *cl = closures_[clname];
+      if (cl == NULL) {
+        // 1st forward ref, create the link
+        cl = reinterpret_cast<Closure*>
+          (new Word[(wordsof(ClosureHeader) + 1)]);
+        cl->setInfo(NULL);
+        cl->payload_[0] = (Word)literal;
+        *literal = (Word)NULL;
+        DLOG("Creating forward reference %p for `%s', %p\n",
+             cl, clname, literal);
+        closures_[clname] = cl;
+      } else if (cl->info() == NULL) {
+        // forward ref (not the first), insert into linked list
+        DLOG("Linking forward reference %p (%s, target: %p)\n",
+             cl, clname, literal);
+        *literal = (Word)cl->payload_[0];
+        cl->payload_[0] = (Word)literal;
+      } else {
+        *literal = (Word)cl;
+      }
+    }
+    break;
+  case LIT_INFO:
+    { const char *infoname = loadId(f, strings, ".");
+      InfoTable *info = infoTables_[infoname];
+      FwdRefInfoTable *info2;
+      if (info == NULL) {
+	// 1st forward ref
+        info2 = new FwdRefInfoTable();
+        info2->type_ = INVALID_OBJECT;
+        info2->next = (void**)literal;
+        *literal = (Word)NULL;
+        infoTables_[infoname] = info2;
+      } else if (info->type() == INVALID_OBJECT) {
+        // subsequent forward ref
+        info2 = (FwdRefInfoTable*)info;
+         *literal = (Word)info2->next;
+         info2->next = (void**)literal;
+      } else {
+	*literal = (Word)info;
+      }
+    }
+    break;
+  default:
+    fprintf(stderr, "ERROR: Unknown literal type (%d) "
+            "when loading file: %s\n",
+            *littype, f.filename());
+    exit(1);
+  }
+}
+
+void Loader::loadClosure(BytecodeFile &f,
+                         const StringTabEntry *strings) {
+  if (!f.magic("CLOS"))
+    exit(2);
+  const char *clos_name = loadId(f, strings, ".");
+  u4 payloadsize = f.get_varuint();
+  const char *itbl_name = loadId(f, strings, ".");
+  Closure *cl =
+    mm_->allocStaticClosure(wordsof(ClosureHeader) + payloadsize);
+  Closure *fwd_ref;
+  InfoTable *info = infoTables_[itbl_name];
+  LC_ASSERT(info != NULL && info->type() != INVALID_OBJECT);
+
+  // Fill in closure payload.  May create forward references to
+  // the current closure.
+  cl->setInfo(info);
+  for (u4 i = 0; i < payloadsize; i++) {
+    DLOG("Loading payload for: %s [%d]\n", clos_name, i);
+    u1 dummy;
+    loadLiteral(f, &dummy, &cl->payload_[i], strings);
+  }
+
+  fwd_ref = closures_[clos_name];
+  if (fwd_ref != NULL) {
+    DLOG("Fixing closure forward ref: %s, %p -> %p\n",
+         clos_name, fwd_ref, cl);
+    // fixup forward refs
+    void **p, *next;
+    for (p = (void**)fwd_ref->payload_[0]; p != NULL;
+         p = (void**)next) {
+      next = *p;
+      *p = (void*)cl;
+    }
+
+    delete[] (Word*)fwd_ref;
+  }
+  DLOG("loadClosure: %s " COLOURED(COL_GREEN, "%p") "\n",
+       clos_name, cl);
+  closures_[clos_name] = cl;
+}
 _END_LAMBDACHINE_NAMESPACE

@@ -3,6 +3,8 @@
 
 #include "config.hh"
 #include "memorymanager.hh"
+#include "objects.hh"
+#include "fileutils.hh"
 
 #include <string.h>
 #include <stdio.h>
@@ -87,6 +89,11 @@ public:
     else
       return get_varuint_slow(b & 0x7f);
   }
+
+  inline WordInt get_varsint() {
+    return zigZagDecode(get_varuint());
+  }
+
   inline char *get_string(size_t len) {
     char *p = new char[len + 1];
     fread(p, 1, len, f_);
@@ -106,6 +113,8 @@ private:
   const char *name_;
   FILE *f_;
 };
+
+typedef const StringTabEntry *StringTable;
 
 class Loader {
 public:
@@ -129,9 +138,18 @@ private:
                      const char* sep);
   bool loadModule(const char *moduleName, int);
   Module *loadModuleHeader(BytecodeFile&);
+  void loadModuleBody(BytecodeFile &f, Module *mdl);
+  InfoTable *loadInfoTable(BytecodeFile &f, const StringTabEntry *strings);
+  void loadCode(BytecodeFile &, Code * /* out */,
+                const StringTabEntry *strings);
+  void loadLiteral(BytecodeFile &, u1 *littypes, Word *lits,
+                   const StringTabEntry *strings);
+  void loadClosure(BytecodeFile &, const StringTabEntry *strings);
 
   MemoryManager *mm_;
   STRING_MAP(Module*) loadedModules_;
+  STRING_MAP(InfoTable*) infoTables_;
+  STRING_MAP(Closure*) closures_;
   BasePathEntry *basepaths_;
 };
 

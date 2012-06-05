@@ -134,6 +134,8 @@ class BcIns {
   BcIns(uint32_t raw) : raw_(raw) {}
 
   uint32_t raw_;
+
+  friend class Loader;
 };
 
 _END_LAMBDACHINE_NAMESPACE

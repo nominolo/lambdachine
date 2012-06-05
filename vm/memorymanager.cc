@@ -118,6 +118,7 @@ MemoryManager::MemoryManager()
   static_closures_ = grabFreeBlock(Block::kStaticClosures);
   closures_ = grabFreeBlock(Block::kClosures);
   strings_ = grabFreeBlock(Block::kStrings);
+  bytecode_ = grabFreeBlock(Block::kBytecode);
 }
 
 MemoryManager::~MemoryManager() {

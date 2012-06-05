@@ -145,24 +145,32 @@ public:
   MemoryManager();
   ~MemoryManager();
 
-  inline void *allocInfoTable(Word nwords) {
-    return allocInto(&info_tables_, nwords * sizeof(Word));
+  inline InfoTable *allocInfoTable(Word nwords) {
+    return static_cast<InfoTable*>
+      (allocInto(&info_tables_, nwords * sizeof(Word)));
   }
 
   inline char *allocString(size_t length) {
     return reinterpret_cast<char*>(allocInto(&strings_, length + 1));
   }
 
-  inline void *allocStaticClosure(Word nwords) {
-    return allocInto(&static_closures_, nwords * sizeof(Word));
+  inline Closure *allocStaticClosure(Word nwords) {
+    return static_cast<Closure*>
+      (allocInto(&static_closures_, nwords * sizeof(Word)));
   }
 
-  inline void *allocClosure(InfoTable *info, Word nPayloadWords) {
+  inline void *allocCode(size_t instrs, size_t bitmaps) {
+    return allocInto(&bytecode_,
+                     sizeof(BcIns) * instrs + sizeof(u2) * bitmaps);
+  }
+
+  inline Closure *allocClosure(InfoTable *info, Word nPayloadWords) {
     Closure *cl = reinterpret_cast<Closure*>
       (allocInto(&closures_, wordsof(ClosureHeader) + nPayloadWords * sizeof(Word)));
     Closure::initHeader(cl, info);
     return cl;
   }
+
 
   unsigned int infoTables();
 
@@ -191,6 +199,7 @@ private:
   Block *static_closures_;
   Block *closures_;
   Block *strings_;
+  Block *bytecode_;
 };
 
 _END_LAMBDACHINE_NAMESPACE
