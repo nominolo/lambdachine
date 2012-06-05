@@ -82,6 +82,7 @@ TEST(LoaderTest, Load2) {
   MemoryManager mm;
   Loader l(&mm, "tests");
   ASSERT_TRUE(l.loadModule("GHC.Base"));
+  l.printInfoTables(cerr);
 }
 
 int main(int argc, char *argv[]) {

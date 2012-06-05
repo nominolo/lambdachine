@@ -8,6 +8,7 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <iostream>
 #include HASH_MAP_H
 
 using namespace HASH_NAMESPACE;
@@ -127,6 +128,7 @@ public:
   const Module *module(const char *moduleName) {
     return loadedModules_[moduleName];
   }
+  void printInfoTables(std::ostream&);
 
 private:
   void initBasePath(const char *);

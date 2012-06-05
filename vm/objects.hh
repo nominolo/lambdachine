@@ -4,6 +4,8 @@
 #include "common.hh"
 #include "bytecode.hh"
 
+#include <iostream>
+
 _START_LAMBDACHINE_NAMESPACE
 
 typedef struct {
@@ -71,6 +73,7 @@ typedef enum _ClosureType {
 class InfoTable {
   inline ClosureType type() const { return static_cast<ClosureType>(type_); }
   inline const char *name() const { return name_; }
+  void debugPrint(std::ostream&);
 private:
   ClosureInfo layout_;
   u1 type_;       // closure type
@@ -85,7 +88,9 @@ class ConInfoTable : public InfoTable {
 };
 
 class CodeInfoTable : public InfoTable {
-  inline Code code() const { return code_; }
+public:
+  inline const Code *code() const { return &code_; }
+  void printCode(std::ostream&);
 private:
   Code code_;
   friend class Loader;

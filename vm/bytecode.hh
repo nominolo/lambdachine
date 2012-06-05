@@ -2,6 +2,7 @@
 #define _BYTECODE_H_
 
 #include "common.hh"
+#include <iostream>
 
 _START_LAMBDACHINE_NAMESPACE
 
@@ -81,13 +82,25 @@ _START_LAMBDACHINE_NAMESPACE
 class BcIns {
  public:
   
-  static const int kBranchBias = 0x8000;
+  static const uint32_t kBranchBias = 0x8000;
 
   typedef enum {
 #define DEF_BCINS_OPCODE(ins,format) k##ins,
     BCDEF(DEF_BCINS_OPCODE)
 #undef DEF_BCINS_OPCODE
   } Opcode;
+
+  typedef enum {
+    IFM_J,
+    IFM_R,
+    IFM_RR,
+    IFM_RRR,
+    IFM_RN,
+    IFM_RRN,
+    IFM_RS,
+    IFM_RRJ,
+    IFM____
+  } InsFormat;
 
   /**
    * Encodes an instruction in the ABC format.
@@ -122,13 +135,26 @@ class BcIns {
     return ad(opcode, a, kBranchBias + (int)offset);
   }
 
-  inline uint32_t Raw() { return raw_; }
-  inline uint8_t a() { return (raw_ >> 8) & 0xff; }
-  inline uint8_t b() { return (raw_ >> 24); }
-  inline uint8_t c() { return (raw_ >> 16) & 0xff; }
-  inline uint16_t d() { return (raw_ >> 16); }
-  inline int16_t sd() { return (raw_ >> 16); }
-  inline int16_t j() { return (raw_ >> 16) - 0x8000; }
+  inline uint32_t raw() const { return raw_; }
+  inline uint8_t a() const { return (raw_ >> 8) & 0xff; }
+  inline uint8_t b() const { return (raw_ >> 24); }
+  inline uint8_t c() const { return (raw_ >> 16) & 0xff; }
+  inline uint16_t d() const { return (raw_ >> 16); }
+  inline int16_t sd() const { return (raw_ >> 16); }
+  inline int16_t j() const { return (raw_ >> 16) - kBranchBias; }
+  const char *name() const;
+  InsFormat format() const;
+
+  inline Opcode opcode() const {
+    return static_cast<Opcode> (raw_ & 0xff);
+  }
+  
+  static const BcIns *debugPrint(std::ostream& out, const BcIns *ins, bool oneline);
+  static inline const BcIns *debugPrint(std::ostream& out, const BcIns *ins) {
+    return debugPrint(out, ins, false);
+  }
+
+  
 
  private:
   BcIns(uint32_t raw) : raw_(raw) {}
@@ -137,6 +163,9 @@ class BcIns {
 
   friend class Loader;
 };
+
+#define BC_ROUND(bytes) \
+  (((bytes) + (sizeof(BcIns) - 1)) / sizeof(BcIns))
 
 _END_LAMBDACHINE_NAMESPACE
 

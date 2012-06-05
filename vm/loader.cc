@@ -726,4 +726,12 @@ void Loader::loadClosure(BytecodeFile &f,
   closures_[clos_name] = cl;
 }
 
+void Loader::printInfoTables(ostream &out) {
+  STRING_MAP(InfoTable*)::iterator it;
+  for (it = infoTables_.begin();
+       it != infoTables_.end(); ++it) {
+    it->second->debugPrint(out);
+  }
+}
+
 _END_LAMBDACHINE_NAMESPACE
