@@ -105,6 +105,11 @@ TAGS/
 # mac os finder
 *.DS_Store
 
+## GCC coverage tool (gcov)
+*.gcov
+*.gcno
+*.gcda
+
 # Erlang
 *.dump
 *.beam

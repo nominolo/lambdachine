@@ -209,6 +209,7 @@ clean:
 	rm -f $(SRCS:%.c=%.o) utils/*.o interp compiler/.depend \
 		compiler/lcc lcc $(DIST)/setup-config vm/*.o
 	rm -rf $(HSBUILDDIR)
+	find . -name '*.gcov' -or -name '*.gcno' -or -name '*.gcda' | xargs rm -f
 	$(MAKE) -C tests clean
 
 .PHONY: distclean
