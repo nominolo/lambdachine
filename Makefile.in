@@ -48,6 +48,10 @@ DEPDIRS = $(DEPDIR) $(DEPDIR)/rts
 .PHONY: all
 all: interp compiler/Opcodes.h $(LCC) lcc
 
+Makefile: Makefile.in
+	@echo "Makefile.in has been modified; re-run ./configure (and ./boot if needed)"
+	@false
+
 .PHONY: boot
 boot:
 	mkdir -p $(HSBUILDDIR)
