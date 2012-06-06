@@ -1,4 +1,6 @@
 #include "bytecode.hh"
+#include "objects.hh"
+
 #include <iomanip>
 
 _START_LAMBDACHINE_NAMESPACE
@@ -40,7 +42,8 @@ static ostream &printAddr(ostream &out,
 }
 
 const BcIns *BcIns::debugPrint(ostream &out, const BcIns *ins,
-                               bool oneline, const BcIns *baseaddr) {
+                               bool oneline, const BcIns *baseaddr,
+                               const CodeInfoTable *info) {
   const BcIns *ins0 = ins;
   const BcIns i = *ins;
 
@@ -52,7 +55,7 @@ const BcIns *BcIns::debugPrint(ostream &out, const BcIns *ins,
     out << i.name() << "\tr" << (int)i.a() << endl;
     break;
   case IFM_RR:
-    out << i.name() << "\tr" << (int)i.a() << ", r" 
+    out << i.name() << "\tr" << (int)i.a() << ", r"
         << (int)i.d() << endl;
     break;
   case IFM_RRR:
@@ -60,7 +63,12 @@ const BcIns *BcIns::debugPrint(ostream &out, const BcIns *ins,
         << ", r" << (int)i.c()<< endl;
     break;
   case IFM_RN:
-    out << i.name() << "\tr" << (int)i.a() << ", " << (int)i.d() << endl;
+    out << i.name() << "\tr" << (int)i.a() << ", " << (int)i.d();
+    if (i.opcode() == kLOADK && info != NULL) {
+      out << " ; ";
+      info->printLiteral(out, i.d());
+    }
+    out << endl;
     break;
   case IFM_RS:
     out << i.name() << "\tr" << (int)i.a() << ", " << (int)i.sd() << endl;

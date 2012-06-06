@@ -4,7 +4,7 @@ _START_LAMBDACHINE_NAMESPACE
 
 using namespace std;
 
-void InfoTable::printPayload(ostream &out) {
+void InfoTable::printPayload(ostream &out) const {
   out << " Payload=";
   if (size_ >= 32) {
     cerr << "ERROR: Unknown encoding" << endl;
@@ -19,7 +19,7 @@ void InfoTable::printPayload(ostream &out) {
   out << ']' << endl;
 }
 
-void InfoTable::debugPrint(ostream &out) {
+void InfoTable::debugPrint(ostream &out) const {
   out << COL_YELLOW << name() << ": " << this << COL_RESET << endl
       << "  ";
   switch (type()) {
@@ -47,46 +47,53 @@ void InfoTable::debugPrint(ostream &out) {
   out << endl;
 }
 
-void CodeInfoTable::printCode(std::ostream &out) {
+void CodeInfoTable::printLiteral(std::ostream &out, u4 litid) const {
+  if (LC_UNLIKELY(litid >= code()->sizelits))
+    return;
+
+  Word lit = code()->lits[litid];
+  switch (code()->littypes[litid]) {
+  case LIT_INT:
+    out << (WordInt)lit << " (i)";
+    break;
+  case LIT_WORD:
+    out << (Word)lit << " (w)";
+    break;
+  case LIT_FLOAT:
+    out << (float)lit << " (w)";
+    break;
+  case LIT_CHAR:
+    if (lit < 256)
+      out << "'" << (char)lit << "'";
+    else
+      out << "u" << hex << (u4)lit << dec;
+    break;
+  case LIT_STRING:
+    out << '"' << (const char*)lit << '"';
+    break;
+  case LIT_INFO:
+    {
+      const InfoTable *i = (const InfoTable *)lit;
+      out << "info " << i << " (" << i->name() << ")";
+      break;
+    }
+  case LIT_CLOSURE:
+    {
+      const Closure *cl = (const Closure*)lit;
+      out << "clos " << cl << " (" << cl->info()->name() << ")";
+      break;
+    }
+  default:
+    out << "???";
+  }
+}
+
+void CodeInfoTable::printCode(std::ostream &out) const {
   out << "  literals:" << endl;
 
   for (u4 i = 0; i < (u4)code()->sizelits; ++i) {
     out << "    " << i << ": ";
-    Word lit = code()->lits[i];
-    switch (code()->littypes[i]) {
-    case LIT_INT:
-      out << (WordInt)lit << " (i)";
-      break;
-    case LIT_WORD:
-      out << (Word)lit << " (w)";
-      break;
-    case LIT_FLOAT:
-      out << (float)lit << " (w)";
-      break;
-    case LIT_CHAR:
-      if (lit < 256)
-        out << "'" << (char)lit << "'";
-      else
-        out << "u" << hex << (u4)lit << dec;
-      break;
-    case LIT_STRING:
-      out << '"' << (const char*)lit << '"';
-      break;
-    case LIT_INFO:
-      {
-        const InfoTable *i = (const InfoTable *)lit;
-        out << "info " << i << " (" << i->name() << ")";
-        break;
-      }
-    case LIT_CLOSURE:
-      {
-        const Closure *cl = (const Closure*)lit;
-        out << "clos " << cl << " (" << cl->info()->name() << ")";
-        break;
-      }
-    default:
-      out << "???";
-    }
+    printLiteral(out, i);
     out << endl;
   }
 
@@ -97,7 +104,7 @@ void CodeInfoTable::printCode(std::ostream &out) {
   const BcIns *ins = code()->code;
   while (ins < code()->code + code()->sizecode) {
     out << "    ";
-    ins = ins->debugPrint(out, ins, false, code()->code);
+    ins = ins->debugPrint(out, ins, false, code()->code, this);
   }
 }
 

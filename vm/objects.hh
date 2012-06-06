@@ -75,9 +75,9 @@ public:
   inline ClosureType type() const { return static_cast<ClosureType>(type_); }
   inline const char *name() const { return name_; }
   inline bool hasCode() const { return (kHasCodeBitmap & (1 << type())) != 0; }
-  void debugPrint(std::ostream&);
+  void debugPrint(std::ostream&) const;
 private:
-  void printPayload(std::ostream&);
+  void printPayload(std::ostream&) const;
   static const uint32_t kHasCodeBitmap =
     (1 << FUN) | (1 << THUNK) | (1 << CAF) | (1 << AP_CONT) |
     (1 << UPDATE_FRAME);
@@ -96,7 +96,8 @@ class ConInfoTable : public InfoTable {
 class CodeInfoTable : public InfoTable {
 public:
   inline const Code *code() const { return &code_; }
-  void printCode(std::ostream&);
+  void printCode(std::ostream&) const;
+  void printLiteral(std::ostream&, u4 litid) const;
 private:
   Code code_;
   friend class Loader;
