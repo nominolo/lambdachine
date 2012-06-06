@@ -71,10 +71,16 @@ typedef enum _ClosureType {
 #undef DEF_CLOS_TY
 
 class InfoTable {
+public:
   inline ClosureType type() const { return static_cast<ClosureType>(type_); }
   inline const char *name() const { return name_; }
+  inline bool hasCode() const { return (kHasCodeBitmap & (1 << type())) != 0; }
   void debugPrint(std::ostream&);
 private:
+  void printPayload(std::ostream&);
+  static const uint32_t kHasCodeBitmap =
+    (1 << FUN) | (1 << THUNK) | (1 << CAF) | (1 << AP_CONT) |
+    (1 << UPDATE_FRAME);
   ClosureInfo layout_;
   u1 type_;       // closure type
   u1 size_;

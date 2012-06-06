@@ -1,4 +1,5 @@
 #include "bytecode.hh"
+#include <iomanip>
 
 _START_LAMBDACHINE_NAMESPACE
 
@@ -33,7 +34,7 @@ static ostream &printAddr(ostream &out,
   if (!baseaddr) {
     out << (addr);
   } else {
-    out << (addr) - baseaddr;
+    out << setw(2) << (addr) - baseaddr;
   }
   return out;
 }
