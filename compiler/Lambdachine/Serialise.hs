@@ -1021,14 +1021,20 @@ emitCase r casetype (BcReg reg _) alts0 tgt_labels = do
     UseDenseCase -> do
       emitInsAD r opc_CASE (i2b reg) (fromIntegral (length alts))
       emitDenseAlts dflt_label
-      liftBuildM $ R.placeLabel r dflt_label
+      liftBuildM $ R.placeLabel r dflt_label    
+      emitBranchToDefault dflt
 
     UseSparseCase -> do
       emitInsAD r opc_CASE_S (i2b reg) (fromIntegral (length alts))
       emitMinMax
       emitSparseAlts dflt_label
+      emitBranchToDefault dflt
  where
    (dflt, alts, enc, len) = viewCaseAlts casetype alts0
+
+   emitBranchToDefault Nothing = return ()
+   emitBranchToDefault (Just lbl) =
+     emitInsAJ r opc_JMP 0 (tgt_labels IM.! lbl)
 
    -- Tags that don't occur in the case alternatives just point to
    -- the default branch
