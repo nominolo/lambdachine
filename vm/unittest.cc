@@ -65,7 +65,7 @@ TEST(LoaderTest, LoadIdempotent) {
   const char *modname = "GHC.Bool";
   ASSERT_TRUE(l.loadModule(modname));
   const Module *m = l.module(modname);
-  
+
   // Try loading the same module again.  Make sure the requested
   // module name is not pointer identical.
   char *modname2 = new char[strlen(modname) + 1];
@@ -78,10 +78,12 @@ TEST(LoaderTest, LoadIdempotent) {
   ASSERT_TRUE(m == m2);         // pointer identity!
 }
 
-TEST(LoaderTest, Load2) {
+TEST(LoaderTest, DebugPrint) {
   MemoryManager mm;
   Loader l(&mm, "tests");
   ASSERT_TRUE(l.loadModule("GHC.Base"));
+  // We don't really specify the debug output.  It shouldn't cause
+  // crashes, though.
   l.printInfoTables(cerr);
 }
 
