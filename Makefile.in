@@ -149,6 +149,10 @@ unittest: vm/unittest.o $(GTEST_A) $(VM_SRCS:.cc=.o)
 	@echo "LINK $^ => $@"
 	@$(CXX) -o $@ $^
 
+bcdump: vm/bcdump.o $(VM_SRCS:.cc=.o)
+	@echo "LINK $^ => $@"
+	@$(CXX) -o $@ $^
+
 .PHONY: test
 test: unittest
 	@./unittest 2> /dev/null # ignore debug output
