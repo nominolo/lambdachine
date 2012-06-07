@@ -1133,10 +1133,12 @@ transCase scrut bndr alt_ty alts env0 fvi locs0 ctxt = do
   (bcis, locs1, fvs0, Just r) <- transBody scrut env0 fvi locs0 (BindC Nothing)
   let locs2 = updateLoc locs1 bndr (InVar r)
   let env = extendLocalEnv env0 bndr undefined
+  let (tycon, _) = Ghc.splitTyConApp (Ghc.idType bndr)
+  let tags = length (Ghc.tyConDataCons tycon)
   case ctxt of
     RetC -> do -- inss are closed at exit
       (alts, inss, fvs1) <- transCaseAlts alts r env fvi locs2 RetC
-      return ((bcis <*> insCase CaseOnTag {- XXX: wrong -} r alts)
+      return ((bcis <*> insCase (CaseOnTag tags) {- XXX: wrong -} r alts)
               `catGraphsC` inss,
               locs1, fvs0 `mappend` fvs1, Nothing)
     BindC mr -> do -- close inss' first
@@ -1146,7 +1148,7 @@ transCase scrut bndr alt_ty alts env0 fvi locs0 ctxt = do
       let bcis' =
             withFresh $ \l ->
               let inss' = [ ins <*> insGoto l | ins <- inss ] in
-              ((bcis <*> insCase CaseOnTag r alts) `catGraphsC` inss')
+              ((bcis <*> insCase (CaseOnTag tags) r alts) `catGraphsC` inss')
                |*><*| mkLabel l  -- make sure we're open at the end
       return (bcis', locs1, fvs0 `mappend` fvs1, Just r1)
 

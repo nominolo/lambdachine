@@ -78,7 +78,7 @@ instance Pretty b => Pretty (LinearIns' b) where
   ppr (Lst i) = ppr i
 
 data CaseType
-  = CaseOnTag
+  = CaseOnTag Int  -- no. of tags
   | CaseOnLiteral
   deriving (Eq, Ord)
 

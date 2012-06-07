@@ -11,11 +11,11 @@ data D = A | B | C
 {-# NOINLINE f #-}
 f :: D -> Int#
 f d = case d of
-        A -> 3#
+        C -> 3#
         _ -> 4#
 
 test = case f A of
-         3# -> case f C of
-                 4# -> True
+         4# -> case f C of
+                 3# -> True
                  _ -> False
          _ -> False

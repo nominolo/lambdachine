@@ -99,7 +99,8 @@ const BcIns *BcIns::debugPrint(ostream &out, const BcIns *ins,
         u2 *tgt = (u2*)ins;
         u4 ncases = i.d();
         ins += (ncases + 1) / 2;
-        out << "CASE\tr" << (int)i.a() << endl;
+        out << "CASE\tr" << (int)i.a()
+            << " [tags 1.." << (int)i.d() << "]" << endl;
         if (!oneline) {
           for (u4 j = 0; j < ncases; j++, tgt++) {
             out << "           " << j + 1

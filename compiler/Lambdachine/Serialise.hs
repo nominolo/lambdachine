@@ -29,6 +29,7 @@ import Control.Monad.State.Strict --( StateT, runStateT )
 import Data.Bits
 import Data.Char ( ord )
 import Data.List ( sortBy, find )
+import Data.Maybe ( fromMaybe )
 import Data.Monoid
 import Data.Ord ( comparing )
 import Data.Word
@@ -419,7 +420,7 @@ newAddresses code =
    upd (addr, m) idx ins =
      (addr + insLength ins, IM.insert idx addr m)
 
-data UseCaseEncoding = UseDenseCase | UseSparseCase
+data UseCaseEncoding = UseDenseCase Int | UseSparseCase
 
 type LiteralIds = M.Map (Either BcConst Id) Word16
 
@@ -429,9 +430,9 @@ viewCaseAlts ::
   -> (Maybe label, [(BcTag, a, label)], UseCaseEncoding, Int)
      -- ^ Returns: (1) default case, (2) cases, (3) which encoding to
      -- use (4) the bytecode length when using that encoding
-viewCaseAlts CaseOnTag alts0 =
+viewCaseAlts (CaseOnTag ntags) alts0 =
   if dense_case_len <= sparse_case_len then
-    (dflt, alts, UseDenseCase, dense_case_len)
+    (dflt, alts, UseDenseCase ntags, dense_case_len)
   else
     (dflt, alts, UseSparseCase, sparse_case_len)
 
@@ -440,10 +441,9 @@ viewCaseAlts CaseOnTag alts0 =
    (dflt, alts)
      | ((DefaultTag,_,d):r) <- alts1 = (Just d, r)
      | otherwise                     = (Nothing, alts1)
-   Tag max_tag = fst3 (last alts)
 
    -- compact CASE starts with tag 1
-   dense_case_len = 1 + ceilDiv2 max_tag
+   dense_case_len = 1 + ceilDiv2 ntags
 
    -- sparse CASE has custom min and max
    sparse_case_len = 2 + length alts
@@ -565,8 +565,8 @@ putCase :: Int -> CaseType -> BcVar -> [(BcTag, a, Int)]
         -> InsBuildM ()
 putCase this_id casetype (BcReg r _) alts0 new_addrs =
   case enc of
-    UseDenseCase -> do
-      putIns $ insAD opc_CASE (i2b r) (fromIntegral (length alts))
+    UseDenseCase n -> do
+      putIns $ insAD opc_CASE (i2b r) (fromIntegral n)
       putDenseAlts
     UseSparseCase -> do
       putIns $ insAD opc_CASE_S (i2b r) (fromIntegral (length alts))
@@ -1016,19 +1016,22 @@ emitArgs rgn regs_ =
 emitCase :: R.Region -> CaseType -> BcVar -> [(BcTag, a, Int)]
          -> TargetLabels -> Build ()
 emitCase r casetype (BcReg reg _) alts0 tgt_labels = do
-  dflt_label <- liftBuildM R.makeLabel
+  post_case_label <- liftBuildM R.makeLabel
+  -- Address offsets in a case are relative to the *end* of the CASE
+  -- instruction.  We place post_case_label right after the CASE to
+  -- calculate such offsets.
   case enc of
-    UseDenseCase -> do
-      emitInsAD r opc_CASE (i2b reg) (fromIntegral (length alts))
-      emitDenseAlts dflt_label
-      liftBuildM $ R.placeLabel r dflt_label    
-      emitBranchToDefault dflt
+    UseDenseCase n -> do
+      emitInsAD r opc_CASE (i2b reg) (fromIntegral n)
+      emitDenseAlts n post_case_label dflt
+      liftBuildM $ R.placeLabel r post_case_label
 
     UseSparseCase -> do
       emitInsAD r opc_CASE_S (i2b reg) (fromIntegral (length alts))
       emitMinMax
-      emitSparseAlts dflt_label
+      emitSparseAlts post_case_label
       emitBranchToDefault dflt
+      liftBuildM $ R.placeLabel r post_case_label
  where
    (dflt, alts, enc, len) = viewCaseAlts casetype alts0
 
@@ -1036,19 +1039,26 @@ emitCase r casetype (BcReg reg _) alts0 tgt_labels = do
    emitBranchToDefault (Just lbl) =
      emitInsAJ r opc_JMP 0 (tgt_labels IM.! lbl)
 
+   dense_targets nalts dflt_tgt alts = collect [1..nalts] alts
+     where
+       collect [] [] = []
+       collect [] ((Tag t, _, _):_) =
+         error $ "emitCase: Tag " ++ show t ++ " not in range 1.." ++ show nalts
+       collect (tag:tags) ((Tag tag', _, tgt):alts)
+         | tag == tag' = tgt : collect tags alts
+       collect (tag:tags) alts = dflt_tgt : collect tags alts
+
    -- Tags that don't occur in the case alternatives just point to
    -- the default branch
-   emitDenseAlts dflt_label =
-     mapMWord16s $ go 1 alts
+   emitDenseAlts nalts post_case_label dflt_label =
+     let dflt_target = fromMaybe missing_default dflt_label in
+     let targets = dense_targets nalts dflt_target alts in
+     --trace (show targets) $
+     mapMWord16s $
+       map (liftBuildM . dense_case_offset . (tgt_labels IM.!)) $ targets
     where
-      go _ [] = []
-      go next_tag alts0@((Tag tag',_,tgt):alts') =
-        if next_tag == tag' then
-          liftBuildM (R.offset' R.S2 R.BE (`shiftR` 2) r
-                                dflt_label (tgt_labels IM.! tgt))
-            : go (next_tag + 1) alts'
-         else
-          liftBuildM (R.emitWord16be r 0) : go (next_tag + 1) alts0
+      missing_default = error $ "No default target in non-exhaustive case"
+      dense_case_offset = R.offset' R.S2 R.BE (`shiftR` 2) r post_case_label 
 
    -- input builds must write a single Word16 in big endian each
    mapMWord16s :: [Build ()] -> Build ()
