@@ -75,6 +75,8 @@ public:
   inline ClosureType type() const { return static_cast<ClosureType>(type_); }
   inline const char *name() const { return name_; }
   inline bool hasCode() const { return (kHasCodeBitmap & (1 << type())) != 0; }
+  inline const ClosureInfo layout() const { return layout_; }
+  inline const u4 size() const { return size_; }
   void debugPrint(std::ostream&) const;
 private:
   void printPayload(std::ostream&) const;
@@ -136,6 +138,8 @@ public:
   inline Word payload(int i) const { return payload_[i]; }
   inline void setInfo(InfoTable *info) { header_.info_ = info; }
 };
+
+void printClosure(std::ostream &out, Closure *cl, bool oneline);
 
 _END_LAMBDACHINE_NAMESPACE
 

@@ -129,6 +129,7 @@ public:
     return loadedModules_[moduleName];
   }
   void printInfoTables(std::ostream&);
+  void printClosures(std::ostream&);
 
 private:
   void initBasePath(const char *);

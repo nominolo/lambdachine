@@ -19,6 +19,7 @@ int main(int argc, char *argv[]) {
   }
 
   l.printInfoTables(cout);
+  l.printClosures(cout);
 
   return 0;
 }

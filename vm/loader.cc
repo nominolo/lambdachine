@@ -734,4 +734,15 @@ void Loader::printInfoTables(ostream &out) {
   }
 }
 
+void Loader::printClosures(ostream &out) {
+  STRING_MAP(Closure*)::iterator it;
+  for (it = closures_.begin();
+       it != closures_.end(); ++it) {
+    const char *name = it->first;
+    Closure *cl = it->second;
+    out << '[' << cl << "] " COL_GREEN << name << COL_RESET << ": ";
+    printClosure(out, cl, false);
+  }
+}
+
 _END_LAMBDACHINE_NAMESPACE

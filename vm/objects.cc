@@ -4,6 +4,34 @@ _START_LAMBDACHINE_NAMESPACE
 
 using namespace std;
 
+void printClosure(ostream &out, Closure *cl, bool oneline) {
+  const InfoTable *info = cl->info();
+  
+  if (!info) {
+    out << "[UnknownClosure]";
+    if (!oneline) out << endl;
+    return;
+  }
+
+  while (info->type() == IND) {
+    cl = (Closure*)cl->payload(0);
+    info = cl->info();
+    out << "IND -> ";
+  }
+  
+  out << info->name() << ' ';
+
+  u4 bitmap = info->layout().bitmap;
+  for (u4 i = 0; i < info->size(); ++i, bitmap >>= 1) {
+    if (bitmap & 1)
+      out << (Word*)cl->payload(i) << ' ';
+    else
+      out << (Word)cl->payload(i) << ' ';
+  }
+
+  if (!oneline) out << endl;
+}
+
 void InfoTable::printPayload(ostream &out) const {
   out << " Payload=";
   if (size_ >= 32) {

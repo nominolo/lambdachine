@@ -85,6 +85,7 @@ TEST(LoaderTest, DebugPrint) {
   // We don't really specify the debug output.  It shouldn't cause
   // crashes, though.
   l.printInfoTables(cerr);
+  l.printClosures(cerr);
 }
 
 int main(int argc, char *argv[]) {
