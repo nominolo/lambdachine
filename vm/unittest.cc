@@ -2,6 +2,7 @@
 #include "thread.hh"
 #include "memorymanager.hh"
 #include "loader.hh"
+#include "assembler.hh"
 #include <iostream>
 
 using namespace std;
@@ -86,6 +87,42 @@ TEST(LoaderTest, DebugPrint) {
   // crashes, though.
   l.printInfoTables(cerr);
   l.printClosures(cerr);
+}
+
+TEST(RegSetTest, fromReg) {
+  RegSet rs = RegSet::fromReg(4);
+  for (int i = 0; i < 32; ++i) {
+    ASSERT_EQ(i == 4, rs.test(i));
+  }
+}
+
+TEST(RegSetTest, range) {
+  RegSet rs = RegSet::range(4, 10);
+  for (int i = 0; i < 32; ++i) {
+    ASSERT_EQ(4 <= i && i < 10, rs.test(i));
+  }
+}
+
+TEST(RegSetTest, setClear) {
+  RegSet rs = RegSet::range(4, 10);
+  rs.set(12);
+  ASSERT_TRUE(rs.test(12));
+  rs.clear(12);
+  ASSERT_FALSE(rs.test(12));
+}
+
+TEST(RegSetTest, exclude) {
+  RegSet rs = RegSet::range(4, 10).exclude(8);;
+  for (int i = 0; i < 32; ++i) {
+    ASSERT_EQ(4 <= i && i < 10 && i != 8, rs.test(i));
+  }
+}
+
+TEST(RegSetTest, pickBotTop) {
+  RegSet rs = RegSet::range(4, 10);
+  rs.set(15);
+  ASSERT_EQ((Reg)4, rs.pickBot());
+  ASSERT_EQ((Reg)15, rs.pickTop());
 }
 
 int main(int argc, char *argv[]) {
