@@ -111,10 +111,14 @@ TEST(RegSetTest, setClear) {
   ASSERT_FALSE(rs.test(12));
 }
 
-TEST(RegSetTest, exclude) {
+TEST(RegSetTest, excludeInclude) {
   RegSet rs = RegSet::range(4, 10).exclude(8);;
   for (int i = 0; i < 32; ++i) {
     ASSERT_EQ(4 <= i && i < 10 && i != 8, rs.test(i));
+  }
+  rs = RegSet::range(4, 10).include(18);;
+  for (int i = 0; i < 32; ++i) {
+    ASSERT_EQ((4 <= i && i < 10) || i == 18, rs.test(i));
   }
 }
 
