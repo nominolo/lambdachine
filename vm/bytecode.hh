@@ -153,7 +153,7 @@ class BcIns {
   inline Opcode opcode() const {
     return static_cast<Opcode> (raw_ & 0xff);
   }
-  
+
   static const BcIns *debugPrint(
     std::ostream& out, const BcIns *ins,
     bool oneline, const BcIns *baseaddr, const CodeInfoTable*);

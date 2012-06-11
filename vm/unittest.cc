@@ -153,12 +153,35 @@ protected:
   }
 
   Word arithABC(BcIns ins, Word slot1, Word slot2) {
-    code_[0] = ins;
+    T->setPC(&code_[0]);
     T->setSlot(ins.b(), slot1);
     T->setSlot(ins.c(), slot2);
-    T->setPC(&code_[0]);
+    code_[0] = ins;
     EXPECT_TRUE(cap_.run(T));
     return T->slot(ins.a());
+  }
+
+  Word arithAD(BcIns ins, Word slot) {
+    T->setPC(&code_[0]);
+    T->setSlot(ins.d(), slot);
+    code_[0] = ins;
+    EXPECT_TRUE(cap_.run(T));
+    return T->slot(ins.a());
+  }
+
+  // Returns true iff branch was taken.
+  bool branchTest(BcIns::Opcode opc, Word oper1, Word oper2) {
+    T->setPC(&code_[0]);
+    T->setSlot(0, 0);
+    T->setSlot(1, oper1);
+    T->setSlot(2, oper2);
+    T->setSlot(3, 0xdeadbeef);
+    code_[0] = BcIns::ad(opc, 1, 2);
+    code_[1] = BcIns::aj(BcIns::kJMP, 0, +1);
+    code_[2] = BcIns::ad(BcIns::kMOV, 0, 3);
+    code_[3] = BcIns();
+    EXPECT_TRUE(cap_.run(T));
+    return T->slot(0) == 0;
   }
 
   BcIns stop() { return BcIns::ad(BcIns::kSTOP, 0, 0); }
@@ -192,6 +215,100 @@ TEST_F(ArithTest, Sub) {
   ASSERT_EQ((Word)3, arithABC(BcIns::abc(BcIns::kSUBRR, 0, 1, 2),
                                -1, -4));
 }
+
+TEST_F(ArithTest, Mul) {
+  ASSERT_EQ(56088, arithABC(BcIns::abc(BcIns::kMULRR, 0, 1, 2),
+                            123, 456));
+  ASSERT_EQ((Word)-356136, arithABC(BcIns::abc(BcIns::kMULRR, 0, 1, 2),
+                              -456, 781));
+  ASSERT_EQ((Word)-356136, arithABC(BcIns::abc(BcIns::kMULRR, 0, 1, 2),
+                              781, -456));
+  ASSERT_EQ(0, arithABC(BcIns::abc(BcIns::kMULRR, 0, 1, 2),
+                        0, 781));
+  ASSERT_EQ(356136, arithABC(BcIns::abc(BcIns::kMULRR, 0, 1, 2),
+                             -456, -781));
+}
+
+TEST_F(ArithTest, Div) {
+  // Testing for divide-by-0 crashes the test suite, so lets not do
+  // that.
+  ASSERT_EQ(123, arithABC(BcIns::abc(BcIns::kDIVRR, 0, 1, 2), 123, 1));
+  ASSERT_EQ(-123, arithABC(BcIns::abc(BcIns::kDIVRR, 0, 1, 2), 123, -1));
+  ASSERT_EQ(-123, arithABC(BcIns::abc(BcIns::kDIVRR, 0, 1, 2), -123, 1));
+  ASSERT_EQ(123, arithABC(BcIns::abc(BcIns::kDIVRR, 0, 1, 2), -123, -1));
+
+  ASSERT_EQ(2, arithABC(BcIns::abc(BcIns::kDIVRR, 0, 1, 2), -8, -3));
+  ASSERT_EQ(2, arithABC(BcIns::abc(BcIns::kDIVRR, 0, 1, 2), 8, 3));
+  ASSERT_EQ(-2, arithABC(BcIns::abc(BcIns::kDIVRR, 0, 1, 2), -8, 3));
+  ASSERT_EQ(-2, arithABC(BcIns::abc(BcIns::kDIVRR, 0, 1, 2), 8, -3));
+
+  ASSERT_EQ(0, arithABC(BcIns::abc(BcIns::kDIVRR, 0, 1, 2), 0, 3));
+}
+
+TEST_F(ArithTest, Rem) {
+  // Just like for division, we can't test for second arg of 0.
+  ASSERT_EQ(0, arithABC(BcIns::abc(BcIns::kREMRR, 0, 1, 2), 123, 1));
+  ASSERT_EQ(0, arithABC(BcIns::abc(BcIns::kREMRR, 0, 1, 2), 123, -1));
+  ASSERT_EQ(0, arithABC(BcIns::abc(BcIns::kREMRR, 0, 1, 2), -123, 1));
+  ASSERT_EQ(0, arithABC(BcIns::abc(BcIns::kREMRR, 0, 1, 2), -123, -1));
+
+  ASSERT_EQ(-2, arithABC(BcIns::abc(BcIns::kREMRR, 0, 1, 2), -8, -3));
+  ASSERT_EQ(2, arithABC(BcIns::abc(BcIns::kREMRR, 0, 1, 2), 8, 3));
+  ASSERT_EQ(-2, arithABC(BcIns::abc(BcIns::kREMRR, 0, 1, 2), -8, 3));
+  ASSERT_EQ(2, arithABC(BcIns::abc(BcIns::kREMRR, 0, 1, 2), 8, -3));
+
+  ASSERT_EQ(0, arithABC(BcIns::abc(BcIns::kREMRR, 0, 1, 2), 0, 3));
+}
+
+TEST_F(ArithTest, Mov) {
+  ASSERT_EQ(0x123456, arithAD(BcIns::ad(BcIns::kMOV, 0, 1), 0x123456));
+}
+
+TEST_F(ArithTest, Neg) {
+  ASSERT_EQ(-0x123456, arithAD(BcIns::ad(BcIns::kNEG, 0, 1), 0x123456));
+}
+
+TEST_F(ArithTest, Not) {
+  ASSERT_EQ(~(Word)0x123456, arithAD(BcIns::ad(BcIns::kNOT, 0, 1), 0x123456));
+}
+
+TEST_F(ArithTest, BranchLt) {
+  ASSERT_FALSE(branchTest(BcIns::kISLT, 1, 0));
+  ASSERT_TRUE(branchTest(BcIns::kISLT, 4, 5));
+  ASSERT_TRUE(branchTest(BcIns::kISLT, -4, 5));
+  ASSERT_TRUE(branchTest(BcIns::kISLT, 0, 1));
+  ASSERT_TRUE(branchTest(BcIns::kISLT, -1, 0));
+  ASSERT_FALSE(branchTest(BcIns::kISLT, 4, 4));
+  ASSERT_FALSE(branchTest(BcIns::kISLT, -4, -4));
+  ASSERT_FALSE(branchTest(BcIns::kISLT, 4, -4));
+  ASSERT_FALSE(branchTest(BcIns::kISLT, -4, -5));
+}
+
+TEST_F(ArithTest, BranchGe) {
+  ASSERT_TRUE(branchTest(BcIns::kISGE, 1, 0));
+  ASSERT_FALSE(branchTest(BcIns::kISGE, 4, 5));
+  ASSERT_FALSE(branchTest(BcIns::kISGE, -4, 5));
+  ASSERT_FALSE(branchTest(BcIns::kISGE, 0, 1));
+  ASSERT_FALSE(branchTest(BcIns::kISGE, -1, 0));
+  ASSERT_TRUE(branchTest(BcIns::kISGE, 4, 4));
+  ASSERT_TRUE(branchTest(BcIns::kISGE, -4, -4));
+  ASSERT_TRUE(branchTest(BcIns::kISGE, 4, -4));
+  ASSERT_TRUE(branchTest(BcIns::kISGE, -4, -5));
+}
+
+TEST_F(ArithTest, BranchEq) {
+  ASSERT_FALSE(branchTest(BcIns::kISEQ, 1, 0));
+  ASSERT_FALSE(branchTest(BcIns::kISEQ, 4, 5));
+  ASSERT_FALSE(branchTest(BcIns::kISEQ, -4, 5));
+  ASSERT_FALSE(branchTest(BcIns::kISEQ, 0, 1));
+  ASSERT_FALSE(branchTest(BcIns::kISEQ, -1, 0));
+  ASSERT_TRUE(branchTest(BcIns::kISEQ, 4, 4));
+  ASSERT_TRUE(branchTest(BcIns::kISEQ, -4, -4));
+  ASSERT_FALSE(branchTest(BcIns::kISEQ, 4, -4));
+  ASSERT_FALSE(branchTest(BcIns::kISEQ, -4, -5));
+}
+
+
 
 int main(int argc, char *argv[]) {
   ::testing::InitGoogleTest(&argc, argv);

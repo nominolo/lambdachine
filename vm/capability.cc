@@ -59,25 +59,74 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   opB = opC >> 8; \
   opC = opC & 0xff;
 
+# define DECODE_AD \
+  do { } while(0)
+
+
   // Dispatch first instruction.
   DISPATCH_NEXT;
 
+  //
+  // ----- Bytecode Implentations ------------------------------------
+  //
+
  op_ISLT:
+  DECODE_AD;
+  ++pc;
+  if ((WordInt)base[opA] < (WordInt)base[opC])
+    pc += (pc - 1)->j();
+  DISPATCH_NEXT;
+
  op_ISGE:
+  DECODE_AD;
+  ++pc;
+  if ((WordInt)base[opA] >= (WordInt)base[opC])
+    pc += (pc - 1)->j();
+  DISPATCH_NEXT;
+
  op_ISLE:
+  DECODE_AD;
+  ++pc;
+  if ((WordInt)base[opA] <= (WordInt)base[opC])
+    pc += (pc - 1)->j();
+  DISPATCH_NEXT;
+
  op_ISGT:
+  DECODE_AD;
+  ++pc;
+  if ((WordInt)base[opA] > (WordInt)base[opC])
+    pc += (pc - 1)->j();
+  DISPATCH_NEXT;
+
  op_ISEQ:
+  DECODE_AD;
+  ++pc;
+  if (base[opA] == base[opC])
+    pc += (pc - 1)->j();
+  DISPATCH_NEXT;
+
  op_ISNE:
+  DECODE_AD;
+  ++pc;
+  if (base[opA] != base[opC])
+    pc += (pc - 1)->j();
+  DISPATCH_NEXT;
+
  op_NOT:
+  DECODE_AD;
+  base[opA] = ~base[opC];
+  DISPATCH_NEXT;
+
  op_NEG:
+  DECODE_AD;
+  base[opA] = -(WordInt)base[opC];
+  DISPATCH_NEXT;
+
  op_MOV:
- op_MOV_RES:
- op_UPDATE:
- op_LOADF:
- op_LOADFV:
- op_LOADBH:
- op_LOADSLF:
- op_INITF:
+  DECODE_AD;
+  base[opA] = base[opC];
+  DISPATCH_NEXT;
+
  op_ADDRR:
   DECODE_BC;
   base[opA] = base[opB] + base[opC];
@@ -89,8 +138,36 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   DISPATCH_NEXT;
 
  op_MULRR:
+  DECODE_BC;
+  // Signed and unsigned multiplication are actually identical (except
+  // for CPU flags).
+  base[opA] = (WordInt)base[opB] * (WordInt)base[opC];
+  DISPATCH_NEXT;
+
  op_DIVRR:
+  DECODE_BC;
+  base[opA] = (WordInt)base[opB] / (WordInt)base[opC];
+  DISPATCH_NEXT;
+
  op_REMRR:
+  DECODE_BC;
+  base[opA] = (WordInt)base[opB] % (WordInt)base[opC];
+  DISPATCH_NEXT;
+
+ op_JMP:
+  // Offsets are relative to the current PC which points to the
+  // following instruction.  Hence, "JMP 0" is a no-op, "JMP -1" is an
+  // infinite loop.
+  pc += opC - BcIns::kBranchBias;
+  DISPATCH_NEXT;
+
+ op_MOV_RES:
+ op_UPDATE:
+ op_LOADF:
+ op_LOADFV:
+ op_LOADBH:
+ op_LOADSLF:
+ op_INITF:
  op_LOADK:
  op_KINT:
  op_NEW_INT:
@@ -100,7 +177,6 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
  op_CALL:
  op_CALLT:
  op_RET1:
- op_JMP:
  op_EVAL:
  op_CASE:
  op_CASE_S:
