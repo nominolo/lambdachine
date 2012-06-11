@@ -240,13 +240,9 @@ char *Loader::findModule(const char *moduleName) {
   return NULL;
 }
 
-static bool ensureNoForwardRefs() {
-  return true;
-}
-
 bool Loader::loadModule(const char *moduleName)
 {
-  return loadModule(moduleName, 0) && ensureNoForwardRefs();
+  return loadModule(moduleName, 0) && checkNoForwardRefs();
 }
 
 bool Loader::loadModule(const char *moduleName, int level) {
@@ -398,6 +394,30 @@ Module *Loader::loadModuleHeader(BytecodeFile &f)
   }
 
   return mdl;
+}
+
+bool Loader::checkNoForwardRefs() {
+  int errors = 0;
+
+  for (STRING_MAP(InfoTable*)::iterator it = infoTables_.begin();
+       it != infoTables_.end(); ++it) {
+    InfoTable *info = it->second;
+    if (info->type() == INVALID_OBJECT) {
+      cerr << "Unresolved info table: " << it->first << endl;
+      ++errors;
+    }
+  }
+
+  for (STRING_MAP(Closure*)::iterator it = closures_.begin();
+       it != closures_.end(); ++it) {
+    Closure *cl = it->second;
+    if (cl->info() == NULL) {
+      cerr << "Unresolved closure: " << it->first << endl;
+      ++errors;
+    }
+  }
+
+  return errors == 0;
 }
 
 void Loader::loadModuleBody(BytecodeFile &f, Module *mdl) {

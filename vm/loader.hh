@@ -152,6 +152,7 @@ private:
   void fixClosureForwardReference(const char *name, Closure *cl);
   void loadInfoTableReference(const char *name, Word *literal /* out */);
   void fixInfoTableForwardReference(const char *name, InfoTable *info);
+  bool checkNoForwardRefs();
 
   MemoryManager *mm_;
   STRING_MAP(Module*) loadedModules_;
