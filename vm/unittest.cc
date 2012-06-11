@@ -3,6 +3,7 @@
 #include "memorymanager.hh"
 #include "loader.hh"
 #include "assembler.hh"
+#include "capability.hh"
 #include <iostream>
 
 using namespace std;
@@ -127,6 +128,69 @@ TEST(RegSetTest, pickBotTop) {
   rs.set(15);
   ASSERT_EQ((Reg)4, rs.pickBot());
   ASSERT_EQ((Reg)15, rs.pickTop());
+}
+
+class CodeTest : public ::testing::Test {
+protected:
+  virtual void SetUp() {
+    for (size_t i = 0; i < countof(code_); ++i) {
+      code_[i] = stop();
+    }
+
+    T = Thread::createTestingThread(&code_[0], 32);
+    for (size_t i = 0; i < 32; ++i) {
+      T->setSlot(i, 3 + (i * 10));
+    }
+  }
+
+  virtual void TearDown() {
+    delete T;
+    T = NULL;
+  }
+
+  virtual ~CodeTest() {
+    delete T;
+  }
+
+  Word arithABC(BcIns ins, Word slot1, Word slot2) {
+    code_[0] = ins;
+    T->setSlot(ins.b(), slot1);
+    T->setSlot(ins.c(), slot2);
+    T->setPC(&code_[0]);
+    EXPECT_TRUE(cap_.run(T));
+    return T->slot(ins.a());
+  }
+
+  BcIns stop() { return BcIns::ad(BcIns::kSTOP, 0, 0); }
+
+  Capability cap_;
+  Thread *T;
+  BcIns code_[32];
+};
+
+class ArithTest : public CodeTest {
+};
+
+TEST_F(ArithTest, Add) {
+  ASSERT_EQ(0x579, arithABC(BcIns::abc(BcIns::kADDRR, 0, 1, 2),
+                            0x123, 0x456));
+  ASSERT_EQ(0x12345678, arithABC(BcIns::abc(BcIns::kADDRR, 0, 1, 2),
+                                 0x12340000, 0x5678));
+  ASSERT_EQ((Word)-5, arithABC(BcIns::abc(BcIns::kADDRR, 0, 1, 2),
+                               -23, 18));
+  ASSERT_EQ((Word)-5, arithABC(BcIns::abc(BcIns::kADDRR, 0, 1, 2),
+                               -1, -4));
+}
+
+TEST_F(ArithTest, Sub) {
+  ASSERT_EQ(0x333, arithABC(BcIns::abc(BcIns::kSUBRR, 0, 1, 2),
+                            0x456, 0x123));
+  ASSERT_EQ(0x12340000, arithABC(BcIns::abc(BcIns::kSUBRR, 0, 1, 2),
+                                 0x12345678, 0x5678));
+  ASSERT_EQ((Word)-41, arithABC(BcIns::abc(BcIns::kSUBRR, 0, 1, 2),
+                               -23, 18));
+  ASSERT_EQ((Word)3, arithABC(BcIns::abc(BcIns::kSUBRR, 0, 1, 2),
+                               -1, -4));
 }
 
 int main(int argc, char *argv[]) {

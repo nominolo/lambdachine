@@ -36,11 +36,19 @@ Thread *Thread::createThread(Capability *cap, Word stackSizeInWords) {
   return T;
 }
 
+Thread *Thread::createTestingThread(BcIns *pc, u4 framesize) {
+  Thread *T = new Thread(framesize);
+  T->base_ = T->stack_ + 1;
+  T->top_ = T->base_ + framesize;
+  T->pc_ = pc;
+  return T;
+}
+
 #include <stdio.h>
 
 #define CHECK_VALID(expr) if(!(expr)) { fprintf(stderr,  #expr "\n"); return false;}
 
-bool Thread::isValid() {
+bool Thread::isValid() const {
 #ifndef NDEBUG
   CHECK_VALID(stackSize_ >= kMinStackWords);
   if (stack_ != NULL) {

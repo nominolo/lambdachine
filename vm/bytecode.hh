@@ -84,6 +84,8 @@ class CodeInfoTable;
  */
 class BcIns {
  public:
+
+  BcIns() : raw_(kSTOP) {}
   
   static const uint32_t kBranchBias = 0x8000;
 
