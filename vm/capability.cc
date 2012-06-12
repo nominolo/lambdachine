@@ -183,6 +183,13 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   base[opA] = (WordInt)base[opB] % (WordInt)base[opC];
   DISPATCH_NEXT;
 
+# define BUMP_HEAP(payloadWords) \
+  heap += (1 + (payloadWords)) * sizeof(Word); \
+  if (LC_UNLIKELY(heap > heaplim)) { \
+    heap -= (1 + (payloadWords)) * sizeof(Word); \
+    goto heapOverflow; \
+  }
+
  op_ALLOC1:
   // A = target
   // B = itbl
@@ -190,15 +197,33 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   {
     DECODE_BC;
     Closure *cl = (Closure*)heap;
-    heap += 2 * sizeof(Word);
-    if (LC_UNLIKELY(heap > heaplim)) {
-      heap -= 2 * sizeof(Word);
-      goto heapOverflow;
-    }
+    BUMP_HEAP(1);
     cl->setInfo((InfoTable*)base[opB]);
     cl->setPayload(0, base[opC]);
     base[opA] = (Word)cl;
     ++pc; // skip bitmask
+    DISPATCH_NEXT;
+  }
+
+ op_ALLOC:
+  // A = target
+  // B = itbl
+  // C = payload size
+  // payload regs in little endian order
+  {
+    DECODE_BC;
+    Closure *cl = (Closure*)heap;
+    BUMP_HEAP(opC);
+    cl->setInfo((InfoTable*)base[opB]);
+    const u1 *arg = (const u1 *)pc;
+    for (int i = 0; i < opC; ++i) {
+      // cerr << "payload[" << i << "]=base[" << (int)*arg << "] ("
+      //      << (Word)base[*arg] << ")" << endl;
+      cl->setPayload(i, base[*arg++]);
+    }
+    // This MUST come after payload initialization.
+    base[opA] = (Word)cl;
+    pc += BC_ROUND(opC) + 1 /* bitmap */;
     DISPATCH_NEXT;
   }
 
@@ -225,7 +250,6 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
  op_LOADK:
  op_KINT:
  op_NEW_INT:
- op_ALLOC:
  op_ALLOCAP:
  op_CALL:
  op_CALLT:

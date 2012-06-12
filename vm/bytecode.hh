@@ -144,6 +144,15 @@ class BcIns {
     return BcIns(n);
   }
 
+  static inline BcIns args(uint8_t arg1, uint8_t arg2, uint8_t arg3,
+                           uint8_t arg4) {
+    LC_ASSERT(arch::kEndianness == arch::ENDIAN_LITTLE);
+    return BcIns(static_cast<uint32_t>(arg1) |
+                 (static_cast<uint32_t>(arg2) << 8) |
+                 (static_cast<uint32_t>(arg3) << 16) |
+                 (static_cast<uint32_t>(arg4) << 24));
+  }
+
   inline uint32_t raw() const { return raw_; }
   inline uint8_t a() const { return (raw_ >> 8) & 0xff; }
   inline uint8_t b() const { return (raw_ >> 24); }

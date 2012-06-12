@@ -331,6 +331,48 @@ TEST_F(ArithTest, Alloc1) {
   ASSERT_EQ((uint64_t)(2 * sizeof(Word)), alloc_after - alloc_before);
 }
 
+TEST_F(ArithTest, AllocN_3) {
+  uint64_t alloc_before = mm.allocated();
+  T->setPC(&code_[0]);
+  T->setSlot(1, 1111);
+  T->setSlot(2, 2222);
+  T->setSlot(3, 3333);
+  code_[0] = BcIns::abc(BcIns::kALLOC, 0, 1, 2);
+  code_[1] = BcIns::args(2, 3, 0, 0);
+  code_[2] = BcIns::bitmapOffset(0);  // no bitmap
+  ASSERT_TRUE(cap_->run(T));
+  uint64_t alloc_after = mm.allocated();
+  Closure *cl = (Closure*)T->slot(0);
+  ASSERT_EQ((InfoTable*)1111, cl->info());
+  ASSERT_EQ((Word)2222, cl->payload(0));
+  ASSERT_EQ((Word)3333, cl->payload(1));
+  ASSERT_EQ((uint64_t)(3 * sizeof(Word)), alloc_after - alloc_before);
+}
+
+TEST_F(ArithTest, AllocN_5) {
+  uint64_t alloc_before = mm.allocated();
+  T->setPC(&code_[0]);
+  T->setSlot(1, 1111);
+  T->setSlot(2, 2222);
+  T->setSlot(3, 3333);
+  T->setSlot(4, 4444);
+  T->setSlot(5, 5555);
+  code_[0] = BcIns::abc(BcIns::kALLOC, 0, 1, 4);
+  code_[1] = BcIns::args(2, 3, 4, 5);
+  code_[2] = BcIns::bitmapOffset(0);  // no bitmap
+  code_[3] = BcIns::ad(BcIns::kMOV, 1, 2); // must not be skipped
+  ASSERT_TRUE(cap_->run(T));
+  uint64_t alloc_after = mm.allocated();
+  Closure *cl = (Closure*)T->slot(0);
+  ASSERT_EQ((InfoTable*)1111, cl->info());
+  ASSERT_EQ((Word)2222, cl->payload(0));
+  ASSERT_EQ((Word)3333, cl->payload(1));
+  ASSERT_EQ((Word)4444, cl->payload(2));
+  ASSERT_EQ((Word)5555, cl->payload(3));
+  ASSERT_EQ((uint64_t)(5 * sizeof(Word)), alloc_after - alloc_before);
+  ASSERT_EQ((Word)2222, T->slot(1));
+}
+
 int main(int argc, char *argv[]) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
