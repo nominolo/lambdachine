@@ -12,6 +12,11 @@ public:
   ~Capability();
   inline Thread *currentThread() { return currentThread_; }
 
+  inline void enableBytecodeTracing() { flags_ |= kTraceBytecode; }
+  inline bool isEnabledBytecodeTracing() const {
+    return flags_ & kTraceBytecode;
+  }
+
   inline bool run() { return run(currentThread_); }
   bool run(Thread *);
   
@@ -41,6 +46,8 @@ private:
   const AsmFunction *dispatch_record_;
   const AsmFunction *dispatch_single_step_;
 
+  static const u4 kTraceBytecode = 1 << 0;
+  u4 flags_;
 };
 
 _END_LAMBDACHINE_NAMESPACE

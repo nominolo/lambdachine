@@ -7,7 +7,7 @@ _START_LAMBDACHINE_NAMESPACE
 
 using namespace std;
 
-Capability::Capability() : currentThread_(NULL) {
+Capability::Capability() : currentThread_(NULL), flags_(0) {
   interpMsg(kModeInit);
 }
 
@@ -27,6 +27,12 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
 #   undef BCIMPL
   };
 
+  static const AsmFunction dispatch_debug[] = {
+#   define BCIMPL(name, _) &&debug,
+    BCDEF(BCIMPL)
+#   undef BCIMPL
+  };
+
   if (mode == kModeInit) {
     dispatch_ = dispatch_normal;
     dispatch_normal_ = dispatch_normal;
@@ -34,7 +40,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   }
 
   Thread *T;
-  const AsmFunction *dispatch;
+  const AsmFunction *dispatch, *dispatch2;
   Word *base;
   BcIns *pc;
   u4 opA, opB, opC, opcode;
@@ -43,17 +49,23 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   Code *code = NULL;
 
 # define LOAD_STATE_FROM_CAP \
-  do { T = currentThread_; dispatch = dispatch_; \
+  do { T = currentThread_; \
+       dispatch = dispatch_; dispatch2 = dispatch_; \
        base = T->base(); pc = T->pc(); } while (0)
 
   LOAD_STATE_FROM_CAP;
 
-# define DISPATCH_NEXT \
+  if (isEnabledBytecodeTracing())
+    dispatch = dispatch_debug;
+
+# define DISPATCH_NEXT_WITH(disp) \
   opcode = pc->opcode(); \
   opA = pc->a(); \
   opC = pc->d(); \
   ++pc; \
-  goto *dispatch[opcode]
+  goto *(disp)[opcode]
+
+# define DISPATCH_NEXT DISPATCH_NEXT_WITH(dispatch)
 
 # define DECODE_BC \
   opB = opC >> 8; \
@@ -65,6 +77,15 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
 
   // Dispatch first instruction.
   DISPATCH_NEXT;
+  
+  //
+  // ----- Special Mode Implementations ------------------------------
+  //
+
+ debug:
+  --pc;
+  BcIns::debugPrint(cerr, pc, true, NULL, NULL);
+  DISPATCH_NEXT_WITH(dispatch2);
 
   //
   // ----- Bytecode Implentations ------------------------------------

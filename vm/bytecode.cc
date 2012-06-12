@@ -176,6 +176,7 @@ const BcIns *BcIns::debugPrint(ostream &out, const BcIns *ins,
       }
       break;
     case kFUNC:
+    case kSTOP:
       out << i.name() << endl;
       break;
     default:
