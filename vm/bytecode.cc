@@ -43,8 +43,10 @@ static ostream &printAddr(ostream &out,
 
 static ostream &printInlineBitmaps(ostream &out, const BcIns *ins) {
   u4 offset = ins->raw();
-  if (offset == 0)
+  if (offset == 0) {
+    out << "\t{}" << endl;
     return out;
+  }
 
   out << '\t';
   const u2 *ptr_bitmap = (const u2*)((u1*)ins + offset);
@@ -155,7 +157,7 @@ const BcIns *BcIns::debugPrint(ostream &out, const BcIns *ins,
       break;
     case kALLOC1:
       out << i.name() << "\tr" << (int)i.a() << ", r" << (int)i.b()
-          << ", r" << (int)i.c() << endl;
+          << ", r" << (int)i.c();
       ++ins;  // skip bitmap
       printInlineBitmaps(out, ins - 1);
       break;
