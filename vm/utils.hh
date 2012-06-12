@@ -39,6 +39,10 @@ inline Word roundUpToPowerOf2(int power, Word value) {
   return (value + (1UL << power) - 1) & ~((1UL << power) - 1);
 }
 
+inline bool isWordAligned(char *ptr) {
+  return isAlignedAtPowerOf2(LC_ARCH_BYTES_LOG2, ptr);
+}
+
 _END_LAMBDACHINE_NAMESPACE
 
 #endif /* _UTILS_H_ */

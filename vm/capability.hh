@@ -3,12 +3,13 @@
 
 #include "common.hh"
 #include "vm.hh"
+#include "memorymanager.hh"
 
 _START_LAMBDACHINE_NAMESPACE
 
 class Capability {
 public:
-  explicit Capability();
+  explicit Capability(MemoryManager *mm);
   ~Capability();
   inline Thread *currentThread() { return currentThread_; }
 
@@ -37,6 +38,7 @@ private:
   InterpExitCode interpMsg(InterpMode mode);
   typedef void *AsmFunction;
 
+  MemoryManager *mm_;
   Thread *currentThread_;
 
   const AsmFunction *dispatch_;

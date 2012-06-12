@@ -4,6 +4,7 @@
 #include "loader.hh"
 #include "assembler.hh"
 #include "capability.hh"
+#include "objects.hh"
 #include <iostream>
 
 using namespace std;
@@ -141,7 +142,7 @@ protected:
     for (size_t i = 0; i < 32; ++i) {
       T->setSlot(i, 3 + (i * 10));
     }
-    cap_.enableBytecodeTracing();
+    cap_->enableBytecodeTracing();
   }
 
   virtual void TearDown() {
@@ -149,8 +150,13 @@ protected:
     T = NULL;
   }
 
+  CodeTest() {
+    cap_ = new Capability(&mm);
+  }
+
   virtual ~CodeTest() {
     delete T;
+    delete cap_;
   }
 
   Word arithABC(BcIns ins, Word slot1, Word slot2) {
@@ -158,7 +164,7 @@ protected:
     T->setSlot(ins.b(), slot1);
     T->setSlot(ins.c(), slot2);
     code_[0] = ins;
-    EXPECT_TRUE(cap_.run(T));
+    EXPECT_TRUE(cap_->run(T));
     return T->slot(ins.a());
   }
 
@@ -166,7 +172,7 @@ protected:
     T->setPC(&code_[0]);
     T->setSlot(ins.d(), slot);
     code_[0] = ins;
-    EXPECT_TRUE(cap_.run(T));
+    EXPECT_TRUE(cap_->run(T));
     return T->slot(ins.a());
   }
 
@@ -181,13 +187,14 @@ protected:
     code_[1] = BcIns::aj(BcIns::kJMP, 0, +1);
     code_[2] = BcIns::ad(BcIns::kMOV, 0, 3);
     code_[3] = BcIns();
-    EXPECT_TRUE(cap_.run(T));
+    EXPECT_TRUE(cap_->run(T));
     return T->slot(0) == 0;
   }
 
   BcIns stop() { return BcIns::ad(BcIns::kSTOP, 0, 0); }
 
-  Capability cap_;
+  MemoryManager mm;
+  Capability *cap_;
   Thread *T;
   BcIns code_[32];
 };
@@ -309,7 +316,20 @@ TEST_F(ArithTest, BranchEq) {
   ASSERT_FALSE(branchTest(BcIns::kISEQ, -4, -5));
 }
 
-
+TEST_F(ArithTest, Alloc1) {
+  uint64_t alloc_before = mm.allocated();
+  T->setPC(&code_[0]);
+  T->setSlot(1, 0x1234);
+  T->setSlot(2, 0x5678);
+  code_[0] = BcIns::abc(BcIns::kALLOC1, 0, 1, 2);
+  code_[1] = BcIns::bitmapOffset(0);  // no bitmap
+  ASSERT_TRUE(cap_->run(T));
+  uint64_t alloc_after = mm.allocated();
+  Closure *cl = (Closure*)T->slot(0);
+  ASSERT_EQ((InfoTable*)0x1234, cl->info());
+  ASSERT_EQ((Word)0x5678, cl->payload(0));
+  ASSERT_EQ((uint64_t)(2 * sizeof(Word)), alloc_after - alloc_before);
+}
 
 int main(int argc, char *argv[]) {
   ::testing::InitGoogleTest(&argc, argv);

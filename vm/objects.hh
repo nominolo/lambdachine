@@ -137,6 +137,7 @@ public:
   inline InfoTable *info() const { return header_.info(); }
   inline Word payload(int i) const { return payload_[i]; }
   inline void setInfo(InfoTable *info) { header_.info_ = info; }
+  inline void setPayload(int i, Word value) { payload_[i] = value; }
 };
 
 void printClosure(std::ostream &out, Closure *cl, bool oneline);

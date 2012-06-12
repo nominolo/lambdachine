@@ -5,9 +5,14 @@
 
 _START_LAMBDACHINE_NAMESPACE
 
+#define DLOG(...) \
+  if (DEBUG_COMPONENTS & DEBUG_INTERPRETER) { \
+    fprintf(stderr, "LD: " __VA_ARGS__); }
+
 using namespace std;
 
-Capability::Capability() : currentThread_(NULL), flags_(0) {
+Capability::Capability(MemoryManager *mm)
+  : mm_(mm), currentThread_(NULL), flags_(0) {
   interpMsg(kModeInit);
 }
 
@@ -44,6 +49,9 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   Word *base;
   BcIns *pc;
   u4 opA, opB, opC, opcode;
+  char *heap;
+  char *heaplim;
+  mm_->getBumpAllocatorBounds(&heap, &heaplim);
   // Technically, we only need a pointer to the literals.  But having
   // a pointer to the whole code segment can be useful for debugging.
   Code *code = NULL;
@@ -175,6 +183,31 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   base[opA] = (WordInt)base[opB] % (WordInt)base[opC];
   DISPATCH_NEXT;
 
+ op_ALLOC1:
+  // A = target
+  // B = itbl
+  // C = payload[0]
+  {
+    DECODE_BC;
+    Closure *cl = (Closure*)heap;
+    heap += 2 * sizeof(Word);
+    if (LC_UNLIKELY(heap > heaplim)) {
+      heap -= 2 * sizeof(Word);
+      goto heapOverflow;
+    }
+    cl->setInfo((InfoTable*)base[opB]);
+    cl->setPayload(0, base[opC]);
+    base[opA] = (Word)cl;
+    ++pc; // skip bitmask
+    DISPATCH_NEXT;
+  }
+
+ heapOverflow:
+  DLOG("Heap Block Overflow: %p of %p\n", heap, heaplim);
+  mm_->bumpAllocatorFull(&heap, &heaplim);
+  --pc;  // re-dispatch last instruction
+  DISPATCH_NEXT;
+
  op_JMP:
   // Offsets are relative to the current PC which points to the
   // following instruction.  Hence, "JMP 0" is a no-op, "JMP -1" is an
@@ -192,7 +225,6 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
  op_LOADK:
  op_KINT:
  op_NEW_INT:
- op_ALLOC1:
  op_ALLOC:
  op_ALLOCAP:
  op_CALL:
@@ -208,10 +240,13 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
  op_IRET:
  op_SYNC:
   cerr << "Unimplemented instruction" << endl;
+  T->sync(pc, base);
+  mm_->sync(heap, heaplim);
   return kInterpUnimplemented;
 
  op_STOP:
   T->sync(pc, base);
+  mm_->sync(heap, heaplim);
   return kInterpOk;
 }
 

@@ -176,12 +176,16 @@ public:
 
   friend std::ostream& operator<<(std::ostream& out, const MemoryManager&);
 
+  inline uint64_t allocated() const { return allocated_; }
+
 private:
   inline void *allocInto(Block **block, size_t bytes) {
     char *ptr = (*block)->alloc(bytes);
     while (LC_UNLIKELY(ptr == NULL)) {
-      ptr = blockFull(block, bytes);
+      blockFull(block);
+      ptr = (*block)->alloc(bytes);
     }
+    allocated_ += bytes;
     return ptr;
   }
 
@@ -189,8 +193,27 @@ private:
     return block->contents() == Block::kClosures;
   }
 
+  friend class Capability;
+
+  // There must not be any other allocation occurring to this block.
+  inline void getBumpAllocatorBounds(char **heap, char **heaplim) {
+    *heap = closures_->free();
+    *heaplim = closures_->end();
+    LC_ASSERT(isWordAligned(*heap));
+    LC_ASSERT(isWordAligned(*heaplim));
+  }
+
+  inline void sync(char *heap, char *heaplim) {
+    LC_ASSERT(heaplim == closures_->end());
+    LC_ASSERT(closures_->free() <= heap && heap < closures_->end());
+    allocated_ += heap - closures_->free();
+    closures_->free_ = heap;
+  }
+
+  void bumpAllocatorFull(char **heap, char **heaplim);
+
   Block *grabFreeBlock(Block::Flags);
-  char *blockFull(Block **, size_t bytes);
+  void blockFull(Block **);
 
   Region *region_;
   Block *full_;
@@ -200,6 +223,11 @@ private:
   Block *closures_;
   Block *strings_;
   Block *bytecode_;
+
+  // Assuming an allocation rate of 16GB/s (pretty high), this counter
+  // will overflow in 2^30 seconds, or about 34 years.  That appears
+  // to be fine for now (it's for statistical purposes only).
+  uint64_t allocated_;
 };
 
 _END_LAMBDACHINE_NAMESPACE

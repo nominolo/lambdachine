@@ -140,6 +140,10 @@ class BcIns {
     return ad(opcode, a, kBranchBias + (int)offset);
   }
 
+  static inline BcIns bitmapOffset(int32_t n) {
+    return BcIns(n);
+  }
+
   inline uint32_t raw() const { return raw_; }
   inline uint8_t a() const { return (raw_ >> 8) & 0xff; }
   inline uint8_t b() const { return (raw_ >> 24); }

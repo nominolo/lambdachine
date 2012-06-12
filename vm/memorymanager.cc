@@ -112,7 +112,7 @@ Block *Region::grabFreeBlock() {
 }
 
 MemoryManager::MemoryManager()
-  : full_(NULL), free_(NULL) {
+  : full_(NULL), free_(NULL), allocated_(0) {
   region_ = Region::newRegion(Region::kSmallObjectRegion);
   info_tables_ = grabFreeBlock(Block::kInfoTables);
   static_closures_ = grabFreeBlock(Block::kStaticClosures);
@@ -157,7 +157,7 @@ Block *MemoryManager::grabFreeBlock(Block::Flags flags) {
   return b;
 }
 
-char *MemoryManager::blockFull(Block **block, size_t bytes) {
+void MemoryManager::blockFull(Block **block) {
   Block *fullBlock = *block;
   Block *emptyBlock = grabFreeBlock(fullBlock->contents());
   if (isGCd(fullBlock)) {
@@ -170,7 +170,12 @@ char *MemoryManager::blockFull(Block **block, size_t bytes) {
     emptyBlock->link_ = *block;
     *block = emptyBlock;
   }
-  return emptyBlock->alloc(bytes);
+}
+
+void MemoryManager::bumpAllocatorFull(char **heap, char **heaplim) {
+  sync(*heap, *heaplim);
+  blockFull(&closures_);
+  getBumpAllocatorBounds(heap, heaplim);
 }
 
 unsigned int MemoryManager::infoTables() {
