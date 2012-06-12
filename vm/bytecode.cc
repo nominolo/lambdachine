@@ -41,6 +41,45 @@ static ostream &printAddr(ostream &out,
   return out;
 }
 
+static ostream &printInlineBitmaps(ostream &out, const BcIns *ins) {
+  u4 offset = ins->raw();
+  if (offset == 0)
+    return out;
+
+  out << '\t';
+  const u2 *ptr_bitmap = (const u2*)((u1*)ins + offset);
+  const u2 *lives_bitmap = NULL;
+  // Find successor bitmap
+  for (lives_bitmap = ptr_bitmap; (*lives_bitmap & 0x8000) != 0;
+       ++lives_bitmap) {
+  }
+  ++lives_bitmap;
+
+  u2 ptrs = *ptr_bitmap;
+  u2 lives = *lives_bitmap;
+  char sep = '{';
+  int reg = 0;
+  while (true) {
+    for (int i = 0; i < 15; ++i, ptrs >>= 1, lives >>= 1) {
+      if (lives & 1) {
+        out << sep << 'r' << reg + i;
+        if (ptrs & 1) out << '*';
+        sep = ',';
+      }
+    }
+    if (ptrs == 0 && lives == 0)
+      break;
+    if (ptrs != 0)
+      ptrs = *(++ptr_bitmap);
+    if (lives != 0)
+      lives = *(++lives_bitmap);
+  }
+  if (sep == '{') out << '{';
+  out << '}' << endl;
+
+  return out;
+}
+
 const BcIns *BcIns::debugPrint(ostream &out, const BcIns *ins,
                                bool oneline, const BcIns *baseaddr,
                                const CodeInfoTable *info) {
@@ -90,9 +129,9 @@ const BcIns *BcIns::debugPrint(ostream &out, const BcIns *ins,
   case IFM____:
     switch (i.opcode()) {
     case kEVAL:
-      out << "EVAL\tr" << (int)i.a() << endl;
-      // TODO: Print bitmap
+      out << "EVAL\tr" << (int)i.a();
       ++ins;
+      printInlineBitmaps(out, ins - 1);
       break;
     case kCASE:
       {
@@ -118,6 +157,7 @@ const BcIns *BcIns::debugPrint(ostream &out, const BcIns *ins,
       out << i.name() << "\tr" << (int)i.a() << ", r" << (int)i.b()
           << ", r" << (int)i.c() << endl;
       ++ins;  // skip bitmap
+      printInlineBitmaps(out, ins - 1);
       break;
     case kALLOC:
       {
@@ -127,7 +167,7 @@ const BcIns *BcIns::debugPrint(ostream &out, const BcIns *ins,
         for (u4 j = 0; j < i.c(); j++, arg++) {
           out << ", r" << (int)*arg;
         }
-        out << endl;
+        printInlineBitmaps(out, ins - 1);
       }
       break;
     case kALLOCAP:
@@ -142,7 +182,7 @@ const BcIns *BcIns::debugPrint(ostream &out, const BcIns *ins,
           if (ptrmask & 1) out << '*';
           ptrmask >>= 1;
         }
-        out << endl;
+        printInlineBitmaps(out, ins - 1);
       }
       break;
     case kCALL:
@@ -158,7 +198,8 @@ const BcIns *BcIns::debugPrint(ostream &out, const BcIns *ins,
           comma = ',';
           ptrmask >>= 1;
         }
-        out << ")"<< endl;
+        out << ")";
+        printInlineBitmaps(out, ins - 1);
       }
       break;
     case kCALLT:
