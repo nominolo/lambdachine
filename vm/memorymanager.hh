@@ -204,7 +204,9 @@ private:
   }
 
   inline void sync(char *heap, char *heaplim) {
-    LC_ASSERT(heaplim == closures_->end());
+    // heaplim == NULL can happen if we want to force a thread to
+    // yield.
+    LC_ASSERT(heaplim == NULL || heaplim == closures_->end());
     LC_ASSERT(closures_->free() <= heap && heap < closures_->end());
     allocated_ += heap - closures_->free();
     closures_->free_ = heap;
