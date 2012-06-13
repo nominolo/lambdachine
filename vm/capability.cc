@@ -156,6 +156,33 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   base[opA] = base[opC];
   DISPATCH_NEXT;
 
+ op_LOADSLF:
+  // TODO: This instruction becomes unnecessary if base[0] = Node
+  base[opA] = base[-1];
+  DISPATCH_NEXT;
+
+ op_LOADF:
+  // A = target
+  // B = closure ptr.
+  // C = field offset, 1-based indexed!  TODO: fix this
+  {
+    DECODE_BC;
+    Closure *cl = (Closure*)base[opB];
+    base[opA] = cl->payload(opC - 1);
+    DISPATCH_NEXT;
+  }
+
+ op_LOADFV:
+  // TODO: This instruction becomes unnecessary if base[0] = Node.
+  // A = target
+  // C/D = field offset, 1-based index!  TODO: fix this
+  {
+    DECODE_AD;
+    Closure *node = (Closure*)base[-1];
+    base[opA] = node->payload(opC - 1);
+    DISPATCH_NEXT;
+  }
+
  op_ADDRR:
   DECODE_BC;
   base[opA] = base[opB] + base[opC];
@@ -242,10 +269,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
 
  op_MOV_RES:
  op_UPDATE:
- op_LOADF:
- op_LOADFV:
  op_LOADBH:
- op_LOADSLF:
  op_INITF:
  op_LOADK:
  op_KINT:
