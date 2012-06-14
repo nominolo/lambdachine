@@ -12,6 +12,8 @@ using namespace std;
 using namespace lambdachine;
 
 TEST(ThreadTest, StartStop) {
+  MemoryManager m;
+  Loader l(&m, NULL);
   Thread *T = Thread::createThread(NULL, 20);
   ASSERT_TRUE(T != NULL);
   ASSERT_TRUE(T->isValid());
@@ -166,11 +168,13 @@ protected:
 
   CodeTest() {
     cap_ = new Capability(&mm);
+    l_ = new Loader(&mm, NULL);
   }
 
   virtual ~CodeTest() {
     delete T;
     delete cap_;
+    delete l_;
   }
 
   Word arithABC(BcIns ins, Word slot1, Word slot2) {
@@ -208,6 +212,7 @@ protected:
   BcIns stop() { return BcIns::ad(BcIns::kSTOP, 0, 0); }
 
   MemoryManager mm;
+  Loader *l_;
   Capability *cap_;
   Thread *T;
   BcIns code_[32];
@@ -385,6 +390,17 @@ TEST_F(ArithTest, AllocN_5) {
   ASSERT_EQ((Word)5555, cl->payload(3));
   ASSERT_EQ((uint64_t)(5 * sizeof(Word)), alloc_after - alloc_before);
   ASSERT_EQ((Word)2222, T->slot(1));
+}
+
+TEST(RunTest, eval) {
+  MemoryManager mm;
+  Loader l(&mm, "tests");
+  ASSERT_TRUE(l.loadModule("Bc.Bc0016"));
+  Closure *cl = l.closure("Bc.Bc0016.test`closure");
+  ASSERT_TRUE(cl != NULL);
+  Capability cap(&mm);
+  Thread *T = Thread::createThread(&cap, 0);
+  ASSERT_FALSE(cap.eval(T, cl));  // Expect failure, for now.
 }
 
 int main(int argc, char *argv[]) {

@@ -125,11 +125,15 @@ public:
   const char *basePath(unsigned int index) const;
   char *findModule(const char *moduleName);
   bool loadModule(const char *moduleName);
-  const Module *module(const char *moduleName) {
+  inline const Module *module(const char *moduleName) {
     return loadedModules_[moduleName];
   }
   void printInfoTables(std::ostream&);
   void printClosures(std::ostream&);
+  inline Closure *closure(const char *name) {
+    Closure *cl = closures_[name];
+    return cl;
+  }
 
 private:
   void initBasePath(const char *);

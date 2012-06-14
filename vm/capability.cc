@@ -25,6 +25,12 @@ bool Capability::run(Thread *T) {
   return interpMsg(kModeRun) == kInterpOk;
 }
 
+bool Capability::eval(Thread *T, Closure *cl) {
+  LC_ASSERT(T != NULL);
+  T->setSlot(0, (Word)cl);
+  return run(T);
+}
+
 Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   static const AsmFunction dispatch_normal[] = {
 #   define BCIMPL(name, _) &&op_##name,
@@ -267,6 +273,22 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   pc += opC - BcIns::kBranchBias;
   DISPATCH_NEXT;
 
+ op_EVAL:
+  // Format of an EVAL instruction:
+  //
+  //  +-----------+-----+-----+
+  //  |     -     |  A  | OPC |
+  //  +-----------+-----+-----+
+  //  |   live-outs bitmask   |
+  //  +-----------+-----------+
+  //
+  {
+    Closure *tnode = (Closure *)base[opA];
+    
+    LC_ASSERT(tnode != NULL);
+    
+  }
+
  op_MOV_RES:
  op_UPDATE:
  op_LOADBH:
@@ -278,7 +300,6 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
  op_CALL:
  op_CALLT:
  op_RET1:
- op_EVAL:
  op_CASE:
  op_CASE_S:
  op_FUNC:
@@ -287,7 +308,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
  op_JRET:
  op_IRET:
  op_SYNC:
-  cerr << "Unimplemented instruction" << endl;
+  cerr << "Unimplemented instruction: " << (pc-1)->name() << endl;
   T->sync(pc, base);
   mm_->sync(heap, heaplim);
   return kInterpUnimplemented;

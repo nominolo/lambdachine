@@ -19,6 +19,8 @@ public:
   }
 
   inline bool run() { return run(currentThread_); }
+  // Eval given closure using current thread.
+  bool eval(Thread *, Closure *);
   bool run(Thread *);
   
 private:

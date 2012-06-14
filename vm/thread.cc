@@ -1,5 +1,9 @@
 #include "thread.hh"
 #include "utils.hh"
+#include "miscclosures.hh"
+
+#include <stdio.h>
+#include <stdlib.h>
 
 _START_LAMBDACHINE_NAMESPACE
 
@@ -27,8 +31,20 @@ BcIns Thread::stopCode_[] = { BcIns::ad(BcIns::kSTOP, 0, 0) };
 
 void Thread::initialize() {
   stack_ = new Word[stackSize_];
-  base_ = stack_;
-  top_ = stack_;
+  stack_[0] = (Word)NULL;   // previous base
+  stack_[1] = (Word)NULL;   // previous PC
+  stack_[2] = (Word)MiscClosures::stg_STOP_closure_addr;
+  stack_[3] = (Word)NULL;   // The closure to evaluate.
+  base_ = &stack_[3];
+  top_ = &stack_[4];
+  if (MiscClosures::stg_STOP_closure_addr == NULL) {
+    fprintf(stderr, "FATAL: Memory manager must be initialized "
+            "before creating first thread.\n");
+    exit(1);
+  }
+  CodeInfoTable *info = static_cast<CodeInfoTable*>
+    (MiscClosures::stg_STOP_closure_addr->info());
+  pc_ = &info->code()->code[0];
 }
 
 Thread *Thread::createThread(Capability *cap, Word stackSizeInWords) {
