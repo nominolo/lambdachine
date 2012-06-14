@@ -90,6 +90,7 @@ private:
                   // type == FUN/THUNK: srt_bitmap
   const char *name_;
   friend class Loader;
+  friend class MiscClosures;
 };
 
 class ConInfoTable : public InfoTable {
@@ -103,6 +104,7 @@ public:
 private:
   Code code_;
   friend class Loader;
+  friend class MiscClosures;
 };
 
 typedef CodeInfoTable FuncInfoTable;

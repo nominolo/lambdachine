@@ -143,7 +143,8 @@ vm/unittest.o: $(GTEST_A)
 	rm -f $(df).d
 
 VM_SRCS = vm/thread.cc vm/capability.cc vm/memorymanager.cc \
-	  vm/loader.cc vm/fileutils.cc vm/bytecode.cc vm/objects.cc
+	  vm/loader.cc vm/fileutils.cc vm/bytecode.cc vm/objects.cc \
+	  vm/miscclosures.cc
 
 unittest: vm/unittest.o $(GTEST_A) $(VM_SRCS:.cc=.o)
 	@echo "LINK $^ => $@"

@@ -5,6 +5,7 @@
 #include "assembler.hh"
 #include "capability.hh"
 #include "objects.hh"
+#include "miscclosures.hh"
 #include <iostream>
 
 using namespace std;
@@ -89,6 +90,19 @@ TEST(LoaderTest, DebugPrint) {
   // crashes, though.
   l.printInfoTables(cerr);
   l.printClosures(cerr);
+}
+
+TEST(LoaderTest, BuiltinClosures) {
+  MemoryManager mm;
+  ASSERT_TRUE(NULL == MiscClosures::stg_STOP_closure_addr);
+  ASSERT_TRUE(NULL == MiscClosures::stg_UPD_closure_addr);
+  ASSERT_TRUE(NULL == MiscClosures::stg_UPD_return_pc);
+
+  Loader l(&mm, "tests");
+  ASSERT_TRUE(l.loadModule("GHC.Base"));
+  ASSERT_TRUE(NULL != MiscClosures::stg_STOP_closure_addr);
+  ASSERT_TRUE(NULL != MiscClosures::stg_UPD_closure_addr);
+  ASSERT_TRUE(NULL != MiscClosures::stg_UPD_return_pc);
 }
 
 TEST(RegSetTest, fromReg) {

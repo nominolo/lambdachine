@@ -1,5 +1,6 @@
 #include "memorymanager.hh"
 #include "utils.hh"
+#include "miscclosures.hh"
 
 #include <sys/mman.h>
 #include <stdio.h>
@@ -128,6 +129,7 @@ MemoryManager::~MemoryManager() {
     delete r;
     r = next;
   }
+  MiscClosures::reset();
 }
 
 Block *MemoryManager::grabFreeBlock(Block::Flags flags) {

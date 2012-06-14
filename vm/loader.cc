@@ -1,5 +1,6 @@
 #include "loader.hh"
 #include "fileutils.hh"
+#include "miscclosures.hh"
 
 #include <iostream>
 #include <stdio.h>
@@ -70,6 +71,7 @@ Loader::Loader(MemoryManager *mm, const char* basepaths)
   : mm_(mm), loadedModules_(10), infoTables_(100), closures_(100),
     basepaths_(NULL) {
   initBasePath(basepaths);
+  MiscClosures::init(*mm);
 }
 
 Loader::~Loader() {
