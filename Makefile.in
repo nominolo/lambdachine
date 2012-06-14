@@ -146,11 +146,15 @@ VM_SRCS = vm/thread.cc vm/capability.cc vm/memorymanager.cc \
 	  vm/loader.cc vm/fileutils.cc vm/bytecode.cc vm/objects.cc \
 	  vm/miscclosures.cc
 
-unittest: vm/unittest.o $(GTEST_A) $(VM_SRCS:.cc=.o)
-	@echo "LINK $^ => $@"
-	@$(CXX) -o $@ $^
+TEST_FILES := tests/Bc/Bc0016.lcbc
 
-bcdump: vm/bcdump.o $(VM_SRCS:.cc=.o)
+unittest: $(TEST_FILES)
+
+unittest: vm/unittest.o $(GTEST_A) $(VM_SRCS:.cc=.o)
+	@echo "LINK $(filter %.o %.a, $^) => $@"
+	@$(CXX) -o $@ $(filter %.o %.a, $^)
+
+Bcdump: vm/bcdump.o $(VM_SRCS:.cc=.o)
 	@echo "LINK $^ => $@"
 	@$(CXX) -o $@ $^
 
@@ -193,7 +197,7 @@ $(HSDEPFILE):
 
 HSSRCS := $(shell find compiler -name '*.hs')
 
-# FIXME: We let the compiler depend on the source files not the .o
+# Fixme: We let the compiler depend on the source files not the .o
 # files.  This actually doesn't always work.  Fortunately,
 #
 #    make clean && make boot && make
@@ -248,6 +252,11 @@ tests/base/%.lcbc: tests/base/%.hs
 	cd tests/base && \
 	$(LCC) $(LCCFLAGS) --package-name=base $(patsubst tests/base/%, %, $<)
 #	@echo "@ = $@, < = $<"
+
+tests/%.lcbc: tests/%.hs
+	@echo "LCC $< => $@"
+	@cd tests && \
+	 $(LCC) $(LCCFLAGS) $(patsubst tests/%, %, $<)
 
 PRIM_MODULES_ghc-prim = GHC/Bool GHC/Types GHC/Ordering GHC/Tuple
 PRIM_MODULES_integer-gmp = GHC/Integer/Type GHC/Integer
