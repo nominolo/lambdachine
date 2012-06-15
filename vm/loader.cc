@@ -726,11 +726,14 @@ void Loader::loadClosure(BytecodeFile &f,
   const char *clos_name = loadId(f, strings, ".");
   u4 payloadsize = f.get_varuint();
   const char *itbl_name = loadId(f, strings, ".");
-  Closure *cl = mm_->allocStaticClosure(payloadsize);
   InfoTable *info = infoTables_[itbl_name];
   
   // Info tables must all be fully loaded by now.
   LC_ASSERT(info != NULL && info->type() != INVALID_OBJECT);
+  LC_ASSERT((info->type() != CAF && payloadsize == info->size()) ||
+            (info->type() == CAF && payloadsize == 2));
+
+  Closure *cl = mm_->allocStaticClosure(payloadsize);
 
   // Fill in closure payload.  May create forward references to the
   // current closure.
