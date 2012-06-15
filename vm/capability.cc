@@ -10,7 +10,7 @@ _START_LAMBDACHINE_NAMESPACE
 
 #define DLOG(...) \
   if (DEBUG_COMPONENTS & DEBUG_INTERPRETER) { \
-    fprintf(stderr, "LD: " __VA_ARGS__); }
+    fprintf(stderr, "IP: " __VA_ARGS__); }
 
 using namespace std;
 
@@ -114,7 +114,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
 
   // Dispatch first instruction.
   DISPATCH_NEXT;
-  
+
   //
   // ----- Special Mode Implementations ------------------------------
   //
@@ -312,10 +312,10 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   //
   {
     Closure *tnode = (Closure *)base[opA];
-    
+
     LC_ASSERT(tnode != NULL);
     LC_ASSERT(mm_->looksLikeClosure(tnode));
-    
+
     while (tnode->isIndirection()) {
       tnode = (Closure*)tnode->payload(0);
     }
@@ -368,7 +368,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   DECODE_AD;
   T->setLastResult(base[opA]);
 
- do_return:  
+ do_return:
   T->top_ = base - 3;
   pc = (BcIns*)base[-2];
   base = (Word*)base[-3];
@@ -393,7 +393,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     LC_ASSERT(newnode != NULL && mm_->looksLikeClosure(newnode));
     oldnode->setInfo(MiscClosures::stg_IND_info);
     oldnode->setPayload(0, (Word)newnode);
-    
+
     DISPATCH_NEXT;
   }
 
@@ -402,20 +402,127 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   base[opA] = T->lastResult();
   DISPATCH_NEXT;
 
+ op_CALL:
+  {
+    // opA = function
+    // opB = argument pointer mask
+    // opC = no of argumenst
+    // following bytes: argument regs, bitmask
+    DECODE_BC;
+    u4 callargs = opC;
+    //u4 pointerMask = opB;
+    u4 nargs;
+    Closure *fnode;
+    Word *top;
+
+    //op_CALL_retry:
+    nargs = callargs;
+    fnode = (Closure*)base[opA];
+    top = T->top();
+
+    LC_ASSERT(fnode != NULL);
+    LC_ASSERT(mm_->looksLikeClosure(fnode));
+    LC_ASSERT(callargs < BcIns::kMaxCallArgs);
+
+    FuncInfoTable *info;
+    //    PapClosure *pap = NULL;
+    switch (fnode->info()->type()) {
+    case FUN:
+      info = (FuncInfoTable*)fnode->info();
+      break;
+    default:
+      cerr << "NYI: CALL with CAF/PAP/THUNK argument." << endl;
+      goto not_yet_implemented;
+    }
+
+    if (nargs == info->code()->arity) {
+      DLOG("   ENTER: %s\n", info->name());
+
+      u4 framesize = info->code()->framesize;
+
+      if (stackOverflow(T, top, kStackFrameWords + framesize))
+        goto stack_overflow;
+
+      // Each additional argument requires 1 byte, we pad to multiples
+      // of an instruction.  The liveness mask follows.
+      BcIns *return_pc = pc + BC_ROUND(nargs) + 1;
+      Word  *oldbase = base;
+
+      u1 *args = (u1*)pc;
+      pushFrame(&top, &base, return_pc, fnode, framesize);
+
+      for (u4 i = 0; i < callargs; ++i, ++args) {
+        base[i] = oldbase[*args];
+      }
+
+      T->top_ = top;
+      pc = info->code()->code;
+      code = info->code();
+
+      DISPATCH_NEXT;
+    } else {
+      cerr << "NYI: CALL with too few/many arguments." << endl;
+      goto not_yet_implemented;
+    }
+  }
+
+ op_CASE:
+  // A case with compact targets.
+  //
+  //  +-----------+-----+-----+
+  //  | num_cases |  A  | OPC |
+  //  +-----------+-----+-----+
+  //  | target_1  | target_0  |  target_i:
+  //  +-----------+-----------+    goto this address if tag = i
+  //  :                       :
+  //  +-----------+-----------+  targetN may be 0 if num_cases is odd.
+  //  | target_N  | target_N-1|
+  //  +-----------+-----------+
+  //  :  default case follows :
+  //  +- - - - - - - - - - - -+
+  //
+  // Targets are non-negative numbers.  They are interpreted as
+  // offsets relative to the _end_ of the instruction.  That is "0"
+  // denotes the instruction directly following the CASE instruction.
+  //
+  // If num_cases is smaller than the tag, then we just fall through
+  // to the default case.
+  //
+  // A = thing to dispatch on (must be a constructor node)
+  // D = number of cases
+  //
+  {
+    Closure *cl = (Closure *)base[opA];
+    u2 num_cases = opC;
+    u2 *table = (u2*)pc;
+    pc += (num_cases + 1) >> 1;
+
+    LC_ASSERT(mm_->looksLikeClosure(cl));
+    LC_ASSERT(cl->info()->type() == CONSTR);
+
+    u2 tag = cl->tag() - 1;  // tags start at 1
+
+    LC_ASSERT(tag < num_cases);
+
+    u2 offs = table[tag];
+    pc += offs;
+
+    DISPATCH_NEXT;
+  }
+
  op_LOADBH:
  op_INITF:
  op_KINT:
  op_NEW_INT:
  op_ALLOCAP:
- op_CALL:
  op_CALLT:
- op_CASE:
  op_CASE_S:
  op_IFUNC:
  op_JFUNC:
  op_JRET:
  op_SYNC:
   cerr << "Unimplemented instruction: " << (pc-1)->name() << endl;
+ not_yet_implemented:
   T->sync(pc, base);
   mm_->sync(heap, heaplim);
   return kInterpUnimplemented;

@@ -454,6 +454,10 @@ TEST_F(RunFileTest, eval) {
   run("Bc.Bc0016");
 }
 
+TEST_F(RunFileTest, Bc0014) {
+  run("Bc.Bc0014");
+}
+
 int main(int argc, char *argv[]) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

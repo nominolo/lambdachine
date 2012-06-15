@@ -88,6 +88,7 @@ class BcIns {
   BcIns() : raw_(kSTOP) {}
   
   static const uint32_t kBranchBias = 0x8000;
+  static const u4 kMaxCallArgs = 8;
 
   typedef enum {
 #define DEF_BCINS_OPCODE(ins,format) k##ins,

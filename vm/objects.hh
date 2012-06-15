@@ -93,6 +93,7 @@ private:
   const char *name_;
   friend class Loader;
   friend class MiscClosures;
+  friend struct _Closure;
 };
 
 class ConInfoTable : public InfoTable {
@@ -144,6 +145,10 @@ public:
   inline void setPayload(int i, Word value) { payload_[i] = value; }
   inline bool isIndirection() const {
     return closureFlags[info()->type()] & CF_IND;
+  }
+  inline u2 tag() const {
+    LC_ASSERT(info()->type() == CONSTR);
+    return info()->tagOrBitmap_;
   }
   inline bool isHNF() const {
     return closureFlags[info()->type()] & CF_HNF;
