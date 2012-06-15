@@ -8,7 +8,7 @@
 
 _START_LAMBDACHINE_NAMESPACE
 
-typedef struct {
+typedef struct _Code {
   u2   framesize;               /* No. of local variables. */
   u2   arity;                   /* No. of function arguments.  */
   u2   sizecode;                /* No. of instructions in bytecode. */
@@ -19,6 +19,7 @@ typedef struct {
   u1    *littypes;              /* Types of literals.  See LitType. */
   BcIns *code;                  /* The bytecode followed by bitsets. */
   /* INVARIANT: code != NULL */
+  void printLiteral(std::ostream &out, u4 litid) const;
 } Code;
 
 typedef enum {

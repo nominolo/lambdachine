@@ -158,8 +158,8 @@ protected:
       code_[i] = stop();
     }
 
-    T = Thread::createTestingThread(&code_[0], 32);
-    for (size_t i = 0; i < 32; ++i) {
+    T = Thread::createTestingThread(&code_[0], framesize_);
+    for (size_t i = 0; i < framesize_; ++i) {
       T->setSlot(i, 3 + (i * 10));
     }
     cap_->enableBytecodeTracing();
@@ -170,7 +170,7 @@ protected:
     T = NULL;
   }
 
-  CodeTest() {
+  CodeTest() : framesize_(8) {
     cap_ = new Capability(&mm);
     l_ = new Loader(&mm, NULL);
   }
@@ -220,6 +220,7 @@ protected:
   Capability *cap_;
   Thread *T;
   BcIns code_[32];
+  u4 framesize_;
 };
 
 class ArithTest : public CodeTest {

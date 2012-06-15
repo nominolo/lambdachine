@@ -124,8 +124,13 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   {
     size_t depth = base - T->stackStart();
     size_t framesize = T->top() - base;
+    cerr << '[' << setfill(' ') << setw(3) << depth << ':' << framesize << "] ... ";
+    for (u4 i = 0; i < framesize; ++i) {
+      cerr << i << ':' << hex << base[i] << ' ';
+    }
+    cerr << endl;
     cerr << '[' << setfill(' ') << setw(3) << depth << ':' << framesize << "] ";
-    BcIns::debugPrint(cerr, pc, true, NULL, NULL);
+    BcIns::debugPrint(cerr, pc, true, NULL, code);
   }
   DISPATCH_NEXT_WITH(dispatch2);
 

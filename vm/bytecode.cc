@@ -84,7 +84,7 @@ static ostream &printInlineBitmaps(ostream &out, const BcIns *ins) {
 
 const BcIns *BcIns::debugPrint(ostream &out, const BcIns *ins,
                                bool oneline, const BcIns *baseaddr,
-                               const CodeInfoTable *info) {
+                               const Code *code) {
   const BcIns *ins0 = ins;
   const BcIns i = *ins;
 
@@ -105,9 +105,9 @@ const BcIns *BcIns::debugPrint(ostream &out, const BcIns *ins,
     break;
   case IFM_RN:
     out << i.name() << "\tr" << (int)i.a() << ", " << (int)i.d();
-    if (i.opcode() == kLOADK && info != NULL) {
+    if (i.opcode() == kLOADK && code != NULL) {
       out << " ; ";
-      info->printLiteral(out, i.d());
+      code->printLiteral(out, i.d());
     }
     out << endl;
     break;

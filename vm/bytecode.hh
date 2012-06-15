@@ -6,9 +6,6 @@
 
 _START_LAMBDACHINE_NAMESPACE
 
-// forward declaration
-class CodeInfoTable;
-
 #define BCDEF(_) \
   /* Comparison ops. Order significant. */ \
   _(ISLT,    RRJ) \
@@ -170,7 +167,7 @@ class BcIns {
 
   static const BcIns *debugPrint(
     std::ostream& out, const BcIns *ins,
-    bool oneline, const BcIns *baseaddr, const CodeInfoTable*);
+    bool oneline, const BcIns *baseaddr, const struct _Code*);
 
   static inline const BcIns *debugPrint(std::ostream& out,
                                         const BcIns *ins) {

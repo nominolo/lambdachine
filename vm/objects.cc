@@ -80,12 +80,12 @@ void InfoTable::debugPrint(ostream &out) const {
   out << endl;
 }
 
-void CodeInfoTable::printLiteral(std::ostream &out, u4 litid) const {
-  if (LC_UNLIKELY(litid >= code()->sizelits))
+void Code::printLiteral(std::ostream &out, u4 litid) const {
+  if (LC_UNLIKELY(litid >= sizelits))
     return;
 
-  Word lit = code()->lits[litid];
-  switch (code()->littypes[litid]) {
+  Word lit = lits[litid];
+  switch (littypes[litid]) {
   case LIT_INT:
     out << (WordInt)lit << " (i)";
     break;
@@ -121,6 +121,10 @@ void CodeInfoTable::printLiteral(std::ostream &out, u4 litid) const {
   }
 }
 
+void CodeInfoTable::printLiteral(std::ostream &out, u4 litid) const {
+  code()->printLiteral(out, litid);
+}
+
 void CodeInfoTable::printCode(std::ostream &out) const {
   out << "  literals:" << endl;
 
@@ -137,7 +141,7 @@ void CodeInfoTable::printCode(std::ostream &out) const {
   const BcIns *ins = code()->code;
   while (ins < code()->code + code()->sizecode) {
     out << "    ";
-    ins = ins->debugPrint(out, ins, false, code()->code, this);
+    ins = ins->debugPrint(out, ins, false, code()->code, code());
   }
 }
 
