@@ -43,8 +43,8 @@ public:
 #define DEFINE_CONTENT_TYPE(_) \
   _(Uninitialized,  FREE) \
   _(Closures,       HEAP) \
-  _(InfoTables,     INFO) \
   _(StaticClosures, STAT) \
+  _(InfoTables,     INFO) \
   _(Strings,        STRG) \
   _(Bytecode,       CODE)
 
@@ -96,6 +96,7 @@ public:
   static const int kRegionSizeLog2 = 20; /* 1MB */
   static const size_t kRegionSize = 1UL << kRegionSizeLog2;
   static const Word kBlocksPerRegion = kRegionSize / Block::kBlockSize;
+  static const Word kRegionMask = kRegionSize - 1;
 
   // Allocate a new memory region from the OS.
   static Region *newRegion(RegionType);
@@ -112,6 +113,17 @@ public:
       reinterpret_cast<char*>
         (roundUpToPowerOf2(Block::kBlockSizeLog2, w));
   };
+
+  static inline Region *regionFromPointer(void *p) {
+    return reinterpret_cast<Region*>((Word)p & ~kRegionMask);
+  }
+
+  static inline Block *blockFromPointer(void *p) {
+    Region *r = regionFromPointer(p);
+    Word index = ((Word)p & kRegionMask) >> Block::kBlockSizeLog2;
+    LC_ASSERT(0 <= index && index < kBlocksPerRegion);
+    return &r->blocks_[index];
+  }
 
   // Unlink and return a free block from the region.
   //
@@ -171,6 +183,9 @@ public:
     Closure::initHeader(cl, info);
     return cl;
   }
+
+  bool looksLikeInfoTable(void *p);
+  bool looksLikeClosure(void *p);
 
   unsigned int infoTables();
 

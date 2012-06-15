@@ -190,6 +190,20 @@ unsigned int MemoryManager::infoTables() {
   return n;
 }
 
+bool MemoryManager::looksLikeInfoTable(void *p) {
+  Block *block = Region::blockFromPointer(p);
+  return block->contents() == Block::kInfoTables;
+}
+
+bool MemoryManager::looksLikeClosure(void *p) {
+  Block *block = Region::blockFromPointer(p);
+  if (!(block->contents() == Block::kStaticClosures ||
+        block->contents() == Block::kClosures))
+    return false;
+  Closure *cl = (Closure*)p;
+  return cl->info() != NULL && looksLikeInfoTable(cl->info());
+}
+
 static char blockContentShortname[][Block::kMaxContentType] = {
 #define DEF_CONTENT_STR(name, shortname) #shortname,
   DEFINE_CONTENT_TYPE(DEF_CONTENT_STR)
