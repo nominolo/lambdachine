@@ -5,6 +5,7 @@ _START_LAMBDACHINE_NAMESPACE
 Closure *MiscClosures::stg_UPD_closure_addr = NULL;
 BcIns *MiscClosures::stg_UPD_return_pc = NULL;
 Closure *MiscClosures::stg_STOP_closure_addr = NULL;
+InfoTable *MiscClosures::stg_IND_info = NULL;
 
 void MiscClosures::initStopClosure(MemoryManager &mm) {
   CodeInfoTable *info = static_cast<FuncInfoTable*>
@@ -85,15 +86,29 @@ void MiscClosures::initUpdateClosure(MemoryManager &mm) {
   MiscClosures::stg_UPD_closure_addr = stg_UPD_closure;
 }
 
+void MiscClosures::initIndirectionItbl(MemoryManager& mm) {
+  InfoTable *info = static_cast<InfoTable*>
+    (mm.allocInfoTable(wordsof(InfoTable)));
+  info->type_ = IND;
+  info->size_ = 1;
+  info->tagOrBitmap_ = 1;
+  info->layout_.bitmap = 1;
+  info->name_ = "stg_IND";
+
+  MiscClosures::stg_IND_info = info;
+}
+
 void MiscClosures::init(MemoryManager& mm) {
   MiscClosures::initStopClosure(mm);
   MiscClosures::initUpdateClosure(mm);
+  MiscClosures::initIndirectionItbl(mm);
 }
 
 void MiscClosures::reset() {
   MiscClosures::stg_STOP_closure_addr = NULL;
   MiscClosures::stg_UPD_return_pc = NULL;
   MiscClosures::stg_UPD_closure_addr = NULL;
+  MiscClosures::stg_IND_info = NULL;
 }
 
 _END_LAMBDACHINE_NAMESPACE

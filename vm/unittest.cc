@@ -99,12 +99,14 @@ TEST(LoaderTest, BuiltinClosures) {
   ASSERT_TRUE(NULL == MiscClosures::stg_STOP_closure_addr);
   ASSERT_TRUE(NULL == MiscClosures::stg_UPD_closure_addr);
   ASSERT_TRUE(NULL == MiscClosures::stg_UPD_return_pc);
+  ASSERT_TRUE(NULL == MiscClosures::stg_IND_info);
 
   Loader l(&mm, "tests");
   ASSERT_TRUE(l.loadModule("GHC.Base"));
   ASSERT_TRUE(NULL != MiscClosures::stg_STOP_closure_addr);
   ASSERT_TRUE(NULL != MiscClosures::stg_UPD_closure_addr);
   ASSERT_TRUE(NULL != MiscClosures::stg_UPD_return_pc);
+  ASSERT_TRUE(NULL != MiscClosures::stg_IND_info);
 }
 
 TEST(RegSetTest, fromReg) {
