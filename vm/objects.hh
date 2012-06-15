@@ -70,6 +70,8 @@ typedef enum _ClosureType {
 } ClosureType;
 #undef DEF_CLOS_TY
 
+extern const u2 closureFlags[];
+
 class InfoTable {
 public:
   inline ClosureType type() const { return static_cast<ClosureType>(type_); }
@@ -140,6 +142,12 @@ public:
   inline Word payload(int i) const { return payload_[i]; }
   inline void setInfo(InfoTable *info) { header_.info_ = info; }
   inline void setPayload(int i, Word value) { payload_[i] = value; }
+  inline bool isIndirection() const {
+    return closureFlags[info()->type()] & CF_IND;
+  }
+  inline bool isHNF() const {
+    return closureFlags[info()->type()] & CF_HNF;
+  }
 };
 
 void printClosure(std::ostream &out, Closure *cl, bool oneline);

@@ -2,6 +2,7 @@
 #include "bytecode.hh"
 #include "thread.hh"
 #include "objects.hh"
+#include "miscclosures.hh"
 
 #include <iomanip>
 
@@ -33,6 +34,26 @@ bool Capability::eval(Thread *T, Closure *cl) {
   return run(T);
 }
 
+static inline
+bool stackOverflow(Thread* T, Word* top, u4 increment) {
+  return T->stackLimit() < (top + increment);
+}
+
+// NOTE: Does not check for stack overflow.
+static inline
+void pushFrame(Word **top, Word **base, BcIns *ret, Closure *clos,
+               u4 framesize) {
+  Word *t = *top;
+  t[0] = (Word)(*base);
+  t[1] = (Word)ret;
+  t[2] = (Word)clos;
+  *base = &t[3];
+  *top = *base + framesize;
+}
+
+static const int kStackFrameWords = 3;
+static const int kUpdateFrameWords = 5;
+
 Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   static const AsmFunction dispatch_normal[] = {
 #   define BCIMPL(name, _) &&op_##name,
@@ -62,7 +83,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   mm_->getBumpAllocatorBounds(&heap, &heaplim);
   // Technically, we only need a pointer to the literals.  But having
   // a pointer to the whole code segment can be useful for debugging.
-  Code *code = NULL;
+  const Code *code = NULL;
 
 # define LOAD_STATE_FROM_CAP \
   do { T = currentThread_; \
@@ -256,7 +277,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     BUMP_HEAP(opC);
     cl->setInfo((InfoTable*)base[opB]);
     const u1 *arg = (const u1 *)pc;
-    for (int i = 0; i < opC; ++i) {
+    for (u4 i = 0; i < opC; ++i) {
       // cerr << "payload[" << i << "]=base[" << (int)*arg << "] ("
       //      << (Word)base[*arg] << ")" << endl;
       cl->setPayload(i, base[*arg++]);
@@ -293,27 +314,106 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     Closure *tnode = (Closure *)base[opA];
     
     LC_ASSERT(tnode != NULL);
+    LC_ASSERT(mm_->looksLikeClosure(tnode));
     
+    while (tnode->isIndirection()) {
+      tnode = (Closure*)tnode->payload(0);
+    }
+
+    if (tnode->isHNF()) {
+      T->setLastResult((Word)tnode);
+      ++pc;  // skip live-out info
+      DISPATCH_NEXT;
+    } else {
+      CodeInfoTable *info = static_cast<CodeInfoTable*>(tnode->info());
+      u4 framesize = info->code()->framesize;
+      Word *top = T->top();
+
+      if (stackOverflow(T, top, kStackFrameWords + kUpdateFrameWords
+                        + framesize))
+        goto stack_overflow;
+
+      Word *top_orig = top;
+
+      BcIns *returnPc = pc + 1;  // skip live-out info
+      pushFrame(&top, &base, returnPc, MiscClosures::stg_UPD_closure_addr, 2);
+      base[0] = (Word)tnode;
+      base[1] = 0xbadbadff;
+      pushFrame(&top, &base, MiscClosures::stg_UPD_return_pc, tnode, framesize);
+
+      LC_ASSERT(base == top_orig + kStackFrameWords + kUpdateFrameWords);
+      LC_ASSERT(top == base + framesize);
+      T->top_ = top;
+      code = info->code();
+
+      pc = code->code;
+      DISPATCH_NEXT;
+    }
+  }
+
+ op_FUNC:
+  // ATM, this is just a NOP.  It may be overwritten by a JFUNC.
+  DISPATCH_NEXT;
+
+ op_LOADK:
+  {
+    DECODE_AD;
+    u2 lit_id = opC;
+    LC_ASSERT(lit_id < code->sizelits);
+    base[opA] = code->lits[lit_id];
+    DISPATCH_NEXT;
+  }
+
+ op_RET1:
+  DECODE_AD;
+  T->setLastResult(base[opA]);
+
+ do_return:  
+  T->top_ = base - 3;
+  pc = (BcIns*)base[-2];
+  base = (Word*)base[-3];
+  {
+    Closure *node = (Closure*)base[-1];
+    LC_ASSERT(mm_->looksLikeClosure(node));
+    CodeInfoTable *info = static_cast<CodeInfoTable*>(node->info());
+    code = info->code();
+    LC_ASSERT(code->code < pc && pc < code->code + code->sizecode);
+  }
+  DISPATCH_NEXT;
+
+ op_IRET:
+  T->setLastResult(base[opA]);
+  goto do_return;
+
+ op_UPDATE:
+  {
+    Closure *oldnode = (Closure*)base[opA];
+    Closure *newnode = (Closure*)base[opC];
+    LC_ASSERT(oldnode != NULL && mm_->looksLikeClosure(oldnode));
+    LC_ASSERT(newnode != NULL && mm_->looksLikeClosure(newnode));
+    oldnode->setInfo(MiscClosures::stg_IND_info);
+    oldnode->setPayload(0, (Word)newnode);
+    
+    DISPATCH_NEXT;
   }
 
  op_MOV_RES:
- op_UPDATE:
+  DECODE_AD;
+  base[opA] = T->lastResult();
+  DISPATCH_NEXT;
+
  op_LOADBH:
  op_INITF:
- op_LOADK:
  op_KINT:
  op_NEW_INT:
  op_ALLOCAP:
  op_CALL:
  op_CALLT:
- op_RET1:
  op_CASE:
  op_CASE_S:
- op_FUNC:
  op_IFUNC:
  op_JFUNC:
  op_JRET:
- op_IRET:
  op_SYNC:
   cerr << "Unimplemented instruction: " << (pc-1)->name() << endl;
   T->sync(pc, base);
@@ -324,6 +424,11 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   T->sync(pc, base);
   mm_->sync(heap, heaplim);
   return kInterpOk;
+
+ stack_overflow:
+  T->sync(pc, base);
+  mm_->sync(heap, heaplim);
+  return kInterpStackOverflow;
 }
 
 _END_LAMBDACHINE_NAMESPACE

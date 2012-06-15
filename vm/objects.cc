@@ -4,6 +4,11 @@ _START_LAMBDACHINE_NAMESPACE
 
 using namespace std;
 
+const u2 closureFlags[] = {
+# define DEFFLAG(_, flags) CF_##flags,
+  CTDEF(DEFFLAG)
+};
+
 void printClosure(ostream &out, Closure *cl, bool oneline) {
   const InfoTable *info = cl->info();
   

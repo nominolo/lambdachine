@@ -6,7 +6,9 @@
 #include "capability.hh"
 #include "objects.hh"
 #include "miscclosures.hh"
+
 #include <iostream>
+#include <sstream>
 
 using namespace std;
 using namespace lambdachine;
@@ -401,8 +403,17 @@ TEST(RunTest, eval) {
   Closure *cl = l.closure("Bc.Bc0016.test`closure");
   ASSERT_TRUE(cl != NULL);
   Capability cap(&mm);
+  cap.enableBytecodeTracing();
   Thread *T = Thread::createThread(&cap, 0);
-  ASSERT_FALSE(cap.eval(T, cl));  // Expect failure, for now.
+  Word *base = T->base();
+  ASSERT_TRUE(cap.eval(T, cl));  // Expect failure, for now.
+  ASSERT_EQ(base, T->base());
+  Closure *cl2 = (Closure*)T->slot(0);
+  ASSERT_TRUE(cl2 != NULL);
+  cerr << cl2 << endl;
+  stringstream out;
+  printClosure(out, cl2, true);
+  EXPECT_EQ(string("IND -> GHC.Bool.True`con_info "), out.str());
 }
 
 int main(int argc, char *argv[]) {
