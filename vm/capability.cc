@@ -3,6 +3,8 @@
 #include "thread.hh"
 #include "objects.hh"
 
+#include <iomanip>
+
 _START_LAMBDACHINE_NAMESPACE
 
 #define DLOG(...) \
@@ -98,7 +100,12 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
 
  debug:
   --pc;
-  BcIns::debugPrint(cerr, pc, true, NULL, NULL);
+  {
+    size_t depth = base - T->stackStart();
+    size_t framesize = T->top() - base;
+    cerr << '[' << setfill(' ') << setw(3) << depth << ':' << framesize << "] ";
+    BcIns::debugPrint(cerr, pc, true, NULL, NULL);
+  }
   DISPATCH_NEXT_WITH(dispatch2);
 
   //
