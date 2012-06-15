@@ -268,6 +268,8 @@ PRIM_MODULES = \
 	$(patsubst %,tests/integer-gmp/%.lcbc,$(PRIM_MODULES_integer-gmp)) \
 	$(patsubst %,tests/base/%.lcbc,$(PRIM_MODULES_base))
 
+unittest: $(PRIM_MODULES)
+
 .PHONY: check
 TESTS ?= .
 check: $(PRIM_MODULES)
