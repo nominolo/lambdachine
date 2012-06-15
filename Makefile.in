@@ -154,7 +154,7 @@ unittest: vm/unittest.o $(GTEST_A) $(VM_SRCS:.cc=.o)
 	@echo "LINK $(filter %.o %.a, $^) => $@"
 	@$(CXX) -o $@ $(filter %.o %.a, $^)
 
-Bcdump: vm/bcdump.o $(VM_SRCS:.cc=.o)
+bcdump: vm/bcdump.o $(VM_SRCS:.cc=.o)
 	@echo "LINK $^ => $@"
 	@$(CXX) -o $@ $^
 
