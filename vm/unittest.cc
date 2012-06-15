@@ -396,24 +396,62 @@ TEST_F(ArithTest, AllocN_5) {
   ASSERT_EQ((Word)2222, T->slot(1));
 }
 
-TEST(RunTest, eval) {
-  MemoryManager mm;
-  Loader l(&mm, "tests");
-  ASSERT_TRUE(l.loadModule("Bc.Bc0016"));
-  Closure *cl = l.closure("Bc.Bc0016.test`closure");
-  ASSERT_TRUE(cl != NULL);
-  Capability cap(&mm);
-  cap.enableBytecodeTracing();
-  Thread *T = Thread::createThread(&cap, 0);
-  Word *base = T->base();
-  ASSERT_TRUE(cap.eval(T, cl));  // Expect failure, for now.
-  ASSERT_EQ(base, T->base());
-  Closure *cl2 = (Closure*)T->slot(0);
-  ASSERT_TRUE(cl2 != NULL);
-  cerr << cl2 << endl;
-  stringstream out;
-  printClosure(out, cl2, true);
-  EXPECT_EQ(string("IND -> GHC.Bool.True`con_info "), out.str());
+class RunFileTest : public ::testing::Test {
+protected:
+  RunFileTest() : mm(NULL), loader(NULL), cap(NULL), T(NULL) { }
+  virtual ~RunFileTest() {
+    if (T) delete T;
+    if (cap) delete cap;
+    if (loader) delete loader;
+    if (mm) delete mm;
+  }
+
+  virtual void SetUp() {
+    mm = new MemoryManager();
+    loader = new Loader(mm, "tests");
+    cap = new Capability(mm);
+    T = Thread::createThread(cap, 1U << 13);
+  }
+
+  virtual void TearDown() {
+    delete T;
+    T = NULL;
+    delete cap;
+    cap = NULL;
+    delete loader;
+    loader = NULL;
+    delete mm;
+    mm = NULL;
+  }
+
+  void run(const char *moduleName) {
+    EXPECT_TRUE(loader->loadModule(moduleName));
+    size_t len = strlen(moduleName);
+    char *entryClosure = new char[len + 20 + 1];
+    strcpy(entryClosure, moduleName);
+    strcat(entryClosure, ".test`closure");
+    Closure *entry = loader->closure(entryClosure);
+    ASSERT_TRUE(entry != NULL);
+    cap->enableBytecodeTracing();
+    Word *base = T->base();
+    ASSERT_TRUE(cap->eval(T, entry));
+    ASSERT_EQ(base, T->base());
+    Closure *result = (Closure*)T->slot(0);
+    ASSERT_TRUE(result != NULL);
+    stringstream out;
+    printClosure(out, result, true);
+    EXPECT_EQ(string("IND -> GHC.Bool.True`con_info "), out.str());
+  }
+
+private:
+  MemoryManager *mm;
+  Loader *loader;
+  Capability *cap;
+  Thread *T;
+};
+
+TEST_F(RunFileTest, eval) {
+  run("Bc.Bc0016");
 }
 
 int main(int argc, char *argv[]) {
