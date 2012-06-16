@@ -11,8 +11,6 @@
 #include <iostream>
 #include HASH_MAP_H
 
-using namespace HASH_NAMESPACE;
-
 _START_LAMBDACHINE_NAMESPACE
 
 #define STR_SEC_HDR_MAGIC       MSB_u4('B','C','S','T')
@@ -51,7 +49,7 @@ struct hashstr {
 };
 
 #define STRING_MAP(valueType) \
-  HASH_MAP_CLASS<const char*, valueType, hashstr, eqstr>
+  HASH_NAMESPACE::HASH_MAP_CLASS<const char*, valueType, hashstr, eqstr>
 
 class Module {
 public:

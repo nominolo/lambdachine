@@ -27,7 +27,7 @@ void printClosure(ostream &out, Closure *cl, bool oneline) {
   out << info->name() << ' ';
 
   u4 bitmap = info->layout().bitmap;
-  for (u4 i = 0; i < info->size(); ++i, bitmap >>= 1) {
+  for (i4 i = 0; i < (i4)info->size(); ++i, bitmap >>= 1) {
     if (bitmap & 1)
       out << (Word*)cl->payload(i) << ' ';
     else

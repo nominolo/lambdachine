@@ -62,7 +62,8 @@ boot:
 	test -f mk/build.mk || touch mk/build.mk
 
 INCLUDES = -Iincludes -Irts -Irts/codegen
-CFLAGS = -Wall -g $(EXTRA_CFLAGS)
+CFLAGS = -g -Wall $(EXTRA_CFLAGS)
+CXXFLAGS = -g -Wall $(EXTRA_CXXFLAGS)
 
 df = $(DEPDIR)/$(*D)/$(*F)
 
@@ -136,7 +137,8 @@ vm/unittest.o: $(GTEST_A)
 %.o: %.cc mk/build.mk
 	@echo "CXX $(CFLAGS) $< => $@"
 	@$(CXX) -c $(INCLUDES) -I$(GTEST_DIR)/include $(GTEST_DEFS) \
-	        -MD -MF $(patsubst %.cc,$(DEPDIR)/%.d,$<) $(CFLAGS) -o $@ $<
+	        -MD -MF $(patsubst %.cc,$(DEPDIR)/%.d,$<) \
+		$(CXXFLAGS) -o $@ $<
 	@cp $(df).d $(df).P; \
 	    sed -e 's/#.*//' -e 's/^[^:]*: *//' -e 's/ *\\$$//' \
 	        -e '/^$$/ d' -e 's/$$/ :/' < $(df).d >> $(df).P; \

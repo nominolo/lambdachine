@@ -20,12 +20,12 @@ inline Word zigZagEncode(Word v)
     return v << 1;
 }
 
-inline Word zigZagDecode(Word v)
+inline WordInt zigZagDecode(Word v)
 {
   if (v & 1)
-    return ~(v >> 1);
+    return static_cast<WordInt>(~(v >> 1));
   else
-    return v >> 1;
+    return static_cast<WordInt>(v >> 1);
 }
 
 _END_LAMBDACHINE_NAMESPACE

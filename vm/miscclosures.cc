@@ -28,7 +28,7 @@ void MiscClosures::initStopClosure(MemoryManager &mm) {
   u2 *bitmasks = cast(u2*, code + info->code_.sizecode);
 
   code[0] = BcIns::ad(BcIns::kEVAL, 0, 0);  // eval r0;
-  code[1] = BcIns::bitmapOffset(byte_offset(&code[1], bitmasks));
+  code[1] = BcIns::bitmapOffset(byteOffset32(&code[1], bitmasks));
   code[2] = BcIns::ad(BcIns::kSTOP, 0, 0);
 
   // r0 need not be marked as live because, if GC happens
@@ -65,7 +65,7 @@ void MiscClosures::initUpdateClosure(MemoryManager &mm) {
 
   // never executed, only for the bitmasks
   code[0] = BcIns::ad(BcIns::kEVAL, 0, 0);
-  code[1] = BcIns::bitmapOffset(byte_offset(&code[1], bitmasks));
+  code[1] = BcIns::bitmapOffset(byteOffset32(&code[1], bitmasks));
   code[2] = BcIns::ad(BcIns::kMOV_RES, 1, 0);
   code[3] = BcIns::ad(BcIns::kUPDATE, 0, 1);
   // If the update is executed by the interpreter then this return

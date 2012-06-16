@@ -9,8 +9,8 @@
 _START_LAMBDACHINE_NAMESPACE
 
 typedef struct _Code {
-  u2   framesize;               /* No. of local variables. */
-  u2   arity;                   /* No. of function arguments.  */
+  u1   framesize;               /* No. of local variables. */
+  u1   arity;                   /* No. of function arguments.  */
   u2   sizecode;                /* No. of instructions in bytecode. */
   u2   sizelits;		/* No. of literals */
   u2   sizebitmaps;             /* No. of bitmaps (in multiples of `u2') */
@@ -79,7 +79,7 @@ public:
   inline const char *name() const { return name_; }
   inline bool hasCode() const { return (kHasCodeBitmap & (1 << type())) != 0; }
   inline const ClosureInfo layout() const { return layout_; }
-  inline const u4 size() const { return size_; }
+  inline u4 size() const { return size_; }
   void debugPrint(std::ostream&) const;
 private:
   void printPayload(std::ostream&) const;

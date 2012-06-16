@@ -106,6 +106,12 @@ typedef int64_t  i8;
 
 #define byte_offset(from, to)  (cast(u1*, (to)) - cast(u1*, (from)))
 
+static inline int32_t byteOffset32(void *from, void *to) {
+  ptrdiff_t offset = cast(u1*, to) - cast(u1*, from);
+  LC_ASSERT(in_range_i4(offset));
+  return static_cast<int32_t>(offset);
+}
+
 // Tests whether x's size is a multiple of the size of a word.
 #define WORD_ALIGNED_SIZE(x) \
   ((sizeof(x) & ((1 << LC_ARCH_BYTES_LOG2) - 1)) == 0)

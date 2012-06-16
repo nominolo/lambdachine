@@ -84,7 +84,7 @@ class BcIns {
 
   BcIns() : raw_(kSTOP) {}
   
-  static const uint32_t kBranchBias = 0x8000;
+  static const int32_t kBranchBias = 0x8000;
   static const u4 kMaxCallArgs = 8;
 
   typedef enum {
@@ -135,11 +135,12 @@ class BcIns {
    * instruction.
    */
   static inline BcIns aj(Opcode opcode, uint8_t a, int16_t offset) {
-    return ad(opcode, a, kBranchBias + (int)offset);
+    uint16_t d = static_cast<uint16_t>(kBranchBias + (int32_t)offset);
+    return ad(opcode, a, d);
   }
 
   static inline BcIns bitmapOffset(int32_t n) {
-    return BcIns(n);
+    return BcIns(static_cast<uint32_t>(n));
   }
 
   static inline BcIns args(uint8_t arg1, uint8_t arg2, uint8_t arg3,
@@ -156,8 +157,11 @@ class BcIns {
   inline uint8_t b() const { return (raw_ >> 24); }
   inline uint8_t c() const { return (raw_ >> 16) & 0xff; }
   inline uint16_t d() const { return (raw_ >> 16); }
-  inline int16_t sd() const { return (raw_ >> 16); }
-  inline int16_t j() const { return (raw_ >> 16) - kBranchBias; }
+  inline int16_t sd() const { return static_cast<int16_t>(raw_ >> 16); }
+  inline int16_t j() const {
+    return static_cast<int16_t>
+      (static_cast<int32_t>(raw_ >> 16) - kBranchBias); 
+  }
   const char *name() const;
   InsFormat format() const;
 

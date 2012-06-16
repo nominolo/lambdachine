@@ -47,7 +47,7 @@ void Thread::initialize() {
   pc_ = &info->code()->code[0];
 }
 
-Thread *Thread::createThread(Capability *cap, Word stackSizeInWords) {
+Thread *Thread::createThread(Capability *, Word stackSizeInWords) {
   Thread *T = new Thread(stackSizeInWords);
   return T;
 }

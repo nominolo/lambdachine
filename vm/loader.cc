@@ -125,9 +125,14 @@ void Loader::initBasePath(const char *path)
   char buf[PATH_MAX + 1];
 
   while (1) {
-    int path_len;
+    size_t path_len;
     path_end = strchr(path, ':');
-    path_len = (path_end != NULL) ? path_end - path : strlen(path);
+    if (path_end != NULL) {
+      LC_ASSERT(path_end > path);
+      path_len = static_cast<size_t>(path_end - path);
+    } else {
+      path_len = strlen(path);
+    }
     int is_last_path = path_end == NULL;
 
     if (path_len == 0) {
@@ -308,8 +313,8 @@ const char *Loader::loadId(BytecodeFile &f, const StringTabEntry *strings,
 {
   u4 numparts;
   u4 parts[MAX_PARTS];
-  u4 seplen = strlen(sep);
-  u4 i, len = 0;
+  size_t seplen = strlen(sep);
+  size_t i, len = 0;
   char *ident, *p;
 
   numparts = f.get_varuint();

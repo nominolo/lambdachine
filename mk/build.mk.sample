@@ -10,6 +10,12 @@
 # HC=ghc
 # HC_PKG=ghc-pkg-7.0.1
 
+# On most platforms gcc/g++ is the default.  If Clang is available,
+# though, it can make development a lot nicer (better error messages).
+
+# CXX=clang++
+# EXTRA_CXXFLAGS=-Wextra -Wno-missing-noreturn -Wno-variadic-macros -Wconversion
+
 # We currently only have one interpreter
 #
 # AsmInterpreter = No

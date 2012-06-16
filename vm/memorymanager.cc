@@ -89,7 +89,7 @@ void Region::initBlocks() {
   next_free_ = &blocks_[0];
 }
 
-void Region::operator delete(void *p) {
+void Region::operator delete(void *) {
   // destructor has already been called.  Nothing to be done here.
 }
 

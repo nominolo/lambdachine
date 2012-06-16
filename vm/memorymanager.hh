@@ -73,7 +73,7 @@ private:
   friend class MemoryManager;
   Block() {}; // Hidden
   ~Block() {};
-  void operator delete(void *p) {}; // Forbid deleting Blocks
+  void operator delete(void *) {}; // Forbid deleting Blocks
 
   char *start_;
   char *end_;
@@ -89,7 +89,7 @@ private:
 class Region {
 public:
   typedef enum {
-    kSmallObjectRegion = 1, // The region is subdivided into blocks.
+    kSmallObjectRegion = 1 // The region is subdivided into blocks.
     //    kLargeObjectRegion,	// The region contains large objects.
   } RegionType;
 
@@ -223,7 +223,7 @@ private:
     // yield.
     LC_ASSERT(heaplim == NULL || heaplim == closures_->end());
     LC_ASSERT(closures_->free() <= heap && heap < closures_->end());
-    allocated_ += heap - closures_->free();
+    allocated_ += static_cast<uint64_t>(heap - closures_->free());
     closures_->free_ = heap;
   }
 
