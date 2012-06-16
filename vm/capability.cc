@@ -471,6 +471,65 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     }
   }
 
+ op_CALLT:
+  {
+    DECODE_BC;
+    // opA = function
+    // opC = no of args
+    // opB = argument pointer mask
+    u4 callargs = opC; // arguments from this call
+    u4 pointer_mask = opB; // pointer mask for callargs
+    u4 nargs = callargs; // arguments including PAP arguments
+    //    recordEvent(EV_CALL, callargs);
+    Closure *fnode;
+    //  op_CALLT_retry:
+
+    fnode = (Closure *)base[opA];
+
+    //  op_CALLT_IND_retry:
+
+    LC_ASSERT(fnode != NULL);
+    LC_ASSERT(mm_->looksLikeClosure(fnode));
+    LC_ASSERT(callargs < BcIns::kMaxCallArgs);
+
+    FuncInfoTable *info;
+
+    switch (fnode->info()->type()) {
+    case FUN:
+      info = (FuncInfoTable*)fnode->info();
+      break;
+    default:
+      cerr << "NYI: CALLT with CAF/PAP/THUNK argument." << endl;
+      goto not_yet_implemented;
+    }
+
+    if (nargs == info->code()->arity) {
+      u4 curframesize = T->top() - base;
+      u4 newframesize = info->code()->framesize;
+
+      DLOG("   ENTER: %s\n", info->name());
+
+      if (newframesize > curframesize &&
+          stackOverflow(T, base, newframesize)) {
+        goto stack_overflow;
+      }
+
+      T->top_ = base + newframesize;
+
+      // Arguments are already in place.  Just dispatch to target.
+
+      base[-1] = (Word)fnode;
+      code = info->code();
+
+      pc = code->code;
+      DISPATCH_NEXT;
+
+    } else {
+      cerr << "NYI: CALLT with too few/many arguments." << endl;
+      goto not_yet_implemented;
+    }
+  }
+
  op_CASE:
   // A case with compact targets.
   //
@@ -520,7 +579,6 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
  op_KINT:
  op_NEW_INT:
  op_ALLOCAP:
- op_CALLT:
  op_CASE_S:
  op_IFUNC:
  op_JFUNC:
