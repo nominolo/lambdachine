@@ -150,6 +150,10 @@ VM_SRCS = vm/thread.cc vm/capability.cc vm/memorymanager.cc \
 
 TEST_FILES := tests/Bc/Bc0016.lcbc tests/Bc/Bc0014.lcbc
 
+lcvm: $(VM_SRCS:.cc=.o) vm/main.o
+	@echo "LINK $(filter %.o %.a, $^) => $@"
+	@$(CXX) -o $@ $(filter %.o %.a, $^)
+
 unittest: $(TEST_FILES)
 
 unittest: vm/unittest.o $(GTEST_A) $(VM_SRCS:.cc=.o)
