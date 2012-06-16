@@ -164,6 +164,11 @@ bcdump: vm/bcdump.o $(VM_SRCS:.cc=.o)
 test: unittest
 	@./unittest 2> /dev/null # ignore debug output
 
+.PHONY: analyse analyze
+analyze: analyse
+analyse: $(VM_SRCS)
+	clang++ --analyze -I$(GTEST_DIR)/include -Ivm $^
+
 utils/genopcodes: utils/genopcodes.o
 	@echo "LINK $^ => $@"
 	@$(CC) -o $@ $^

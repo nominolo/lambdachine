@@ -110,6 +110,9 @@ TAGS/
 *.gcno
 *.gcda
 
+## Clang --analyze output
+*.plist
+
 # Erlang
 *.dump
 *.beam
