@@ -95,14 +95,18 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   if (isEnabledBytecodeTracing())
     dispatch = dispatch_debug;
 
-# define DISPATCH_NEXT_WITH(disp) \
+# define DISPATCH_NEXT \
   opcode = pc->opcode(); \
   opA = pc->a(); \
   opC = pc->d(); \
   ++pc; \
-  goto *(disp)[opcode]
+  goto *dispatch[opcode]
 
-# define DISPATCH_NEXT DISPATCH_NEXT_WITH(dispatch)
+# define ENTER \
+  opcode = pc->opcode(); \
+  opA = pc->a(); \
+  ++pc; \
+  goto *dispatch[opcode]
 
 # define DECODE_BC \
   opB = opC >> 8; \
@@ -126,13 +130,18 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     size_t framesize = T->top() - base;
     cerr << '[' << setfill(' ') << setw(3) << depth << ':' << framesize << "] ... ";
     for (u4 i = 0; i < framesize; ++i) {
-      cerr << i << ':' << hex << base[i] << ' ';
+      cerr << i << ':' << hex << base[i] << dec << ' ';
     }
     cerr << endl;
     cerr << '[' << setfill(' ') << setw(3) << depth << ':' << framesize << "] ";
     BcIns::debugPrint(cerr, pc, true, NULL, code);
   }
-  DISPATCH_NEXT_WITH(dispatch2);
+  // Dispatch actual instruction.
+  // Note that opA and opC/D have already been decoded and
+  // are passed on as the same values that we received.
+  opcode = pc->opcode();
+  ++pc;
+  goto *dispatch2[opcode];
 
   //
   // ----- Bytecode Implentations ------------------------------------
@@ -352,13 +361,10 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
       code = info->code();
 
       pc = code->code;
-      DISPATCH_NEXT;
+      opC = 0;                  // No arguments.
+      ENTER;
     }
   }
-
- op_FUNC:
-  // ATM, this is just a NOP.  It may be overwritten by a JFUNC.
-  DISPATCH_NEXT;
 
  op_LOADK:
   {
@@ -411,11 +417,11 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   {
     // opA = function
     // opB = argument pointer mask
-    // opC = no of argumenst
+    // opC = no of arguments
     // following bytes: argument regs, bitmask
     DECODE_BC;
     u4 callargs = opC;
-    //u4 pointerMask = opB;
+    u4 pointer_mask = opB;
     u4 nargs;
     Closure *fnode;
     Word *top;
@@ -428,47 +434,36 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     LC_ASSERT(fnode != NULL);
     LC_ASSERT(mm_->looksLikeClosure(fnode));
     LC_ASSERT(callargs < BcIns::kMaxCallArgs);
+    LC_ASSERT(fnode->info()->type() == FUN ||
+              fnode->info()->type() == CAF ||
+              fnode->info()->type() == THUNK ||
+              fnode->info()->type() == PAP);
 
-    FuncInfoTable *info;
-    //    PapClosure *pap = NULL;
-    switch (fnode->info()->type()) {
-    case FUN:
-      info = (FuncInfoTable*)fnode->info();
-      break;
-    default:
-      cerr << "NYI: CALL with CAF/PAP/THUNK argument." << endl;
-      goto not_yet_implemented;
+    CodeInfoTable *info = (CodeInfoTable*)fnode->info();
+
+    DLOG("   ENTER: %s\n", info->name());
+
+    if (stackOverflow(T, top, kStackFrameWords + nargs))
+      goto stack_overflow;
+
+    // Each additional argument requires 1 byte, we pad to multiples
+    // of an instruction.  The liveness mask follows.
+    BcIns *return_pc = pc + BC_ROUND(nargs) + 1;
+    Word  *oldbase = base;
+
+    u1 *args = (u1*)pc;
+    pushFrame(&top, &base, return_pc, fnode, nargs);
+
+    for (u4 i = 0; i < callargs; ++i, ++args) {
+      base[i] = oldbase[*args];
     }
 
-    if (nargs == info->code()->arity) {
-      DLOG("   ENTER: %s\n", info->name());
+    T->top_ = top;
+    code = info->code();
+    opC = (nargs & 0xff) | (pointer_mask << 8);
 
-      u4 framesize = info->code()->framesize;
-
-      if (stackOverflow(T, top, kStackFrameWords + framesize))
-        goto stack_overflow;
-
-      // Each additional argument requires 1 byte, we pad to multiples
-      // of an instruction.  The liveness mask follows.
-      BcIns *return_pc = pc + BC_ROUND(nargs) + 1;
-      Word  *oldbase = base;
-
-      u1 *args = (u1*)pc;
-      pushFrame(&top, &base, return_pc, fnode, framesize);
-
-      for (u4 i = 0; i < callargs; ++i, ++args) {
-        base[i] = oldbase[*args];
-      }
-
-      T->top_ = top;
-      pc = info->code()->code;
-      code = info->code();
-
-      DISPATCH_NEXT;
-    } else {
-      cerr << "NYI: CALL with too few/many arguments." << endl;
-      goto not_yet_implemented;
-    }
+    pc = code->code;
+    ENTER;
   }
 
  op_CALLT:
@@ -491,43 +486,58 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     LC_ASSERT(fnode != NULL);
     LC_ASSERT(mm_->looksLikeClosure(fnode));
     LC_ASSERT(callargs < BcIns::kMaxCallArgs);
+    LC_ASSERT(fnode->info()->type() == FUN ||
+              fnode->info()->type() == CAF ||
+              fnode->info()->type() == THUNK ||
+              fnode->info()->type() == PAP);
 
-    FuncInfoTable *info;
+    // TODO: Remove indirections or make them callable, same for
+    // blackhole.
 
-    switch (fnode->info()->type()) {
-    case FUN:
-      info = (FuncInfoTable*)fnode->info();
-      break;
-    default:
-      cerr << "NYI: CALLT with CAF/PAP/THUNK argument." << endl;
+    CodeInfoTable *info = (CodeInfoTable*)fnode->info();
+
+    DLOG("   ENTER: %s\n", info->name());
+
+    if (stackOverflow(T, base, nargs)) {
+      goto stack_overflow;
+    }
+
+    // T->top_ is set by FUNC at the entry point
+
+    // Arguments are already in place.  Just dispatch to target.
+
+    base[-1] = (Word)fnode;
+    code = info->code();
+    opC = (nargs & 0xff) | (pointer_mask << 8);
+
+    pc = code->code;
+    ENTER;
+  }
+
+ op_FUNC:
+  // The landing point of a CALL/PAP/EVAL
+  //
+  //  opA = stack frame size  -- TODO
+  //  opC = lower 8 bits: number of arguments, upper 24 bits: pointer mask
+  //  code points to current function
+  {
+    if ((opC & 0xff) != code->arity) {
+      cerr << "NYI: CALL/CALLT with too few/many arguments." << endl
+           << "  Got: " << opC << " arity: " << (int)code->arity
+           << endl;
       goto not_yet_implemented;
     }
 
-    if (nargs == info->code()->arity) {
-      u4 curframesize = T->top() - base;
-      u4 newframesize = info->code()->framesize;
+    LC_ASSERT(opA == code->framesize);
 
-      DLOG("   ENTER: %s\n", info->name());
-
-      if (newframesize > curframesize &&
-          stackOverflow(T, base, newframesize)) {
-        goto stack_overflow;
-      }
-
-      T->top_ = base + newframesize;
-
-      // Arguments are already in place.  Just dispatch to target.
-
-      base[-1] = (Word)fnode;
-      code = info->code();
-
-      pc = code->code;
-      DISPATCH_NEXT;
-
-    } else {
-      cerr << "NYI: CALLT with too few/many arguments." << endl;
-      goto not_yet_implemented;
+    if (stackOverflow(T, base, opA)) {
+      goto stack_overflow;
     }
+
+    T->top_ = base + opA;
+
+    // ATM, this is just a NOP.  It may be overwritten by a JFUNC.
+    DISPATCH_NEXT;
   }
 
  op_CASE:
