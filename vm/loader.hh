@@ -128,6 +128,7 @@ public:
   }
   void printInfoTables(std::ostream&);
   void printClosures(std::ostream&);
+  void printMiscClosures(std::ostream&);
   inline Closure *closure(const char *name) {
     Closure *cl = closures_[name];
     return cl;

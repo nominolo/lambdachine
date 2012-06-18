@@ -71,7 +71,7 @@ Loader::Loader(MemoryManager *mm, const char* basepaths)
   : mm_(mm), loadedModules_(10), infoTables_(100), closures_(100),
     basepaths_(NULL) {
   initBasePath(basepaths);
-  MiscClosures::init(*mm);
+  MiscClosures::init(mm);
 }
 
 Loader::~Loader() {
@@ -773,6 +773,19 @@ void Loader::printClosures(ostream &out) {
     out << '[' << cl << "] " COL_GREEN << name << COL_RESET << ": ";
     printClosure(out, cl, false);
   }
+}
+
+void Loader::printMiscClosures(std::ostream &out) {
+  Closure *cl = NULL;
+  BcIns *dummy;
+  for (u4 nargs = 1; nargs <= 4; ++nargs) {
+    for (u4 mask = 0; mask < (1U << nargs); ++mask) {
+      MiscClosures::getApCont(&cl, &dummy, nargs, mask);
+      cl->info()->debugPrint(out);
+    }
+  }
+  MiscClosures::getApCont(&cl, &dummy, 6, 0x35);
+  cl->info()->debugPrint(out);
 }
 
 _END_LAMBDACHINE_NAMESPACE

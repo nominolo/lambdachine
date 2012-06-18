@@ -1,11 +1,20 @@
 #include "miscclosures.hh"
 
+#include <string.h>
+#include <iostream>
+
 _START_LAMBDACHINE_NAMESPACE
+
+using namespace std;
+using namespace HASH_NAMESPACE;
 
 Closure *MiscClosures::stg_UPD_closure_addr = NULL;
 BcIns *MiscClosures::stg_UPD_return_pc = NULL;
 Closure *MiscClosures::stg_STOP_closure_addr = NULL;
 InfoTable *MiscClosures::stg_IND_info = NULL;
+MiscClosures::ApContInfo *MiscClosures::smallApConts = NULL;
+HASH_MAP_CLASS<u4, MiscClosures::ApContInfo> *MiscClosures::otherApConts = NULL;
+MemoryManager *MiscClosures::allocMM = NULL;
 
 void MiscClosures::initStopClosure(MemoryManager &mm) {
   CodeInfoTable *info = static_cast<FuncInfoTable*>
@@ -98,10 +107,154 @@ void MiscClosures::initIndirectionItbl(MemoryManager& mm) {
   MiscClosures::stg_IND_info = info;
 }
 
-void MiscClosures::init(MemoryManager& mm) {
-  MiscClosures::initStopClosure(mm);
-  MiscClosures::initUpdateClosure(mm);
-  MiscClosures::initIndirectionItbl(mm);
+static int formatBitmap(char *p, u4 nargs, u4 pointerMask) {
+  if (nargs > 32) nargs = 32;
+  for (u4 i = 0; i < nargs; ++i) {
+    *p = (pointerMask & 1) ? 'p' : 'n';
+    p++;
+    pointerMask >>= 1;
+  }
+  *p = '\0';
+  return nargs;
+}
+
+static int bitmapSize(u4 bitmap)
+{
+  if (bitmap < (1u << 15))
+    return 1;
+  if (bitmap < (1u << 30))
+    return 2;
+  else
+    return 3;
+}
+
+#define BITMASK_MASK   ((1u << 15) - 1)
+#define BITMASK_CONT   (1u << 15)
+
+// Write bitmask to dest.  Returns number of u2's written.
+static int encodeBitmask(u2 *dest, u4 bitmap)
+{
+  int i, s;
+  u2 m;
+  s = bitmapSize(bitmap);
+  for (i = 0; i < s; i++) {
+    m = (u2)(bitmap & BITMASK_MASK);
+    if (i < s - 1)
+      m |= BITMASK_CONT;
+    *dest = m;
+    dest++;
+    bitmap >>= 15;
+  }
+  return s;
+}
+
+
+void MiscClosures::buildApCont(MemoryManager *mm, ApContInfo *out,
+                               u4 nargs, u4 pointerMask) {
+  LC_ASSERT(nargs < 32);
+  LC_ASSERT(pointerMask < (1u << nargs));
+
+  CodeInfoTable *info = static_cast<FuncInfoTable*>
+    (mm->allocInfoTable(wordsof(FuncInfoTable)));
+  info->type_ = AP_CONT;
+  info->size_ = 0;
+  info->tagOrBitmap_ = 0; // pointerMask;
+  info->layout_.bitmap = 0; // pointerMask;
+
+  char buf[50];
+  char *p = buf;
+  p += snprintf(buf, 50, "ApK%d_", nargs);
+  p += formatBitmap(p, nargs, pointerMask);
+  p += snprintf(p, &buf[50] - p, "_info");
+  char *name = mm->allocString(p - buf);
+  memcpy(name, buf, p - buf + 1);
+  info->name_ = name;
+
+  u4 livemask = (1ul << nargs) - 1;  // everything is live
+
+  info->code_.framesize = nargs + 1;
+  info->code_.arity = 1;
+  info->code_.sizecode = 5;
+  info->code_.sizelits = 0;
+  info->code_.sizebitmaps = bitmapSize(pointerMask) + bitmapSize(livemask);
+
+  info->code_.lits = NULL;
+  info->code_.littypes = NULL;
+  info->code_.code = static_cast<BcIns*>
+    (mm->allocCode(info->code_.sizecode, info->code_.sizebitmaps));
+  BcIns *code = info->code_.code;
+  u2 *bitmasks = cast(u2*, code + info->code_.sizecode);
+
+  LC_ASSERT(nargs <= 8);  // need to change encoding of CALL/CALLT to
+                          // fix this
+
+  //
+  // Code for an APK closure of length N:
+  //
+  //   IFUNC <N+1>   ; never executed
+  //   EVAL <N>      ; never executed
+  //   <bitmask>     ; r0..r<N-1> are live, pointers variable
+  //   MOV_RES <N>   ;
+  //   CALLT <N>, r0..r<N-1>
+  //
+  code[0] = BcIns::ad(BcIns::kFUNC, nargs + 1, 0);  // never executed
+  code[1] = BcIns::ad(BcIns::kEVAL, nargs, 0); // never executed
+  code[2] = BcIns::bitmapOffset(byteOffset32(&code[2], bitmasks));
+  code[3] = BcIns::ad(BcIns::kMOV_RES, nargs, 0);
+  code[4] = BcIns::abc(BcIns::kCALLT, nargs, pointerMask, nargs);
+
+  bitmasks += encodeBitmask(bitmasks, pointerMask);
+  bitmasks += encodeBitmask(bitmasks, livemask);
+
+  Closure *cl = mm->allocStaticClosure(0);
+  cl->setInfo(info);
+
+  out->closure = cl;
+  out->returnAddr = &code[3];
+}
+
+void MiscClosures::initApConts(MemoryManager *mm) {
+  smallApConts = new ApContInfo[apContIndex(kMaxSmallArity + 1, 0)];
+  for (u4 nargs = 1; nargs <= 4; ++nargs) {
+    for (u4 pointerMask = 0; pointerMask < (1u << nargs); ++pointerMask) {
+      buildApCont(mm, &smallApConts[apContIndex(nargs, pointerMask)],
+                  nargs, pointerMask);
+    }
+  }
+  allocMM = mm;
+  otherApConts = new HASH_NAMESPACE::HASH_MAP_CLASS<u4, ApContInfo>(20);
+}
+
+void MiscClosures::getApCont(Closure **closure, BcIns **returnAddr,
+                             u4 nargs, u4 pointerMask) {
+  LC_ASSERT(nargs > 0);
+  if (LC_LIKELY(nargs <= kMaxSmallArity)) {
+    ApContInfo *inf = &smallApConts[apContIndex(nargs, pointerMask)];
+    *closure = inf->closure;
+    *returnAddr = inf->returnAddr;
+  } else {
+    u4 index = apContIndex(nargs, pointerMask);
+    APKMAP::iterator i = otherApConts->find(index);
+    if (i != otherApConts->end()) {
+      // cerr << "Returning existing ApKont" << endl;
+      *closure = i->second.closure;
+      *returnAddr = i->second.returnAddr;
+    } else {
+      ApContInfo inf;
+      // cerr << "Creating new ApKont" << endl;
+      buildApCont(allocMM, &inf, nargs, pointerMask);
+      *closure = inf.closure;
+      *returnAddr = inf.returnAddr;
+      (*otherApConts)[index] = inf;
+    }
+  }
+}
+
+void MiscClosures::init(MemoryManager *mm) {
+  MiscClosures::initStopClosure(*mm);
+  MiscClosures::initUpdateClosure(*mm);
+  MiscClosures::initIndirectionItbl(*mm);
+  MiscClosures::initApConts(mm);
 }
 
 void MiscClosures::reset() {
@@ -109,6 +262,11 @@ void MiscClosures::reset() {
   MiscClosures::stg_UPD_return_pc = NULL;
   MiscClosures::stg_UPD_closure_addr = NULL;
   MiscClosures::stg_IND_info = NULL;
+  delete[] MiscClosures::smallApConts;
+  MiscClosures::smallApConts = NULL;
+  delete MiscClosures::otherApConts;
+  MiscClosures::otherApConts = NULL;
+  MiscClosures::allocMM = NULL;
 }
 
 _END_LAMBDACHINE_NAMESPACE

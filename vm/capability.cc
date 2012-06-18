@@ -5,6 +5,7 @@
 #include "miscclosures.hh"
 
 #include <iomanip>
+#include <string.h>
 
 _START_LAMBDACHINE_NAMESPACE
 
@@ -387,6 +388,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     Closure *node = (Closure*)base[-1];
     LC_ASSERT(mm_->looksLikeClosure(node));
     CodeInfoTable *info = static_cast<CodeInfoTable*>(node->info());
+    DLOG("RETURN %s\n", info->name());
     code = info->code();
     LC_ASSERT(code->code < pc && pc < code->code + code->sizecode);
   }
@@ -521,8 +523,53 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   //  opC = lower 8 bits: number of arguments, upper 24 bits: pointer mask
   //  code points to current function
   {
-    if ((opC & 0xff) != code->arity) {
-      cerr << "NYI: CALL/CALLT with too few/many arguments." << endl
+    u4 given_args = opC & 0xff;
+    u4 ptr_mask = opC >> 8;
+    u4 arity = code->arity;
+
+    DLOG("FUNC (args=%d, arity=%d, ptrs=%x)\n", given_args, arity, ptr_mask);
+
+    if (LC_UNLIKELY(given_args > arity)) {
+      DLOG("Overapplication (args=%d, arity=%d)\n", given_args, arity);
+      // Assume: given_args = M, arity = N
+      //
+      // Then we want to transform the stack
+      //
+      //     -+----+----+-  -+----+----+-  -+----+
+      //      | f  | a1 | .. | aN |aN+1| .. | aM |
+      //     -+----+----+-  -+----+----+-  -+----+
+      //
+      // into the stack
+      //
+      //     -+----+----+-  -+----+-------+----+----+-  -+----+
+      //      | APK|aN+1| .. | aM | frame |  f | a1 | .. | aN |
+      //     -+----+----+-  -+----+-------+----+----+-  -+----+
+      //
+      u4 extra_args = given_args - arity;
+      u4 apk_frame_size = MiscClosures::apContFrameSize(extra_args) + 3;
+      if (stackOverflow(T, base, apk_frame_size + given_args))
+        goto stack_overflow;
+
+      // We could do some clever swapping scheme here, but it
+      // would be very branchy and probably not worth it.
+
+      BcIns *apk_return_addr = NULL;
+      Closure *apk_closure = NULL;
+      MiscClosures::getApCont(&apk_closure, &apk_return_addr,
+                              extra_args, ptr_mask >> arity);
+
+      memmove(&base[apk_frame_size], &base[0],
+              given_args * sizeof(Word));
+      base[apk_frame_size - 1] = base[-1];
+      base[apk_frame_size - 2] = (Word)apk_return_addr;
+      base[apk_frame_size - 3] = (Word)&base[0];
+      base[-1] = (Word)apk_closure;
+      memmove(&base[0], &base[apk_frame_size + arity],
+              extra_args * sizeof(Word));
+      base = &base[apk_frame_size];
+
+    } else if (LC_UNLIKELY(given_args < code->arity)) {
+      cerr << "NYI: CALL/CALLT with too few arguments." << endl
            << "  Got: " << opC << " arity: " << (int)code->arity
            << endl;
       goto not_yet_implemented;

@@ -463,6 +463,10 @@ TEST_F(RunFileTest, TailCallExact) {
   run("Bc.TailCallExact");
 }
 
+TEST_F(RunFileTest, TailCallOverapply) {
+  run("Bc.TailCallOverapply");
+}
+
 int main(int argc, char *argv[]) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

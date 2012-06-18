@@ -149,7 +149,7 @@ VM_SRCS = vm/thread.cc vm/capability.cc vm/memorymanager.cc \
 	  vm/miscclosures.cc
 
 TEST_FILES := tests/Bc/Bc0016.lcbc tests/Bc/Bc0014.lcbc \
-	tests/Bc/TailCallExact.lcbc
+	tests/Bc/TailCallExact.lcbc tests/Bc/TailCallOverapply.lcbc
 
 lcvm: $(VM_SRCS:.cc=.o) vm/main.o
 	@echo "LINK $(filter %.o %.a, $^) => $@"
