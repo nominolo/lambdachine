@@ -215,8 +215,8 @@ static char blockContentShortname[][Block::kMaxContentType] = {
 std::ostream& operator<<(std::ostream& out, const Block& b) {
   out << blockContentShortname[b.contents()]
       << " [" << (void*)b.start() << '-' << (void*)b.end();
-  size_t blockSize = b.end() - b.start();
-  size_t blockFull = b.free() - b.start();
+  size_t blockSize = static_cast<size_t>(b.end() - b.start());
+  size_t blockFull = static_cast<size_t>(b.free() - b.start());
   cout << " full:" << (100 * blockFull + (blockSize/2)) / blockSize
        << "% link:" << (void*)(b.link_ != NULL ? b.link_->start() : NULL) << "]";
   return out;
