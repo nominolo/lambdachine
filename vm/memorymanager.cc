@@ -6,11 +6,17 @@
 #include <stdio.h>
 #include <errno.h>
 
+_START_LAMBDACHINE_NAMESPACE
+
 #define DLOG(...) \
   if (DEBUG_COMPONENTS & DEBUG_MEMORY_MANAGER) { \
     fprintf(stderr, "MM: " __VA_ARGS__); }
 
-_START_LAMBDACHINE_NAMESPACE
+#if (DEBUG_COMPONENTS & DEBUG_MEMORY_MANAGER) != 0
+#define dout cerr << "MM: "
+#else
+#define dout 0 && cerr
+#endif
 
 using namespace std;
 
@@ -176,6 +182,7 @@ void MemoryManager::blockFull(Block **block) {
 
 void MemoryManager::bumpAllocatorFull(char **heap, char **heaplim) {
   sync(*heap, *heaplim);
+  dout << "BLOCK_FULL" << endl;
   blockFull(&closures_);
   getBumpAllocatorBounds(heap, heaplim);
 }

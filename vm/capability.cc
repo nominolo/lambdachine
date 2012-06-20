@@ -279,8 +279,8 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   {
     DECODE_BC;
     Closure *cl = (Closure*)heap;
-    ++pc; // make sure PC points to after the bitmap
     BUMP_HEAP(1);
+    ++pc;
     cl->setInfo((InfoTable*)base[opB]);
     cl->setPayload(0, base[opC]);
     base[opA] = (Word)cl;
@@ -296,9 +296,6 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     DECODE_BC;
     Closure *cl = (Closure*)heap;
     const u1 *arg = (const u1 *)pc;
-    // Before we allocate on the heap, make sure that PC points
-    // past the bitmap.
-    pc += BC_ROUND(opC) + 1 /* bitmap */;
 
     BUMP_HEAP(opC);
     cl->setInfo((InfoTable*)base[opB]);
@@ -307,6 +304,8 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
       //      << (Word)base[*arg] << ")" << endl;
       cl->setPayload(i, base[*arg++]);
     }
+    pc += BC_ROUND(opC) + 1 /* bitmap */;
+
     // This MUST come after payload initialization.
     base[opA] = (Word)cl;
     DISPATCH_NEXT;
@@ -324,7 +323,6 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     u4 pointerMask = opB;
     const u1 *args = (const u1*)pc;
     LC_ASSERT(nargs > 0);
-    pc += BC_ROUND(nargs + 1) + 1 /* bitmap */;
 
     Closure *cl = (Closure*)heap;
     BUMP_HEAP(nargs + 1);
@@ -333,26 +331,33 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
       cl->setPayload(i, base[*args]);
     }
 
+    pc += BC_ROUND(nargs + 1) + 1 /* bitmap */;
+
     base[opA] = (Word)cl;
     DISPATCH_NEXT;
   }
 
  heapOverflow:
+  --pc;
+  // Convention: If GC is needed, T->pc points to the instruction that
+  // tried to allocate.
+  T->sync(pc, base);
   DLOG("Heap Block Overflow: %p of %p\n", heap, heaplim);
   mm_->bumpAllocatorFull(&heap, &heaplim);
-  --pc;  // re-dispatch last instruction
+  // re-dispatch last instruction
   DISPATCH_NEXT;
 
  heapOverflowPAP:
   {
+    --pc;
+    T->sync(pc, base);
     // Variable opC contains the pointer mask for the top of the
     // stack.  Since we may trigger a GC, we communicate that
     // information to the GC, just in case.
     mm_->setTopOfStackMask(opC >> 8);
     mm_->bumpAllocatorFull(&heap, &heaplim);
     mm_->setTopOfStackMask(MemoryManager::kNoMask);  // Reset mask.
-    --pc;  // Re-dispatch last instruction ...
-    ENTER; // ... but leave opC unchanged.
+    ENTER; // Re-dispatch last instruction, but leave opC unchanged.
   }
 
  op_JMP:

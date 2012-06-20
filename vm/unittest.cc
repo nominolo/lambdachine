@@ -433,7 +433,9 @@ protected:
     strcat(entryClosure, ".test`closure");
     Closure *entry = loader->closure(entryClosure);
     ASSERT_TRUE(entry != NULL);
-    cap->enableBytecodeTracing();
+    if (DEBUG_COMPONENTS & DEBUG_INTERPRETER) {
+      cap->enableBytecodeTracing();
+    }
     Word *base = T->base();
     ASSERT_TRUE(cap->eval(T, entry));
     ASSERT_EQ(base, T->base());
@@ -473,6 +475,10 @@ TEST_F(RunFileTest, TailCallPap) {
 
 TEST_F(RunFileTest, Paps) {
   run("Bc.Paps");
+}
+
+TEST_F(RunFileTest, Gc01) {
+  run("Bc.Gc01");
 }
 
 int main(int argc, char *argv[]) {

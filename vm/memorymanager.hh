@@ -228,7 +228,7 @@ private:
     // heaplim == NULL can happen if we want to force a thread to
     // yield.
     LC_ASSERT(heaplim == NULL || heaplim == closures_->end());
-    LC_ASSERT(closures_->free() <= heap && heap < closures_->end());
+    LC_ASSERT(closures_->free() <= heap && heap <= closures_->end());
     allocated_ += static_cast<uint64_t>(heap - closures_->free());
     closures_->free_ = heap;
   }
