@@ -193,6 +193,12 @@ public:
 
   inline uint64_t allocated() const { return allocated_; }
 
+  static const u4 kNoMask = ~0;
+
+  inline void setTopOfStackMask(u4 mask) {
+    topOfStackMask_ = mask;
+  };
+
 private:
   inline void *allocInto(Block **block, size_t bytes) {
     char *ptr = (*block)->alloc(bytes);
@@ -240,6 +246,7 @@ private:
   Block *closures_;
   Block *strings_;
   Block *bytecode_;
+  u4 topOfStackMask_;
 
   // Assuming an allocation rate of 16GB/s (pretty high), this counter
   // will overflow in 2^30 seconds, or about 34 years.  That appears

@@ -125,18 +125,33 @@ void CodeInfoTable::printLiteral(std::ostream &out, u4 litid) const {
   code()->printLiteral(out, litid);
 }
 
+static void printArgPointers(ostream &out, const u2 *bitmap, u4 arity) {
+  u2 mask;
+  u4 args = 0;
+  out << '[';
+  do {
+    mask = *bitmap++;
+    for (int i = 0; i < 15 && args < arity; ++i, mask>>=1, ++args) {
+      if (mask & 1) { out << '*'; } else { out << '-'; }
+    }
+  } while (mask != 0);
+  out << ']';
+}
+
 void CodeInfoTable::printCode(std::ostream &out) const {
-  out << "  literals:" << endl;
-
-  for (u4 i = 0; i < (u4)code()->sizelits; ++i) {
-    out << "    " << i << ": ";
-    printLiteral(out, i);
-    out << endl;
+  if (code()->sizelits > 0) {
+    out << "  literals:" << endl;
+    for (u4 i = 0; i < (u4)code()->sizelits; ++i) {
+      out << "    " << i << ": ";
+      printLiteral(out, i);
+      out << endl;
+    }
   }
-
   out << "  code"
-      << " (arity=" << (int)code()->arity
-      << ", frame=" << (int)code()->framesize
+      << " (arity=" << (int)code()->arity << '/';
+  printArgPointers(out, (const u2*)(code()->code + code()->sizecode),
+                   code()->arity);
+  out << ", frame=" << (int)code()->framesize
       << ")" << endl;
   const BcIns *ins = code()->code;
   while (ins < code()->code + code()->sizecode) {

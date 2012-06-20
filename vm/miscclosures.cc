@@ -15,6 +15,9 @@ InfoTable *MiscClosures::stg_IND_info = NULL;
 MiscClosures::ApContInfo *MiscClosures::smallApConts = NULL;
 HASH_MAP_CLASS<u4, MiscClosures::ApContInfo> *MiscClosures::otherApConts = NULL;
 MemoryManager *MiscClosures::allocMM = NULL;
+InfoTable *MiscClosures::stg_PAP_info = NULL;
+InfoTable **MiscClosures::smallApInfos = NULL;
+APMAP *MiscClosures::otherApInfos = NULL;
 
 void MiscClosures::initStopClosure(MemoryManager &mm) {
   CodeInfoTable *info = static_cast<FuncInfoTable*>
@@ -165,7 +168,7 @@ void MiscClosures::buildApCont(MemoryManager *mm, ApContInfo *out,
   char *p = buf;
   p += snprintf(buf, 50, "ApK%d_", nargs);
   p += formatBitmap(p, nargs, pointerMask);
-  p += snprintf(p, &buf[50] - p, "_info");
+  p += snprintf(p, &buf[50] - p, "`info");
   char *name = mm->allocString(p - buf);
   memcpy(name, buf, p - buf + 1);
   info->name_ = name;
@@ -250,11 +253,109 @@ void MiscClosures::getApCont(Closure **closure, BcIns **returnAddr,
   }
 }
 
+void MiscClosures::initPapItbl(MemoryManager *mm) {
+  CodeInfoTable *info = static_cast<FuncInfoTable*>
+    (mm->allocInfoTable(wordsof(FuncInfoTable)));
+  info->type_ = PAP;
+  info->size_ = 0;  // special layout
+  info->tagOrBitmap_ = 0;
+  info->layout_.bitmap = 0;
+  info->name_ = "stg_PAP";
+
+  info->code_.framesize = 1;
+  info->code_.arity = 0;
+  info->code_.sizecode = 1;
+  info->code_.sizelits = 0;
+  info->code_.sizebitmaps = 0;
+  info->code_.lits = NULL;
+  info->code_.littypes = NULL;
+  info->code_.code = static_cast<BcIns*>
+    (mm->allocCode(info->code_.sizecode, info->code_.sizebitmaps));
+
+  BcIns *code = info->code_.code;
+
+  code[0] = BcIns::ad(BcIns::kFUNCPAP, 0, 0);
+
+  MiscClosures::stg_PAP_info = info;
+}
+
+InfoTable* MiscClosures::buildApInfo(MemoryManager *mm, u4 nargs, u4 pointerMask) {
+  LC_ASSERT(nargs <= 8);
+  CodeInfoTable *info = static_cast<CodeInfoTable*>
+    (mm->allocInfoTable(wordsof(CodeInfoTable)));
+  info->type_ = THUNK;
+  info->size_ = 1 + nargs;
+  info->tagOrBitmap_ = (pointerMask << 1) | 1u;
+  info->layout_.bitmap = (pointerMask << 1) | 1u;
+
+  char buf[50];
+  char *p = buf;
+  p += snprintf(buf, 50, "Ap%d_", nargs);
+  p += formatBitmap(p, nargs, pointerMask);
+  p += snprintf(p, &buf[50] - p, "`info");
+  char *name = mm->allocString(p - buf);
+  memcpy(name, buf, p - buf + 1);
+  info->name_ = name;
+
+  info->code_.framesize = 1 + nargs;
+  info->code_.arity = 0;
+  info->code_.sizecode = 3 + nargs;
+  info->code_.sizelits = 0;
+  info->code_.sizebitmaps = 0;
+  info->code_.lits = NULL;
+  info->code_.littypes = NULL;
+  info->code_.code = static_cast<BcIns*>
+    (mm->allocCode(info->code_.sizecode, info->code_.sizebitmaps));
+
+  BcIns *code = info->code_.code;
+  code[0] = BcIns::ad(BcIns::kFUNC, 1 + nargs, 0);
+  code[1] = BcIns::ad(BcIns::kLOADFV, nargs, 1);
+
+  u4 i;
+  for (i = 0; i < nargs; ++i) {
+    code[2 + i] = BcIns::ad(BcIns::kLOADFV, i, i + 2);
+  }
+
+  code[2 + nargs] = BcIns::abc(BcIns::kCALLT, nargs, pointerMask, nargs);
+
+  return info;
+}
+
+void MiscClosures::initApInfos(MemoryManager *mm) {
+  smallApInfos = new InfoTable*[apContIndex(kMaxSmallArity + 1, 0)];
+  for (u4 nargs = 1; nargs <= kMaxSmallArity; ++nargs) {
+    for (u4 pointerMask = 0; pointerMask < (1U << nargs); ++pointerMask) {
+      smallApInfos[apContIndex(nargs, pointerMask)] =
+        buildApInfo(allocMM, nargs, pointerMask);
+    }
+  }
+  otherApInfos = new APMAP(10);
+}
+
+InfoTable *MiscClosures::getApInfo(u4 nargs, u4 pointerMask) {
+  if (LC_LIKELY(nargs <= kMaxSmallArity)) {
+    return smallApInfos[apContIndex(nargs, pointerMask)];
+  } else {
+    u4 index = apContIndex(nargs, pointerMask);
+    InfoTable *itbl = (*otherApInfos)[index];
+    if (LC_LIKELY(itbl != NULL)) {
+      return itbl;
+    } else {
+      itbl = buildApInfo(allocMM, nargs, pointerMask);
+      LC_ASSERT(itbl != NULL);
+      (*otherApInfos)[index] = itbl;
+      return itbl;
+    }
+  }
+}
+
 void MiscClosures::init(MemoryManager *mm) {
   MiscClosures::initStopClosure(*mm);
   MiscClosures::initUpdateClosure(*mm);
   MiscClosures::initIndirectionItbl(*mm);
   MiscClosures::initApConts(mm);
+  MiscClosures::initPapItbl(mm);
+  MiscClosures::initApInfos(mm);
 }
 
 void MiscClosures::reset() {
@@ -267,6 +368,11 @@ void MiscClosures::reset() {
   delete MiscClosures::otherApConts;
   MiscClosures::otherApConts = NULL;
   MiscClosures::allocMM = NULL;
+  MiscClosures::stg_PAP_info = NULL;
+  delete[] MiscClosures::smallApInfos;
+  delete MiscClosures::otherApInfos;
+  MiscClosures::smallApInfos = NULL;
+  MiscClosures::otherApInfos = NULL;
 }
 
 _END_LAMBDACHINE_NAMESPACE

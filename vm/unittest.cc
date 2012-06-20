@@ -467,6 +467,14 @@ TEST_F(RunFileTest, TailCallOverapply) {
   run("Bc.TailCallOverapply");
 }
 
+TEST_F(RunFileTest, TailCallPap) {
+  run("Bc.TailCallPap");
+}
+
+TEST_F(RunFileTest, Paps) {
+  run("Bc.Paps");
+}
+
 int main(int argc, char *argv[]) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

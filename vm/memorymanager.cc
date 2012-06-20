@@ -113,7 +113,7 @@ Block *Region::grabFreeBlock() {
 }
 
 MemoryManager::MemoryManager()
-  : full_(NULL), free_(NULL), allocated_(0) {
+  : full_(NULL), free_(NULL), topOfStackMask_(kNoMask), allocated_(0) {
   region_ = Region::newRegion(Region::kSmallObjectRegion);
   info_tables_ = grabFreeBlock(Block::kInfoTables);
   static_closures_ = grabFreeBlock(Block::kStaticClosures);

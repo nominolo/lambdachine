@@ -11,7 +11,13 @@ _START_LAMBDACHINE_NAMESPACE
 
 #define DLOG(...) \
   if (DEBUG_COMPONENTS & DEBUG_INTERPRETER) { \
-    fprintf(stderr, "IP: " __VA_ARGS__); }
+    cerr.flush(); fprintf(stderr, "IP: " __VA_ARGS__); fflush(stderr); }
+
+#if (DEBUG_COMPONENTS & DEBUG_INTERPRETER) != 0
+#define dout cerr
+#else
+#define dout 0 && cerr
+#endif
 
 using namespace std;
 
@@ -273,11 +279,11 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   {
     DECODE_BC;
     Closure *cl = (Closure*)heap;
+    ++pc; // make sure PC points to after the bitmap
     BUMP_HEAP(1);
     cl->setInfo((InfoTable*)base[opB]);
     cl->setPayload(0, base[opC]);
     base[opA] = (Word)cl;
-    ++pc; // skip bitmask
     DISPATCH_NEXT;
   }
 
@@ -289,9 +295,13 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   {
     DECODE_BC;
     Closure *cl = (Closure*)heap;
+    const u1 *arg = (const u1 *)pc;
+    // Before we allocate on the heap, make sure that PC points
+    // past the bitmap.
+    pc += BC_ROUND(opC) + 1 /* bitmap */;
+
     BUMP_HEAP(opC);
     cl->setInfo((InfoTable*)base[opB]);
-    const u1 *arg = (const u1 *)pc;
     for (u4 i = 0; i < opC; ++i) {
       // cerr << "payload[" << i << "]=base[" << (int)*arg << "] ("
       //      << (Word)base[*arg] << ")" << endl;
@@ -299,7 +309,31 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     }
     // This MUST come after payload initialization.
     base[opA] = (Word)cl;
-    pc += BC_ROUND(opC) + 1 /* bitmap */;
+    DISPATCH_NEXT;
+  }
+
+ op_ALLOCAP:
+  // TODO: Any instance of ALLOCAP could be resolved statically.  It
+  // could therefore be resolved by the loader.
+  {
+    DECODE_BC;
+    // A = result
+    // B = pointer mask for arguments
+    // C = number of arguments *excluding* function
+    u4 nargs = opC;
+    u4 pointerMask = opB;
+    const u1 *args = (const u1*)pc;
+    LC_ASSERT(nargs > 0);
+    pc += BC_ROUND(nargs + 1) + 1 /* bitmap */;
+
+    Closure *cl = (Closure*)heap;
+    BUMP_HEAP(nargs + 1);
+    cl->setInfo(MiscClosures::getApInfo(nargs, pointerMask));
+    for (u4 i = 0; i < nargs + 1; ++i, ++args) {
+      cl->setPayload(i, base[*args]);
+    }
+
+    base[opA] = (Word)cl;
     DISPATCH_NEXT;
   }
 
@@ -308,6 +342,18 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   mm_->bumpAllocatorFull(&heap, &heaplim);
   --pc;  // re-dispatch last instruction
   DISPATCH_NEXT;
+
+ heapOverflowPAP:
+  {
+    // Variable opC contains the pointer mask for the top of the
+    // stack.  Since we may trigger a GC, we communicate that
+    // information to the GC, just in case.
+    mm_->setTopOfStackMask(opC >> 8);
+    mm_->bumpAllocatorFull(&heap, &heaplim);
+    mm_->setTopOfStackMask(MemoryManager::kNoMask);  // Reset mask.
+    --pc;  // Re-dispatch last instruction ...
+    ENTER; // ... but leave opC unchanged.
+  }
 
  op_JMP:
   // Offsets are relative to the current PC which points to the
@@ -569,10 +615,25 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
       base = &base[apk_frame_size];
 
     } else if (LC_UNLIKELY(given_args < code->arity)) {
-      cerr << "NYI: CALL/CALLT with too few arguments." << endl
-           << "  Got: " << opC << " arity: " << (int)code->arity
-           << endl;
-      goto not_yet_implemented;
+      DLOG("Partial application\n");
+
+      u4 pap_size = 1 + given_args;
+      PapClosure *cl = (PapClosure*)heap;
+      heap += (wordsof(PapClosure) + pap_size) * sizeof(Word);
+      if (LC_UNLIKELY(heap > heaplim)) {
+        heap -= (wordsof(PapClosure) + pap_size) * sizeof(Word);
+        goto heapOverflowPAP;
+      }
+
+      Closure *fun = (Closure*)base[-1];
+      cl->init(MiscClosures::stg_PAP_info, ptr_mask,
+               given_args, fun);
+      for (u4 i = 0; i < given_args; ++i) {
+        cl->setPayload(i, base[i]);
+      }
+
+      T->setLastResult((Word)cl);
+      goto do_return;
     }
 
     LC_ASSERT(opA == code->framesize);
@@ -585,6 +646,50 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
 
     // ATM, this is just a NOP.  It may be overwritten by a JFUNC.
     DISPATCH_NEXT;
+  }
+
+ op_FUNCPAP:
+  {
+    u4 given_args = (opC & 0xff);
+    u4 pointer_mask = opC >> 8;
+
+    PapClosure *pap = (PapClosure*)base[-1];
+    LC_ASSERT(pap->info()->type() == PAP);
+    u4 papArgs = pap->nargs_;
+
+    dout << "FUNCPAP (args=" << given_args
+         << ", ptrs=" << hex << pointer_mask << dec
+         << ") PAP=(args=" << papArgs << ")"
+         << endl;
+
+    u4 framesize = pap->nargs_ + given_args;
+    if (stackOverflow(T, base, framesize)) {
+      goto stack_overflow;
+    }
+    T->top_ = base + framesize;
+
+    for (int i = given_args - 1; i >= 0; --i) {
+      base[papArgs + i] = base[i];
+    }
+
+    for (u4 i = 0; i < papArgs; ++i) {
+      base[i] = pap->payload(i);
+    }
+    base[-1] = (Word)pap->fun_;
+
+    pointer_mask <<= papArgs;
+    const CodeInfoTable *info = (CodeInfoTable*)pap->fun_->info();
+    pointer_mask |= pap->pointerMask_;
+
+    dout << "PAPENTER: " << info->name()
+         << hex << info->layout().bitmap << dec
+         << endl;
+
+    opC = (pointer_mask << 8) | (given_args + papArgs);
+    code = info->code();
+    pc = code->code;
+
+    ENTER;
   }
 
  op_CASE:
@@ -635,7 +740,6 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
  op_INITF:
  op_KINT:
  op_NEW_INT:
- op_ALLOCAP:
  op_CASE_S:
  op_IFUNC:
  op_JFUNC:

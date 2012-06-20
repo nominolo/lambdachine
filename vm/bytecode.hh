@@ -49,9 +49,10 @@ _START_LAMBDACHINE_NAMESPACE
   _(CASE,    ___) \
   _(CASE_S,  ___) \
   /* Function headers */ \
-  _(FUNC,    ___) \
-  _(IFUNC,   ___) \
-  _(JFUNC,   ___) \
+  _(FUNC,    R) \
+  _(IFUNC,   R) \
+  _(JFUNC,   RN) \
+  _(FUNCPAP, ___) \
   _(JRET,    RN) \
   _(IRET,    RN) \
   _(SYNC, ___) \

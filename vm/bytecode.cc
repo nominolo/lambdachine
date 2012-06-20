@@ -218,7 +218,7 @@ const BcIns *BcIns::debugPrint(ostream &out, const BcIns *ins,
         out << ')' << endl;
       }
       break;
-    case kFUNC:
+    case kFUNCPAP:
     case kSTOP:
       out << i.name() << endl;
       break;

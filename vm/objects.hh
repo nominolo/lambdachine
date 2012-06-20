@@ -85,7 +85,7 @@ private:
   void printPayload(std::ostream&) const;
   static const uint32_t kHasCodeBitmap =
     (1 << FUN) | (1 << THUNK) | (1 << CAF) | (1 << AP_CONT) |
-    (1 << UPDATE_FRAME);
+    (1 << UPDATE_FRAME) | (1 << PAP);
   ClosureInfo layout_;
   u1 type_;       // closure type
   u1 size_;
@@ -129,6 +129,7 @@ public:
 private:
   InfoTable *info_;
   friend struct _Closure;
+  friend struct _PapClosure;
   friend class Loader;
 };
 
@@ -155,6 +156,24 @@ public:
     return closureFlags[info()->type()] & CF_HNF;
   }
 };
+
+typedef struct _PapClosure {
+public:
+  ClosureHeader header_;
+  u2 pointerMask_;
+  u2 nargs_;
+  Closure *fun_;
+  Word payload_[];
+  inline void init(InfoTable *info, u4 ptrMask, u4 nargs, Closure *fun) {
+    header_.info_ = info;
+    pointerMask_ = ptrMask;
+    nargs_ = nargs;
+    fun_ = fun;
+  }
+  inline void setPayload(u4 i, Word value) { payload_[i] = value; }
+  inline InfoTable *info() const { return header_.info(); }
+  inline Word payload(u4 i) const { return payload_[i]; }
+} PapClosure;
 
 void printClosure(std::ostream &out, Closure *cl, bool oneline);
 
