@@ -170,6 +170,14 @@ class BcIns {
     return static_cast<Opcode> (raw_ & 0xff);
   }
 
+  static inline const u2 *offsetToBitmask(const BcIns *pc) {
+    uint32_t offset = pc->raw_;
+    if (offset == 0)
+      return NULL;
+    else
+      return (const u2*)((u1*)pc + offset);
+  }
+
   static const BcIns *debugPrint(
     std::ostream& out, const BcIns *ins,
     bool oneline, const BcIns *baseaddr, const struct _Code*);

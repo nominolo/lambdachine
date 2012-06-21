@@ -343,7 +343,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   // tried to allocate.
   T->sync(pc, base);
   DLOG("Heap Block Overflow: %p of %p\n", heap, heaplim);
-  mm_->bumpAllocatorFull(&heap, &heaplim);
+  mm_->bumpAllocatorFull(&heap, &heaplim, this);
   // re-dispatch last instruction
   DISPATCH_NEXT;
 
@@ -355,7 +355,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     // stack.  Since we may trigger a GC, we communicate that
     // information to the GC, just in case.
     mm_->setTopOfStackMask(opC >> 8);
-    mm_->bumpAllocatorFull(&heap, &heaplim);
+    mm_->bumpAllocatorFull(&heap, &heaplim, this);
     mm_->setTopOfStackMask(MemoryManager::kNoMask);  // Reset mask.
     ENTER; // Re-dispatch last instruction, but leave opC unchanged.
   }

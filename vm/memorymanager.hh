@@ -9,6 +9,7 @@
 _START_LAMBDACHINE_NAMESPACE
 
 class MemoryManager;
+class Capability;
 
 // Only one OS thread should allocate to each block.
 
@@ -199,6 +200,16 @@ public:
     topOfStackMask_ = mask;
   };
 
+  static const u4 kDefaultGCTrigger = 2;  // blocks
+
+  inline bool gcInProgress() const { return nextGC_ == 0; }
+
+  // TODO: This API should be made better or private.
+  inline void setNextGC(u4 blocks) {
+    LC_ASSERT(blocks > 0);
+    nextGC_ = blocks;
+  }
+
 private:
   inline void *allocInto(Block **block, size_t bytes) {
     char *ptr = (*block)->alloc(bytes);
@@ -233,10 +244,14 @@ private:
     closures_->free_ = heap;
   }
 
-  void bumpAllocatorFull(char **heap, char **heaplim);
+  void bumpAllocatorFull(char **heap, char **heaplim, Capability *cap);
 
   Block *grabFreeBlock(Block::Flags);
   void blockFull(Block **);
+  void performGC(Capability *cap);
+  void scavengeStack(Word *base, Word *top, const BcIns *pc);
+  void scavengeFrame(Word *base, Word *top, const u2 *bitmask);
+  void evacuate(Closure **);
 
   Region *region_;
   Block *full_;
@@ -246,7 +261,10 @@ private:
   Block *closures_;
   Block *strings_;
   Block *bytecode_;
+  Block *gcTodos_;
   u4 topOfStackMask_;
+
+  u4 nextGC_;  // if zero, a GC gets triggered.
 
   // Assuming an allocation rate of 16GB/s (pretty high), this counter
   // will overflow in 2^30 seconds, or about 34 years.  That appears

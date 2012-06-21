@@ -1,6 +1,8 @@
 #include "memorymanager.hh"
 #include "utils.hh"
 #include "miscclosures.hh"
+#include "capability.hh"
+#include "thread.hh"
 
 #include <sys/mman.h>
 #include <stdio.h>
@@ -119,7 +121,8 @@ Block *Region::grabFreeBlock() {
 }
 
 MemoryManager::MemoryManager()
-  : full_(NULL), free_(NULL), topOfStackMask_(kNoMask), allocated_(0) {
+  : full_(NULL), free_(NULL), gcTodos_(NULL), topOfStackMask_(kNoMask),
+    nextGC_(2), allocated_(0) {
   region_ = Region::newRegion(Region::kSmallObjectRegion);
   info_tables_ = grabFreeBlock(Block::kInfoTables);
   static_closures_ = grabFreeBlock(Block::kStaticClosures);
@@ -180,10 +183,17 @@ void MemoryManager::blockFull(Block **block) {
   }
 }
 
-void MemoryManager::bumpAllocatorFull(char **heap, char **heaplim) {
+void MemoryManager::bumpAllocatorFull(char **heap, char **heaplim,
+                                      Capability *cap) {
   sync(*heap, *heaplim);
   dout << "BLOCK_FULL" << endl;
   blockFull(&closures_);
+  --nextGC_;
+  if (LC_UNLIKELY(nextGC_ == 0)) {
+    performGC(cap);
+    // TODO: should be based on no. of surviving objects.
+    nextGC_ = 2;
+  }
   getBumpAllocatorBounds(heap, heaplim);
 }
 
@@ -246,6 +256,81 @@ std::ostream& operator<<(std::ostream& out, const MemoryManager& mm) {
     r = r->region_link_;
   }
   return out;
+}
+
+//= Garbage Collection Stuff =========================================
+
+void MemoryManager::performGC(Capability *cap) {
+  Thread *T = cap->currentThread();
+  BcIns *pc = T->pc();
+  Word *base = T->base();
+  Word *top = T->top();
+
+  LC_ASSERT(gcTodos_ == NULL);
+  gcTodos_ = full_;
+  full_ = NULL;
+
+  scavengeStack(base, top, pc);
+}
+
+void MemoryManager::evacuate(Closure **p) {
+  dout << " Evac: " << *p << " (NYI) " << (*p)->info()->name() << endl;
+}
+
+void MemoryManager::scavengeFrame(Word *base, Word *top, const u2 *bitmaps) {
+  dout << "Scavenging frame " << base << '-' << top << endl;
+  dout << "-1:";
+  evacuate((Closure**)&base[-1]);  // The frame node
+  if (bitmaps == NULL)
+    return;
+  u2 bitmap;
+  int slot = 0;
+  ptrdiff_t slots = top - base;
+  do {
+    bitmap = *bitmaps;
+    ++bitmaps;
+    for (int i = 0; i < 15 && bitmap != 0; ++i, bitmap >>= 1, ++slot) {
+      if (bitmap & 1) {
+        LC_ASSERT(slot < slots);
+        dout << slot << ": ";
+        evacuate((Closure**)&base[slot]);
+      }
+    }
+  } while (bitmap != 0);
+}
+
+static inline const u2 *topFrameBitmask(const BcIns *pc) {
+  const BcIns ins = *pc;
+  switch (ins.opcode()) {
+  case BcIns::kALLOC1:
+    return BcIns::offsetToBitmask(pc + 1);
+  case BcIns::kALLOC:
+    return BcIns::offsetToBitmask(pc + 1 + BC_ROUND(ins.c()));
+  case BcIns::kALLOCAP:
+    return BcIns::offsetToBitmask(pc + 1 + BC_ROUND((u4)ins.c() + 1));
+  default:
+    cerr << "FATAL: Instruction should not have triggered GC: " << ins.name() << endl;
+    exit(1);
+  }
+}
+
+void MemoryManager::scavengeStack(Word *base, Word *top, const BcIns *pc) {
+  if (topOfStackMask_ != kNoMask) {
+    LC_ASSERT(0 && "NYI: PAP allocating GC trigger");
+  }
+
+  scavengeFrame(base, top, topFrameBitmask(pc));
+  top = base - 3;
+  pc = (BcIns*)base[-2];
+  base = (Word*)base[-3];
+
+  while (base) {
+    scavengeFrame(base, top, BcIns::offsetToBitmask(pc - 1));
+  top = base - 3;
+  pc = (BcIns*)base[-2];
+  base = (Word*)base[-3];
+  }
+  exit(42);
 }
 
 _END_LAMBDACHINE_NAMESPACE
