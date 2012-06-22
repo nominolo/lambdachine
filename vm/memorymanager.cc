@@ -16,8 +16,10 @@ _START_LAMBDACHINE_NAMESPACE
 
 #if (DEBUG_COMPONENTS & DEBUG_MEMORY_MANAGER) != 0
 #define dout cerr
+#define IFDBG(stmt) stmt
 #else
 #define dout 0 && cerr
+#define IFDBG(stmt) do {} while (0)
 #endif
 
 using namespace std;
@@ -121,7 +123,7 @@ Block *Region::grabFreeBlock() {
 }
 
 MemoryManager::MemoryManager()
-  : full_(NULL), free_(NULL), gcTodos_(NULL), topOfStackMask_(kNoMask),
+  : free_(NULL), old_heap_(NULL), topOfStackMask_(kNoMask),
     nextGC_(2), allocated_(0) {
   region_ = Region::newRegion(Region::kSmallObjectRegion);
   info_tables_ = grabFreeBlock(Block::kInfoTables);
@@ -171,30 +173,25 @@ Block *MemoryManager::grabFreeBlock(Block::Flags flags) {
 void MemoryManager::blockFull(Block **block) {
   Block *fullBlock = *block;
   Block *emptyBlock = grabFreeBlock(fullBlock->contents());
-  if (isGCd(fullBlock)) {
-    // Link block into full list.
-    emptyBlock->link_ = fullBlock->link_;
-    *block = emptyBlock;
-    fullBlock->link_ = full_;
-    full_ = fullBlock;
-  } else {
-    emptyBlock->link_ = *block;
-    *block = emptyBlock;
-  }
+  dout << "BLOCK_FULL" << endl;
+  emptyBlock->link_ = *block;
+  *block = emptyBlock;
 }
 
 void MemoryManager::bumpAllocatorFull(char **heap, char **heaplim,
                                       Capability *cap) {
   sync(*heap, *heaplim);
-  dout << "BLOCK_FULL" << endl;
-  blockFull(&closures_);
   --nextGC_;
   if (LC_UNLIKELY(nextGC_ == 0)) {
     performGC(cap);
-    // TODO: should be based on no. of surviving objects.
-    nextGC_ = 2;
+  } else {
+    blockFull(&closures_);
   }
   getBumpAllocatorBounds(heap, heaplim);
+  dout << "MM: heap=" << (void*)*heap
+       << " heaplim=" << (void*)*heaplim
+       << " nextGC=" << nextGC_
+       << endl;
 }
 
 unsigned int MemoryManager::infoTables() {
@@ -266,11 +263,57 @@ void MemoryManager::performGC(Capability *cap) {
   Word *base = T->base();
   Word *top = T->top();
 
-  LC_ASSERT(gcTodos_ == NULL);
-  gcTodos_ = full_;
-  full_ = NULL;
+  LC_ASSERT(old_heap_ == NULL);
+  old_heap_ = closures_;
 
+  closures_ = grabFreeBlock(closures_->contents());
+  closures_->link_ = NULL;
+
+  // Traverse the roots.
+  // TODO: Traverse updated CAFs
   scavengeStack(base, top, pc);
+
+  // Scavenging allocates into closures_ and pushes filled blocks onto
+  // the front of the list.  So we repeatedly traverse closures_ until
+  // we reach the end of a list or a block that we've already
+  // processed.
+  for (;;) {
+    Block *block = closures_;
+    if (block == NULL || block->getFlag(Block::kScavenged)) {
+      break;  // we're done
+    } else {
+      while (block != NULL && !block->getFlag(Block::kScavenged)) {
+        scavengeBlock(block);
+        block = block->link_;
+      }
+    }
+  }
+
+  // Mark blocks as no longer scavenged.
+  // TODO: Would it help much to not do this?
+  u4 fullBlocks = 0;
+  for (Block *block = closures_; block != NULL; block = block->link_) {
+    block->clearFlag(Block::kScavenged);
+    ++fullBlocks;
+  }
+
+  // O
+  for (Block *block = old_heap_; block != NULL; ) {
+    block->markAsFree();
+    Block *next = block->link_;
+    block->link_ = free_;
+    free_ = block;
+    block = next;
+  }
+  old_heap_ = NULL;
+
+  // TODO: Add sanity check.  Everything reachable from the roots must
+  // be in a k[Static]Closures block now.
+  
+
+
+  // TODO: Is this correct?
+  nextGC_ = (fullBlocks > 2 ? fullBlocks : 2) + 1;
 }
 
 static inline bool isForwardingPointer(const InfoTable *p) {
@@ -285,12 +328,15 @@ static inline InfoTable *makeForwardingPointer(Closure *p) {
   return cast (InfoTable *, (Word)p | 1);
 }
 
-static inline void copy(MemoryManager *mm, Closure *from,
+static inline void copy(MemoryManager *mm, Closure **src,
                         InfoTable *info, u4 payloadSize) {
+  Closure *from = *src;
   Closure *to = mm->allocClosure(info, payloadSize);
+  *src = to;
   for (u4 i = 0; i < payloadSize; ++i) {
     to->setPayload(i, from->payload(i));
   }
+  dout << "(fwd@" << from << ")";
   from->setInfo(makeForwardingPointer(to));
   dout << COL_GREEN << to << COL_RESET << endl;
 }
@@ -308,13 +354,13 @@ void MemoryManager::evacuate(Closure **p) {
  loop:
   info = q->info();
 
-  dout << ' ' << info->name();
-
   if (isForwardingPointer(info)) {
     *p = getForwardingPointer(info);
     dout << " -F-> " COL_YELLOW << *p << COL_RESET << endl;
     return;
   }
+
+  dout << ' ' << info->name();
 
   block = Region::blockFromPointer(q);
   if (block->contents() != Block::kClosures) {
@@ -329,7 +375,7 @@ void MemoryManager::evacuate(Closure **p) {
   case THUNK:
   case FUN:
     dout << " -CTF(" << info->size() << ")-> ";
-    copy(this, q, info, info->size());
+    copy(this, p, info, info->size());
     break;
 
   case IND:
@@ -394,11 +440,56 @@ void MemoryManager::scavengeStack(Word *base, Word *top, const BcIns *pc) {
 
   while (base) {
     scavengeFrame(base, top, BcIns::offsetToBitmask(pc - 1));
-  top = base - 3;
-  pc = (BcIns*)base[-2];
-  base = (Word*)base[-3];
+    top = base - 3;
+    pc = (BcIns*)base[-2];
+    base = (Word*)base[-3];
   }
-  exit(42);
+}
+
+void MemoryManager::scavengeBlock(Block *block) {
+  dout << "MM: Scavenging block: " << (void*)block->start()
+       << '-' << (void*)block->end() << endl;
+
+  char *p = block->start();
+
+  // We might be evacuating into the same block that we're scavenging.
+  // That is `bd->free` might change during the loop, so recheck here.
+  while ((char*)p < block->free()) {
+    Closure *cl = (Closure*)p;
+    InfoTable *info = cl->info();
+    LC_ASSERT(!isForwardingPointer(info));
+    switch (info->type()) {
+    case CONSTR:
+    case THUNK:
+    case FUN:
+      {
+        u4 bitmap = info->layout().bitmap;
+        u4 size = info->size();
+        dout << "MM: * Scav " << (void*)cl
+             << ' ' << info->name() << ' ';
+        IFDBG(InfoTable::printPayload(dout, bitmap, size));
+        dout << endl;
+
+        LC_ASSERT(bitmap < (1UL << size));
+        for (u4 i = 0; bitmap != 0 && i < size; ++i, bitmap >>= 1) {
+          if (bitmap & 1) {
+            evacuate((Closure**)&cl->payload_[i]);
+          }
+        }
+        p += (wordsof(ClosureHeader) + size) * sizeof(Word);
+      }
+      break;
+      
+    default:
+      cerr << "Can't scavenge object type, yet: " << info->type()
+           << " at " << cl << " " << info->name()
+           << endl;
+      exit(43);
+    }
+  }
+  block->setFlag(Block::kScavenged);
+  dout << "MM: DONE Scavenging block: " << (void*)block->start()
+       << '-' << (void*)block->end() << endl;
 }
 
 _END_LAMBDACHINE_NAMESPACE

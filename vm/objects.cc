@@ -37,19 +37,20 @@ void printClosure(ostream &out, Closure *cl, bool oneline) {
   if (!oneline) out << endl;
 }
 
-void InfoTable::printPayload(ostream &out) const {
-  out << " Payload=";
-  if (size_ >= 32) {
-    cerr << "ERROR: Unknown encoding" << endl;
-    return;
-  }
+void InfoTable::printPayload(ostream &out, u4 bitmap, u4 size) {
+  LC_ASSERT(size <= 32);
   out << '[';
-  u4 bitmap = layout_.bitmap;
-  for (u4 size = size_; size > 0; --size) {
+  for ( ; size > 0; --size) {
     out << (bitmap & 1 ? '*' : '-');
     bitmap >>= 1;
   }
-  out << ']' << endl;
+  out << ']';
+}
+
+void InfoTable::printPayload(ostream &out) const {
+  out << " Payload=";
+  InfoTable::printPayload(out, layout_.bitmap, size_);
+  out << endl;
 }
 
 void InfoTable::debugPrint(ostream &out) const {

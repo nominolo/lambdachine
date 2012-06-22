@@ -81,6 +81,7 @@ public:
   inline const ClosureInfo layout() const { return layout_; }
   inline u4 size() const { return size_; }
   void debugPrint(std::ostream&) const;
+  static void printPayload(std::ostream&, u4 bitmap, u4 size);
 private:
   void printPayload(std::ostream&) const;
   static const uint32_t kHasCodeBitmap =

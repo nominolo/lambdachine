@@ -5,6 +5,7 @@
 #include "utils.hh"
 #include "objects.hh"
 #include <iostream>
+#include <string.h>
 
 _START_LAMBDACHINE_NAMESPACE
 
@@ -63,6 +64,8 @@ public:
     return static_cast<Flags>(flags_);
   }
 
+  inline bool getFlag(Flags flag) const { return flags_ & (uint32_t)flag; }
+
   inline Flags contents() const {
     return static_cast<Flags>(flags_ & kContentsMask);
   }
@@ -74,6 +77,14 @@ private:
   friend class MemoryManager;
   Block() {}; // Hidden
   ~Block() {};
+  
+  inline void setFlag(Flags flag) { flags_ |= (uint32_t)flag; }
+  inline void clearFlag(Flags flag) { flags_ &= ~((uint32_t)flag); }
+  inline void markAsFree() {
+    flags_ = (uint32_t)Block::kUninitialized;
+    free_ = start_;
+    memset(free_, 0, end_ - free_);
+  }
   void operator delete(void *) {}; // Forbid deleting Blocks
 
   char *start_;
@@ -252,17 +263,17 @@ private:
   void performGC(Capability *cap);
   void scavengeStack(Word *base, Word *top, const BcIns *pc);
   void scavengeFrame(Word *base, Word *top, const u2 *bitmask);
+  void scavengeBlock(Block *);
   void evacuate(Closure **);
 
   Region *region_;
-  Block *full_;
   Block *free_;
   Block *info_tables_;
   Block *static_closures_;
   Block *closures_;
   Block *strings_;
   Block *bytecode_;
-  Block *gcTodos_;
+  Block *old_heap_; // Only non-NULL during GC
   u4 topOfStackMask_;
 
   u4 nextGC_;  // if zero, a GC gets triggered.
