@@ -15,7 +15,7 @@ _START_LAMBDACHINE_NAMESPACE
     fprintf(stderr, "MM: " __VA_ARGS__); }
 
 #if (DEBUG_COMPONENTS & DEBUG_MEMORY_MANAGER) != 0
-#define dout cerr << "MM: "
+#define dout cerr
 #else
 #define dout 0 && cerr
 #endif
@@ -273,8 +273,76 @@ void MemoryManager::performGC(Capability *cap) {
   scavengeStack(base, top, pc);
 }
 
+static inline bool isForwardingPointer(const InfoTable *p) {
+  return (Word)p & 1;
+}
+
+static inline Closure *getForwardingPointer(const InfoTable *p) {
+  return cast(Closure *, (Word)p ^ 1);
+}
+
+static inline InfoTable *makeForwardingPointer(Closure *p) {
+  return cast (InfoTable *, (Word)p | 1);
+}
+
+static inline void copy(MemoryManager *mm, Closure *from,
+                        InfoTable *info, u4 payloadSize) {
+  Closure *to = mm->allocClosure(info, payloadSize);
+  for (u4 i = 0; i < payloadSize; ++i) {
+    to->setPayload(i, from->payload(i));
+  }
+  from->setInfo(makeForwardingPointer(to));
+  dout << COL_GREEN << to << COL_RESET << endl;
+}
+
 void MemoryManager::evacuate(Closure **p) {
-  dout << " Evac: " << *p << " (NYI) " << (*p)->info()->name() << endl;
+  Closure *q;
+  InfoTable *info;
+  Block *block;
+
+  q = *p;
+
+  LC_ASSERT(q != NULL);
+  dout << "MM: Evac: " COL_RED << q << COL_RESET;
+
+ loop:
+  info = q->info();
+
+  dout << ' ' << info->name();
+
+  if (isForwardingPointer(info)) {
+    *p = getForwardingPointer(info);
+    dout << " -F-> " COL_YELLOW << *p << COL_RESET << endl;
+    return;
+  }
+
+  block = Region::blockFromPointer(q);
+  if (block->contents() != Block::kClosures) {
+    // TODO: Need to follow indirections from static closures into
+    // dynamic heap.
+    dout << " -S-> " COL_YELLOW "static object" COL_RESET << endl;
+    return;
+  }
+
+  switch (info->type()) {
+  case CONSTR:
+  case THUNK:
+  case FUN:
+    dout << " -CTF(" << info->size() << ")-> ";
+    copy(this, q, info, info->size());
+    break;
+
+  case IND:
+    q = (Closure*)q->payload(0);
+    dout << " -I-> " << q;
+    *p = q;
+    goto loop;
+
+  // TODO: PAPs
+
+  default:
+    dout << " -cannot evacuate yet: " << info->type() << endl;
+  }
 }
 
 void MemoryManager::scavengeFrame(Word *base, Word *top, const u2 *bitmaps) {

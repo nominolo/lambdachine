@@ -180,7 +180,8 @@ public:
 
   inline Closure *allocClosure(InfoTable *info, size_t payloadWords) {
     Closure *cl = reinterpret_cast<Closure*>
-      (allocInto(&closures_, wordsof(ClosureHeader) + payloadWords * sizeof(Word)));
+      (allocInto(&closures_,
+                 (wordsof(ClosureHeader) + payloadWords) * sizeof(Word)));
     Closure::initHeader(cl, info);
     return cl;
   }
