@@ -22,7 +22,8 @@ _START_LAMBDACHINE_NAMESPACE
 using namespace std;
 
 Capability::Capability(MemoryManager *mm)
-  : mm_(mm), currentThread_(NULL), flags_(0) {
+  : mm_(mm), currentThread_(NULL),
+    static_roots_(NULL), flags_(0) {
   interpMsg(kModeInit);
 }
 
@@ -453,10 +454,17 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   {
     Closure *oldnode = (Closure*)base[opA];
     Closure *newnode = (Closure*)base[opC];
+    InfoTable *info = oldnode->info();
     LC_ASSERT(oldnode != NULL && mm_->looksLikeClosure(oldnode));
     LC_ASSERT(newnode != NULL && mm_->looksLikeClosure(newnode));
+
     oldnode->setInfo(MiscClosures::stg_IND_info);
     oldnode->setPayload(0, (Word)newnode);
+
+    if (info->type() == CAF) {
+      oldnode->setPayload(1, (Word)static_roots_);
+      static_roots_ = oldnode;
+    }
 
     DISPATCH_NEXT;
   }

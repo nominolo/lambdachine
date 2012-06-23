@@ -272,6 +272,7 @@ void MemoryManager::performGC(Capability *cap) {
   // Traverse the roots.
   // TODO: Traverse updated CAFs
   scavengeStack(base, top, pc);
+  scavengeStaticRoots(cap->staticRoots());
 
   // Scavenging allocates into closures_ and pushes filled blocks onto
   // the front of the list.  So we repeatedly traverse closures_ until
@@ -443,6 +444,14 @@ void MemoryManager::scavengeStack(Word *base, Word *top, const BcIns *pc) {
     top = base - 3;
     pc = (BcIns*)base[-2];
     base = (Word*)base[-3];
+  }
+}
+
+void MemoryManager::scavengeStaticRoots(Closure *cl) {
+  dout << "MM: Scavenging static roots" << endl;
+  while (cl) {
+    evacuate((Closure**)&cl->payload_[0]);
+    cl = (Closure*)cl->payload_[1];
   }
 }
 

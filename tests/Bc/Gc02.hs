@@ -26,14 +26,14 @@ check len n (I# m:xs) =
 -- 2. Allocate more data (triggers GC)
 -- 3. Check CAF again.
 
-theCAF = f 1000# []
+theCAF = f 2000# []
 
 test =
   case length theCAF of
     I# n ->
-      if n /=# 1000# then False else
+      if n /=# 2000# then False else
         let !n = 2000# in
         case check n 1# (f n []) of
           False -> False
           True ->
-            check 1000# 1# theCAF
+            check 2000# 1# theCAF

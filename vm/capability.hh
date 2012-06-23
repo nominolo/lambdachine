@@ -22,6 +22,7 @@ public:
   // Eval given closure using current thread.
   bool eval(Thread *, Closure *);
   bool run(Thread *);
+  inline Closure *staticRoots() const { return static_roots_; }
   
 private:
   typedef enum {
@@ -42,6 +43,7 @@ private:
 
   MemoryManager *mm_;
   Thread *currentThread_;
+  Closure *static_roots_;
 
   const AsmFunction *dispatch_;
 

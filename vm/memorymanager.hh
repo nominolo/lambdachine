@@ -264,6 +264,8 @@ private:
   void scavengeStack(Word *base, Word *top, const BcIns *pc);
   void scavengeFrame(Word *base, Word *top, const u2 *bitmask);
   void scavengeBlock(Block *);
+  void scavengeStaticRoots(Closure *);
+
   void evacuate(Closure **);
 
   Region *region_;
