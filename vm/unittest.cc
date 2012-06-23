@@ -485,6 +485,10 @@ TEST_F(RunFileTest, Gc02) {
   run("Bc.Gc02");
 }
 
+TEST_F(RunFileTest, Gc03) {
+  run("Bc.Gc03");
+}
+
 int main(int argc, char *argv[]) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

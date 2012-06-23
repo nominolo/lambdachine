@@ -385,10 +385,19 @@ void MemoryManager::evacuate(Closure **p) {
     *p = q;
     goto loop;
 
-  // TODO: PAPs
+  case PAP:
+    {
+      PapClosure *pap = (PapClosure*)q;
+      u4 size = pap->nargs_ + wordsof(PapClosure)
+        - wordsof(ClosureHeader);
+      dout << " -PAP(" << pap->nargs_ << ")-> " << pap;
+      copy(this, p, info, size);
+    }
+    break;
 
   default:
     dout << " -cannot evacuate yet: " << info->type() << endl;
+    exit(44);
   }
 }
 
@@ -430,11 +439,22 @@ static inline const u2 *topFrameBitmask(const BcIns *pc) {
 }
 
 void MemoryManager::scavengeStack(Word *base, Word *top, const BcIns *pc) {
+  u2 dummy_mask[3];
+  const u2 *bitmask;
   if (topOfStackMask_ != kNoMask) {
-    LC_ASSERT(0 && "NYI: PAP allocating GC trigger");
+    // Translate the topOfStackMask into our standard format.  We're
+    // starting a full GC anyway, so it doesn't matter if this is a
+    // little bit inefficient.
+    dummy_mask[0] = topOfStackMask_ & 0x7fff;
+    dummy_mask[1] = (topOfStackMask_ >> 15) & 0x7fff;
+    dummy_mask[2] = (topOfStackMask_ >> 30);
+    if (dummy_mask[2] != 0) dummy_mask[1] |= 0x8000;
+    if (dummy_mask[1] != 0) dummy_mask[0] |= 0x8000;
+    bitmask = &dummy_mask[0];
+  } else {
+    bitmask = topFrameBitmask(pc);
   }
-
-  scavengeFrame(base, top, topFrameBitmask(pc));
+  scavengeFrame(base, top, bitmask);
   top = base - 3;
   pc = (BcIns*)base[-2];
   base = (Word*)base[-3];
@@ -489,6 +509,30 @@ void MemoryManager::scavengeBlock(Block *block) {
       }
       break;
       
+    case PAP:
+      {
+        PapClosure *pap = (PapClosure*)cl;
+        // In principle we could get the bitmap from the function
+        // argument itself.  That would require following a few more
+        // pointers, though, so let's not do that if we can avoid it.
+        u4 bitmap = pap->pointerMask_;
+        u4 size = pap->nargs_;
+        dout << "MM: * Scav " << (void*)cl << " PAP";
+        IFDBG(InfoTable::printPayload(dout, bitmap, size));
+        dout << endl;
+
+        evacuate(&pap->fun_);
+
+        LC_ASSERT(bitmap < (1UL << size));
+        for (u4 i = 0; bitmap != 0 && i < size; ++i, bitmap >>= 1) {
+          if (bitmap & 1) {
+            evacuate((Closure**)&pap->payload_[i]);
+          }
+        }
+        p += (wordsof(PapClosure) + size) * sizeof(Word);
+      }
+      break;
+
     default:
       cerr << "Can't scavenge object type, yet: " << info->type()
            << " at " << cl << " " << info->name()
