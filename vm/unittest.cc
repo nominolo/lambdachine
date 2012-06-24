@@ -461,6 +461,10 @@ TEST_F(RunFileTest, Bc0014) {
   run("Bc.Bc0014");
 }
 
+TEST_F(RunFileTest, Bc0017) {
+  run("Bc.Bc0017");
+}
+
 TEST_F(RunFileTest, TailCallExact) {
   run("Bc.TailCallExact");
 }
