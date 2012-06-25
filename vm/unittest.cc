@@ -493,6 +493,10 @@ TEST_F(RunFileTest, Gc03) {
   run("Bc.Gc03");
 }
 
+TEST_F(RunFileTest, Primes) {
+  run("Bench.Primes");
+}
+
 int main(int argc, char *argv[]) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
