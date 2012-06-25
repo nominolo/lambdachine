@@ -1,8 +1,7 @@
 {-# LANGUAGE NoImplicitPrelude, BangPatterns, MagicHash #-}
 -- RUN: %bc_vm_chk
--- CHECK: @Result@ IND -> GHC.Types.I#`con_info 5050
+-- CHECK: @Result@ IND -> GHC.Bool.True`con_info
 module Bench.SumFromTo2 where
-
 import GHC.Prim
 import GHC.Bool
 import GHC.Types
@@ -26,4 +25,4 @@ sum     l       = sum' l 0
 root :: Int -> Int
 root x = sum (enumFromTo 1 x)
 
-test = root (I# 100#)
+test = root (I# 100#) == I# 5050#

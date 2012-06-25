@@ -506,6 +506,22 @@ TEST_F(RunFileTest, SumFromTo1) {
   run("Bench.SumFromTo1");
 }
 
+TEST_F(RunFileTest, SumFromTo2) {
+  run("Bench.SumFromTo2");
+}
+
+TEST_F(RunFileTest, SumFromTo3) {
+  run("Bench.SumFromTo3");
+}
+
+TEST_F(RunFileTest, SumFromTo4) {
+  run("Bench.SumFromTo4");
+}
+
+TEST_F(RunFileTest, SumSquare1) {
+  run("Bench.SumSquare1");
+}
+
 int main(int argc, char *argv[]) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
