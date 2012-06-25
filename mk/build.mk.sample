@@ -16,6 +16,13 @@
 # CXX=clang++
 # EXTRA_CXXFLAGS=-Wextra -Wno-missing-noreturn -Wno-variadic-macros -Wconversion
 
+# Whenever we change Makefile.in, we need to re-run configure to
+# update the real Makefile.  By uncommenting these lines this step is
+# invoked automatically.  (Customise arguments as required)
+#
+# AutoConfigure=yes
+# AutoConfigureArgs=
+
 # We currently only have one interpreter
 #
 # AsmInterpreter = No
