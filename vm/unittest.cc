@@ -426,6 +426,7 @@ protected:
   }
 
   void run(const char *moduleName) {
+    EXPECT_TRUE(loader->loadWiredInModules());
     EXPECT_TRUE(loader->loadModule(moduleName));
     size_t len = strlen(moduleName);
     char *entryClosure = new char[len + 20 + 1];
@@ -495,6 +496,14 @@ TEST_F(RunFileTest, Gc03) {
 
 TEST_F(RunFileTest, Primes) {
   run("Bench.Primes");
+}
+
+TEST_F(RunFileTest, Append) {
+  run("Bench.Append");
+}
+
+TEST_F(RunFileTest, SumFromTo1) {
+  run("Bench.SumFromTo1");
 }
 
 int main(int argc, char *argv[]) {

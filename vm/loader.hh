@@ -123,6 +123,7 @@ public:
   const char *basePath(unsigned int index) const;
   char *findModule(const char *moduleName);
   bool loadModule(const char *moduleName);
+  bool loadWiredInModules();
   inline const Module *module(const char *moduleName) {
     return loadedModules_[moduleName];
   }

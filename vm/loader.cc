@@ -82,6 +82,12 @@ Loader::~Loader() {
   }
 }
 
+bool Loader::loadWiredInModules() {
+  return
+    loadModule("GHC.Bool") &&
+    loadModule("Control.Exception.Base");
+}
+
 // Linked list of strings
 struct _BasePathEntry {
   const char    *path;

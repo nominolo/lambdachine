@@ -28,4 +28,4 @@ test1 n =
   length (root (replicate n 1) (replicate n 2) (replicate n 3))
     == (n + n + n)
 
-test = test1 20 -- max: 1820
+test = test1 200 -- max: 1820

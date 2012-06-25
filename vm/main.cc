@@ -10,12 +10,6 @@
 using namespace std;
 using namespace lambdachine;
 
-static bool loadWiredInModules(Loader &loader) {
-  return
-    loader.loadModule("GHC.Bool") &&
-    loader.loadModule("Control.Exception.Base");
-}
-
 int main(int argc, char *argv[]) {
   OptionParser p;
   p.defaultEntry("test");
@@ -27,7 +21,8 @@ int main(int argc, char *argv[]) {
   MemoryManager mm;
   Loader loader(&mm, opts->basePath().c_str());
 
-  loadWiredInModules(loader);
+  if (!loader.loadWiredInModules())
+    return 1;
 
   for (int i = 0; i < opts->inputCount(); ++i) {
     if (!loader.loadModule(opts->inputModule(i).c_str())) {
