@@ -6,6 +6,7 @@
 #include "capability.hh"
 #include "objects.hh"
 #include "miscclosures.hh"
+#include "jit.hh"
 
 #include <iostream>
 #include <sstream>
@@ -520,6 +521,20 @@ TEST_F(RunFileTest, SumFromTo4) {
 
 TEST_F(RunFileTest, SumSquare1) {
   run("Bench.SumSquare1");
+}
+
+TEST(HotCounters, Simple) {
+  HotCounters counters(5);
+  BcIns pc[] = { BcIns::ad(BcIns::kFUNC, 3, 0) };
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_FALSE(counters.tick(pc));
+  }
+  EXPECT_TRUE(counters.tick(pc));
+  // Counter should have been reset now.
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_FALSE(counters.tick(pc));
+  }
+  EXPECT_TRUE(counters.tick(pc));
 }
 
 int main(int argc, char *argv[]) {
