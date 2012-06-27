@@ -21,9 +21,14 @@ _START_LAMBDACHINE_NAMESPACE
 
 using namespace std;
 
+static BcIns reload_state_code[1] = { BcIns::ad(BcIns::kSYNC, 0, 0) };
+
 Capability::Capability(MemoryManager *mm)
   : mm_(mm), currentThread_(NULL),
-    static_roots_(NULL), flags_(0) {
+    static_roots_(NULL),
+    reload_state_pc_(&reload_state_code[0]),
+    counters_(53), // TODO: initialise from Options
+    flags_(0) {
   interpMsg(kModeInit);
 }
 
@@ -40,6 +45,47 @@ bool Capability::eval(Thread *T, Closure *cl) {
   LC_ASSERT(T != NULL);
   T->setSlot(0, (Word)cl);
   return run(T);
+}
+
+static inline
+bool isStartOfTrace(BcIns *srcPc, BcIns *dstPc,
+                    BranchType branchType) {
+  return dstPc < srcPc && (dstPc->opcode() == BcIns::kFUNC ||
+                           branchType == kReturn);
+}
+
+inline
+BcIns *Capability::interpBranch(BcIns *srcPc, BcIns *dstPc, Word *base,
+                                u4 opC, BranchType branchType) {
+  if (LC_UNLIKELY(isRecording())) {
+    return dstPc;
+  } else {
+    if (isStartOfTrace(srcPc, dstPc, branchType)) {
+      if (counters_.tick(dstPc)) {
+        currentThread_->sync(dstPc, base);
+        opC_ = opC;
+
+        // TODO: Switch to recording mode.  Start at dstPc
+
+        if (DEBUG_COMPONENTS & DEBUG_TRACE_RECORDER) {
+          Closure *cl = (Closure*)base[-1];
+          cerr << "HOT: " << dstPc;
+          if (branchType == kReturn) {
+            cerr << " return from " << srcPc << " to " << dstPc
+                 << " " << cl->info()->name() << endl;
+          } else {
+            cerr << " in " << cl->info()->name() << endl;
+          }
+        }
+
+        // We need to ensure that the interpreter reloads its state.
+        // So we return a PC that points to the SYNC instruction.  This
+        // reloads all interpreter state from the capability.
+        return reload_state_pc_;
+      }
+    }
+    return dstPc;
+  }
 }
 
 static inline
@@ -115,6 +161,10 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   opA = pc->a(); \
   ++pc; \
   goto *dispatch[opcode]
+
+# define BRANCH_TO(dst_pc, branch_type) \
+  pc = interpBranch(pc, (dst_pc), base, opC, (branch_type)); \
+  ENTER;
 
 # define DECODE_BC \
   opB = opC >> 8; \
@@ -413,9 +463,8 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
       T->top_ = top;
       code = info->code();
 
-      pc = code->code;
       opC = 0;                  // No arguments.
-      ENTER;
+      BRANCH_TO(code->code, kCall);
     }
   }
 
@@ -433,18 +482,21 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   T->setLastResult(base[opA]);
 
  do_return:
-  T->top_ = base - 3;
-  pc = (BcIns*)base[-2];
-  base = (Word*)base[-3];
   {
-    Closure *node = (Closure*)base[-1];
-    LC_ASSERT(mm_->looksLikeClosure(node));
-    CodeInfoTable *info = static_cast<CodeInfoTable*>(node->info());
-    DLOG("RETURN %s\n", info->name());
-    code = info->code();
-    LC_ASSERT(code->code < pc && pc < code->code + code->sizecode);
+    T->top_ = base - 3;
+    BcIns *dst_pc = (BcIns*)base[-2];
+    base = (Word*)base[-3];
+    {
+      Closure *node = (Closure*)base[-1];
+      LC_ASSERT(mm_->looksLikeClosure(node));
+      CodeInfoTable *info = static_cast<CodeInfoTable*>(node->info());
+      DLOG("RETURN %s\n", info->name());
+      code = info->code();
+      LC_ASSERT(code->code < dst_pc && dst_pc < code->code + code->sizecode);
+    }
+    opC = dst_pc->d();
+    BRANCH_TO(dst_pc, kReturn);
   }
-  DISPATCH_NEXT;
 
  op_IRET:
   T->setLastResult(base[opA]);
@@ -523,8 +575,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     code = info->code();
     opC = (nargs & 0xff) | (pointer_mask << 8);
 
-    pc = code->code;
-    ENTER;
+    BRANCH_TO(code->code, kCall);
   }
 
  op_CALLT:
@@ -571,10 +622,13 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     code = info->code();
     opC = (nargs & 0xff) | (pointer_mask << 8);
 
-    pc = code->code;
-    ENTER;
+    BRANCH_TO(code->code, kCall);
   }
 
+ op_IFUNC:
+  // IFUNC is functionally equivalent to FUNC. It is treated differently
+  // by the trace selector though: an IFUNC is never considered as a 
+  // possible trace root.
  op_FUNC:
   // The landing point of a CALL/PAP/EVAL
   //
@@ -749,17 +803,25 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     DISPATCH_NEXT;
   }
 
+ op_SYNC:
+  // Synchronises the interpreter state from the capability.
+  // Does NOT update the memory manager state!
+  LOAD_STATE_FROM_CAP;
+  if (isEnabledBytecodeTracing())
+    dispatch = dispatch_debug;
+  // TODO: this is hacky.
+  opC = opC_;
+  ENTER;
+
  op_LOADBH:
  op_INITF:
  op_KINT:
  op_NEW_INT:
  op_CASE_S:
- op_IFUNC:
  op_JFUNC:
  op_JRET:
- op_SYNC:
   cerr << "Unimplemented instruction: " << (pc-1)->name() << endl;
- not_yet_implemented:
+  // not_yet_implemented:
   T->sync(pc, base);
   mm_->sync(heap, heaplim);
   return kInterpUnimplemented;

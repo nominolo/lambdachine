@@ -4,8 +4,14 @@
 #include "common.hh"
 #include "vm.hh"
 #include "memorymanager.hh"
+#include "jit.hh"
 
 _START_LAMBDACHINE_NAMESPACE
+
+typedef enum {
+  kCall,
+  kReturn
+} BranchType;
 
 class Capability {
 public:
@@ -23,7 +29,10 @@ public:
   bool eval(Thread *, Closure *);
   bool run(Thread *);
   inline Closure *staticRoots() const { return static_roots_; }
-  
+  inline bool isRecording() const {
+    return flags_ & kRecording;
+  }
+
 private:
   typedef enum {
     kModeInit,
@@ -37,8 +46,8 @@ private:
     kInterpUnimplemented
   } InterpExitCode;
 
-
   InterpExitCode interpMsg(InterpMode mode);
+  BcIns *interpBranch(BcIns *srcPc, BcIns *dst_pc, Word *base, u4 opC, BranchType);
   typedef void *AsmFunction;
 
   MemoryManager *mm_;
@@ -51,8 +60,13 @@ private:
   const AsmFunction *dispatch_normal_;
   const AsmFunction *dispatch_record_;
   const AsmFunction *dispatch_single_step_;
+  BcIns *reload_state_pc_; // used by interpBranch
+  u4 opC_;
+
+  HotCounters counters_;
 
   static const u4 kTraceBytecode = 1 << 0;
+  static const u4 kRecording     = 1 << 1;
   u4 flags_;
 };
 

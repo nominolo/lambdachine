@@ -200,7 +200,7 @@ void MiscClosures::buildApCont(MemoryManager *mm, ApContInfo *out,
   //   MOV_RES <N>   ;
   //   CALLT <N>, r0..r<N-1>
   //
-  code[0] = BcIns::ad(BcIns::kFUNC, nargs + 1, 0);  // never executed
+  code[0] = BcIns::ad(BcIns::kIFUNC, nargs + 1, 0);  // never executed
   code[1] = BcIns::ad(BcIns::kEVAL, nargs, 0); // never executed
   code[2] = BcIns::bitmapOffset(byteOffset32(&code[2], bitmasks));
   code[3] = BcIns::ad(BcIns::kMOV_RES, nargs, 0);
@@ -308,7 +308,9 @@ InfoTable* MiscClosures::buildApInfo(MemoryManager *mm, u4 nargs, u4 pointerMask
     (mm->allocCode(info->code_.sizecode, info->code_.sizebitmaps));
 
   BcIns *code = info->code_.code;
-  code[0] = BcIns::ad(BcIns::kFUNC, 1 + nargs, 0);
+  // Don't allow AP thunks as a trace entry point.  It's way too
+  // polymorphic for that, hence IFUNC instead of FUNC.
+  code[0] = BcIns::ad(BcIns::kIFUNC, 1 + nargs, 0);
   code[1] = BcIns::ad(BcIns::kLOADFV, nargs, 1);
 
   u4 i;
