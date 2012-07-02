@@ -152,6 +152,22 @@ TEST(RegSetTest, pickBotTop) {
   ASSERT_EQ((Reg)15, rs.pickTop());
 }
 
+TEST(Flags, setVal) {
+  Flags32 f;
+  for (int i = 0; i < 32; ++i) {
+    EXPECT_FALSE(f.get(i));
+  }
+  f.set(4);
+  for (int i = 0; i < 32; ++i) {
+    EXPECT_TRUE(i == 4 ? f.get(i) : !f.get(i));
+  }
+
+  f.set(4, false);
+  EXPECT_FALSE(f.get(4));
+  f.set(4, true);
+  EXPECT_TRUE(f.get(4));
+}
+
 class CodeTest : public ::testing::Test {
 protected:
   virtual void SetUp() {

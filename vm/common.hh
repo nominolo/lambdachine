@@ -294,6 +294,32 @@ static LC_AINLINE uint32_t lc_bswap(uint32_t x)
   uint32_t r; __asm__("bswap %0" : "=r" (r) : "0" (x)); return r;
 }
 
+// For abstracting flags.
+class Flags32 {
+public:
+  inline Flags32() : flags_(0) {}
+  inline explicit Flags32(uint32_t val) : flags_(val) {}
+  inline ~Flags32() {}
+  inline bool get(int n) const { return flags_ & (1u << n); }
+  inline void set(int n) { flags_ |= (1u << n); }
+  inline void set(int n, bool value) {
+    uint32_t mask = 1u << n;
+    // branchless version of:
+    //
+    //   if (value) flags_ |= mask; else flags_ &= ~mask;
+    //
+    // Clang and GCC both optimise this to a branchless version, but
+    // this version is a few percent faster on my machine.
+    flags_ ^= (-value ^ flags_) & mask;
+  }
+  inline void clear(int n) { flags_ &= ~(1u << n); }
+  inline void clear() { flags_ = 0; }
+  inline void toggle(int n) { flags_ ^= (1u << n); }
+  inline uint32_t raw() const { return flags_; }
+private:
+  uint32_t flags_;
+};
+
 /* A really naive Bloom filter. But sufficient for our needs. */
 typedef Word BloomFilter;
 #define BLOOM_MASK	(8*sizeof(BloomFilter) - 1)
