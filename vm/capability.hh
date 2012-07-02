@@ -19,9 +19,9 @@ public:
   ~Capability();
   inline Thread *currentThread() { return currentThread_; }
 
-  inline void enableBytecodeTracing() { flags_ |= kTraceBytecode; }
+  inline void enableBytecodeTracing() { flags_.set(kTraceBytecode); }
   inline bool isEnabledBytecodeTracing() const {
-    return flags_ & kTraceBytecode;
+    return flags_.get(kTraceBytecode);
   }
 
   inline bool run() { return run(currentThread_); }
@@ -30,7 +30,7 @@ public:
   bool run(Thread *);
   inline Closure *staticRoots() const { return static_roots_; }
   inline bool isRecording() const {
-    return flags_ & kRecording;
+    return flags_.get(kRecording);
   }
 
 private:
@@ -48,6 +48,7 @@ private:
 
   InterpExitCode interpMsg(InterpMode mode);
   BcIns *interpBranch(BcIns *srcPc, BcIns *dst_pc, Word *base, u4 opC, BranchType);
+  void finishRecording();
   typedef void *AsmFunction;
 
   MemoryManager *mm_;
@@ -64,10 +65,11 @@ private:
   u4 opC_;
 
   HotCounters counters_;
+  Jit jit_;
 
-  static const u4 kTraceBytecode = 1 << 0;
-  static const u4 kRecording     = 1 << 1;
-  u4 flags_;
+  static const int kTraceBytecode = 0;
+  static const int kRecording     = 1;
+  Flags32 flags_;
 };
 
 _END_LAMBDACHINE_NAMESPACE

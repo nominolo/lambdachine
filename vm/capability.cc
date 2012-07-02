@@ -27,8 +27,8 @@ Capability::Capability(MemoryManager *mm)
   : mm_(mm), currentThread_(NULL),
     static_roots_(NULL),
     reload_state_pc_(&reload_state_code[0]),
-    counters_(53), // TODO: initialise from Options
-    flags_(0) {
+    counters_(7), // TODO: initialise from Options
+    flags_() {
   interpMsg(kModeInit);
 }
 
@@ -61,22 +61,34 @@ BcIns *Capability::interpBranch(BcIns *srcPc, BcIns *dstPc, Word *base,
     return dstPc;
   } else {
     if (isStartOfTrace(srcPc, dstPc, branchType)) {
-      if (counters_.tick(dstPc)) {
+      Fragment *F = jit_.traceAt(dstPc);
+      if (F != NULL) {
+
+        if (DEBUG_COMPONENTS & DEBUG_TRACE_RECORDER) {
+          cerr << COL_YELLOW << "TRACE: " << dstPc << COL_RESET << endl;
+        }
+
+        // TODO: transfer control to the trace.
+
+      } else if (counters_.tick(dstPc)) {
         currentThread_->sync(dstPc, base);
         opC_ = opC;
 
-        // TODO: Switch to recording mode.  Start at dstPc
-
         if (DEBUG_COMPONENTS & DEBUG_TRACE_RECORDER) {
           Closure *cl = (Closure*)base[-1];
-          cerr << "HOT: " << dstPc;
+          cerr << COL_GREEN << "HOT: " << dstPc;
           if (branchType == kReturn) {
             cerr << " return from " << srcPc << " to " << dstPc
-                 << " " << cl->info()->name() << endl;
+                 << " " << cl->info()->name();
           } else {
-            cerr << " in " << cl->info()->name() << endl;
+            cerr << " in " << cl->info()->name();
           }
+          cerr << COL_RESET << endl;
         }
+
+        flags_.set(kRecording);
+        jit_.beginRecording(this, dstPc, base, branchType == kReturn);
+        dispatch_ = dispatch_record_;
 
         // We need to ensure that the interpreter reloads its state.
         // So we return a PC that points to the SYNC instruction.  This
@@ -86,6 +98,12 @@ BcIns *Capability::interpBranch(BcIns *srcPc, BcIns *dstPc, Word *base,
     }
     return dstPc;
   }
+}
+
+void Capability::finishRecording() {
+  // TODO: Install recorded trace if successful.
+  dispatch_ = dispatch_normal_;
+  flags_.clear(kRecording);
 }
 
 static inline
@@ -121,9 +139,16 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
 #   undef BCIMPL
   };
 
+  static const AsmFunction dispatch_record[] = {
+#   define BCIMPL(name, _) &&record,
+    BCDEF(BCIMPL)
+#   undef BCIMPL
+  };
+
   if (mode == kModeInit) {
     dispatch_ = dispatch_normal;
     dispatch_normal_ = dispatch_normal;
+    dispatch_record_ = dispatch_record;
     return kInterpOk;
   }
 
@@ -201,8 +226,22 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   ++pc;
   goto *dispatch2[opcode];
 
+ record:
+  {
+    // don't change opC
+    if (LC_UNLIKELY(jit_.recordIns(pc - 1, base))) {
+      currentThread_->sync(pc - 1, base);
+      opC_ = opC;
+      finishRecording();
+      goto op_SYNC;
+    } else {
+      opcode = (pc - 1)->opcode();
+      goto *dispatch_normal[opcode];
+    }
+  }
+
   //
-  // ----- Bytecode Implentations ------------------------------------
+  // ----- Bytecode Implementations ----------------------------------
   //
 
  op_ISLT:
