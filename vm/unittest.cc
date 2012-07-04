@@ -559,6 +559,18 @@ TEST(HotCounters, Simple) {
   EXPECT_TRUE(counters.tick(pc));
 }
 
+TEST(AllocMachineCode, Simple) {
+  Jit J;
+  size_t size = (size_t)1 << 19;  // 0.5MB
+  void *p = J.allocMachineCode(size);
+  EXPECT_TRUE(p != NULL);
+  cerr << "asmExit @ " << (void*)&asmExit << "  code @ " << p << endl;
+  ptrdiff_t dist = (char*)p - (char*)&asmExit;
+  if (dist < 0) dist = -dist;
+  EXPECT_TRUE(dist < (ptrdiff_t)1 << 31);
+  J.freeMachineCode(p, size);
+}
+
 int main(int argc, char *argv[]) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

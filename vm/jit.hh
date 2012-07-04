@@ -74,9 +74,14 @@ public:
     return fragments_[idx];
   }
 
-  void *allocMachineCodeAt(uintptr_t hint, size_t size, int prot);
+  void *allocMachineCode(size_t size);
   void freeMachineCode(void *p, size_t size);
-  void protectMachineCode(void *p, size_t size, int prot);
+
+  // Very simple random number generator.
+  inline uint32_t prngBits(int bits) {
+    prng_ = prng_ * 1103515245 + 12345;
+    return prng_ >> (32 - bits);
+  }
 
 private:
   void finishRecording();
@@ -86,6 +91,9 @@ private:
     fragments_[idx] = F;
   }
 
+  void *allocMachineCodeAt(uintptr_t hint, size_t size, int prot);
+  void protectMachineCode(void *p, size_t size, int prot);
+  
   static const int kLastInsWasBranch = 0;
   static const int kIsReturnTrace = 1;
 
@@ -95,6 +103,8 @@ private:
   Flags32 flags_;
   std::vector<BcIns*> targets_;
   FRAGMENT_MAP fragments_;
+  MCode *machineCodeArea_;
+  uint32_t prng_;
 };
 
 typedef uint32_t ExitNo;
@@ -110,6 +120,7 @@ public:
   // They're really only useful for loop truncation.
   inline uint32_t targetCount() const { return numTargets_; }
   inline BcIns *target(uint32_t n) const { return targets_[n]; }
+  
 
 private:
   Fragment();
@@ -123,12 +134,13 @@ private:
   BcIns **targets_;
   uint32_t numTargets_;
 
-
   friend class Jit;
 };
 
 extern "C" void asmEnter(Fragment *F, Thread *T, Word *spillArea,
                          Word *hp, Word *hplim, Word *stacklim, MCode *code);
+
+extern "C" void asmExit(int);
 
 _END_LAMBDACHINE_NAMESPACE
 
