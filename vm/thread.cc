@@ -7,17 +7,7 @@
 
 _START_LAMBDACHINE_NAMESPACE
 
-Thread::Thread(Word stackSizeInWords)
-  : header_(0), base_(NULL), top_(NULL), lastResult_(0), stack_(NULL) {
-  if (stackSizeInWords < kMinStackWords) {
-    stackSizeInWords = kMinStackWords;
-  }
-  pc_ = &stopCode_[0];
-  stackSize_ = stackSizeInWords;
-  initialize();
-}
-
-Thread::~Thread() {
+void Thread::destroy() {
   if (stack_ != NULL) {
     delete[] stack_;
   }
@@ -29,7 +19,17 @@ Thread::~Thread() {
 // Used to initialize the 
 BcIns Thread::stopCode_[] = { BcIns::ad(BcIns::kSTOP, 0, 0) };
 
-void Thread::initialize() {
+void Thread::initialize(Word stackSizeInWords) {
+  header_ = 0;
+  base_ = NULL;
+  top_ = NULL;
+  lastResult_ = 0;
+  stack_ = NULL;
+  if (stackSizeInWords < kMinStackWords) {
+    stackSizeInWords = kMinStackWords;
+  }
+  pc_ = &stopCode_[0];
+  stackSize_ = stackSizeInWords;
   stack_ = new Word[stackSize_];
   stack_[0] = (Word)NULL;   // previous base
   stack_[1] = (Word)NULL;   // previous PC
@@ -48,12 +48,14 @@ void Thread::initialize() {
 }
 
 Thread *Thread::createThread(Capability *, Word stackSizeInWords) {
-  Thread *T = new Thread(stackSizeInWords);
+  Thread *T = new Thread;
+  T->initialize(stackSizeInWords);
   return T;
 }
 
 Thread *Thread::createTestingThread(BcIns *pc, u4 framesize) {
-  Thread *T = new Thread(framesize);
+  Thread *T = new Thread;
+  T->initialize(framesize);
   T->base_ = T->stack_ + 1;
   T->top_ = T->base_ + framesize;
   T->pc_ = pc;

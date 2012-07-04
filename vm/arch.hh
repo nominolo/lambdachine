@@ -84,7 +84,7 @@ namespace arch {
 # define FMT_Int64      "lld"
 #endif
 
-#ifdef NEEDS_UNDERSCORE
+#if defined(__WIN32__) || defined(__APPLE__)
 # define NAME_PREFIX "_"
 #else
 # define NAME_PREFIX ""

@@ -34,7 +34,6 @@ EXTRA_CFLAGS := $(EXTRA_CFLAGS) -DLC_HAS_ASM_BACKEND=0
 endif
 
 ifeq "$(shell uname)" "Darwin"
-EXTRA_CFLAGS := $(EXTRA_CFLAGS) -DNEEDS_UNDERSCORE
 EXTRA_LDFLAGS := $(EXTRA_LDFLAGS) -Wl,-no_pie
 endif
 
@@ -63,10 +62,11 @@ boot:
 	mkdir -p $(DEPDIR)/rts
 	mkdir -p $(DEPDIR)/rts/codegen
 	mkdir -p $(DEPDIR)/vm
+	mkdir -p $(DEPDIR)/vm/amd64
 	mkdir -p $(DEPDIR)/utils
 	test -f mk/build.mk || touch mk/build.mk
 
-INCLUDES = -Iincludes -Irts -Irts/codegen
+INCLUDES = -Iincludes -Irts -Irts/codegen -Ivm
 CFLAGS = -g -Wall $(EXTRA_CFLAGS)
 CXXFLAGS = -g -Wall $(EXTRA_CXXFLAGS)
 
@@ -140,7 +140,7 @@ vm/unittest.o: $(GTEST_A)
 	rm -f $(df).d
 
 %.o: %.cc mk/build.mk
-	@echo "CXX $(CFLAGS) $< => $@"
+	@echo "CXX $(CXXFLAGS) $< => $@"
 	@$(CXX) -c $(INCLUDES) -I$(GTEST_DIR)/include $(GTEST_DEFS) \
 	        -MD -MF $(patsubst %.cc,$(DEPDIR)/%.d,$<) \
 		$(CXXFLAGS) -o $@ $<
@@ -151,7 +151,7 @@ vm/unittest.o: $(GTEST_A)
 
 VM_SRCS = vm/thread.cc vm/capability.cc vm/memorymanager.cc \
 	  vm/loader.cc vm/fileutils.cc vm/bytecode.cc vm/objects.cc \
-	  vm/miscclosures.cc vm/options.cc vm/jit.cc
+	  vm/miscclosures.cc vm/options.cc vm/jit.cc vm/amd64/fragment.cc
 
 TEST_FILES := tests/Bc/Bc0016.lcbc tests/Bc/Bc0014.lcbc \
 	tests/Bc/Bc0017.lcbc \

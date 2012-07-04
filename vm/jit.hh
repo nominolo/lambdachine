@@ -2,6 +2,7 @@
 #define _JIT_H_
 
 #include "common.hh"
+#include "vm.hh"
 #include "bytecode.hh"
 
 #include <vector>
@@ -73,6 +74,10 @@ public:
     return fragments_[idx];
   }
 
+  void *allocMachineCodeAt(uintptr_t hint, size_t size, int prot);
+  void freeMachineCode(void *p, size_t size);
+  void protectMachineCode(void *p, size_t size, int prot);
+
 private:
   void finishRecording();
   void resetRecorderState();
@@ -92,6 +97,8 @@ private:
   FRAGMENT_MAP fragments_;
 };
 
+typedef uint32_t ExitNo;
+typedef struct _ExitState ExitState; // architecture-specific.
 
 class Fragment {
 public:
@@ -116,8 +123,12 @@ private:
   BcIns **targets_;
   uint32_t numTargets_;
 
+
   friend class Jit;
 };
+
+extern "C" void asmEnter(Fragment *F, Thread *T, Word *spillArea,
+                         Word *hp, Word *hplim, Word *stacklim, MCode *code);
 
 _END_LAMBDACHINE_NAMESPACE
 

@@ -183,7 +183,10 @@ protected:
   }
 
   virtual void TearDown() {
-    delete T;
+    if (T != NULL) {
+      T->destroy();
+      delete T;
+    }
     T = NULL;
   }
 
@@ -193,7 +196,10 @@ protected:
   }
 
   virtual ~CodeTest() {
-    delete T;
+    if (T != NULL) {
+      T->destroy();
+      delete T;
+    }
     delete cap_;
     delete l_;
   }

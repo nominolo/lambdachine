@@ -7,15 +7,13 @@
 
 _START_LAMBDACHINE_NAMESPACE
 
-class Thread {
-
+struct _Thread {
 public:
   static const Word kMinStackWords = 64;
 
   static Thread *createThread(Capability *, Word stackSizeInWords);
   static Thread *createTestingThread(BcIns *pc, u4 framesize);
-  ~Thread();
-
+  
   inline BcIns *pc() const { return pc_; }
   inline Word *stackStart() const { return stack_; }
   inline Word *stackLimit() const { return stack_ + stackSize_; }
@@ -36,9 +34,9 @@ public:
   inline void setLastResult(Word value) { lastResult_ = value; }
   inline void setPC(BcIns *pc) { pc_ = pc; }
 
-private:
-  Thread(Word stackSizeInWords);
-  void initialize();
+  //  Thread() {}
+  void initialize(Word stackSizeInWords);
+  void destroy();
 
   inline void sync(BcIns *pc, Word *base) {
     pc_ = pc; base_ = base;

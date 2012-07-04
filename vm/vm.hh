@@ -7,9 +7,10 @@
 
 _START_LAMBDACHINE_NAMESPACE
 
-class Thread;
+typedef struct _Thread Thread;
 class Capability;
 class BcIns;
+typedef char MCode;
 
 _END_LAMBDACHINE_NAMESPACE
 

@@ -1,6 +1,7 @@
 #include "jit.hh"
 
 #include <iostream>
+#include <sys/mman.h>
 
 _START_LAMBDACHINE_NAMESPACE
 
@@ -107,6 +108,31 @@ void Jit::finishRecording() {
   }
   registerFragment(startPc_, F);
   resetRecorderState();
+}
+
+#ifndef MAP_ANONYMOUS
+#define MAP_ANONYMOUS	MAP_ANON
+#endif
+
+#define MCPROT_RW	(PROT_READ|PROT_WRITE)
+#define MCPROT_RX	(PROT_READ|PROT_EXEC)
+#define MCPROT_RWX	(PROT_READ|PROT_WRITE|PROT_EXEC)
+
+void *Jit::allocMachineCodeAt(uintptr_t hint, size_t size, int prot) {
+  void *p = mmap((void *)hint, size, prot, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+  if (p == MAP_FAILED && !hint) {
+    cerr << "Failed to allocate memory from OS." << endl;
+    exit(23);
+  }
+  return p;
+}
+
+void Jit::freeMachineCode(void *p, size_t size) {
+  munmap(p, size);
+}
+
+void Jit::protectMachineCode(void *p, size_t size, int prot) {
+  mprotect(p, size, prot);
 }
 
 Fragment::Fragment()
