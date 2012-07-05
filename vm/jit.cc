@@ -8,7 +8,7 @@ using namespace std;
 
 HotCounters::HotCounters(HotCount threshold)
   : threshold_(threshold) {
-  for (int i = 0; i < kNumCounters; ++i) {
+  for (Word i = 0; i < kNumCounters; ++i) {
     counters_[i] = threshold;
   }
 }
@@ -41,14 +41,14 @@ bool Jit::recordIns(BcIns *ins, Word *base) {
     if (ins == startPc_) {
       cerr << "REC: Loop detected." << endl
            << "  Loop: " << startPc_ << endl;
-      for (int i = 0; i < targets_.size(); ++i) {
+      for (size_t i = 0; i < targets_.size(); ++i) {
         cerr << "    " << targets_[i] << endl;
       }
       finishRecording();
       return true;
     } else if (targets_.size() <= 100) {
       // Try to find inner loop.
-      for (int i = 0; i < targets_.size(); ++i) {
+      for (size_t i = 0; i < targets_.size(); ++i) {
         if (targets_[i] == ins) {
           cerr << COL_GREEN << "REC: Inner loop." << COL_RESET << endl;
 
@@ -64,7 +64,7 @@ bool Jit::recordIns(BcIns *ins, Word *base) {
       cerr << COL_RED << "TRACE TOO LONG (" << targets_.size()
            << ")" << COL_RESET << endl;
       cerr << "    " << startPc_ << endl;
-      for (int i = 0; i < targets_.size(); ++i) {
+      for (size_t i = 0; i < targets_.size(); ++i) {
         if ((i % 7) == 0) { cerr << "   "; }
         cerr << ' ' << i << ':' << targets_[i];
         if (((i + 1) % 7) == 0) cerr << endl;
@@ -102,7 +102,7 @@ void Jit::finishRecording() {
   F->numTargets_ = targets_.size();
   F->targets_ = new BcIns*[F->numTargets_];
   F->startPc_ = startPc_;
-  for (int i = 0; i < F->numTargets_; ++i) {
+  for (uint32_t i = 0; i < F->numTargets_; ++i) {
     F->targets_[i] = targets_[i];
   }
   registerFragment(startPc_, F);
