@@ -88,6 +88,9 @@ public:
   void commit(MCode *top);
   void abort();
 
+  // Synchronise data and instruction cache.
+  void syncCache(void *start, void *end);
+
 private:
   void *alloc(size_t size);
   void free(void *p, size_t size);

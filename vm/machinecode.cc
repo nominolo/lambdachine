@@ -2,6 +2,12 @@
 
 #include <sys/mman.h>
 
+/* Define this if you want to run Lambdachine with Valgrind. */
+#ifdef LC_USE_VALGRIND
+#include <valgrind/valgrind.h>
+#endif
+
+
 _START_LAMBDACHINE_NAMESPACE
 
 using namespace std;
@@ -121,6 +127,29 @@ void MachineCode::protect(int prot) {
     setProtection(area_, size_, prot);
     protection_ = prot;
   }
+}
+
+void MachineCode::syncCache(void *start, void *end) {
+#ifdef LUAJIT_USE_VALGRIND
+  VALGRIND_DISCARD_TRANSLATIONS(start, (char *)end-(char *)start);
+#endif
+
+#if LC_TARGET_X86ORX64
+  // x86 ensures cache consistency automatically.
+  UNUSED(start); UNUSED(end);
+
+// #elif LJ_TARGET_IOS
+//   sys_icache_invalidate(start, (char *)end-(char *)start);
+// #elif LJ_TARGET_PPC
+//   lj_vm_cachesync(start, end);
+
+#elif defined(__GNUC__)
+  // XXX: Seems to be broken on Android/ARM.  Workaround at:
+  // http://code.google.com/p/android/issues/detail?id=1803
+  __clear_cache(start, end);
+#else
+#error "Missing/Unimplemented builtin to flush instruction cache"
+#endif
 }
 
 _END_LAMBDACHINE_NAMESPACE

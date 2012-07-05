@@ -181,6 +181,21 @@ TEST(AllocMachineCode, Simple) {
   EXPECT_TRUE(dist < (ptrdiff_t)1 << 31);
 }
 
+typedef Word (*anon_fn_1)(Word);
+
+TEST(Assembler, Move) {
+  Jit jit;
+  Assembler as(&jit);
+
+  // Note, the assembler works backwards!
+  // This is the identity function.
+  as.ret();
+  as.move(RID_EAX, RID_EDI);
+
+  MCode *code = as.finish();
+  EXPECT_EQ(1234, cast(anon_fn_1, code)(1234));
+}
+
 class CodeTest : public ::testing::Test {
 protected:
   virtual void SetUp() {
