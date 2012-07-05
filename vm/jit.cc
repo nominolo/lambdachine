@@ -14,7 +14,10 @@ HotCounters::HotCounters(HotCount threshold)
 }
 
 Jit::Jit()
-  : mcode_(&prng_)
+  : cap_(NULL),
+    startPc_(NULL), startBase_(NULL),
+    flags_(), targets_(), fragments_(),
+    prng_(), mcode_(&prng_)
 {
 }
 
