@@ -49,6 +49,63 @@ private:
   HotCount threshold_;
 };
 
+
+// Very simple random number generator.
+class Prng {
+public:
+  Prng() : state_(0x72ba83e) { }  // TODO: Make more random.
+  Prng(uint32_t init) : state_(init) { }
+
+  inline uint32_t bits(int nbits) {
+    state_ = state_ * 1103515245 + 12345;
+    return state_ >> (32 - nbits);
+  }
+
+private:
+  uint32_t state_;
+};
+
+
+// Manages allocation and memory protection of the machine code area.
+class MachineCode {
+public:
+  MachineCode(Prng *);
+  ~MachineCode();
+
+  static const size_t kAreaSize = (size_t)1 << 19; // 512KB
+
+  /// Reserve the whole machine code area.  No code from the machine
+  /// code area may be running at the same time.  (It will trigger a
+  /// page fault.)
+  ///
+  /// @param limit Lower limit of the machine code area.
+  /// @return Upper limit of the machine code area.
+  MCode *reserve(MCode **limit);
+
+  // Finish generation of machine code.
+  //
+  // @param top E
+  void commit(MCode *top);
+  void abort();
+
+private:
+  void *alloc(size_t size);
+  void free(void *p, size_t size);
+  void *allocAt(uintptr_t hint, size_t size, int prot);
+  void setProtection(void *p, size_t size, int prot);
+  void allocArea();
+  void protect(int prot);
+
+  Prng *prng_;
+  int protection_;
+  MCode *area_;
+  MCode *top_;
+  MCode *bottom_;
+  size_t size_;
+  size_t sizeTotal_;
+};
+
+
 // Forward declarations.
 class Capability;
 class Fragment;
@@ -74,14 +131,7 @@ public:
     return fragments_[idx];
   }
 
-  void *allocMachineCode(size_t size);
-  void freeMachineCode(void *p, size_t size);
-
-  // Very simple random number generator.
-  inline uint32_t prngBits(int bits) {
-    prng_ = prng_ * 1103515245 + 12345;
-    return prng_ >> (32 - bits);
-  }
+  inline MachineCode *mcode() { return &mcode_; }
 
 private:
   void finishRecording();
@@ -90,9 +140,6 @@ private:
     Word idx = reinterpret_cast<Word>(startPc) >> 2;
     fragments_[idx] = F;
   }
-
-  void *allocMachineCodeAt(uintptr_t hint, size_t size, int prot);
-  void protectMachineCode(void *p, size_t size, int prot);
   
   static const int kLastInsWasBranch = 0;
   static const int kIsReturnTrace = 1;
@@ -103,8 +150,8 @@ private:
   Flags32 flags_;
   std::vector<BcIns*> targets_;
   FRAGMENT_MAP fragments_;
-  MCode *machineCodeArea_;
-  uint32_t prng_;
+  Prng prng_;
+  MachineCode mcode_;
 };
 
 typedef uint32_t ExitNo;

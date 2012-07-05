@@ -168,6 +168,19 @@ TEST(Flags, setVal) {
   EXPECT_TRUE(f.get(4));
 }
 
+TEST(AllocMachineCode, Simple) {
+  Prng prng;
+  MachineCode mcode(&prng);
+  MCode *from, *to;
+  to = mcode.reserve(&from);
+  EXPECT_TRUE(to != NULL && from != NULL);
+  EXPECT_LT((void*)from, (void*)to);
+  cerr << "asmExit @ " << (void*)&asmExit << "  code @ " << (void*)to << endl;
+  ptrdiff_t dist = (char*)to - (char*)&asmExit;
+  if (dist < 0) dist = -dist;
+  EXPECT_TRUE(dist < (ptrdiff_t)1 << 31);
+}
+
 class CodeTest : public ::testing::Test {
 protected:
   virtual void SetUp() {
@@ -557,18 +570,6 @@ TEST(HotCounters, Simple) {
     EXPECT_FALSE(counters.tick(pc));
   }
   EXPECT_TRUE(counters.tick(pc));
-}
-
-TEST(AllocMachineCode, Simple) {
-  Jit J;
-  size_t size = (size_t)1 << 19;  // 0.5MB
-  void *p = J.allocMachineCode(size);
-  EXPECT_TRUE(p != NULL);
-  cerr << "asmExit @ " << (void*)&asmExit << "  code @ " << p << endl;
-  ptrdiff_t dist = (char*)p - (char*)&asmExit;
-  if (dist < 0) dist = -dist;
-  EXPECT_TRUE(dist < (ptrdiff_t)1 << 31);
-  J.freeMachineCode(p, size);
 }
 
 int main(int argc, char *argv[]) {
