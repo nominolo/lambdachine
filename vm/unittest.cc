@@ -10,6 +10,7 @@
 
 #include <iostream>
 #include <sstream>
+#include <fstream>
 
 using namespace std;
 using namespace lambdachine;
@@ -193,6 +194,25 @@ protected:
     if (jit) delete jit;
     as = NULL;
     jit = NULL;
+  }
+
+  // To debug a failing assembler test:
+  //
+  //  1. Add a call to Dump() after as->finish().
+  //  2. Run the test (`make asmtest`)
+  //  3. Run `./utils/showasmdump.sh dump_<testname>.s`
+  //  4. Find and fix the bug.
+  //
+  void Dump() {
+    const ::testing::TestInfo* const test_info =
+      ::testing::UnitTest::GetInstance()->current_test_info();
+    ofstream out;
+    string filename("dump_");
+    filename += test_info->name();
+    filename += ".s";
+    out.open(filename.c_str());
+    jit->mcode()->dumpAsm(out);
+    out.close();
   }
 
   AsmTest() : jit(NULL), as(NULL) {}

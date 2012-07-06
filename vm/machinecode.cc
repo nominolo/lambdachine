@@ -152,4 +152,15 @@ void MachineCode::syncCache(void *start, void *end) {
 #endif
 }
 
+
+void MachineCode::dumpAsm(ostream &out) {
+  MCode *p = start();
+  MCode *to = end();
+  
+  out << ".text\ndump:\n";
+  for ( ; p < to; ++p) {
+    out << "\t.byte 0x" << hex << (int)(uint8_t)*p << dec << endl;
+  }
+}
+
 _END_LAMBDACHINE_NAMESPACE

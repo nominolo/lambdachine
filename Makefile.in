@@ -182,6 +182,10 @@ bcdump: vm/bcdump.o $(VM_SRCS:.cc=.o)
 test: unittest
 	@./unittest 2> /dev/null # ignore debug output
 
+.PHONY: asmtest
+asmtest: unittest
+	@./unittest --gtest_filter=AsmTest*
+
 .PHONY: analyse analyze
 analyze: analyse
 analyse: $(VM_SRCS)

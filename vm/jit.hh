@@ -94,6 +94,8 @@ public:
   inline MCode *start() const { return top_; }
   inline MCode *end() const { return (MCode*)((char*)area_ + size_); }
 
+  void dumpAsm(std::ostream &out);
+
 private:
   void *alloc(size_t size);
   void free(void *p, size_t size);
