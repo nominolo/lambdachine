@@ -57,6 +57,13 @@ LC_STATIC_ASSERT(sizeof(RegCost) == sizeof(uint32_t));
 
 typedef uint32_t Reg;
 
+#define RID_NONE		0x80
+#define RID_MASK		0x7f
+#define RID_INIT		(RID_NONE|RID_MASK)
+
+inline bool isNoReg(Reg r) { return r & RID_NONE; }
+inline bool isReg(Reg r) { return !(r & RID_NONE); }
+
 class RegSet {
 public:
   RegSet() : data_(0) {}
@@ -232,10 +239,12 @@ public:
   ~Assembler();
 
   void move(Reg dst, Reg src);
-  void load_u32(Reg dst, uint32_t i);
-  void load_i32(Reg dst, int32_t i);
-  void load_u64(Reg dst, uint64_t i);
+  void loadi_u32(Reg dst, uint32_t i);
+  void loadi_i32(Reg dst, int32_t i);
+  void loadi_u64(Reg dst, uint64_t i);
   void ret();
+
+  void load_u64(Reg dst, Reg base, int32_t offset);
 
   MCode *finish();
 
@@ -253,6 +262,9 @@ private:
 
   // Generic emitting code for *multi-byte* instructions.
   MCode *emit_op(x86Op xo, Reg rr, Reg rb, Reg rx, MCode *p, int delta);
+
+  // op r, [base + offset]
+  void emit_rmro(x86Op xo, Reg rr, Reg rb, int32_t offset);
 
   // Opcode + ModRM encoding
   inline MCode *emit_opm(x86Op xo, x86Mode mode, Reg rr, Reg rb, MCode *p, int delta) {

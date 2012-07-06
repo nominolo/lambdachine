@@ -253,45 +253,40 @@ TEST_F(AsmTest, MoveHiReg) {
 }
 
 TEST_F(AsmTest, LoadImmU32Pos) {
-  // This is the identity function.
   as->ret();
-  as->load_u32(RID_EAX, 6789);
+  as->loadi_u32(RID_EAX, 6789);
 
   MCode *code = as->finish();
   EXPECT_EQ(6789, cast(anon_fn_1, code)(1234));
 }
 
 TEST_F(AsmTest, LoadImmU32Neg) {
-  // This is the identity function.
   as->ret();
-  as->load_u32(RID_EAX, -6789);
+  as->loadi_u32(RID_EAX, -6789);
 
   MCode *code = as->finish();
   EXPECT_EQ((Word)(uint32_t)-6789, cast(anon_fn_1, code)(1234));
 }
 
 TEST_F(AsmTest, LoadImmI32Pos) {
-  // This is the identity function.
   as->ret();
-  as->load_i32(RID_EAX, 6789);
+  as->loadi_i32(RID_EAX, 6789);
 
   MCode *code = as->finish();
   EXPECT_EQ(6789, cast(anon_fn_1, code)(1234));
 }
 
 TEST_F(AsmTest, LoadImmI32Neg) {
-  // This is the identity function.
   as->ret();
-  as->load_i32(RID_EAX, -6789);
+  as->loadi_i32(RID_EAX, -6789);
 
   MCode *code = as->finish();
   EXPECT_EQ((Word)-6789, cast(anon_fn_1, code)(1234));
 }
 
 TEST_F(AsmTest, LoadImmU64) {
-  // This is the identity function.
   as->ret();
-  as->load_u64(RID_EAX, 0x123456789abcdef0);
+  as->loadi_u64(RID_EAX, 0x123456789abcdef0);
 
   MCode *code = as->finish();
   EXPECT_EQ((uint64_t)0x123456789abcdef0UL,
@@ -299,12 +294,21 @@ TEST_F(AsmTest, LoadImmU64) {
 }
 
 TEST_F(AsmTest, LoadImmU64_I32Range) {
-  // This is the identity function.
   as->ret();
-  as->load_u64(RID_EAX, (uint64_t)-6789);
+  as->loadi_u64(RID_EAX, (uint64_t)-6789);
 
   MCode *code = as->finish();
   EXPECT_EQ((uint64_t)-6789, cast(anon_fn_1, code)(1234));
+}
+
+TEST_F(AsmTest, LoadMemU64) {
+  as->ret();
+  as->load_u64(RID_EAX, RID_EDI, 8);
+  
+  Word data[2] = { 0x1000000400010003UL, 0x8000000700080005UL };
+  MCode *code = as->finish();
+
+  EXPECT_EQ(0x8000000700080005UL, cast(anon_fn_1, code)((Word)data));
 }
 
 
