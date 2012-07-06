@@ -244,7 +244,14 @@ public:
   void loadi_u64(Reg dst, uint64_t i);
   void ret();
 
+  // mov dst, qword ptr [base + offset]
   void load_u64(Reg dst, Reg base, int32_t offset);
+
+  // mov qword ptr [base + offset], src
+  void store_u64(Reg src, Reg base, int32_t offset);
+
+  // mov qword ptr [base + offset], imm32
+  void storei_u64(Reg base, int32_t offset, int32_t i);
 
   MCode *finish();
 

@@ -108,4 +108,16 @@ void Assembler::load_u64(Reg dst, Reg base, int32_t offset) {
     emit_rmro(XO_MOVSD, dst, base, offset);
 }
 
+void Assembler::store_u64(Reg src, Reg base, int32_t offset) {
+  if (src < RID_MAX_GPR)
+    emit_rmro(XO_MOVto, REX_64|src, base, offset);
+  else
+    emit_rmro(XO_MOVSDto, src, base, offset);
+}
+
+void Assembler::storei_u64(Reg base, int32_t offset, int32_t i) {
+  emit_i32(i);
+  emit_rmro(XO_MOVmi, REX_64|0, base, offset);
+}
+
 _END_LAMBDACHINE_NAMESPACE

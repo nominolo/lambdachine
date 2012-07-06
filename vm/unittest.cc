@@ -311,6 +311,41 @@ TEST_F(AsmTest, LoadMemU64) {
   EXPECT_EQ(0x8000000700080005UL, cast(anon_fn_1, code)((Word)data));
 }
 
+TEST_F(AsmTest, StoreMemU64) {
+  as->ret();
+  as->store_u64(RID_EDI, RID_EDI, 8);
+  MCode *code = as->finish();
+
+  Word data[2] = { 0, 0 };
+  cast(anon_fn_1, code)((Word)data);
+
+  EXPECT_EQ(0, data[0]);
+  EXPECT_EQ((Word)data, data[1]);
+}
+
+TEST_F(AsmTest, StoreMemImmPos) {
+  as->ret();
+  as->storei_u64(RID_EDI, 8, 5);
+  MCode *code = as->finish();
+
+  Word data[2] = { 0, 0 };
+  cast(anon_fn_1, code)((Word)data);
+
+  EXPECT_EQ(0, data[0]);
+  EXPECT_EQ((Word)5, data[1]);
+}
+
+TEST_F(AsmTest, StoreMemImmNeg) {
+  as->ret();
+  as->storei_u64(RID_EDI, 8, -5);
+  MCode *code = as->finish();
+
+  Word data[2] = { 0, 0 };
+  cast(anon_fn_1, code)((Word)data);
+
+  EXPECT_EQ(0, data[0]);
+  EXPECT_EQ((Word)-5, data[1]);
+}
 
 class CodeTest : public ::testing::Test {
 protected:
