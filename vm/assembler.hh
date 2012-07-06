@@ -232,6 +232,9 @@ public:
   ~Assembler();
 
   void move(Reg dst, Reg src);
+  void load_u32(Reg dst, uint32_t i);
+  void load_i32(Reg dst, int32_t i);
+  void load_u64(Reg dst, uint64_t i);
   void ret();
 
   MCode *finish();
@@ -242,6 +245,11 @@ private:
   inline void emit_i8(uint8_t i) { *--mcp = (MCode)i; }
   inline void emit_i32(int32_t i) { *(int32_t *)(mcp - 4) = i; mcp -= 4; }
   inline void emit_u32(uint32_t i) { *(uint32_t *)(mcp - 4) = i; mcp -= 4; }
+  // Emit REX prefix if necessary.
+  inline void emit_rex(MCode *&p, Reg rr, Reg rb) {
+    MCode rex = 0x40 + ((rr >> 1) & 4) + ((rb >> 3) & 1);
+    if (rex != 0x40) *--p = rex;
+  }
 
   // Generic emitting code for *multi-byte* instructions.
   MCode *emit_op(x86Op xo, Reg rr, Reg rb, Reg rx, MCode *p, int delta);
