@@ -4,6 +4,7 @@
 #include "common.hh"
 #include "vm.hh"
 #include "bytecode.hh"
+#include "ir.hh"
 
 #include <vector>
 #include HASH_MAP_H
@@ -160,6 +161,7 @@ private:
   FRAGMENT_MAP fragments_;
   Prng prng_;
   MachineCode mcode_;
+  std::vector<IR> ir_;
 };
 
 typedef uint32_t ExitNo;

@@ -232,6 +232,11 @@ typedef Word (*anon_fn_1)(Word);
 
 // Note: the assembler works backwards!
 
+// TODO: Most of these tests will break on Windows, because it uses a
+// different calling convention.
+
+// TODO: These tests won't work for a cross-compiler.
+
 TEST_F(AsmTest, Move) {
   // This is the identity function.
   as->ret();
