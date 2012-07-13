@@ -47,8 +47,8 @@ typedef u4 IRRef;               /* Used to pass around references */
   _(GT,      G,   ref, ref) \
   _(EQ,      G,   ref, ref) \
   _(NE,      G,   ref, ref) \
-  _(EQRET,  G,   ref, ref) \
-  _(EQINFO, G,   ref, ref) \
+  _(EQRET,   G,   ref, ref) \
+  _(EQINFO,  G,   ref, ref) \
   _(HEAPCHK, G,   cst, ___) \
    \
   _(BNOT,    N,   ref, ___) \
@@ -137,7 +137,38 @@ public:
     IRDEF(IRENUM)
 #undef IRENUM
     k_MAX
-  } IROp;
+  } Opcode;
+
+  typedef enum {
+    IRM_N = 0x00,  // normal, CSE ok
+    IRM_R = IRM_N,
+    IRM_C = 0x10,  // commutative
+    IRM_A = 0x20,  // allocation (no CSE)
+    IRM_L = 0x40,  // load
+    IRM_S = 0x60,  // store
+    IRM_G = 0x80   // guard
+  } Mode;
+
+  typedef uint8_t Type;
+
+  inline Opcode opcode() { return (Opcode)data_.o; }
+  inline Type t() { return data_.t; }
+  inline uint16_t ot() { return data_.ot; }
+  inline IRRef1 op1() { return data_.op1; }
+  inline IRRef1 op2() { return data_.op2; }
+  inline IRRef2 op12() { return data_.op12; }
+
+  inline void setOpcode(Opcode op) { data_.o = op; }
+  inline void setT(uint8_t ty) { data_.t = ty; }
+  inline void setOt(uint16_t ot) { data_.ot = ot; }
+  inline void setOp1(IRRef1 op1) { data_.op1 = op1; }
+  inline void setOp2(IRRef1 op2) { data_.op2 = op2; }
+  inline void setPrev(IRRef1 prev) { data_.prev = prev; }
+  inline IRRef1 prev() { return data_.prev; }
+
+  static inline bool isCommutative(Opcode op) {
+    return mode[op] & IRM_C;
+  }
 
 private:
   IR(u1 opc, u1 ty, IRRef op1, IRRef op2, u2 prev) {
@@ -147,9 +178,31 @@ private:
     data_.prev = prev;
   }
 
+  static uint8_t mode[k_MAX + 1];
+
   friend class IRBuffer;
 
   IRIns data_;
+};
+
+// A tagged reference
+// Tagged IR references (32 bit).
+//
+// +-------+-------+---------------+
+// |  irt  | flags |      ref      |
+// +-------+-------+---------------+
+//
+// The tag holds a copy of the IRType and speeds up IR type checks.
+//
+class TRef {
+public:
+  TRef(IRRef1 ref, IR::Type type) {
+    raw_ = (uint32_t)ref + ((uint32_t)type << 24);
+  }
+  inline IRRef1 ref() const { return (IRRef1)raw_; }
+  inline IR::Type t() const { return (IR::Type)(raw_ >> 24); }
+private:
+  uint32_t raw_;
 };
 
 enum {
@@ -159,10 +212,65 @@ enum {
   REF_DROP  = 0xffff
 };
 
+typedef enum {
+  IRT_UNK,
+  IRT_VOID,  // No result
+  IRT_I32,
+  IRT_U32,
+  IRT_CHAR,
+  IRT_F32,
+
+  IRT_CLOS,  // Pointer to a closure
+  IRT_INFO,  // Pointer to an info table
+  IRT_PC,    // Program counter
+  IRT_PTR,   // Other pointer
+
+  // Flags
+  IRT_MARK  = 0x20,  // Marker for various purposes
+  IRT_ISPHI = 0x40,  // Used by register allocator
+  IRT_GUARD = 0x80,  // Used by asm code generator
+
+  // Masks
+  IRT_TYPE = 0x1f,
+  IRT_T    = 0xff
+} IRType;
+
+#define IRT(o, t)      (cast(u4, ((o) << 8) | (t)))
+
+typedef struct _FoldState {
+  IR ins;
+  IR left;
+  IR right;
+} FoldState;
+
 class IRBuffer {
 public:
   IRBuffer();
   ~IRBuffer();
+
+  inline IRRef nextIns() {
+    IRRef ref = bufmax_;
+    if (LC_UNLIKELY(ref >= bufend_)) growTop();
+    bufmax_ = ref + 1;
+    return ref;
+  }
+
+  inline TRef emit(uint16_t ot, IRRef1 op1, IRRef op2) {
+    set(ot, op1, op2);
+    return optFold();
+  }
+  
+  /// Emit instruction in current fold state without passing it
+  /// through the optimisation pipeline.
+  inline TRef emitRaw(uint16_t ot, IRRef1 op1, IRRef op2) {
+    set(ot, op1, op2);
+    return emit();
+  }
+
+  TRef optFold();
+  TRef optCSE();
+
+  inline int size() { return (bufmax_ - bufmin_) - 1; }
 
   inline IR *ir(IRRef ref) {
     LC_ASSERT(bufmin_ < ref && ref <= bufmax_);
@@ -170,6 +278,19 @@ public:
   }
 
 private:
+  void growTop();
+  TRef emit(); // Emit without optimisation.
+  
+  inline void set(uint16_t ot, IRRef1 op1, IRRef op2) {
+    fold_.ins.setOt(ot);
+    fold_.ins.setOp1(op1);
+    fold_.ins.setOp2(op2);
+  }
+
+  inline IR *fins() {
+    return &fold_.ins;
+  }
+
   IR *realbuffer_;
   IR *buffer_;  // biased
   IRRef bufmin_;
@@ -177,6 +298,7 @@ private:
   IRRef bufstart_;
   IRRef bufend_;
   size_t size_;
+  FoldState fold_;
   IRRef chain_[IR::k_MAX];
 };
 

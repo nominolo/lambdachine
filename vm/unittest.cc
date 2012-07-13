@@ -352,6 +352,14 @@ TEST_F(AsmTest, StoreMemImmNeg) {
   EXPECT_EQ((Word)-5, data[1]);
 }
 
+TEST(IRTest, Simple) {
+  IRBuffer buf;
+  EXPECT_EQ(1, buf.size());
+  EXPECT_EQ(IR::kBASE, buf.ir(REF_BASE)->opcode());
+}
+
+
+
 class CodeTest : public ::testing::Test {
 protected:
   virtual void SetUp() {

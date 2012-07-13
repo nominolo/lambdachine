@@ -45,3 +45,53 @@ Benchmarks
   - A compiler (or type checker) could be interesting -- lots of
     nested case expressions.  This is a good test whether trace sizes
     can become large.
+
+Configuration
+-------------
+
+The following configure.in lines should allow detecting
+the LEADING_UNDERSCORE feature.
+
+    #######################
+    ## test for underscores. The vpi module loader in vvm needs to know this
+    ## in order to know the name of the start symbol for the .vpi module.
+    #######################
+
+    AC_MSG_CHECKING("for leading and/or trailing underscores")
+    cat << EOF > underscore.c
+           void underscore(void){}
+    EOF
+    $CC -c underscore.c > /dev/null 2>&1
+
+    CC_LEADING_UNDERSCORE=no
+    CC_TRAILING_UNDERSCORE=no
+
+    output=`nm underscore.o|grep _underscore 2>&1`
+    if test ! -z "$output"; then
+      CC_LEADING_UNDERSCORE=yes
+      AC_DEFINE(NEED_LU)
+    fi
+
+    output=`nm underscore.o|grep underscore_ 2>&1`
+    if test ! -z "$output"; then
+      CC_TRAILING_UNDERSCORE=yes
+      AC_DEFINE(NEED_TU)
+    fi
+
+    if test "$CC_LEADING_UNDERSCORE" = yes; then
+      AC_DEFINE(WLU)
+    fi
+    if test "$CC_TRAILING_UNDERSCORE" = yes; then
+      AC_DEFINE(WTU)
+    fi
+
+    rm underscore.c underscore.o
+
+    AC_MSG_RESULT("$CC_LEADING_UNDERSCORE $CC_TRAILING_UNDERSCORE")
+
+    #######################
+    ## end of test for underscores
+    #######################
+
+From https://github.com/freequaos/sourcenavigator/blob/cb99d9a17/snavigator/parsers/verilog/configure.in
+
