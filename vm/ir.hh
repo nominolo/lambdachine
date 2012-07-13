@@ -3,6 +3,10 @@
 
 #include "common.hh"
 
+#include <vector>
+#include <iostream>
+
+
 _START_LAMBDACHINE_NAMESPACE
 
 typedef u2 IRRef1;              /* One stored reference */
@@ -139,7 +143,14 @@ public:
     k_MAX
   } Opcode;
 
+  // Properties of the instruction.
   typedef enum {
+    IRMref = 0,
+    IRMlit = 1,
+    IRMcst = 2,
+    IRMnone = 3,
+    IRM___ = IRMnone,
+
     IRM_N = 0x00,  // normal, CSE ok
     IRM_R = IRM_N,
     IRM_C = 0x10,  // commutative
@@ -149,6 +160,7 @@ public:
     IRM_G = 0x80   // guard
   } Mode;
 
+  typedef uint8_t IRMode;
   typedef uint8_t Type;
 
   inline Opcode opcode() { return (Opcode)data_.o; }
@@ -166,9 +178,21 @@ public:
   inline void setPrev(IRRef1 prev) { data_.prev = prev; }
   inline IRRef1 prev() { return data_.prev; }
 
-  static inline bool isCommutative(Opcode op) {
-    return mode[op] & IRM_C;
+  static inline IRMode mode(Opcode op) {
+    LC_ASSERT(0 <= op && op <= k_MAX);
+    return mode_[op];
   }
+
+  static inline bool isCommutative(Opcode op) {
+    return mode_[op] & IRM_C;
+  }
+
+  static inline bool hasSideEffect(Opcode op) {
+    return mode_[op] & IRM_S;
+  }
+
+  static void printIRRef(std::ostream &out, IRRef ref);
+  void debugPrint(std::ostream &out, IRRef self);
 
 private:
   IR(u1 opc, u1 ty, IRRef op1, IRRef op2, u2 prev) {
@@ -178,7 +202,8 @@ private:
     data_.prev = prev;
   }
 
-  static uint8_t mode[k_MAX + 1];
+  static uint8_t mode_[k_MAX + 1];
+  static const char *name_[k_MAX + 1];
 
   friend class IRBuffer;
 
@@ -199,11 +224,93 @@ public:
   TRef(IRRef1 ref, IR::Type type) {
     raw_ = (uint32_t)ref + ((uint32_t)type << 24);
   }
+  TRef() : raw_(0) { }
   inline IRRef1 ref() const { return (IRRef1)raw_; }
   inline IR::Type t() const { return (IR::Type)(raw_ >> 24); }
+  inline bool isNone() const { return raw_ == 0; }
+  inline void markWritten() { raw_ |= kWritten; }
+
 private:
   uint32_t raw_;
+
+  static const uint32_t kWritten = 0x10000;
+
+  friend class AbstractStack;
 };
+
+
+class Snapshot {
+public:
+  inline IRRef1 ref() const { return ref_; }
+private:
+  //Snapshot(void *pc, IRRef ref);
+
+  IRRef1 ref_;
+  uint16_t mapofs_;
+  uint16_t entries_;
+  uint16_t exitCounter_;
+  void *pc_;
+  int16_t relbase_; // base relative to trace entry base pointer
+  uint16_t framesize_;
+};
+
+
+class SnapshotData {
+private:
+  SnapshotData();
+
+  std::vector<uint32_t> data_;
+  size_t size_;
+
+  friend class AbstractStack;
+  friend class Snapshot;
+};
+
+
+class AbstractStack {
+public:
+  AbstractStack(Word *base, Word *top);
+
+  inline TRef get(int n) const {
+    return slots_[base_ + n];
+  }
+
+  inline void clear(int n) {
+    slots_[base_ + n] = TRef();
+  }
+
+  inline void set(int n, TRef value) {
+    unsigned int slot = base_ + n;
+    slots_[slot] = value;
+    if (slot < low_) low_ = slot;
+    if (slot > high_) high_ = slot;
+  }
+
+  inline unsigned int top() const {
+    return top_ - base_;
+  }
+
+  inline int absolute(int n) const {
+    return (base_ + n) - kInitialBase;
+  }
+
+  // Set the current frame.  Returns false in case of over-/underflow.
+  bool frame(Word *base, Word *top);
+
+  // TODO: Create snapshots.
+
+private:
+  static const unsigned int kSlots = 500;
+  static const unsigned int kInitialBase = 250;
+
+  TRef *slots_;
+  unsigned int base_; // current base
+  unsigned int top_;  // current top
+  unsigned int low_;  // lowest modified value
+  unsigned int high_; // highest modified value
+  Word *realOrigBase_;
+};
+
 
 enum {
   REF_BIAS  = 0x8000,
@@ -219,6 +326,7 @@ typedef enum {
   IRT_U32,
   IRT_CHAR,
   IRT_F32,
+  IRT_F64,
 
   IRT_CLOS,  // Pointer to a closure
   IRT_INFO,  // Pointer to an info table
@@ -245,7 +353,7 @@ typedef struct _FoldState {
 
 class IRBuffer {
 public:
-  IRBuffer();
+  IRBuffer(Word *base, Word *top);
   ~IRBuffer();
 
   inline IRRef nextIns() {
@@ -259,12 +367,26 @@ public:
     set(ot, op1, op2);
     return optFold();
   }
-  
+
   /// Emit instruction in current fold state without passing it
   /// through the optimisation pipeline.
   inline TRef emitRaw(uint16_t ot, IRRef1 op1, IRRef op2) {
     set(ot, op1, op2);
     return emit();
+  }
+
+  inline TRef slot(int n) {
+    TRef s = slots_.get(n);
+    if (s.isNone()) {
+      s = emitRaw(IRT(IR::kSLOAD, IRT_UNK), slots_.absolute(n), 0);
+      slots_.set(n, s);
+    }
+    return s;
+  }
+
+  inline void setSlot(int n, TRef tr) {
+    tr.markWritten();
+    slots_.set(n, tr);
   }
 
   TRef optFold();
@@ -280,7 +402,7 @@ public:
 private:
   void growTop();
   TRef emit(); // Emit without optimisation.
-  
+
   inline void set(uint16_t ot, IRRef1 op1, IRRef op2) {
     fold_.ins.setOt(ot);
     fold_.ins.setOp1(op1);
@@ -300,6 +422,7 @@ private:
   size_t size_;
   FoldState fold_;
   IRRef chain_[IR::k_MAX];
+  AbstractStack slots_;
 };
 
 // Can invert condition by toggling lowest bit.

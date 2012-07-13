@@ -352,13 +352,41 @@ TEST_F(AsmTest, StoreMemImmNeg) {
   EXPECT_EQ((Word)-5, data[1]);
 }
 
-TEST(IRTest, Simple) {
-  IRBuffer buf;
-  EXPECT_EQ(1, buf.size());
-  EXPECT_EQ(IR::kBASE, buf.ir(REF_BASE)->opcode());
+class IRTest : public ::testing::Test {
+protected:
+  virtual void SetUp() {
+    stack = new Word[256];
+    buf = new IRBuffer(&stack[11], &stack[18]);
+  }
+  virtual void TearDown() {
+    if (buf) delete buf;
+    buf = NULL;
+    if (stack) delete stack;
+    stack = NULL;
+  }
+  IRTest() : buf(NULL), stack(NULL) {}
+  virtual ~IRTest() {
+    TearDown();
+  }
+
+  IRBuffer *buf;
+  Word *stack;
+};
+
+TEST_F(IRTest, Simple) {
+  EXPECT_EQ(1, buf->size());
+  EXPECT_EQ(IR::kBASE, buf->ir(REF_BASE)->opcode());
 }
 
-
+TEST_F(IRTest, Slots) {
+  TRef tr = buf->slot(0);
+  IRRef ref = tr.ref();
+  EXPECT_EQ(ref, (uint16_t)REF_FIRST);
+  EXPECT_EQ(2, buf->size());
+  EXPECT_EQ(IR::kSLOAD, buf->ir(ref)->opcode());
+  EXPECT_EQ(0, buf->ir(ref)->op1());
+  buf->ir(ref)->debugPrint(cerr, ref);
+}
 
 class CodeTest : public ::testing::Test {
 protected:
