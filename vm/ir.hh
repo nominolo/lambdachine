@@ -130,6 +130,8 @@ typedef union _IRInsRaw {
   u4 u;   // Index into J->kwords
 } IRIns;
 
+class IRBuffer; // Defined below.
+
 class IR {
 public:
   IR() : data_() {}
@@ -169,6 +171,8 @@ public:
   inline IRRef1 op1() { return data_.op1; }
   inline IRRef1 op2() { return data_.op2; }
   inline IRRef2 op12() { return data_.op12; }
+  inline int32_t i32() { return data_.i; }
+  inline uint32_t u32() { return data_.u; }
 
   inline void setOpcode(Opcode op) { data_.o = op; }
   inline void setT(uint8_t ty) { data_.t = ty; }
@@ -192,7 +196,10 @@ public:
   }
 
   static void printIRRef(std::ostream &out, IRRef ref);
-  void debugPrint(std::ostream &out, IRRef self);
+  void debugPrint(std::ostream &out, IRRef self) {
+    debugPrint(out, self, NULL);
+  }
+  void debugPrint(std::ostream &out, IRRef self, IRBuffer *buf);
 
 private:
   IR(u1 opc, u1 ty, IRRef op1, IRRef op2, u2 prev) {
@@ -229,6 +236,9 @@ public:
   inline IR::Type t() const { return (IR::Type)(raw_ >> 24); }
   inline bool isNone() const { return raw_ == 0; }
   inline void markWritten() { raw_ |= kWritten; }
+  
+  bool operator==(const TRef &t) const { return raw_ == t.raw_; }
+  bool operator!=(const TRef &t) const { return raw_ != t.raw_; }
 
 private:
   uint32_t raw_;
@@ -376,6 +386,13 @@ public:
     return ref;
   }
 
+  inline IRRef nextLit() {
+    IRRef ref = bufmin_;
+    if (LC_UNLIKELY(ref <= bufstart_)) growBottom();
+    bufmin_ = --ref;
+    return ref;
+  }
+
   inline TRef emit(uint16_t ot, IRRef1 op1, IRRef1 op2) {
     set(ot, op1, op2);
     return optFold();
@@ -402,19 +419,27 @@ public:
     slots_.set(n, tr);
   }
 
+  TRef literal(IRType ty, uint64_t lit);
   TRef optFold();
   TRef optCSE();
 
-  inline int size() { return (bufmax_ - bufmin_) - 1; }
+  inline int size() { return (bufmax_ - bufmin_); }
 
   inline IR *ir(IRRef ref) {
-    LC_ASSERT(bufmin_ < ref && ref <= bufmax_);
+    LC_ASSERT(bufmin_ <= ref && ref <= bufmax_);
     return &buffer_[ref];
   }
 
   void debugPrint(std::ostream&, int traceNo);
+  inline Word kword(uint32_t n) {
+    if (n < kwords_.size())
+      return kwords_[n];
+    else
+      return 0;
+  }
 private:
   void growTop();
+  void growBottom();
   TRef emit(); // Emit without optimisation.
 
   inline void set(uint16_t ot, IRRef1 op1, IRRef op2) {
@@ -435,8 +460,9 @@ private:
   IRRef bufend_;
   size_t size_;
   FoldState fold_;
-  IRRef chain_[IR::k_MAX];
+  IRRef1 chain_[IR::k_MAX];
   AbstractStack slots_;
+  std::vector<Word> kwords_;
 };
 
 // Can invert condition by toggling lowest bit.

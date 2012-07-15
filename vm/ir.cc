@@ -48,10 +48,15 @@ static const char *tycolorcode[TC_MAX] = {
 };
 
 void IR::printIRRef(std::ostream &out, IRRef ref) {
-  out << right << setw(4) << dec << setfill('0') << (ref - REF_BIAS);
+  if (ref < REF_BIAS) {
+    out << 'K' << right << setw(3) << dec << setfill('0')
+        << (int)(REF_BIAS - ref);
+  } else {
+    out << right << setw(4) << dec << setfill('0') << (int)(ref - REF_BIAS);
+  }
 }
 
-static void printArg(ostream &out, uint8_t mode, uint16_t op, IR *ir) {
+static void printArg(ostream &out, uint8_t mode, uint16_t op, IR *ir, IRBuffer *buf) {
   switch ((IR::Mode)mode) {
   case IR::IRMnone:
     break;
@@ -64,14 +69,24 @@ static void printArg(ostream &out, uint8_t mode, uint16_t op, IR *ir) {
     out << setw(3) << setfill(' ') << left << (unsigned int)op;
     break;
   case IR::IRMcst:
-    out << "<cst>";
+    if (ir->opcode() == IR::kKINT) {
+      int32_t i = ir->i32();
+      char sign = (i < 0) ? '-' : '+';
+      uint32_t k = (i < 0) ? -i : i;
+      out << ' ' << COL_PURPLE << sign << k << COL_RESET;
+    } else if (ir->opcode() == IR::kKWORD && buf != NULL) {
+      out << ' ' << COL_BLUE "0x" << hex << buf->kword(ir->u32()) << dec
+          << COL_RESET;
+    } else {
+        out << "<cst>";
+    }
     break;
   default:
     break;
   }
 }
 
-void IR::debugPrint(ostream &out, IRRef self) {
+void IR::debugPrint(ostream &out, IRRef self, IRBuffer *buf) {
   IR::Opcode op = opcode();
   uint8_t ty = t() & IRT_TYPE;
   IR::printIRRef(out, self);
@@ -80,22 +95,21 @@ void IR::debugPrint(ostream &out, IRRef self) {
   out << tyname[ty] << COL_RESET << ' ';
   out << setw(8) << setfill(' ') << left << name_[op];
   uint8_t mod = mode(op);
-  printArg(out, mod & 3, op1(), this);
-  printArg(out, (mod >> 2) & 3, op2(), this);
+  printArg(out, mod & 3, op1(), this, buf);
+  printArg(out, (mod >> 2) & 3, op2(), this, buf);
   out << endl;
 }
 
 void IRBuffer::debugPrint(ostream &out, int traceNo) {
   out << "---- TRACE " << right << setw(4) << setfill('0') << traceNo 
       << " IR -----------" << endl;
-  for (IRRef ref = REF_FIRST; ref < bufmax_; ++ref) {
-    ir(ref)->debugPrint(out, ref);
+  for (IRRef ref = bufmin_; ref < bufmax_; ++ref) {
+    ir(ref)->debugPrint(out, ref, this);
   }
-  out << endl;
 }
 
 IRBuffer::IRBuffer(Word *base, Word *top)
-  : size_(1024), slots_(base, top) {
+  : size_(1024), slots_(base, top), kwords_() {
   realbuffer_ = new IR[size_];
 
   size_t nliterals = size_ / 4;
@@ -112,10 +126,11 @@ IRBuffer::IRBuffer(Word *base, Word *top)
   //     buffer_ + REF_BIAS = realbuffer_ + nliterals
   //
   buffer_ = realbuffer_ + (nliterals - REF_BIAS);
-  bufmin_ = REF_BIAS - 1;
+  bufmin_ = REF_BIAS;
   bufmax_ = REF_BIAS;
 
   emitRaw(IRT(IR::kBASE, IRT_PTR), 0, 0);
+  memset(chain_, 0, sizeof(chain_));
 }
 
 IRBuffer::~IRBuffer() {
@@ -125,6 +140,11 @@ IRBuffer::~IRBuffer() {
 }
 
 void IRBuffer::growTop() {
+  cerr << "NYI: Growing IR buffer\n";
+  exit(3);
+}
+
+void IRBuffer::growBottom() {
   cerr << "NYI: Growing IR buffer\n";
   exit(3);
 }
@@ -144,6 +164,42 @@ TRef IRBuffer::emit() {
   ir1->setT(t);
 
   return TRef(ref, t);
+}
+
+TRef IRBuffer::literal(IRType ty, uint64_t lit) {
+  IRRef ref;
+  if (checki32(lit)) {
+    int32_t k = (int32_t)lit;
+    for (ref = chain_[IR::kKINT]; ref != 0; ref = buffer_[ref].prev()) {
+      if (buffer_[ref].data_.i == k && (buffer_[ref].data_.t & IRT_TYPE) == ty)
+        goto found;
+    }
+    ref = nextLit();  // Invalidates any IR*!
+    IR *tir = ir(ref);
+    tir->data_.i = k;
+    tir->data_.t = (uint8_t)ty;
+    tir->data_.o = IR::kKINT;
+    tir->data_.prev = chain_[IR::kKINT];
+    chain_[IR::kKINT] = (IRRef1)ref;
+    return TRef(ref, ty);
+  } else {
+    for (ref = chain_[IR::kKWORD]; ref != 0; ref = buffer_[ref].prev()) {
+      if ((buffer_[ref].data_.t & IRT_TYPE) == ty &&
+          kwords_[buffer_[ref].data_.u] == lit)
+        goto found;
+    }
+    ref = nextLit();  // Invalidates any IR*!
+    IR *tir = ir(ref);
+    kwords_.push_back(lit);
+    tir->data_.u = kwords_.size() - 1;
+    tir->data_.t = (uint8_t)ty;
+    tir->data_.o = IR::kKWORD;
+    tir->data_.prev = chain_[IR::kKWORD];
+    chain_[IR::kKWORD] = (IRRef1)ref;
+    return TRef(ref, ty);
+  }
+ found:
+  return TRef(ref, ty);
 }
 
 TRef IRBuffer::optFold() {

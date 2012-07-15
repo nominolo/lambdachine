@@ -399,6 +399,70 @@ TEST_F(IRTest, Slots2) {
   buf->debugPrint(cerr, 1);
 }
 
+TEST_F(IRTest, Literals1) {
+  TRef tr1 = buf->literal(IRT_I64, 1234);
+  TRef tr2 = buf->literal(IRT_I64, 1234);
+  EXPECT_EQ((uint16_t)REF_BASE - 1, tr1.ref());
+  EXPECT_EQ((uint8_t)IRT_I64, tr1.t());
+  EXPECT_EQ(tr1, tr2);
+  EXPECT_EQ(2, buf->size());
+  buf->debugPrint(cerr, 1);
+}
+
+TEST_F(IRTest, Literals2) {
+  TRef tr1 = buf->literal(IRT_I64, 1234);
+  TRef tr2 = buf->literal(IRT_I32, 1234);
+  EXPECT_LT(tr1.ref(), (int)REF_BASE);
+  EXPECT_LT(tr2.ref(), (int)REF_BASE);
+  EXPECT_EQ((uint8_t)IRT_I64, tr1.t());
+  EXPECT_EQ((uint8_t)IRT_I32, tr2.t());
+  EXPECT_NE(tr1.ref(), tr2.ref());
+  buf->debugPrint(cerr, 1);
+}
+
+TEST_F(IRTest, Literals3) {
+  TRef tr1 = buf->literal(IRT_I64, 1234);
+  TRef tr2 = buf->literal(IRT_I64, 12345);
+  EXPECT_LT(tr1.ref(), (int)REF_BASE);
+  EXPECT_LT(tr2.ref(), (int)REF_BASE);
+  EXPECT_EQ((uint8_t)IRT_I64, tr1.t());
+  EXPECT_EQ((uint8_t)IRT_I64, tr2.t());
+  EXPECT_NE(tr1.ref(), tr2.ref());
+  buf->debugPrint(cerr, 1);
+}
+
+TEST_F(IRTest, Literals4) {
+  TRef tr1 = buf->literal(IRT_I64, 5000000000);
+  TRef tr2 = buf->literal(IRT_I64, 5000000000);
+  EXPECT_EQ((uint16_t)REF_BASE - 1, tr1.ref());
+  EXPECT_EQ((uint8_t)IRT_I64, tr1.t());
+  EXPECT_EQ(tr1, tr2);
+  EXPECT_EQ(2, buf->size());
+  buf->debugPrint(cerr, 1);
+}
+
+TEST_F(IRTest, Literals5) {
+  TRef tr1 = buf->literal(IRT_I64, 5000000000);
+  TRef tr2 = buf->literal(IRT_CLOS, 5000000000);
+  EXPECT_LT(tr1.ref(), (int)REF_BASE);
+  EXPECT_LT(tr2.ref(), (int)REF_BASE);
+  EXPECT_EQ((uint8_t)IRT_I64, tr1.t());
+  EXPECT_EQ((uint8_t)IRT_CLOS, tr2.t());
+  EXPECT_NE(tr1.ref(), tr2.ref());
+  buf->debugPrint(cerr, 1);
+}
+
+TEST_F(IRTest, Literals6) {
+  TRef tr1 = buf->literal(IRT_I64, 5000000000);
+  TRef tr2 = buf->literal(IRT_I64, 5000000001);
+  EXPECT_LT(tr1.ref(), (int)REF_BASE);
+  EXPECT_LT(tr2.ref(), (int)REF_BASE);
+  EXPECT_EQ((uint8_t)IRT_I64, tr1.t());
+  EXPECT_EQ((uint8_t)IRT_I64, tr2.t());
+  EXPECT_NE(tr1.ref(), tr2.ref());
+  buf->debugPrint(cerr, 1);
+}
+
 class CodeTest : public ::testing::Test {
 protected:
   virtual void SetUp() {
