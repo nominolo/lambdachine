@@ -23,12 +23,13 @@ const char *IR::name_[k_MAX + 1] = {
 #define IRNAME(name, flags, left, right) STR(name),
   IRDEF(IRNAME)
 #undef IRNAME
-  "????"
+  "???"
 };
 
-static const char tyname[][IRT_TYPE] = {
-  "unk", "   ", "i32", "u32", "chr", "f32", "f64",
-  "cls", "inf", "pc ", "ptr"
+static const char *tyname[] = {
+#define IRTNAME(name, str, col) str,
+  IRTDEF(IRTNAME)
+#undef IRTNAME
 };
 
 enum {
@@ -36,17 +37,18 @@ enum {
   TC_MAX
 };
 
-static const uint8_t tycolor[IRT_TYPE] = {
-  TC_GREY, TC_NONE, TC_PRIM, TC_PRIM, TC_PRIM, TC_PRIM, TC_PRIM,
-  TC_HEAP, TC_NONE, TC_NONE, TC_NONE,
+static const uint8_t tycolor[] = {
+#define IRTCOLOR(name, str, col) TC_##col,
+  IRTDEF(IRTCOLOR)
+#undef IRTCOLOR
 };
 
 static const char *tycolorcode[TC_MAX] = {
-  "", COL_BLUE, COL_RED, COL_GREY
+  "", COL_PURPLE, COL_RED, COL_GREY
 };
 
 void IR::printIRRef(std::ostream &out, IRRef ref) {
-  out << setw(4) << dec << setfill('0') << (ref - REF_BIAS);
+  out << right << setw(4) << dec << setfill('0') << (ref - REF_BIAS);
 }
 
 static void printArg(ostream &out, uint8_t mode, uint16_t op, IR *ir) {
@@ -80,6 +82,15 @@ void IR::debugPrint(ostream &out, IRRef self) {
   uint8_t mod = mode(op);
   printArg(out, mod & 3, op1(), this);
   printArg(out, (mod >> 2) & 3, op2(), this);
+  out << endl;
+}
+
+void IRBuffer::debugPrint(ostream &out, int traceNo) {
+  out << "---- TRACE " << right << setw(4) << setfill('0') << traceNo 
+      << " IR -----------" << endl;
+  for (IRRef ref = REF_FIRST; ref < bufmax_; ++ref) {
+    ir(ref)->debugPrint(out, ref);
+  }
   out << endl;
 }
 

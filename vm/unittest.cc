@@ -385,7 +385,18 @@ TEST_F(IRTest, Slots) {
   EXPECT_EQ(2, buf->size());
   EXPECT_EQ(IR::kSLOAD, buf->ir(ref)->opcode());
   EXPECT_EQ(0, buf->ir(ref)->op1());
-  buf->ir(ref)->debugPrint(cerr, ref);
+  buf->debugPrint(cerr, 1);
+}
+
+TEST_F(IRTest, Slots2) {
+  TRef tr1 = buf->slot(0);
+  TRef tr2 = buf->emit(IRT(IR::kADD, IRT_I64), tr1.ref(), tr1.ref());
+  IRRef ref = tr2.ref();
+  EXPECT_EQ(ref, (uint16_t)REF_FIRST + 1);
+  EXPECT_EQ(3, buf->size());
+  EXPECT_EQ(IR::kADD, buf->ir(ref)->opcode());
+  EXPECT_EQ((uint16_t)tr1.ref(), buf->ir(ref)->op1());
+  buf->debugPrint(cerr, 1);
 }
 
 class CodeTest : public ::testing::Test {

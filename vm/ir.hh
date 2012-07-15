@@ -319,19 +319,32 @@ enum {
   REF_DROP  = 0xffff
 };
 
-typedef enum {
-  IRT_UNK,
-  IRT_VOID,  // No result
-  IRT_I32,
-  IRT_U32,
-  IRT_CHAR,
-  IRT_F32,
-  IRT_F64,
 
-  IRT_CLOS,  // Pointer to a closure
-  IRT_INFO,  // Pointer to an info table
-  IRT_PC,    // Program counter
-  IRT_PTR,   // Other pointer
+// type name, printed string (len=3), color
+#define IRTDEF(_) \
+  _(UNKNOWN, "unk", GREY) \
+  _(VOID,    "   ", NONE) \
+  _(I64,     "i64", PRIM) \
+  _(U64,     "u64", PRIM) \
+  _(I32,     "i32", PRIM) \
+  _(U32,     "u32", PRIM) \
+  _(I16,     "i16", PRIM) \
+  _(U16,     "u16", PRIM) \
+  _(I8,      "i8 ", PRIM) \
+  _(U8,      "u8 ", PRIM) \
+  _(F64,     "f64", PRIM) \
+  _(F32,     "f32", PRIM) \
+  _(CHR,     "chr", PRIM) /* could be made = u32 */ \
+  _(CLOS,    "cls", HEAP) /* pointer to a closure */ \
+  _(INFO,    "inf", NONE) /* pointer to info table */ \
+  _(PC,      "pc ", NONE) /* pointer to bytecode address */ \
+  _(PTR,     "ptr", NONE) /* internal pointer */
+/* 32 types in total allowed */
+
+typedef enum {
+#define IRTENUM(name, str, col) IRT_##name,
+  IRTDEF(IRTENUM)
+#undef IRTENUM
 
   // Flags
   IRT_MARK  = 0x20,  // Marker for various purposes
@@ -363,14 +376,14 @@ public:
     return ref;
   }
 
-  inline TRef emit(uint16_t ot, IRRef1 op1, IRRef op2) {
+  inline TRef emit(uint16_t ot, IRRef1 op1, IRRef1 op2) {
     set(ot, op1, op2);
     return optFold();
   }
 
   /// Emit instruction in current fold state without passing it
   /// through the optimisation pipeline.
-  inline TRef emitRaw(uint16_t ot, IRRef1 op1, IRRef op2) {
+  inline TRef emitRaw(uint16_t ot, IRRef1 op1, IRRef1 op2) {
     set(ot, op1, op2);
     return emit();
   }
@@ -378,7 +391,7 @@ public:
   inline TRef slot(int n) {
     TRef s = slots_.get(n);
     if (s.isNone()) {
-      s = emitRaw(IRT(IR::kSLOAD, IRT_UNK), slots_.absolute(n), 0);
+      s = emitRaw(IRT(IR::kSLOAD, IRT_UNKNOWN), slots_.absolute(n), 0);
       slots_.set(n, s);
     }
     return s;
@@ -399,6 +412,7 @@ public:
     return &buffer_[ref];
   }
 
+  void debugPrint(std::ostream&, int traceNo);
 private:
   void growTop();
   TRef emit(); // Emit without optimisation.

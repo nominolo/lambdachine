@@ -222,6 +222,7 @@ from separately compiled modules.
 #define COL_YELLOW "\033[33m"
 #define COL_GREY   "\033[30;1m"
 #define COL_RED    "\033[31m"
+#define COL_PURPLE "\033[35m"
 
 #define COLOURED(col, str)   col str COL_RESET
 
