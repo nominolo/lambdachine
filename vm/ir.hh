@@ -217,6 +217,13 @@ private:
   IRIns data_;
 };
 
+enum {
+  REF_BIAS  = 0x8000,
+  REF_BASE  = REF_BIAS,
+  REF_FIRST = REF_BIAS + 1,
+  REF_DROP  = 0xffff
+};
+
 // A tagged reference
 // Tagged IR references (32 bit).
 //
@@ -235,6 +242,7 @@ public:
   inline IRRef1 ref() const { return (IRRef1)raw_; }
   inline IR::Type t() const { return (IR::Type)(raw_ >> 24); }
   inline bool isNone() const { return raw_ == 0; }
+  inline bool isLiteral() const { return ref() < REF_BASE; }
   inline void markWritten() { raw_ |= kWritten; }
   
   bool operator==(const TRef &t) const { return raw_ == t.raw_; }
@@ -307,6 +315,10 @@ public:
   // Set the current frame.  Returns false in case of over-/underflow.
   bool frame(Word *base, Word *top);
 
+  inline int baseOffset(Word *p) {
+    return p - realOrigBase_;
+  }
+
   // TODO: Create snapshots.
 
 private:
@@ -319,14 +331,6 @@ private:
   unsigned int low_;  // lowest modified value
   unsigned int high_; // highest modified value
   Word *realOrigBase_;
-};
-
-
-enum {
-  REF_BIAS  = 0x8000,
-  REF_BASE  = REF_BIAS,
-  REF_FIRST = REF_BIAS + 1,
-  REF_DROP  = 0xffff
 };
 
 
@@ -420,6 +424,9 @@ public:
   }
 
   TRef literal(IRType ty, uint64_t lit);
+
+  /// A literal that represents a pointer into the stack.
+  TRef baseLiteral(Word *p);
   TRef optFold();
   TRef optCSE();
 

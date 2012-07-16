@@ -77,8 +77,10 @@ static void printArg(ostream &out, uint8_t mode, uint16_t op, IR *ir, IRBuffer *
     } else if (ir->opcode() == IR::kKWORD && buf != NULL) {
       out << ' ' << COL_BLUE "0x" << hex << buf->kword(ir->u32()) << dec
           << COL_RESET;
+    } else if (ir->opcode() == IR::kKBASEO) {
+      out << " #" << left << ir->i32();
     } else {
-        out << "<cst>";
+      out << "<cst>";
     }
     break;
   default:
@@ -200,6 +202,25 @@ TRef IRBuffer::literal(IRType ty, uint64_t lit) {
   }
  found:
   return TRef(ref, ty);
+}
+
+TRef IRBuffer::baseLiteral(Word *p) {
+  int offset = slots_.baseOffset(p);
+  IRRef ref;
+  IR *tir;
+  for (ref = chain_[IR::kKBASEO]; ref != 0; ref = buffer_[ref].prev()) {
+    if (buffer_[ref].data_.i == offset)
+      goto found;
+  }
+  ref = nextLit();
+  tir = ir(ref);
+  tir->data_.i = offset;
+  tir->data_.t = IRT_PTR;
+  tir->data_.o = IR::kKBASEO;
+  tir->data_.prev = chain_[IR::kKBASEO];
+  chain_[IR::kKBASEO] = (IRRef1)ref;
+ found:
+  return TRef(ref, IRT_PTR);
 }
 
 TRef IRBuffer::optFold() {
