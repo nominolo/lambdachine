@@ -70,6 +70,7 @@ typedef u4 IRRef;               /* Used to pass around references */
   _(MUL,     C,   ref, ref) \
   _(DIV,     N,   ref, ref) \
   _(REM,     N,   ref, ref) \
+  _(NEG,     N,   ref, ___) \
   \
   _(FREF,    R,   ref, lit) \
   _(FLOAD,   L,   ref, ___) \
@@ -130,6 +131,48 @@ typedef union _IRInsRaw {
   u4 u;   // Index into J->kwords
 } IRIns;
 
+// type name, printed string (len=3), color
+#define IRTDEF(_) \
+  _(UNKNOWN, "unk", GREY) \
+  _(VOID,    "   ", NONE) \
+  _(I64,     "i64", PRIM) \
+  _(U64,     "u64", PRIM) \
+  _(I32,     "i32", PRIM) \
+  _(U32,     "u32", PRIM) \
+  _(I16,     "i16", PRIM) \
+  _(U16,     "u16", PRIM) \
+  _(I8,      "i8 ", PRIM) \
+  _(U8,      "u8 ", PRIM) \
+  _(F64,     "f64", PRIM) \
+  _(F32,     "f32", PRIM) \
+  _(CHR,     "chr", PRIM) /* could be made = u32 */ \
+  _(CLOS,    "cls", HEAP) /* pointer to a closure */ \
+  _(INFO,    "inf", NONE) /* pointer to info table */ \
+  _(PC,      "pc ", NONE) /* pointer to bytecode address */ \
+  _(PTR,     "ptr", NONE) /* internal pointer */
+/* 32 types in total allowed */
+
+typedef enum {
+#define IRTENUM(name, str, col) IRT_##name,
+  IRTDEF(IRTENUM)
+#undef IRTENUM
+
+  // Flags
+  IRT_MARK  = 0x20,  // Marker for various purposes
+  IRT_ISPHI = 0x40,  // Used by register allocator
+  IRT_GUARD = 0x80,  // Used by asm code generator
+
+  // Masks
+  IRT_TYPE = 0x1f,
+  IRT_T    = 0xff
+} IRType;
+
+static const uint32_t kOpIsSigned =
+  (1 << (int)IRT_I64) | (1 << (int)IRT_I32) |
+  (1 << (int)IRT_I16) | (1 << (int)IRT_I8);
+
+#define IRT(o, t)      (cast(u4, ((o) << 8) | (t)))
+
 class IRBuffer; // Defined below.
 
 class IR {
@@ -167,6 +210,7 @@ public:
 
   inline Opcode opcode() { return (Opcode)data_.o; }
   inline Type t() { return data_.t; }
+  inline IRType type() { return (IRType)(data_.t & IRT_TYPE); }
   inline uint16_t ot() { return data_.ot; }
   inline IRRef1 op1() { return data_.op1; }
   inline IRRef1 op2() { return data_.op2; }
@@ -224,6 +268,8 @@ enum {
   REF_DROP  = 0xffff
 };
 
+inline bool irref_islit(IRRef ref) { return ref < REF_BIAS; }
+
 // A tagged reference
 // Tagged IR references (32 bit).
 //
@@ -247,6 +293,7 @@ public:
   
   bool operator==(const TRef &t) const { return raw_ == t.raw_; }
   bool operator!=(const TRef &t) const { return raw_ != t.raw_; }
+  operator IRRef1() { return (IRRef1)raw_; }
 
 private:
   uint32_t raw_;
@@ -312,6 +359,10 @@ public:
     return (base_ + n) - kInitialBase;
   }
 
+  inline TRef getAbsolute(int n) const {
+    return slots_[kInitialBase + n];
+  }
+
   // Set the current frame.  Returns false in case of over-/underflow.
   bool frame(Word *base, Word *top);
 
@@ -334,48 +385,11 @@ private:
 };
 
 
-// type name, printed string (len=3), color
-#define IRTDEF(_) \
-  _(UNKNOWN, "unk", GREY) \
-  _(VOID,    "   ", NONE) \
-  _(I64,     "i64", PRIM) \
-  _(U64,     "u64", PRIM) \
-  _(I32,     "i32", PRIM) \
-  _(U32,     "u32", PRIM) \
-  _(I16,     "i16", PRIM) \
-  _(U16,     "u16", PRIM) \
-  _(I8,      "i8 ", PRIM) \
-  _(U8,      "u8 ", PRIM) \
-  _(F64,     "f64", PRIM) \
-  _(F32,     "f32", PRIM) \
-  _(CHR,     "chr", PRIM) /* could be made = u32 */ \
-  _(CLOS,    "cls", HEAP) /* pointer to a closure */ \
-  _(INFO,    "inf", NONE) /* pointer to info table */ \
-  _(PC,      "pc ", NONE) /* pointer to bytecode address */ \
-  _(PTR,     "ptr", NONE) /* internal pointer */
-/* 32 types in total allowed */
-
-typedef enum {
-#define IRTENUM(name, str, col) IRT_##name,
-  IRTDEF(IRTENUM)
-#undef IRTENUM
-
-  // Flags
-  IRT_MARK  = 0x20,  // Marker for various purposes
-  IRT_ISPHI = 0x40,  // Used by register allocator
-  IRT_GUARD = 0x80,  // Used by asm code generator
-
-  // Masks
-  IRT_TYPE = 0x1f,
-  IRT_T    = 0xff
-} IRType;
-
-#define IRT(o, t)      (cast(u4, ((o) << 8) | (t)))
-
 typedef struct _FoldState {
   IR ins;
   IR left;
   IR right;
+  uint64_t literal;
 } FoldState;
 
 class IRBuffer {
@@ -424,6 +438,7 @@ public:
   }
 
   TRef literal(IRType ty, uint64_t lit);
+  uint64_t literalValue(IRRef ref);
 
   /// A literal that represents a pointer into the stack.
   TRef baseLiteral(Word *p);
@@ -444,10 +459,19 @@ public:
     else
       return 0;
   }
+
+  static const int kOptCSE = 0;
+  static const int kOptFold = 1;
+
+  inline void enableOptimisation(int optId) { flags_.set(optId); }
+  inline void disableOptimisation(int optId) { flags_.clear(optId); }
+
 private:
   void growTop();
   void growBottom();
   TRef emit(); // Emit without optimisation.
+
+  IRRef doFold();
 
   inline void set(uint16_t ot, IRRef1 op1, IRRef op2) {
     fold_.ins.setOt(ot);
@@ -461,6 +485,7 @@ private:
 
   IR *realbuffer_;
   IR *buffer_;  // biased
+  Flags32 flags_;
   IRRef bufmin_;
   IRRef bufmax_;
   IRRef bufstart_;

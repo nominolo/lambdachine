@@ -202,6 +202,13 @@ utils/print_config: utils/print_config.o
 	@echo "LINK $^ => $@"
 	@$(CC) -o $@ $^
 
+utils/genirfoldmacros: utils/genirfoldmacros.o
+	@echo "LINK $^ => $@"
+	@$(CXX) -o $@ $^
+
+vm/irfoldmacros.hh: vm/ir.hh utils/genirfoldmacros
+	./utils/genirfoldmacros $@
+
 compiler/Opcodes.h: utils/genopcodes
 	./$< > $@
 
@@ -252,7 +259,9 @@ clean-interp:
 .PHONY: clean
 clean:
 	rm -f $(SRCS:%.c=%.o) utils/*.o interp compiler/.depend \
-		compiler/lcc lcc $(DIST)/setup-config vm/*.o
+		compiler/lcc lcc $(DIST)/setup-config vm/*.o \
+		unittest lcvm bcdump \
+		utils/genirfoldmacros vm/irfoldmacros.hh
 	rm -rf $(HSBUILDDIR)
 	find . -name '*.gcov' -or -name '*.gcno' -or -name '*.gcda' | xargs rm -f
 	$(MAKE) -C tests clean

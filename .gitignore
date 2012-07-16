@@ -137,6 +137,8 @@ dump.s
 _T*.*
 tests/lit.user.cfg
 utils/gtest-*
+utils/genirfoldmacros
+vm/irfoldmacros.hh
 unittest
 bcdump
 lcvm

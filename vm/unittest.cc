@@ -357,6 +357,7 @@ protected:
   virtual void SetUp() {
     stack = new Word[256];
     buf = new IRBuffer(&stack[11], &stack[18]);
+    buf->disableOptimisation(IRBuffer::kOptFold);
   }
   virtual void TearDown() {
     if (buf) delete buf;
@@ -471,6 +472,39 @@ TEST_F(IRTest, BaseLiterals) {
   EXPECT_TRUE(!tr2.isNone() && tr2.isLiteral());
   EXPECT_EQ(tr1, tr3);
   EXPECT_NE(tr1.ref(), tr2.ref());
+  buf->debugPrint(cerr, 1);
+}
+
+class IRTestFold : public IRTest {
+protected:
+  virtual void SetUp() {
+    IRTest::SetUp();
+    buf->enableOptimisation(IRBuffer::kOptFold);
+  }
+};
+
+TEST_F(IRTestFold, FoldAdd) {
+  TRef tr1 = buf->literal(IRT_I64, -1234);
+  TRef tr2 = buf->emit(IRT(IR::kADD, IRT_I64), tr1.ref(), tr1.ref());
+  EXPECT_TRUE(!tr1.isNone() && tr1.isLiteral());
+  ASSERT_TRUE(!tr2.isNone() && tr2.isLiteral());
+  EXPECT_EQ((uint64_t)-2468, buf->literalValue(tr2.ref()));
+  buf->debugPrint(cerr, 1);
+}
+
+TEST_F(IRTestFold, FoldComm) {
+  TRef tr1 = buf->literal(IRT_I64, 1234);
+  TRef tr2 = buf->slot(0);
+  TRef tr3 = buf->emit(IRT(IR::kADD, IRT_I64), tr1, tr2);
+  TRef tr4 = buf->emit(IRT(IR::kADD, IRT_I64), tr1, tr3);
+  
+  // Constant should be moved to the right.
+  EXPECT_EQ(tr1.ref(), buf->ir(tr3.ref())->op2());
+  EXPECT_EQ(tr2.ref(), buf->ir(tr3.ref())->op1());
+  EXPECT_EQ(tr2.ref(), buf->ir(tr4.ref())->op1());
+  IRRef ref = buf->ir(tr4.ref())->op2();
+  ASSERT_TRUE(irref_islit(ref));
+  EXPECT_EQ((int)2468, buf->literalValue(ref));
   buf->debugPrint(cerr, 1);
 }
 
