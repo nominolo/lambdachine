@@ -274,7 +274,7 @@ bool AbstractStack::frame(Word *base, Word *top) {
 enum {
   NEXTFOLD,  // Couldn't fold
   RETRYFOLD, // Run the fold engine again
-  LITFOLD,
+  KLITFOLD,
   FAILFOLD,
   DROPFOLD,
   MAX_FOLD
@@ -288,6 +288,11 @@ enum {
 
 #define PHIBARRIER(ir) if ((ir).t() & IRT_ISPHI) return NEXTFOLD
 #define LEFTFOLD (fold_.ins.op1())
+#define LITFOLD(val) ((fold_.literal = (val)), KLITFOLD)
+
+#define fins   (&fold_.ins)
+#define fleft  (&fold_.left)
+#define fright (&fold_.right)
 
 #define any(ref,opc) true
 #define lit(ref,opc) irref_islit(ref)
@@ -308,10 +313,9 @@ static int64_t kfold_intop(int64_t k1, int64_t k2, IR::Opcode op) {
 // Constant folding. Both arguments are constants.
 FOLDF(kfold_arith) {
   if (fold_.ins.type() == IRT_I64) {
-    fold_.literal = kfold_intop(buf->literalValue(fold_.ins.op1()),
-                                buf->literalValue(fold_.ins.op2()),
-                                fold_.ins.opcode());
-    return LITFOLD;
+    return LITFOLD(kfold_intop(buf->literalValue(fold_.ins.op1()),
+                               buf->literalValue(fold_.ins.op2()),
+                               fold_.ins.opcode()));
   }
   return NEXTFOLD;
 }
@@ -347,6 +351,134 @@ FOLDF(reassoc_int_arith) {
   return NEXTFOLD;
 }
 
+/// i - 0 ==> i
+/// i - k ==> i + (-k)
+FOLDF(simplify_sub_k) {
+  if (isIntegerType(fold_.ins.type())) {
+    uint64_t k = buf->literalValue(fold_.ins.op2());
+    if (k == 0)
+      return LEFTFOLD;
+    uint64_t k2 = -(int64_t)k;  // Overflow OK.
+    IRRef ref = (IRRef1)buf->literal(fold_.ins.type(), k2);
+    fold_.ins.setOpcode(IR::kADD);
+    fold_.ins.setOp2(ref);
+    return RETRYFOLD;
+  } // TODO: i - (+-0) ==> i  for floats
+  return NEXTFOLD;
+}
+
+/// 0 - i ==> -i
+FOLDF(simplify_intsub_kleft) {
+  if (isIntegerType(fold_.ins.type())) {
+    uint64_t k = buf->literalValue(fold_.ins.op1());
+    if (k == 0) {
+      fold_.ins.setOpcode(IR::kNEG);
+      fold_.ins.setOp1(fold_.ins.op2());
+      return RETRYFOLD;
+    }
+  }
+  return NEXTFOLD;
+}
+
+/// i - i ==> 0
+FOLDF(simplify_intsub) {
+  if (fold_.ins.op1() == fold_.ins.op2() &&
+      !isFloatType(fold_.ins.type())) {
+    return LITFOLD(0);
+  }
+  return NEXTFOLD;
+}
+
+/// (i + j) - i ==> j
+/// (i + j) - j ==> i
+FOLDF(simplify_intsubadd_leftcancel) {
+  if (!isFloatType(fold_.ins.type())) {
+    if (fold_.ins.op2() == fold_.left.op1())
+      return fold_.left.op2();
+    if (fold_.ins.op2() == fold_.left.op2())
+      return fold_.left.op1();
+  }
+  return NEXTFOLD;
+}
+
+/// (i - j) - i ==> 0 - j
+FOLDF(simplify_intsubsub_leftcancel) {
+  if (!isFloatType(fold_.ins.type())) {
+    PHIBARRIER(fold_.left);
+    if (fold_.left.op1() == fold_.ins.op2()) {
+      fold_.ins.setOp1((IRRef1)buf->literal(fold_.ins.type(), 0));
+      fold_.ins.setOp2(fold_.left.op2());
+      return RETRYFOLD;
+    }
+  }
+  return NEXTFOLD;
+}
+
+/// i - (i - j) ==> j
+FOLDF(simplify_intsubsub_rightcancel) {
+  if (!isFloatType(fold_.ins.type())) {
+    PHIBARRIER(fold_.left);
+    if (fold_.ins.op1() == fold_.right.op1())
+      return fold_.right.op2();
+  }
+  return NEXTFOLD;
+}
+
+/// i - (i + j) ==> 0 - j
+/// i - (j + i) ==> 0 - j
+FOLDF(simplify_intsubadd_rightcancel) {
+  if (!isFloatType(fold_.ins.type())) {
+    PHIBARRIER(fold_.right);
+    if (fold_.ins.op1() == fold_.right.op1()) {
+      fold_.ins.setOp2(fold_.right.op2());
+      fold_.ins.setOp1((IRRef1)buf->literal(fold_.ins.type(), 0));
+      return RETRYFOLD;
+    }
+    if (fold_.ins.op1() == fold_.right.op2()) {
+      fold_.ins.setOp2(fold_.right.op1());
+      fold_.ins.setOp1((IRRef1)buf->literal(fold_.ins.type(), 0));
+      return RETRYFOLD;
+    }
+  }
+  return NEXTFOLD;
+}
+
+/// (x + y) - (x + z) ==> y - z
+/// (x + y) - (z + x) ==> y - z
+/// (y + x) - (x + z) ==> y - z
+/// (y + x) - (z + x) ==> y - z
+FOLDF(simplify_intsubaddadd_cancel) {
+  if (!isFloatType(fins->type())) {
+    PHIBARRIER(fold_.left);
+    PHIBARRIER(fold_.right);
+    if (fleft->op1() == fright->op1()) {
+      fins->setOp1(fleft->op2());
+      fins->setOp2(fright->op2());
+      return RETRYFOLD;
+    }
+    if (fleft->op1() == fright->op2()) {
+      fins->setOp1(fleft->op2());
+      fins->setOp2(fright->op1());
+      return RETRYFOLD;
+    }
+    if (fleft->op2() == fright->op1()) {
+      fins->setOp1(fleft->op1());
+      fins->setOp2(fright->op2());
+      return RETRYFOLD;
+    }
+    if (fleft->op2() == fright->op2()) {
+      fins->setOp1(fleft->op1());
+      fins->setOp2(fright->op1());
+      return RETRYFOLD;
+    }
+  }
+  return NEXTFOLD;
+}
+
+#undef fins
+#undef fleft
+#undef fright
+
 TRef IRBuffer::optFold() {
   IR::Opcode op = fins()->opcode();
   IR::IRMode irmode = IR::mode(op);
@@ -364,7 +496,7 @@ TRef IRBuffer::optFold() {
   }
   if (LC_LIKELY(ref >= MAX_FOLD))
     return TRef(ref, ir(ref)->t());
-  if (ref == LITFOLD)
+  if (ref == KLITFOLD)
     return literal(fold_.ins.type(), fold_.literal);
   if (ref == FAILFOLD)
     exit(44);
@@ -388,8 +520,10 @@ uint64_t IRBuffer::literalValue(IRRef ref) {
 }
 
 IRRef IRBuffer::doFold() {
-  IRRef ref = NEXTFOLD;
+  IRRef ref;
+  int retrycount = 0;
  retry:
+  ref = NEXTFOLD;
   IR::Opcode op = fins()->opcode();
   IRRef left = fins()->op1();
   IRRef right = fins()->op2();
@@ -402,12 +536,61 @@ IRRef IRBuffer::doFold() {
     PATTERN(ADD, lit, reassoc_int_arith);
     PATTERN(any, any, comm_swap);
     break;
+  case IR::kSUB:
+    /// constant folding
+    PATTERN(lit, lit, kfold_arith);
+    /// i - 0 ==> i
+    /// i - k ==> i + (-k)
+    PATTERN(any, lit, simplify_sub_k);
+    /// 0 - i ==> -i
+    PATTERN(lit, any, simplify_intsub_kleft);
+    /// i - i ==> 0
+    PATTERN(any, any, simplify_intsub);
+    /// (i + j) - i ==> j
+    /// (i + j) - j ==> i
+    PATTERN(ADD, any, simplify_intsubadd_leftcancel);
+    /// (i - j) - i ==> 0 - j
+    PATTERN(SUB, any, simplify_intsubsub_leftcancel);
+    /// i - (i - j) ==> j
+    PATTERN(any, SUB, simplify_intsubsub_rightcancel);
+    /// i - (i + j) ==> 0 - j
+    /// i - (j + i) ==> 0 - j
+    PATTERN(any, ADD, simplify_intsubadd_rightcancel);
+    /// (x + y) - (x + z) ==> y - z
+    /// (x + y) - (z + x) ==> y - z
+    /// (y + x) - (x + z) ==> y - z
+    /// (y + x) - (z + x) ==> y - z
+    PATTERN(ADD, ADD, simplify_intsubaddadd_cancel);
+    break;
   default:
     break;
   }
 
-  if (ref == RETRYFOLD)
-    goto retry;
+  if (ref == RETRYFOLD) {
+    ++retrycount;
+    if (LC_LIKELY(retrycount <= 100))
+      goto retry;
+
+    // In case the optimiser is looping, print a warning.
+    if (retrycount == 101) {
+      cerr << "\n>>> " COL_RED "ERROR" COL_RESET ": Optimiser looping.\n" 
+           << ">>> Please report this as a Lambdachine bug and include "
+           << "the following:"
+           << endl;
+    }
+
+    if (retrycount < 130) {
+      cerr << ">>>   ";
+      fold_.ins.debugPrint(cerr, REF_BASE);
+      goto retry;
+    } else { // retrycount >= 130
+      // Emit whatever we have.  This protects against looping
+      // transformation sequences, but not against
+      // non-semantics-preserving transformations.
+      cerr << ">>> End of error.\n" << endl;
+      return NEXTFOLD;
+    }
+  }
   return ref;
 }
 

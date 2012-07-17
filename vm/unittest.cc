@@ -508,6 +508,42 @@ TEST_F(IRTestFold, FoldComm) {
   buf->debugPrint(cerr, 1);
 }
 
+TEST_F(IRTestFold, FoldSub) {
+  TRef zero = buf->literal(IRT_I64, 0);
+  TRef lit1 = buf->literal(IRT_I64, 1234);
+  TRef lit2 = buf->literal(IRT_I64, -345);
+  TRef opaque = buf->slot(0);
+  TRef opaque2 = buf->slot(1);
+  
+  TRef tr1 = buf->emit(IR::kSUB, IRT_I64, lit1, lit2);
+  ASSERT_TRUE(tr1.isLiteral());
+  EXPECT_EQ((uint64_t)1579, buf->literalValue(tr1.ref()));
+
+  TRef tr2 = buf->emit(IR::kSUB, IRT_I64, opaque, zero);
+  EXPECT_EQ(tr2, opaque);
+
+  TRef tr3 = buf->emit(IR::kSUB, IRT_I64, opaque, lit1);
+  IR *tir = buf->ir(tr3);
+  EXPECT_EQ(IR::kADD, tir->opcode());
+  EXPECT_EQ((uint64_t)-1234, buf->literalValue(tir->op2()));
+
+  TRef tr4 = buf->emit(IR::kSUB, IRT_I64, zero, opaque);
+  IR *tir2 = buf->ir(tr4);
+  EXPECT_EQ(IR::kNEG, tir2->opcode());
+  EXPECT_EQ((IRRef1)opaque, tir2->op1());
+
+  TRef tr5 = buf->emit(IR::kSUB, IRT_I64, opaque, opaque2);
+  TRef tr6 = buf->emit(IR::kSUB, IRT_I64, tr5, opaque);
+  IR *tir3 = buf->ir(tr6);
+  EXPECT_EQ(IR::kNEG, tir3->opcode());
+  EXPECT_EQ((IRRef1)opaque2, tir3->op1());
+
+  TRef tr7 = buf->emit(IR::kSUB, IRT_I64, opaque, opaque);
+  EXPECT_EQ(tr7, zero);
+
+  buf->debugPrint(cerr, 1);
+}
+
 class CodeTest : public ::testing::Test {
 protected:
   virtual void SetUp() {

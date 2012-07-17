@@ -168,8 +168,26 @@ typedef enum {
 } IRType;
 
 static const uint32_t kOpIsSigned =
-  (1 << (int)IRT_I64) | (1 << (int)IRT_I32) |
-  (1 << (int)IRT_I16) | (1 << (int)IRT_I8);
+  (1u << (int)IRT_I64) | (1u << (int)IRT_I32) |
+  (1u << (int)IRT_I16) | (1u << (int)IRT_I8);
+
+static const uint32_t kOpIsInteger =
+  (1u << (int)IRT_CHR) |
+  (1u << (int)IRT_U64) | (1u << (int)IRT_U32) |
+  (1u << (int)IRT_U16) | (1u << (int)IRT_U8)  |
+  (1u << (int)IRT_I64) | (1u << (int)IRT_I32) |
+  (1u << (int)IRT_I16) | (1u << (int)IRT_I8);
+
+inline bool isIntegerType(IRType t) {
+  return kOpIsInteger & (1u << (int)t);
+}
+
+static const uint32_t kOpIsFloat =
+  (1u << (int)IRT_F32) | (1u << (int)IRT_F64);
+
+inline bool isFloatType(IRType t) {
+  return kOpIsFloat & (1 << (int)t);
+}
 
 #define IRT(o, t)      (cast(u4, ((o) << 8) | (t)))
 
@@ -409,6 +427,10 @@ public:
     if (LC_UNLIKELY(ref <= bufstart_)) growBottom();
     bufmin_ = --ref;
     return ref;
+  }
+
+  inline TRef emit(uint8_t o, uint8_t t, IRRef1 op1, IRRef1 op2) {
+    return emit(IRT(o, t), op1, op2);
   }
 
   inline TRef emit(uint16_t ot, IRRef1 op1, IRRef1 op2) {
