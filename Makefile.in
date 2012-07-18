@@ -152,7 +152,7 @@ vm/unittest.o: $(GTEST_A)
 VM_SRCS = vm/thread.cc vm/capability.cc vm/memorymanager.cc \
 	  vm/loader.cc vm/fileutils.cc vm/bytecode.cc vm/objects.cc \
 	  vm/miscclosures.cc vm/options.cc vm/jit.cc vm/amd64/fragment.cc \
-	  vm/machinecode.cc vm/assembler.cc vm/ir.cc
+	  vm/machinecode.cc vm/assembler.cc vm/ir.cc vm/ir_fold.cc
 
 TEST_FILES := tests/Bc/Bc0016.lcbc tests/Bc/Bc0014.lcbc \
 	tests/Bc/Bc0017.lcbc \
