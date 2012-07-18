@@ -8,6 +8,46 @@ using namespace std;
 
 /// Folding / Simplification
 
+/// The fold engine performs basic algebraic optimisations including
+/// constant folding.  It is implemented as a collection of folding
+/// rules that work on the FoldState.
+///
+/// When the IRBuffer wants to emit an instruction to the list, it
+/// puts the new instruction into fold_.ins.  The fold engine then
+/// tries to perform optimisations and possibly rewrites fold_.ins.
+///
+/// The outcome of each fold rule is one of the following:
+///
+///   - NEXTFOLD: The fold rule didn't apply and the next rule should
+///     be tried (if any).
+///
+///   - RETRYFOLD: The fold rule did apply and transformed fold_.ins.
+///     This may give rise to new optimisations so the fold engine
+///     should retry all optimisations on the new instruction.
+///
+///   - KLITFOLD: The folding engine was able to completely optimise
+///     the new instruction to a literal.
+///
+///   - FAILFOLD: The instruction is a guard that will always fail.
+///
+///   - DROPFOLD: The instruction is a guard that will always succeed.
+///
+///   - An IR reference: The result of the instruction is equivalent
+///     to the value of an instruction already in the instruction
+///     stream.
+///
+/// This means that fold rules must be tried starting from most
+/// specific to most general.
+///
+/// The fold engine only modifies the FoldState and does not modify
+/// the IRBuffer, except for possibly emitting literals.  Due to
+/// optimisations some instructions may no longer be needed.  These
+/// are later removed during dead code elmination (DCE).
+///
+/// When optimising unrolled loops it is important that fold rules do
+/// not simplify loop-variant (i.e., PHI-bound) variables.  To protect
+/// against this, use PHIBARRIER.
+
 enum {
   NEXTFOLD,  // Couldn't fold
   RETRYFOLD, // Run the fold engine again
@@ -17,24 +57,38 @@ enum {
   MAX_FOLD
 };
 
-#define FOLDF(name) static IRRef name(FoldState &fold_, IRBuffer *buf)
-#define PATTERN(pred1, pred2, handler) \
-  if ((pred1(left, fold_.left.opcode())) && \
-      (pred2(right, fold_.right.opcode()))) { \
-    ref = handler(fold_, this); if (ref != NEXTFOLD) break; }
-
+// Prevents an optimisation from crossing the loop boundary.
 #define PHIBARRIER(ir) if ((ir).t() & IRT_ISPHI) return NEXTFOLD
+
+// Return the left operand of the current instruction.
 #define LEFTFOLD (fold_.ins.op1())
+
+// Return the literal
 #define LITFOLD(val) ((fold_.literal = (val)), KLITFOLD)
 
 #define fins   (&fold_.ins)
 #define fleft  (&fold_.left)
 #define fright (&fold_.right)
 
+/// Defines a single named fold rule.
+#define FOLDF(name) static IRRef name(FoldState &fold_, IRBuffer *buf)
+
+/// Pattern matches on the shape of fold_.ins.  Examples:
+///
+///   - PATTERN(lit, any) matches iff the op1 is a literal.
+///
+///   - PATTERN(ADD, lit) matches iff the opcode of op1 argument's
+///     instruction is IR::kADD and op2 is a literal.
+///
+#define PATTERN(pred1, pred2, handler) \
+  if ((pred1(left, fold_.left.opcode())) && \
+      (pred2(right, fold_.right.opcode()))) { \
+    ref = handler(fold_, this); if (ref != NEXTFOLD) break; }
+
 #define any(ref,opc) true
 #define lit(ref,opc) irref_islit(ref)
-
 #include "irfoldmacros.hh"
+
 
 static int64_t kfold_intop(int64_t k1, int64_t k2, IR::Opcode op) {
   switch (op) {
