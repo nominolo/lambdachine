@@ -321,29 +321,43 @@ private:
   friend class AbstractStack;
 };
 
+class SnapshotData;
+
+typedef uint16_t SnapNo;
 
 class Snapshot {
 public:
   inline IRRef1 ref() const { return ref_; }
+  void debugPrint(std::ostream&, SnapshotData *, SnapNo);
+  inline int entries() const { return entries_; }
+  Snapshot() {}
 private:
-  //Snapshot(void *pc, IRRef ref);
 
   IRRef1 ref_;
   uint16_t mapofs_;
-  uint16_t entries_;
-  uint16_t exitCounter_;
-  void *pc_;
   int16_t relbase_; // base relative to trace entry base pointer
-  uint16_t framesize_;
+  uint8_t entries_;
+  uint8_t framesize_;
+  uint16_t exitCounter_;
+  uint16_t unused;
+  void *pc_;
+  friend class AbstractStack;
 };
 
 
 class SnapshotData {
-private:
+public:
   SnapshotData();
+private:
+  inline int slotId(size_t index) {
+    return (int)(data_.at(index) >> 16);
+  }
+  inline IRRef1 slotRef(size_t index) {
+    return (IRRef1)data_.at(index);
+  }
 
   std::vector<uint32_t> data_;
-  size_t size_;
+  size_t index_;
 
   friend class AbstractStack;
   friend class Snapshot;
@@ -389,6 +403,8 @@ public:
   }
 
   // TODO: Create snapshots.
+  void snapshot(Snapshot *snap, SnapshotData *snapmap,
+                IRRef1 ref, void *pc);
 
 private:
   static const unsigned int kSlots = 500;
@@ -487,6 +503,10 @@ public:
 
   inline void enableOptimisation(int optId) { flags_.set(optId); }
   inline void disableOptimisation(int optId) { flags_.clear(optId); }
+
+  inline void snapshot(Snapshot *snap, SnapshotData *snapmap, void *pc) {
+    slots_.snapshot(snap, snapmap, bufmax_, pc);
+  }
 
 private:
   void growTop();

@@ -269,6 +269,61 @@ bool AbstractStack::frame(Word *base, Word *top) {
   return true;
 }
 
+void AbstractStack::snapshot(Snapshot *snap, SnapshotData *snapmap,
+                             IRRef1 ref, void *pc) {
+  unsigned int slot = low_;
+  unsigned int entries = 0;
+  unsigned int ofs = snapmap->index_;
+  snapmap->data_.resize(ofs + high_ - low_);
+
+  for ( ; slot <= high_; ++slot) {
+    TRef tr = slots_[slot];
+    if (tr.raw_ & TRef::kWritten) {
+      int16_t slot_id = slot - kInitialBase;
+      uint16_t ref = tr.ref();
+      uint32_t data = ((uint32_t)slot_id << 16) | (uint32_t)ref;
+      snapmap->data_.at(ofs) = data;
+      ++ofs;
+      ++entries;
+    }
+  }
+  
+  snap->ref_ = ref;
+  snap->mapofs_ = snapmap->index_;
+  snap->relbase_ = base_ - kInitialBase;
+  snap->entries_ = entries;
+  snap->framesize_ = top_ - base_;
+  snap->exitCounter_ = 0;
+  snap->pc_ = pc;
+
+  snapmap->index_ = ofs;
+}
+
+void Snapshot::debugPrint(ostream &out, SnapshotData *snapmap, SnapNo snapno) {
+  unsigned int ofs = mapofs_;
+  int entries = entries_;
+
+  out << "SNAP #" << snapno << " [";
+
+  if (entries > 0) {
+    int slotid = snapmap->slotId(ofs);
+    bool printslotid = true;
+    for ( ; entries > 0; ++slotid) {
+      if (printslotid) out << slotid << ':';
+      if (snapmap->slotId(ofs) == slotid) {
+        IR::printIRRef(out, snapmap->slotRef(ofs));
+        ++ofs;
+        --entries;
+        if (entries > 0) out << ' ';
+      }
+      printslotid = (slotid % 4) == 0;
+    }
+  }
+  out << ']' << endl;
+}
+
+SnapshotData::SnapshotData() : data_(), index_() { }
+
 // Folding stuff is in ir_fold.cc
 
 _END_LAMBDACHINE_NAMESPACE

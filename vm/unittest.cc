@@ -475,6 +475,23 @@ TEST_F(IRTest, BaseLiterals) {
   buf->debugPrint(cerr, 1);
 }
 
+TEST_F(IRTest, Snapshot1) {
+  Snapshot snap[3];
+  SnapshotData snapmap;
+
+  TRef tr1 = buf->slot(0);
+  buf->snapshot(&snap[0], &snapmap, NULL);
+  TRef tr2 = buf->emit(IR::kADD, IRT_I64, tr1, tr1);
+  buf->setSlot(0, tr2);
+  buf->snapshot(&snap[1], &snapmap, NULL);
+  
+  buf->debugPrint(cerr, 1);
+  snap[0].debugPrint(cerr, &snapmap, 0);
+  snap[1].debugPrint(cerr, &snapmap, 1);
+
+  //  TRef tr2 = buf->emit(IR::kADD, IRT_I64, tr1, tr1);
+}
+
 class IRTestFold : public IRTest {
 protected:
   virtual void SetUp() {
