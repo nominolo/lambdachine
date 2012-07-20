@@ -209,6 +209,8 @@ utils/genirfoldmacros: utils/genirfoldmacros.o
 vm/irfoldmacros.hh: vm/ir.hh utils/genirfoldmacros
 	./utils/genirfoldmacros $@
 
+vm/ir_fold.o: vm/irfoldmacros.hh
+
 compiler/Opcodes.h: utils/genopcodes
 	./$< > $@
 
