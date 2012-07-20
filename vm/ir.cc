@@ -4,6 +4,7 @@
 #include <iomanip>
 
 #include <string.h>
+#include <limits.h>
 
 _START_LAMBDACHINE_NAMESPACE
 
@@ -309,17 +310,44 @@ void Snapshot::debugPrint(ostream &out, SnapshotData *snapmap, SnapNo snapno) {
     int slotid = snapmap->slotId(ofs);
     bool printslotid = true;
     for ( ; entries > 0; ++slotid) {
-      if (printslotid) out << slotid << ':';
+      if (printslotid)
+        out << COL_BLUE << slotid << ':' << COL_RESET;
       if (snapmap->slotId(ofs) == slotid) {
         IR::printIRRef(out, snapmap->slotRef(ofs));
         ++ofs;
         --entries;
-        if (entries > 0) out << ' ';
+      } else {
+        out << "----";
       }
-      printslotid = (slotid % 4) == 0;
+      if (entries > 0) out << ' ';
+      printslotid = (slotid % 4) == 3;
     }
   }
   out << ']' << endl;
+}
+
+IRRef1 Snapshot::slot(int n, SnapshotData *snapmap) {
+  // We use simple binary search.
+  int lo = mapofs_;
+  int hi = mapofs_ + entries_ - 1;
+  LC_ASSERT(hi < INT_MAX/2);
+  uint32_t data = 0;
+
+  while (lo <= hi) {
+    int mid = (lo + hi) >> 1;  // No overflow possible.
+    data = snapmap->data_.at(mid);
+    int slot = (int)(data >> 16);
+    if (n > slot) {
+      lo = mid + 1;
+    } else if (n < slot) {
+      hi = mid - 1;
+    } else { 
+      goto found;
+    }
+  }
+  data = 0;  // Only executed if we didn't find anything.
+ found:
+  return (IRRef1)data;
 }
 
 SnapshotData::SnapshotData() : data_(), index_() { }

@@ -330,6 +330,9 @@ public:
   inline IRRef1 ref() const { return ref_; }
   void debugPrint(std::ostream&, SnapshotData *, SnapNo);
   inline int entries() const { return entries_; }
+  inline int relbase() const { return relbase_; }
+  // Warning: quite slow (only use for testing/debugging).
+  IRRef1 slot(int n, SnapshotData *);
   Snapshot() {}
 private:
 
@@ -471,7 +474,7 @@ public:
   }
 
   inline void setSlot(int n, TRef tr) {
-    tr.markWritten();
+    if (tr.ref() != 0) tr.markWritten();
     slots_.set(n, tr);
   }
 
