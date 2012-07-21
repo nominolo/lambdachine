@@ -356,7 +356,8 @@ class IRTest : public ::testing::Test {
 protected:
   virtual void SetUp() {
     stack = new Word[256];
-    buf = new IRBuffer(&stack[11], &stack[18]);
+    buf = new IRBuffer();
+    buf->reset(&stack[11], &stack[18]);
     buf->disableOptimisation(IRBuffer::kOptFold);
   }
   virtual void TearDown() {

@@ -2,10 +2,12 @@
 #define _ASSEMBLER_H_
 
 #include "common.hh"
-#include "jit.hh"
-
+#include "vm.hh"
+#include "ir.hh"
 
 _START_LAMBDACHINE_NAMESPACE
+
+class Jit;  // Forward decl
 
 #define GPRDEF(_) \
   _(EAX) _(ECX) _(EDX) _(EBX) _(ESP) _(EBP) _(ESI) _(EDI) \
@@ -40,20 +42,61 @@ enum {
 };
 
 
+/// Register allocation cost is used when deciding which register to spill.
+/// 
+/// A free register has a cost of 0.
+///
+/// An allocated register has a non-zero IR reference and an
+/// associated spill cost. The interesting bit is the cost model.
+///
+/// In reverse linear-scan allocation the heuristic says to spill the
+/// register with the longest liveness interval (which ranges from
+/// definition to last use). In our case this means we should spill the
+/// register with the lowest IR reference.
+///
+/// We also need to take into account other factors.  E.g., avoid
+/// spilling loop-variant variables, prefer spilling (rematerialising)
+/// constants over other arguments.
+/// 
+/// LuaJIT (for naw) uses the following cost model:
+///
+///   - Due to the IRRef design we already have constant <
+///     loop-invariant < loop-variant.
+///
+///   - The cost thus is the IR reference + a weighted score.  This
+///     score is designed to discourage spilling of PHI-bound
+///     instructions.
+///
+/// A proper investigation of good cost function design is probably
+/// warranted, although there are likely diminishing returns on
+/// architectures with many registers.
+/// 
 class RegCost {
 public:
-  inline RegCost(uint16_t cost, uint16_t ref) {
-    cost_ = ((uint32_t)cost << 16) + (uint32_t)ref;
+  inline RegCost() : cost_(0xffff0000) { }
+  inline RegCost(uint16_t ref, IRType t) {
+    uint32_t other_cost =
+      ((uint32_t)(t & IRT_ISPHI)) * (((uint32_t)kPhiWeight << 16) / IRT_ISPHI);
+    cost_ = ((uint32_t)ref << 16) + (uint32_t)ref + other_cost;
   }
   ~RegCost() {}
 
-  inline uint16_t ref() const { return cost_; }
-  inline uint16_t cost() const { return cost_; }
+  static inline RegCost maxCost() { return RegCost(~(uint32_t)0); }
+
+  static const uint32_t kPhiWeight = 64;
+
+  inline uint16_t ref() const { return (uint16_t)cost_; }
+  inline uint16_t cost() const { return (uint16_t)(cost_ >> 16); }
+
+  inline uint32_t raw() const { return cost_; }
 private:
+  explicit RegCost(uint32_t raw) : cost_(raw) {}
   uint32_t cost_;
 };
 
 LC_STATIC_ASSERT(sizeof(RegCost) == sizeof(uint32_t));
+
+static RegCost kMaxCost = RegCost::maxCost();
 
 typedef uint32_t Reg;
 
@@ -63,6 +106,10 @@ typedef uint32_t Reg;
 
 inline bool isNoReg(Reg r) { return r & RID_NONE; }
 inline bool isReg(Reg r) { return !(r & RID_NONE); }
+inline bool hasHint(Reg r) { return r != RID_INIT; }
+inline bool getHint(Reg r) { return r & RID_MASK; }
+inline void setHint(IR *ins, Reg r) { ins->setReg((uint8_t)r|RID_NONE); }
+inline bool sameHint(Reg r1, Reg r2) { return getHint(r1 ^ r2) == 0; }
 
 class RegSet {
 public:
@@ -75,12 +122,25 @@ public:
     return RegSet(ones << lo);
   }
   inline bool test(Reg r) const { return (data_ >> r) & 1; }
+  inline bool isEmpty() const { return data_ == 0; }
   inline void set(Reg r) { data_ |= kOne << r; }
   inline void clear(Reg r) { data_ &= ~(kOne << r); }
   inline RegSet exclude(Reg r) { return RegSet(data_ & ~(kOne << r)); }
   inline RegSet include(Reg r) { return RegSet(data_ | (kOne << r)); }
   inline Reg pickTop() const { return (Reg)lc_fls(data_); }
   inline Reg pickBot() const { return (Reg)lc_ffs(data_); }
+  
+  inline RegSet intersect(RegSet other) {
+    return RegSet(data_ & other.data_);
+  }
+
+  inline RegSet setunion(RegSet other) {
+    return RegSet(data_ | other.data_);
+  }
+
+  // If you need to explicitly violate abstraction (e.g., for
+  // efficiency reasons).
+  inline uint32_t raw() const { return data_; }
 private:
   explicit RegSet(uint32_t raw) : data_(raw) {}
   static const uint32_t kOne = 1;
@@ -255,8 +315,45 @@ public:
 
   MCode *finish();
 
+  // Register allocation.
+  //
+  // Note: Since the assembler work backwards we allocate registers
+  // when we find its first *use* and free registers when we find
+  // the definition site.
+
+  // 
+  Reg allocDestReg(IR *ins, RegSet allow);
+
+  /// Allocate a register for ref from the allowed set of registers.
+  /// 
+  /// Note: This function assumes that the ref does NOT have a
+  /// register yet!
+  Reg allocRef(IRRef ref, RegSet allow);
+
+  /// Evict the register with the lowest cost.
+  Reg evictReg(RegSet allow);
+
+  /// Free a register by spilling/rematerialising the existing content.
+  Reg restoreReg(IRRef ref);
+
+  /// Rematerialise a constant.
+  Reg rematConstant(IRRef ref);
+
+  /// Assign a spill slot (or return existing one).
+  int32_t spill(IR *ins);
+
+private:
+  /// Mark the register as free.
+  inline void freeReg(Reg reg) { freeset_.set(reg); }
+
+  /// Mark the register as modified inside the loop.
+  inline void modifiedReg(Reg reg) { modset_.set(reg); }
+
+  void setupRegAlloc();
+
 private:
   inline Jit *jit() { return jit_; }
+  inline IR *ir(IRRef ref) { return &ir_[ref]; }
 
   inline void emit_i8(uint8_t i) { *--mcp = (MCode)i; }
   inline void emit_i32(int32_t i) { *(int32_t *)(mcp - 4) = i; mcp -= 4; }
@@ -300,7 +397,15 @@ private:
   MCode *mctop; // Top of generated MCode
 
   Jit *jit_;
+  IR *ir_;
+  IRBuffer *buf_;
 
+  RegSet freeset_;  // Free registers
+  RegSet modset_;   // Registers modified inside the loop.
+  RegSet phiset_;   // PHI registers.
+  RegCost cost_[RID_MAX];  // References and spill cost for registers.
+  int32_t spill_;
+  //  RegSet weakset_;
 };
 
 

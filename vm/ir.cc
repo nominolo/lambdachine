@@ -111,8 +111,20 @@ void IRBuffer::debugPrint(ostream &out, int traceNo) {
   }
 }
 
-IRBuffer::IRBuffer(Word *base, Word *top)
-  : flags_(), size_(1024), slots_(base, top), kwords_() {
+IRBuffer::IRBuffer()
+  :  realbuffer_(NULL), flags_(), size_(1024), slots_(), kwords_() {
+  reset(NULL, NULL);
+}
+
+IRBuffer::~IRBuffer() {
+  delete[] realbuffer_;
+  realbuffer_ = NULL;
+  buffer_ = NULL;
+}
+
+void IRBuffer::reset(Word *base, Word *top) {
+  slots_.reset(base, top);
+  if (realbuffer_) delete[] realbuffer_;
   realbuffer_ = new IR[size_];
 
   size_t nliterals = size_ / 4;
@@ -137,12 +149,6 @@ IRBuffer::IRBuffer(Word *base, Word *top)
 
   memset(chain_, 0, sizeof(chain_));
   emitRaw(IRT(IR::kBASE, IRT_PTR), 0, 0);
-}
-
-IRBuffer::~IRBuffer() {
-  delete[] realbuffer_;
-  realbuffer_ = NULL;
-  buffer_ = NULL;
 }
 
 void IRBuffer::growTop() {
@@ -250,10 +256,20 @@ TRef IRBuffer::optCSE() {
   return emit();
 }
 
-AbstractStack::AbstractStack(Word *base, Word *top) {
+AbstractStack::AbstractStack() {
   slots_ = new TRef[kSlots];
+  reset(NULL, NULL);
+}
+
+AbstractStack::~AbstractStack() {
+  delete[] slots_;
+  slots_ = NULL;
+}
+
+void AbstractStack::reset(Word *base, Word *top) {
+  memset(slots_, 0, kSlots * sizeof(TRef));
   base_ = kInitialBase;
-  LC_ASSERT(base < top);
+  LC_ASSERT(base <= top);
   realOrigBase_ = base;
   top_ = base_ + (top - base);
   LC_ASSERT(top_ < kSlots);

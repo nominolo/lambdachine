@@ -17,7 +17,7 @@ Jit::Jit()
   : cap_(NULL),
     startPc_(NULL), startBase_(NULL),
     flags_(), targets_(), fragments_(),
-    prng_(), mcode_(&prng_)
+    prng_(), mcode_(&prng_), asm_(this)
 {
 }
 
@@ -119,6 +119,33 @@ Fragment::Fragment()
 Fragment::~Fragment() {
   if (targets_ != NULL)
     delete[] targets_;
+}
+
+void Jit::genCode(IRBuffer *buf) {
+  IRRef ref;
+  for (ref = buf->bufmax_; ref > REF_BASE; --ref) {
+    IR *tir = buf->ir(ref);
+    genCode(buf, tir);
+  }
+}
+
+#define SLOT_SIZE (LC_ARCH_BITS/8)
+
+static void asmSLOAD(Assembler *as, IR *ir) {
+  int32_t ofs = SLOT_SIZE * (int16_t)ir->op1();
+  Reg base = RID_BASE;
+  RegSet allow = kGPR;
+  Reg dst = as->allocDestReg(ir, allow);
+  as->load_u64(dst, base, ofs);
+}
+
+void Jit::genCode(IRBuffer *buf, IR *ir) {
+  switch (ir->opcode()) {
+  case IR::kSLOAD: asmSLOAD(&asm_, ir); break;
+  default:
+    exit(11);
+    //    load_u64(
+  }
 }
 
 _END_LAMBDACHINE_NAMESPACE

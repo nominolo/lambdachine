@@ -2,6 +2,7 @@
 #define _IR_H_
 
 #include "common.hh"
+#include "vm.hh"
 
 #include <vector>
 #include <iostream>
@@ -227,7 +228,7 @@ public:
   typedef uint8_t Type;
 
   inline Opcode opcode() { return (Opcode)data_.o; }
-  inline Type t() { return data_.t; }
+  inline uint8_t t() { return data_.t; }
   inline IRType type() { return (IRType)(data_.t & IRT_TYPE); }
   inline uint16_t ot() { return data_.ot; }
   inline IRRef1 op1() { return data_.op1; }
@@ -235,6 +236,8 @@ public:
   inline IRRef2 op12() { return data_.op12; }
   inline int32_t i32() { return data_.i; }
   inline uint32_t u32() { return data_.u; }
+  inline uint8_t reg() { return data_.r; }
+  inline uint8_t spill() { return data_.r; }
 
   inline void setOpcode(Opcode op) { data_.o = op; }
   inline void setT(uint8_t ty) { data_.t = ty; }
@@ -242,6 +245,8 @@ public:
   inline void setOp1(IRRef1 op1) { data_.op1 = op1; }
   inline void setOp2(IRRef1 op2) { data_.op2 = op2; }
   inline void setPrev(IRRef1 prev) { data_.prev = prev; }
+  inline void setReg(uint8_t r) { data_.r = r; }
+  inline void setSpill(uint8_t s) { data_.s = s; }
   inline IRRef1 prev() { return data_.prev; }
 
   static inline IRMode mode(Opcode op) {
@@ -369,7 +374,10 @@ private:
 
 class AbstractStack {
 public:
-  AbstractStack(Word *base, Word *top);
+  AbstractStack();
+  ~AbstractStack();
+
+  void reset(Word *base, Word *top);
 
   inline TRef get(int n) const {
     return slots_[base_ + n];
@@ -431,22 +439,18 @@ typedef struct _FoldState {
 
 class IRBuffer {
 public:
-  IRBuffer(Word *base, Word *top);
+  IRBuffer();
   ~IRBuffer();
 
-  inline IRRef nextIns() {
-    IRRef ref = bufmax_;
-    if (LC_UNLIKELY(ref >= bufend_)) growTop();
-    bufmax_ = ref + 1;
-    return ref;
-  }
+  void reset(Word *base, Word *top);
 
-  inline IRRef nextLit() {
-    IRRef ref = bufmin_;
-    if (LC_UNLIKELY(ref <= bufstart_)) growBottom();
-    bufmin_ = --ref;
-    return ref;
-  }
+  /// Reserve and return reference for next instruction to emit.
+  /// Calling this function twice in a row returns adjacent
+  /// references.
+  IRRef nextIns();
+
+  /// Reserve and return a reference for the next literal to emit.
+  IRRef nextLit();
 
   inline TRef emit(uint8_t o, uint8_t t, IRRef1 op1, IRRef1 op2) {
     return emit(IRT(o, t), op1, op2);
@@ -540,7 +544,24 @@ private:
   IRRef1 chain_[IR::k_MAX];
   AbstractStack slots_;
   std::vector<Word> kwords_;
+
+  friend class Jit;
+  friend class Assembler;
 };
+
+inline IRRef IRBuffer::nextIns() {
+  IRRef ref = bufmax_;
+  if (LC_UNLIKELY(ref >= bufend_)) growTop();
+  bufmax_ = ref + 1;
+  return ref;
+}
+
+inline IRRef IRBuffer::nextLit() {
+  IRRef ref = bufmin_;
+  if (LC_UNLIKELY(ref <= bufstart_)) growBottom();
+  bufmin_ = --ref;
+  return ref;
+}
 
 // Can invert condition by toggling lowest bit.
 LC_STATIC_ASSERT((IR::kLT ^ 1) == IR::kGE);

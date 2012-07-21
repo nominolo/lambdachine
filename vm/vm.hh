@@ -10,6 +10,7 @@ _START_LAMBDACHINE_NAMESPACE
 typedef struct _Thread Thread;
 class Capability;
 class BcIns;
+class Jit;  // Forward decl.
 typedef char MCode;
 
 _END_LAMBDACHINE_NAMESPACE

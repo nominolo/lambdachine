@@ -5,6 +5,7 @@
 #include "vm.hh"
 #include "bytecode.hh"
 #include "ir.hh"
+#include "assembler.hh"
 
 #include <vector>
 #include HASH_MAP_H
@@ -161,7 +162,13 @@ private:
   FRAGMENT_MAP fragments_;
   Prng prng_;
   MachineCode mcode_;
-  std::vector<IR> ir_;
+  IRBuffer buf_;
+  Assembler asm_;
+
+  void genCode(IRBuffer *buf);
+  void genCode(IRBuffer *buf, IR *ir);
+
+  friend class Assembler;
 };
 
 typedef uint32_t ExitNo;
