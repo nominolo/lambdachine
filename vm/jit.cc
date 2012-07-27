@@ -135,7 +135,7 @@ static void asmSLOAD(Assembler *as, IR *ir) {
   int32_t ofs = SLOT_SIZE * (int16_t)ir->op1();
   Reg base = RID_BASE;
   RegSet allow = kGPR;
-  Reg dst = as->allocDestReg(ir, allow);
+  Reg dst = as->destReg(ir, allow);
   as->load_u64(dst, base, ofs);
 }
 

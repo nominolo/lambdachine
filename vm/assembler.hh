@@ -288,10 +288,29 @@ typedef enum {
   XM_MASK = 0xc0
 } x86Mode;
 
+#define XG_(i8, i, g)	((x86Group)(((i8) << 16) + ((i) << 8) + (g)))
+#define XG_TOXOi(xg)	((x86Op)(0x000000fe + (((xg)<<16) & 0xff000000)))
+#define XG_TOXOi8(xg)	((x86Op)(0x000000fe + (((xg)<<8) & 0xff000000)))
+#define XG_ARITHi(g)	XG_(XI_ARITHi8, XI_ARITHi, g)
+#define XO_ARITH(a)	((x86Op)(0x030000fe + ((a)<<27)))
+
+typedef enum {
+  XOg_ADD, XOg_OR, XOg_ADC, XOg_SBB, XOg_AND, XOg_SUB, XOg_XOR, XOg_CMP,
+  XOg_X_IMUL
+} x86Arith;
+
 #define MODRM(mode, r1, r2)	((MCode)((mode)+(((r1)&7)<<3)+((r2)&7)))
 
 #define FORCE_REX		0x200
 #define REX_64			(FORCE_REX|0x080000)
+
+/* Structure to hold variable ModRM operand. */
+typedef struct {
+  int32_t ofs;		/* Offset. */
+  uint8_t base;		/* Base register or RID_NONE. */
+  uint8_t idx;		/* Index register or RID_NONE. */
+  uint8_t scale;	/* Index scale (XM_SCALE1 .. XM_SCALE8). */
+} x86ModRM;
 
 class Assembler {
 public:
@@ -321,35 +340,86 @@ public:
   // when we find its first *use* and free registers when we find
   // the definition site.
 
-  // 
-  Reg allocDestReg(IR *ins, RegSet allow);
-
-  /// Allocate a register for ref from the allowed set of registers.
-  /// 
-  /// Note: This function assumes that the ref does NOT have a
-  /// register yet!
-  Reg allocRef(IRRef ref, RegSet allow);
-
-  /// Evict the register with the lowest cost.
-  Reg evictReg(RegSet allow);
-
   /// Free a register by spilling/rematerialising the existing content.
   Reg restoreReg(IRRef ref);
 
-  /// Rematerialise a constant.
+  /// Rematerialise a constant, i.e., load a constant into a register.
+  /// 
+  /// PRECOND: The instruction at `ref` has a register assigned.
   Reg rematConstant(IRRef ref);
 
   /// Assign a spill slot (or return existing one).
   int32_t spill(IR *ins);
 
+  /// Allocate register for reference if necessary or return assigned
+  /// register.
+  Reg alloc1(IRRef ref, RegSet allow);
+
+  /// Allocate/initialize the result register of the instruction.
+  ///
+  /// Since we're allocating backwards, this means that a register or
+  /// spill slot has already been assigned. After this instruction,
+  /// the register can now be used for other purposes.
+  Reg destReg(IR *ins, RegSet allow);
+
+  /// Write the value from the register to the instruction's spill
+  /// slot.
+  void saveReg(IR *ins, Reg r);
+
+  /// Allocate a scratch register.  A scratch register may only be used
+  /// within a single IR instruction.  It is not marked as used.
+  Reg allocScratchReg(RegSet allow);
+
+  /// Allocating registers for two-address architectures.
+  ///
+  /// Each two-operand instruction has the form:
+  ///
+  ///     D = op L R
+  ///
+  /// where D is the destination register, L is the left operand, and R
+  /// is the right operand.
+  ///
+  ///  1. Allocate the register for R.
+  ///
+  ///  2. Allocate the register for D.  Note that because we're working
+  ///     backwards and the instruction assigns D, D will now be marked
+  ///     as free.  If D had a spill slot assigned we also generate the
+  ///     store for that spill slot here.
+  ///
+  ///  3. Generate the code for: D = op D R
+  ///
+  ///  4. Make sure that L is in the same register as D.  This may
+  ///     require a register-to-register move instruction.  E.g., if L
+  ///     already has an assigned register and Reg(L) != Reg(D).
+  ///
+  /// allocLeft takes care of the last step.
+  void allocLeft(Reg dest, IRRef lref);
+
+  void setupRegAlloc();
+
+  bool is32BitLiteral(IRRef ref, int32_t *k);
+  void intArith(IR *ins, x86Arith xa);
 private:
+  /// Allocate a register for ref from the allowed set of registers.
+  /// 
+  /// Note: This function assumes that the ref does NOT have a
+  /// register assigned yet!
+  Reg allocRef(IRRef ref, RegSet allow);
+
+  /// Pick any free register.  Evict if necessary.
+  Reg pickReg(RegSet allow);
+
+  /// Evict the register with the lowest cost.
+  Reg evictReg(RegSet allow);
+
+  bool swapOperands(IR *ins);
+  Reg fuseLoad(IRRef ref, RegSet allow);
+
   /// Mark the register as free.
   inline void freeReg(Reg reg) { freeset_.set(reg); }
 
   /// Mark the register as modified inside the loop.
   inline void modifiedReg(Reg reg) { modset_.set(reg); }
-
-  void setupRegAlloc();
 
 private:
   inline Jit *jit() { return jit_; }
@@ -389,6 +459,9 @@ private:
     mcp = emit_opm(xo, XM_REG, r1, r2, p, 0);
   }
 
+  void emit_mrm(x86Op xo, Reg rr, Reg rb);
+  void emit_gri(x86Group xg, Reg rb, int32_t i);
+
   MCode *mcend;  // End of generated machine code.
   MCode *mcp;   // Current MCode pointer (grows down).
   MCode *mclim; // Lower limit for MCode memory + red zone
@@ -405,6 +478,7 @@ private:
   RegSet phiset_;   // PHI registers.
   RegCost cost_[RID_MAX];  // References and spill cost for registers.
   int32_t spill_;
+  x86ModRM mrm_;
   //  RegSet weakset_;
 };
 

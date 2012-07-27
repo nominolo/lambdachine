@@ -45,6 +45,17 @@ MCode *Assembler::finish() {
   return top;
 }
 
+/* op + modrm */
+#define emit_opm(xo, mode, rr, rb, p, delta) \
+  (p[(delta)-1] = MODRM((mode), (rr), (rb)), \
+   emit_op((xo), (rr), (rb), 0, (p), (delta)))
+
+/* op + modrm + sib */
+#define emit_opmx(xo, mode, scale, rr, rb, rx, p) \
+  (p[-1] = MODRM((scale), (rx), (rb)), \
+   p[-2] = MODRM((mode), (rr), RID_ESP), \
+   emit_op((xo), (rr), (rb), (rx), (p), -1))
+
 void Assembler::emit_rmro(x86Op xo, Reg rr, Reg rb, int32_t offset) {
   MCode *p = mcp;
   x86Mode mode;
@@ -70,6 +81,61 @@ void Assembler::emit_rmro(x86Op xo, Reg rr, Reg rb, int32_t offset) {
     mode = XM_OFS0;
   }
   mcp = emit_opm(xo, mode, rr, rb, p, 0);
+}
+
+void Assembler::emit_mrm(x86Op xo, Reg rr, Reg rb) {
+  MCode *p = mcp;
+  x86Mode mode = XM_REG;
+  if (rb == RID_MRM) {
+    rb = mrm_.base;
+    if (rb == RID_NONE) {
+      rb = RID_EBP;
+      mode = XM_OFS0;
+      p -= 4;
+      *(int32_t *)p = mrm_.ofs;
+      if (mrm_.idx != RID_NONE)
+	goto mrmidx;
+#if 1 /* LJ_64 */
+      *--p = MODRM(XM_SCALE1, RID_ESP, RID_EBP);
+      rb = RID_ESP;
+#endif
+    } else {
+      if (mrm_.ofs == 0 && (rb&7) != RID_EBP) {
+	mode = XM_OFS0;
+      } else if (checki8(mrm_.ofs)) {
+	*--p = (MCode)mrm_.ofs;
+	mode = XM_OFS8;
+      } else {
+	p -= 4;
+	*(int32_t *)p = mrm_.ofs;
+	mode = XM_OFS32;
+      }
+      if (mrm_.idx != RID_NONE) {
+      mrmidx:
+	mcp = emit_opmx(xo, mode, mrm_.scale, rr, rb, mrm_.idx, p);
+	return;
+      }
+      if ((rb&7) == RID_ESP)
+	*--p = MODRM(XM_SCALE1, RID_ESP, RID_ESP);
+    }
+  }
+  mcp = emit_opm(xo, mode, rr, rb, p, 0);
+}
+
+/* op r, i */
+void Assembler::emit_gri(x86Group xg, Reg rb, int32_t i)
+{
+  MCode *p = mcp;
+  x86Op xo;
+  if (checki8(i)) {
+    *--p = (MCode)i;
+    xo = XG_TOXOi8(xg);
+  } else {
+    p -= 4;
+    *(int32_t *)p = i;
+    xo = XG_TOXOi(xg);
+  }
+  mcp = emit_opm(xo, XM_REG, (Reg)(xg & 7) | (rb & REX_64), rb, p, 0);
 }
 
 void Assembler::move(Reg dst, Reg src) {
@@ -243,9 +309,157 @@ Reg Assembler::rematConstant(IRRef ref) {
   return r;
 }
 
-Reg Assembler::allocDestReg(IR *ir, RegSet allow) {
-  // XXX: Temporary
-  return RID_EAX;
+Reg Assembler::alloc1(IRRef ref, RegSet allow) {
+  Reg r = ir(ref)->reg();
+  if (isNoReg(r)) r = allocRef(ref, allow);
+  return r;
+}
+
+Reg Assembler::destReg(IR *ins, RegSet allow) {
+  Reg dest = ins->reg();
+  if (isReg(dest)) {
+    freeReg(dest);
+    modifiedReg(dest);
+  } else {
+    if (hasHint(dest) && freeset_.intersect(allow).test(getHint(dest))) {
+      dest = getHint(dest);
+      modifiedReg(dest);
+    } else {
+      dest = allocScratchReg(allow);
+    }
+    ins->setReg(dest);
+  }
+  if (LC_UNLIKELY(ins->spill() != 0))
+    saveReg(ins, dest);
+  return dest;
+}
+
+void Assembler::saveReg(IR *ins, Reg r) {
+  store_u64(r, RID_BASE, 8 * ins->spill());
+}
+
+Reg Assembler::allocScratchReg(RegSet allow) {
+  Reg r = pickReg(allow);
+  modifiedReg(r);
+  return r;
+}
+
+Reg Assembler::pickReg(RegSet allow) {
+  RegSet pick = freeset_.intersect(allow);
+  if (pick.isEmpty()) {
+    return evictReg(allow);
+  } else {
+    return pick.pickTop();
+  }
+}
+
+/// Ensure that the value of lref is in register dest.
+void Assembler::allocLeft(Reg dest, IRRef lref) {
+  IR *ins = ir(lref);
+  Reg left = ins->reg();
+  if (!isReg(left)) {
+    if (irref_islit(lref)) {
+      ins->setReg(dest);
+      rematConstant(lref);
+      return;
+    }
+    if (!hasHint(left))
+      setHint(ins, dest);  // Propagate register hint.
+    
+    LC_ASSERT(dest < RID_MAX_GPR); // FIXME: FP support.
+    left = allocRef(lref, kGPR);
+  }
+  if (dest != left) {
+    // TODO: Special PHI stuff here?
+    move(dest, left);
+  }
+}
+
+bool Assembler::swapOperands(IR *ins) {
+  IR *insleft = ir(ins->op1());
+  IR *insright = ir(ins->op2());
+  LC_ASSERT(!isReg(insright->reg()));
+  if (!IR::isCommutative(ins->opcode()))
+    return false;
+  if (irref_islit(ins->op2()))
+    return false;  // Don't swap constants to the left.
+  if (isReg(insleft->reg())) // FIXME: Why?
+    return true;
+  if (sameHint(insleft->reg(), insright->reg()))
+    return true;
+  // TODO: There's more. See LuaJIT source.
+  return false;
+}
+
+/*
+Reg Assembler::allocConst(IRRef ref, RegSet allow) {
+  LC_ASSERT(irref_islit(ref));
+  Reg r = RID_NONE;
+  uint64_t k = buf_->literalValue(ref);
+  if (!check_i32(k)) {
+    r = allocScratchReg(allow);
+    ir(ref)->setReg(r);
+  }
+  return r;
+}
+*/
+
+/// Fuse 
+Reg Assembler::fuseLoad(IRRef ref, RegSet allow) {
+  IR *ins = ir(ref);
+  if (isReg(ins->reg())) {
+    if (!allow.isEmpty()) {  // Fast path.
+      return ins->reg();
+    }
+    // Otherwise, access operand directly from memory.
+    mrm_.base = RID_ESP;
+    mrm_.ofs = spill(ins);
+    mrm_.idx = RID_NONE;
+    return RID_MRM;
+  }
+  // TODO: Do the actual fusing.
+  return allocRef(ref, allow);
+}
+
+bool Assembler::is32BitLiteral(IRRef ref, int32_t *k) {
+  if (irref_islit(ref)) {
+    uint64_t k64 = buf_->literalValue(ref);
+    if (checki32(k64)) {
+      *k = (int32_t)k64;
+      return true;
+    }
+  }
+  return false;
+}
+
+void Assembler::intArith(IR *ins, x86Arith xa) {
+  RegSet allow = kGPR;
+  int32_t k = 0;
+  IRRef lref = ins->op1();
+  IRRef rref = ins->op2();
+  
+  Reg right = ir(rref)->reg();
+  if (isReg(right)) {
+    allow.clear(right);
+  }
+  Reg dest = destReg(ins, allow);
+
+  if (!isReg(right) && !is32BitLiteral(rref, &k)) {
+    allow.clear(dest);
+    right = fuseLoad(rref, allow);
+  }
+
+  if (xa != XOg_X_IMUL) {
+    if (isReg(right)) {
+      emit_mrm(XO_ARITH(xa), REX_64|dest, right);
+    } else {
+      emit_gri(XG_ARITHi(xa), REX_64|dest, k);
+    }
+  } else {
+    cerr << "NYI: IMUL" << endl;
+    exit(4);
+  }
+  allocLeft(dest, lref);
 }
 
 

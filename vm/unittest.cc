@@ -982,6 +982,13 @@ TEST(HotCounters, Simple) {
   EXPECT_TRUE(counters.tick(pc));
 }
 
+TEST(RegAlloc, Simple) {
+  Jit jit;
+  Assembler as(&jit);
+  as.setupRegAlloc();
+  
+}
+
 int main(int argc, char *argv[]) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
