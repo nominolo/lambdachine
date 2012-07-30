@@ -7,7 +7,9 @@
 
 _START_LAMBDACHINE_NAMESPACE
 
-class Jit;  // Forward decl
+// Forward declarations.
+class Jit;
+class MachineCode;
 
 #define GPRDEF(_) \
   _(EAX) _(ECX) _(EDX) _(EBX) _(ESP) _(EBP) _(ESI) _(EDI) \
@@ -41,6 +43,9 @@ enum {
   RID_NUM_FPR = RID_MAX_FPR - RID_MIN_FPR,
 };
 
+extern const char *regNames32[RID_NUM_GPR];
+extern const char *regNames64[RID_NUM_GPR];
+extern const char *fpRegNames[RID_NUM_FPR];
 
 /// Register allocation cost is used when deciding which register to spill.
 /// 
@@ -395,11 +400,21 @@ public:
   /// allocLeft takes care of the last step.
   void allocLeft(Reg dest, IRRef lref);
 
+  void setup(IRBuffer *);
+  void setupMachineCode(MachineCode *);
   void setupRegAlloc();
 
   bool is32BitLiteral(IRRef ref, int32_t *k);
   void intArith(IR *ins, x86Arith xa);
+
+  /// Generate code for the given instruction.
+  void emit(IR *ins);
+
+  void assemble(IRBuffer *, MachineCode *);
+
 private:
+  void emitSLOAD(IR *);
+
   /// Allocate a register for ref from the allowed set of registers.
   /// 
   /// Note: This function assumes that the ref does NOT have a
@@ -472,6 +487,8 @@ private:
   Jit *jit_;
   IR *ir_;
   IRBuffer *buf_;
+  IRRef nins_;
+  IRRef curins_;
 
   RegSet freeset_;  // Free registers
   RegSet modset_;   // Registers modified inside the loop.

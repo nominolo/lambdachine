@@ -227,17 +227,30 @@ public:
   typedef uint8_t IRMode;
   typedef uint8_t Type;
 
+  /// Returns the IR opcode of the instruction.
   inline Opcode opcode() { return (Opcode)data_.o; }
+
+  /// Returns the instruction's type flags.
   inline uint8_t t() { return data_.t; }
+
+  /// Returns the instruction's result type (excluding any flags).
   inline IRType type() { return (IRType)(data_.t & IRT_TYPE); }
+
+  /// Returns the combined opcode and type flags fields.
   inline uint16_t ot() { return data_.ot; }
+
+  /// Returns the first operand of the instruction.  It may represent
+  /// other date depending on the instruction's mode.  @see
+  /// IR::mode(Opcode).
   inline IRRef1 op1() { return data_.op1; }
   inline IRRef1 op2() { return data_.op2; }
   inline IRRef2 op12() { return data_.op12; }
   inline int32_t i32() { return data_.i; }
   inline uint32_t u32() { return data_.u; }
   inline uint8_t reg() { return data_.r; }
-  inline uint8_t spill() { return data_.r; }
+  inline uint8_t spill() { return data_.s; }
+
+  inline bool isGuard() { return data_.t & IRT_GUARD; }
 
   inline void setOpcode(Opcode op) { data_.o = op; }
   inline void setT(uint8_t ty) { data_.t = ty; }
@@ -262,11 +275,12 @@ public:
     return mode_[op] & IRM_S;
   }
 
+  static const char *regName(uint8_t reg, IRType ty);
   static void printIRRef(std::ostream &out, IRRef ref);
   void debugPrint(std::ostream &out, IRRef self) {
-    debugPrint(out, self, NULL);
+    debugPrint(out, self, NULL, false);
   }
-  void debugPrint(std::ostream &out, IRRef self, IRBuffer *buf);
+  void debugPrint(std::ostream &out, IRRef self, IRBuffer *buf, bool regs);
 
 private:
   IR(u1 opc, u1 ty, IRRef op1, IRRef op2, u2 prev) {
@@ -507,6 +521,7 @@ public:
 
   static const int kOptCSE = 0;
   static const int kOptFold = 1;
+  static const int kRegsAllocated = 16;
 
   inline void enableOptimisation(int optId) { flags_.set(optId); }
   inline void disableOptimisation(int optId) { flags_.clear(optId); }
@@ -515,7 +530,10 @@ public:
     slots_.snapshot(snap, snapmap, bufmax_, pc);
   }
 
+  inline bool regsAllocated() { return flags_.get(kRegsAllocated); }
 private:
+  inline void setRegsAllocated() { flags_.set(kRegsAllocated); }
+
   void growTop();
   void growBottom();
   TRef emit(); // Emit without optimisation.

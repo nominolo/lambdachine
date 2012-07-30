@@ -11,12 +11,9 @@ using namespace std;
 
 Assembler::Assembler(Jit *J) {
   jit_ = J;
-  mctop = J->mcode()->reserve(&mcbot);
-  mcend = mctop;
-  mcp = mctop;
-  mclim = mcbot + MCLIM_REDZONE;
-  ir_ = jit_->buf_.buffer_;  // REF-biased
-  buf_ = &jit_->buf_; // For looking up constants.
+  mctop = mcend = mcp = mclim = NULL;
+  ir_ = NULL;
+  buf_ = NULL;
 }
 
 Assembler::~Assembler() {
@@ -26,14 +23,54 @@ Assembler::~Assembler() {
   mcp = NULL;
 }
 
+void Assembler::setupMachineCode(MachineCode *mcode) {
+  mctop = mcode->reserve(&mcbot);
+  mcend = mctop;
+  mcp = mctop;
+  mclim = mcbot + MCLIM_REDZONE;
+}
+
 void Assembler::setupRegAlloc() {
   freeset_ = kGPR;
   modset_ = RegSet();
   //  weakset_ = 
   phiset_ = RegSet();
-  spill_ = 1;
+
   for (Reg r = RID_MIN_GPR; r < RID_MAX; r++) {
     cost_[r] = RegCost();
+  }
+}
+
+#define REGSP(r, s)		((r) + ((s) << 8))
+#define REGSP_HINT(r)		((r)|RID_NONE)
+#define REGSP_INIT		REGSP(RID_INIT, 0)
+
+void Assembler::setup(IRBuffer *buf) {
+  setupRegAlloc();
+
+  ir_ = buf->buffer_;  // REF-biased
+  buf_ = buf; // For looking up constants.
+
+  spill_ = 1;
+  curins_ = buf->bufmax_;
+  nins_ = buf->bufmax_;
+
+  // Initialise reg/spill fields for constants.
+  for (IRRef i = buf->bufmin_; i < REF_BIAS; ++i) {
+    ir(i)->setPrev(REGSP_INIT);
+  }
+
+  // The base reg gets a dedicated register.  Since this register is
+  // not included in the allocateable registers, this will always
+  // succeed.
+  ir(REF_BASE)->setPrev(REGSP_HINT(RID_BASE));
+
+  // Initialise ref/spill fields for regular instructions.
+  for (IRRef i = REF_FIRST; i < nins_; ++i) {
+    IR *ins = ir(i);
+    // TODO: For bit shifting operations we have force non-constant
+    // arguments to be allocated into ecx.
+    ins->setPrev(REGSP_INIT);
   }
 }
 
@@ -462,5 +499,59 @@ void Assembler::intArith(IR *ins, x86Arith xa) {
   allocLeft(dest, lref);
 }
 
+void Assembler::assemble(IRBuffer *buf, MachineCode *mcode) {
+  setup(buf);
+  setupMachineCode(mcode);
+
+  curins_ = nins_;
+  IRRef stopins = REF_BASE;
+  for (curins_--; curins_ > stopins; curins_--) {
+    IR *ins = ir(curins_);
+    if (ins->isGuard()) {
+      cerr << "TODO: Add snapshot" << endl;
+    }
+    emit(ins);
+  }
+
+  buf->setRegsAllocated();
+  // TODO: Save to trace fragment
+  LC_ASSERT(freeset_.raw() == kGPR.raw());
+  mcode->commit(mcp);
+}
+
+void Assembler::emitSLOAD(IR *ins) {
+  int32_t ofs = 8 * (int16_t)ins->op1();
+  Reg base = RID_BASE;
+  RegSet allow = kGPR;
+  Reg dst = destReg(ins, allow);
+  load_u64(dst, base, ofs);
+}
+
+void Assembler::emit(IR *ins) {
+  switch (ins->opcode()) {
+  case IR::kSLOAD: emitSLOAD(ins); break;
+  case IR::kADD:   intArith(ins, XOg_ADD); break;
+  default:
+    cerr << "NYI: codegen for ";
+    ins->debugPrint(cerr, REF_BIAS + (IRRef1)(ins - ir_));
+    cerr << endl;
+    exit(23);
+  }
+}
+
+const char *regNames32[RID_NUM_GPR] = {
+  "eax", "ecx", "edx", "ebx", "esp", "ebp", "esi", "edi",
+  "r8d", "r9d", "r10d", "r11d", "r12d", "r13d", "r14d", "r15d"
+};
+
+const char *regNames64[RID_NUM_GPR] = {
+  "rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi",
+  "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"
+};
+
+const char *fpRegNames[RID_NUM_FPR] = {
+  "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7", 
+  "xmm8", "xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15"
+};
 
 _END_LAMBDACHINE_NAMESPACE

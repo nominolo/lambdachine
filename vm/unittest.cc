@@ -187,6 +187,7 @@ protected:
   virtual void SetUp() {
     jit = new Jit();
     as = new Assembler(jit);
+    as->setupMachineCode(jit->mcode());
   }
 
   virtual void TearDown() {
@@ -363,7 +364,7 @@ protected:
   virtual void TearDown() {
     if (buf) delete buf;
     buf = NULL;
-    if (stack) delete stack;
+    if (stack) delete[] stack;
     stack = NULL;
   }
   IRTest() : buf(NULL), stack(NULL) {}
@@ -982,11 +983,57 @@ TEST(HotCounters, Simple) {
   EXPECT_TRUE(counters.tick(pc));
 }
 
-TEST(RegAlloc, Simple) {
-  Jit jit;
-  Assembler as(&jit);
-  as.setupRegAlloc();
-  
+class RegAlloc : public ::testing::Test {
+protected:
+  IRBuffer *buf;
+  Jit *jit;
+  Word *stack;
+protected:
+  virtual void SetUp() {
+    stack = new Word[256];
+    jit = new Jit();
+    buf = jit->buffer();
+    buf->reset(&stack[11], &stack[18]);
+    buf->disableOptimisation(IRBuffer::kOptFold);
+  }
+  virtual void TearDown() {
+    buf = NULL;
+    if (stack) delete[] stack;
+    stack = NULL;
+    if (jit) delete jit;
+    jit = NULL;
+  }
+
+  void Dump() {
+    const ::testing::TestInfo* const test_info =
+      ::testing::UnitTest::GetInstance()->current_test_info();
+    ofstream out;
+    string filename("dump_");
+    filename += test_info->name();
+    filename += ".s";
+    out.open(filename.c_str());
+    jit->mcode()->dumpAsm(out);
+    out.close();
+  }
+
+  RegAlloc() : buf(NULL), jit(NULL), stack(NULL) {}
+  virtual ~RegAlloc() {
+    TearDown();
+  }
+};
+
+TEST_F(RegAlloc, Simple) {
+  TRef tr1 = buf->slot(0);
+  TRef tr2 = buf->literal(IRT_I64, 1234);
+  TRef tr3 = buf->emit(IR::kADD, IRT_I64, tr1, tr2);
+  TRef tr4 = buf->emit(IR::kADD, IRT_I64, tr3, tr2);
+
+  Assembler as(jit);
+  as.setup(buf);
+
+  as.assemble(jit->buffer(), jit->mcode());
+  buf->debugPrint(cerr, 1);
+  Dump();
 }
 
 int main(int argc, char *argv[]) {

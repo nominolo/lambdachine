@@ -142,6 +142,7 @@ public:
   }
 
   inline MachineCode *mcode() { return &mcode_; }
+  inline IRBuffer *buffer() { return &buf_; }
 
 private:
   void finishRecording();

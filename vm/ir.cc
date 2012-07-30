@@ -1,4 +1,5 @@
 #include "ir.hh"
+#include "assembler.hh"
 
 #include <iostream>
 #include <iomanip>
@@ -89,10 +90,23 @@ static void printArg(ostream &out, uint8_t mode, uint16_t op, IR *ir, IRBuffer *
   }
 }
 
-void IR::debugPrint(ostream &out, IRRef self, IRBuffer *buf) {
+void IR::debugPrint(ostream &out, IRRef self, IRBuffer *buf, bool regs) {
   IR::Opcode op = opcode();
   uint8_t ty = type();
   IR::printIRRef(out, self);
+  if (regs) {
+    if (isReg(reg())) {
+      out << ' ' << setfill(' ') << setw(5) << left
+          << IR::regName(reg(), type());
+    } else {
+      int sp = spill();
+      if (sp == 0) {
+        out << " -    ";
+      } else {
+        out << " [" << setfill(' ') << setw(3) << left << 8 * sp << ']';
+      }
+    }
+  }
   out << "    "; // TODO: flags go here
   out << tycolorcode[tycolor[ty]];
   out << tyname[ty] << COL_RESET << ' ';
@@ -107,7 +121,7 @@ void IRBuffer::debugPrint(ostream &out, int traceNo) {
   out << "---- TRACE " << right << setw(4) << setfill('0') << traceNo 
       << " IR -----------" << endl;
   for (IRRef ref = bufmin_; ref < bufmax_; ++ref) {
-    ir(ref)->debugPrint(out, ref, this);
+    ir(ref)->debugPrint(out, ref, this, regsAllocated());
   }
 }
 
@@ -367,6 +381,24 @@ IRRef1 Snapshot::slot(int n, SnapshotData *snapmap) {
 }
 
 SnapshotData::SnapshotData() : data_(), index_() { }
+
+const char *IR::regName(uint8_t r, IRType ty) {
+  switch (ty) {
+  case IRT_I64: case IRT_U64:
+  case IRT_CLOS: case IRT_INFO: case IRT_PC:
+  case IRT_UNKNOWN: case IRT_PTR:
+    LC_ASSERT(r < RID_MAX_GPR);
+    return regNames64[r];
+  case IRT_I32: case IRT_U32: case IRT_CHR:
+    LC_ASSERT(r < RID_MAX_GPR);
+    return regNames32[r];
+  case IRT_F32: case IRT_F64:
+    LC_ASSERT(RID_MIN_FPR <= r && r < RID_MAX_FPR);
+    return fpRegNames[r - RID_MIN_FPR];
+  default:
+    exit(44);
+  }
+}
 
 // Folding stuff is in ir_fold.cc
 
