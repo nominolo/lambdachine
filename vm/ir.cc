@@ -126,7 +126,8 @@ void IRBuffer::debugPrint(ostream &out, int traceNo) {
 }
 
 IRBuffer::IRBuffer()
-  :  realbuffer_(NULL), flags_(), size_(1024), slots_(), kwords_() {
+  : realbuffer_(NULL), flags_(), size_(1024), slots_(),
+    snapmap_(), snaps_(), kwords_() {
   reset(NULL, NULL);
 }
 
@@ -268,6 +269,13 @@ TRef IRBuffer::optCSE() {
   }
   // Otherwise emit IR
   return emit();
+}
+
+Snapshot &IRBuffer::snapshot(void *pc) {
+  Snapshot snap;
+  slots_.snapshot(&snap, &snapmap_, bufmax_, pc);
+  snaps_.push_back(snap);
+  return snaps_.back();
 }
 
 AbstractStack::AbstractStack() {

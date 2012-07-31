@@ -247,8 +247,12 @@ public:
   inline IRRef2 op12() { return data_.op12; }
   inline int32_t i32() { return data_.i; }
   inline uint32_t u32() { return data_.u; }
-  inline uint8_t reg() { return data_.r; }
-  inline uint8_t spill() { return data_.s; }
+  inline uint8_t reg() const { return data_.r; }
+  inline uint8_t spill() const { return data_.s; }
+
+  /// Returns whether this instruction has been assigned a register or
+  /// spill slot.
+  bool hasRegOrSpill() const;
 
   inline bool isGuard() { return data_.t & IRT_GUARD; }
 
@@ -344,15 +348,74 @@ class SnapshotData;
 
 typedef uint16_t SnapNo;
 
+/// An entry in a snapshot.  See class Snapshot.
+class SnapEntry {
+public:
+  inline int slot() const { return (int)(raw_ >> 16); }
+  inline IRRef1 ref() const { return (IRRef1)raw_; }
+private:
+  SnapEntry(int s, IRRef1 r);
+  inline explicit SnapEntry(uint32_t raw) : raw_(raw) {}
+  uint32_t raw_;
+  friend class Snapshot;
+};
+
+LC_STATIC_ASSERT(sizeof(SnapEntry) == sizeof(uint32_t));
+
+inline SnapEntry::SnapEntry(int s, IRRef1 r) 
+  : raw_(((uint32_t)s << 16) | (uint32_t)r) {}
+
+
+/// A snapshot captures the state of the abstract stack at a
+/// particular reference.
+///
+/// Snapshots are constructed only by the AbstractStack. The default
+/// constructor simply constructs an empty snapshot with no reference.
+///
+/// To iterate over a snapshot's entries use this idiom:
+///
+///     for (const SnapEntry *sn = snap->begin(snapmap);
+///          sn < snap->end(snapmap); ++sn) {
+///       IRRef1 ref = sn->ref();
+///       int slot = sn->slot();
+///       ...
+///     }
+///
+/// Note that `snapmap` must be the same one as the one used to
+/// construct the snapshot.
+///
+/// Slots of a SnapEntry are relative to the base pointer at the
+/// beginning of the trace.
+///
 class Snapshot {
 public:
+  /// Default constructor.
+  Snapshot() : ref_(0), entries_(0) {}
+
+  /// Returns the snapshot reference.  The snapshot describes the
+  /// state BEFORE the referenced instruction is executed.
   inline IRRef1 ref() const { return ref_; }
-  void debugPrint(std::ostream&, SnapshotData *, SnapNo);
+
+  /// The number of entries in this snapshot.
   inline int entries() const { return entries_; }
+
+  /// The address of the base pointer when this snapshot was taken
+  /// relative to the base at the start of the trace.
   inline int relbase() const { return relbase_; }
+
+  /// Returns pointer to the first snapshot entry.  Note, that this
+  /// pointer is only valid if it is different from the pointer
+  /// returned by end().
+  const SnapEntry *begin(SnapshotData *snapmap) const;
+
+  /// Returns a pointer one past the last entry for this snapshot.
+  const SnapEntry *end(SnapshotData *snapmap) const;
+
+  void debugPrint(std::ostream&, SnapshotData *, SnapNo);
+
   // Warning: quite slow (only use for testing/debugging).
   IRRef1 slot(int n, SnapshotData *);
-  Snapshot() {}
+
 private:
 
   IRRef1 ref_;
@@ -365,7 +428,6 @@ private:
   void *pc_;
   friend class AbstractStack;
 };
-
 
 class SnapshotData {
 public:
@@ -384,6 +446,15 @@ private:
   friend class AbstractStack;
   friend class Snapshot;
 };
+
+
+inline const SnapEntry *Snapshot::begin(SnapshotData *snapmap) const {
+  return (SnapEntry*)&snapmap[mapofs_];
+}
+
+inline const SnapEntry *Snapshot::end(SnapshotData *snapmap) const {
+  return (SnapEntry*)&snapmap[mapofs_ + entries_];
+}
 
 
 class AbstractStack {
@@ -526,9 +597,9 @@ public:
   inline void enableOptimisation(int optId) { flags_.set(optId); }
   inline void disableOptimisation(int optId) { flags_.clear(optId); }
 
-  inline void snapshot(Snapshot *snap, SnapshotData *snapmap, void *pc) {
-    slots_.snapshot(snap, snapmap, bufmax_, pc);
-  }
+  Snapshot &snapshot(void *pc);
+
+  SnapshotData *snapmap() { return &snapmap_; }
 
   inline bool regsAllocated() { return flags_.get(kRegsAllocated); }
 private:
@@ -561,6 +632,8 @@ private:
   FoldState fold_;
   IRRef1 chain_[IR::k_MAX];
   AbstractStack slots_;
+  SnapshotData snapmap_;
+  std::vector<Snapshot> snaps_;
   std::vector<Word> kwords_;
 
   friend class Jit;

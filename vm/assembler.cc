@@ -1,5 +1,6 @@
 #include "assembler.hh"
 #include "jit.hh"
+#include "ir-inl.hh"
 
 #include <iostream>
 
@@ -536,6 +537,29 @@ void Assembler::emit(IR *ins) {
     ins->debugPrint(cerr, REF_BIAS + (IRRef1)(ins - ir_));
     cerr << endl;
     exit(23);
+  }
+}
+
+void Assembler::snapshotAlloc1(IRRef ref) {
+  IR *ins = ir(ref);
+  if (!ins->hasRegOrSpill()) {
+    RegSet allow = kGPR;
+    if (!freeset_.intersect(allow).isEmpty()) {
+      allocRef(ref, allow);
+    } else {
+      spill(ins);
+    }
+  }
+}
+
+/// Allocate registers to refs escaping to a snapshot.
+void Assembler::snapshotAlloc(Snapshot *snap, SnapshotData *snapmap) {
+  for (const SnapEntry *se = snap->begin(snapmap);
+       se != snap->end(snapmap); ++se) {
+    IRRef ref = se->ref();
+    if (!irref_islit(ref)) {
+      snapshotAlloc1(ref);
+    }
   }
 }
 

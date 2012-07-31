@@ -479,46 +479,46 @@ TEST_F(IRTest, BaseLiterals) {
 
 TEST_F(IRTest, Snapshot1) {
   Snapshot snap[4];
-  SnapshotData snapmap;
+  SnapshotData *snapmap = buf->snapmap();
 
   TRef tr1 = buf->slot(0);
-  buf->snapshot(&snap[0], &snapmap, NULL);
+  snap[0] = buf->snapshot(NULL);
   EXPECT_EQ(0, snap[0].entries());
   EXPECT_EQ(tr1.ref() + 1, snap[0].ref());
   EXPECT_EQ(0, snap[0].relbase());
 
   TRef tr2 = buf->emit(IR::kADD, IRT_I64, tr1, tr1);
   buf->setSlot(0, tr2);
-  buf->snapshot(&snap[1], &snapmap, NULL);
+  snap[1] = buf->snapshot(NULL);
   EXPECT_EQ(1, snap[1].entries());
   EXPECT_EQ(tr2.ref() + 1, snap[1].ref());
   EXPECT_EQ(0, snap[1].relbase());
-  EXPECT_EQ(tr2.ref(), snap[1].slot(0, &snapmap));
+  EXPECT_EQ(tr2.ref(), snap[1].slot(0, snapmap));
 
   TRef tr3 = buf->emit(IR::kADD, IRT_I64, tr1, tr2);
   buf->setSlot(1, tr3);
   TRef tr4 = buf->slot(2);
   buf->setSlot(3, tr3);
   buf->setSlot(4, tr1);
-  buf->snapshot(&snap[2], &snapmap, NULL);
+  snap[2] = buf->snapshot(NULL);
   EXPECT_EQ(4, snap[2].entries());
   EXPECT_EQ(tr4.ref() + 1 - REF_BASE, snap[2].ref() - REF_BASE);
   EXPECT_EQ(0, snap[2].relbase());
-  EXPECT_EQ(tr2.ref(), snap[2].slot(0, &snapmap));
-  EXPECT_EQ(tr3.ref(), snap[2].slot(1, &snapmap));
-  EXPECT_EQ(0,         snap[2].slot(2, &snapmap));
-  EXPECT_EQ(tr3.ref(), snap[2].slot(3, &snapmap));
-  EXPECT_EQ(tr1.ref(), snap[2].slot(4, &snapmap));
+  EXPECT_EQ(tr2.ref(), snap[2].slot(0, snapmap));
+  EXPECT_EQ(tr3.ref(), snap[2].slot(1, snapmap));
+  EXPECT_EQ(0,         snap[2].slot(2, snapmap));
+  EXPECT_EQ(tr3.ref(), snap[2].slot(3, snapmap));
+  EXPECT_EQ(tr1.ref(), snap[2].slot(4, snapmap));
 
   buf->setSlot(1, TRef());
-  buf->snapshot(&snap[3], &snapmap, NULL);
+  snap[3] = buf->snapshot(NULL);
   EXPECT_EQ(3, snap[3].entries());
- 
+
   buf->debugPrint(cerr, 1);
-  snap[0].debugPrint(cerr, &snapmap, 0);
-  snap[1].debugPrint(cerr, &snapmap, 1);
-  snap[2].debugPrint(cerr, &snapmap, 2);
-  snap[3].debugPrint(cerr, &snapmap, 3);
+  snap[0].debugPrint(cerr, snapmap, 0);
+  snap[1].debugPrint(cerr, snapmap, 1);
+  snap[2].debugPrint(cerr, snapmap, 2);
+  snap[3].debugPrint(cerr, snapmap, 3);
 
   //  TRef tr2 = buf->emit(IR::kADD, IRT_I64, tr1, tr1);
 }
@@ -1022,7 +1022,7 @@ protected:
   }
 };
 
-TEST_F(RegAlloc, Simple) {
+TEST_F(RegAlloc, Simple1) {
   TRef tr1 = buf->slot(0);
   TRef tr2 = buf->literal(IRT_I64, 1234);
   TRef tr3 = buf->emit(IR::kADD, IRT_I64, tr1, tr2);

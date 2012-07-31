@@ -375,6 +375,9 @@ public:
   /// within a single IR instruction.  It is not marked as used.
   Reg allocScratchReg(RegSet allow);
 
+  void snapshotAlloc1(IRRef ref);
+  void snapshotAlloc(Snapshot *snap, SnapshotData *snapmap);
+
   /// Allocating registers for two-address architectures.
   ///
   /// Each two-operand instruction has the form:
