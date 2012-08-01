@@ -47,6 +47,8 @@ extern const char *regNames32[RID_NUM_GPR];
 extern const char *regNames64[RID_NUM_GPR];
 extern const char *fpRegNames[RID_NUM_FPR];
 
+inline int32_t sps_scale(int ofs) { return 8 * ofs; }
+
 /// Register allocation cost is used when deciding which register to spill.
 /// 
 /// A free register has a cost of 0.
@@ -135,13 +137,15 @@ public:
   inline Reg pickTop() const { return (Reg)lc_fls(data_); }
   inline Reg pickBot() const { return (Reg)lc_ffs(data_); }
   
-  inline RegSet intersect(RegSet other) {
+  inline RegSet intersect(RegSet other) const {
     return RegSet(data_ & other.data_);
   }
 
-  inline RegSet setunion(RegSet other) {
+  inline RegSet setunion(RegSet other) const {
     return RegSet(data_ | other.data_);
   }
+
+  inline RegSet complement() const { return RegSet(~data_); }
 
   // If you need to explicitly violate abstraction (e.g., for
   // efficiency reasons).
@@ -332,7 +336,7 @@ public:
   void load_u64(Reg dst, Reg base, int32_t offset);
 
   // mov qword ptr [base + offset], src
-  void store_u64(Reg src, Reg base, int32_t offset);
+  void store_u64(Reg base, int32_t offset, Reg src);
 
   // mov qword ptr [base + offset], imm32
   void storei_u64(Reg base, int32_t offset, int32_t i);
@@ -376,7 +380,7 @@ public:
   Reg allocScratchReg(RegSet allow);
 
   void snapshotAlloc1(IRRef ref);
-  void snapshotAlloc(Snapshot *snap, SnapshotData *snapmap);
+  void snapshotAlloc(Snapshot &snap, SnapshotData *snapmap);
 
   /// Allocating registers for two-address architectures.
   ///
@@ -412,6 +416,8 @@ public:
 
   /// Generate code for the given instruction.
   void emit(IR *ins);
+  void save(IR *ins);
+  void memstore(IRRef ref, int32_t ofs, Reg base, RegSet allow);
 
   void assemble(IRBuffer *, MachineCode *);
 
@@ -430,6 +436,12 @@ private:
   /// Evict the register with the lowest cost.
   Reg evictReg(RegSet allow);
 
+  /// Evict (rematerialise) all constants.
+  ///
+  /// This emits register writes for all constants which were assumed
+  /// to be held in registers.
+  void evictConstants();
+
   bool swapOperands(IR *ins);
   Reg fuseLoad(IRRef ref, RegSet allow);
 
@@ -439,9 +451,13 @@ private:
   /// Mark the register as modified inside the loop.
   inline void modifiedReg(Reg reg) { modset_.set(reg); }
 
+public:
+  inline const MCode *currMCode() const { return mcp; }
+  inline IRRef currIns() const { return curins_; }
+  inline IR *ir(IRRef ref) { return &ir_[ref]; }
+
 private:
   inline Jit *jit() { return jit_; }
-  inline IR *ir(IRRef ref) { return &ir_[ref]; }
 
   inline void emit_i8(uint8_t i) { *--mcp = (MCode)i; }
   inline void emit_i32(int32_t i) { *(int32_t *)(mcp - 4) = i; mcp -= 4; }
@@ -492,6 +508,7 @@ private:
   IRBuffer *buf_;
   IRRef nins_;
   IRRef curins_;
+  SnapNo snapno_;
 
   RegSet freeset_;  // Free registers
   RegSet modset_;   // Registers modified inside the loop.

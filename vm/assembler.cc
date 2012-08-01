@@ -6,6 +6,8 @@
 
 #define MCLIM_REDZONE	64
 
+#include "assembler-debug.hh"
+
 _START_LAMBDACHINE_NAMESPACE
 
 using namespace std;
@@ -230,7 +232,7 @@ void Assembler::load_u64(Reg dst, Reg base, int32_t offset) {
     emit_rmro(XO_MOVSD, dst, base, offset);
 }
 
-void Assembler::store_u64(Reg src, Reg base, int32_t offset) {
+void Assembler::store_u64(Reg base, int32_t offset, Reg src) {
   if (src < RID_MAX_GPR)
     emit_rmro(XO_MOVto, REX_64|src, base, offset);
   else
@@ -273,6 +275,7 @@ Reg Assembler::allocRef(IRRef ref, RegSet allow) {
     r = evictReg(allow);
   }
  found:
+  RA_DBGX((this, "alloc     $f $r", ref, r));
   ins->setReg(r);
   freeset_.clear(r);
   cost_[r] = RegCost(ref, (IRType)ins->t());
@@ -304,7 +307,7 @@ Reg Assembler::restoreReg(IRRef ref) {
     LC_ASSERT(isReg(r));
     setHint(ins, r);  // Keep hint.
     freeReg(r);
-    store_u64(r, RID_BASE, ofs);
+    store_u64(RID_BASE, ofs, r);
     return r;
   }
 }
@@ -329,6 +332,18 @@ Reg Assembler::evictReg(RegSet allow) {
   return restoreReg(ref);
 }
 
+void Assembler::evictConstants() {
+  RegSet work = freeset_.complement().intersect(kGPR);
+  while (!work.isEmpty()) {
+    Reg r = work.pickBot();
+    IRRef ref = cost_[r].ref();
+    if (canRemat(ref) && irref_islit(ref)) {
+      rematConstant(ref);
+    }
+    work.clear(r);
+  }
+}
+
 Reg Assembler::rematConstant(IRRef ref) {
   IR *ins = ir(ref);
   Reg r = ins->reg();
@@ -336,6 +351,8 @@ Reg Assembler::rematConstant(IRRef ref) {
   freeReg(r);
   modifiedReg(r);
   ins->setReg(RID_INIT); // No hint.
+  RA_DBGX((this, "remat     $i $r", ins, r));
+
   if (ins->opcode() == IR::kKINT || ins->opcode() == IR::kKWORD) {
     uint64_t k = buf_->literalValue(ref);
     loadi_u64(r, k);
@@ -367,13 +384,14 @@ Reg Assembler::destReg(IR *ins, RegSet allow) {
     }
     ins->setReg(dest);
   }
+  RA_DBGX((this, "dest           $r", dest));
   if (LC_UNLIKELY(ins->spill() != 0))
     saveReg(ins, dest);
   return dest;
 }
 
 void Assembler::saveReg(IR *ins, Reg r) {
-  store_u64(r, RID_BASE, 8 * ins->spill());
+  store_u64(RID_BASE, 8 * ins->spill(), r);
 }
 
 Reg Assembler::allocScratchReg(RegSet allow) {
@@ -430,15 +448,12 @@ bool Assembler::swapOperands(IR *ins) {
 }
 
 /*
-Reg Assembler::allocConst(IRRef ref, RegSet allow) {
+Reg Assembler::allocConst(IRRef ref, RegSet allow, int32_t *k) {
   LC_ASSERT(irref_islit(ref));
-  Reg r = RID_NONE;
-  uint64_t k = buf_->literalValue(ref);
-  if (!check_i32(k)) {
-    r = allocScratchReg(allow);
-    ir(ref)->setReg(r);
-  }
-  return r;
+  if (is32BitLiteral(ref, k))
+    return RID_NONE;
+  else
+    return allocRef(ref, allow);
 }
 */
 
@@ -501,23 +516,33 @@ void Assembler::intArith(IR *ins, x86Arith xa) {
 }
 
 void Assembler::assemble(IRBuffer *buf, MachineCode *mcode) {
+  RA_DBG_START();
+
   setup(buf);
   setupMachineCode(mcode);
 
   curins_ = nins_;
   IRRef stopins = REF_BASE;
+  snapno_ = buf->numSnapshots();
   for (curins_--; curins_ > stopins; curins_--) {
     IR *ins = ir(curins_);
     if (ins->isGuard()) {
-      cerr << "TODO: Add snapshot" << endl;
+      Snapshot &snap = buf->snap(snapno_);
+      LC_ASSERT(snap.ref() == curins_);
+      snapshotAlloc(snap, buf->snapmap());
+      --snapno_;
     }
     emit(ins);
   }
+
+  evictConstants();
 
   buf->setRegsAllocated();
   // TODO: Save to trace fragment
   LC_ASSERT(freeset_.raw() == kGPR.raw());
   mcode->commit(mcp);
+
+  RA_DBG_FLUSH();
 }
 
 void Assembler::emitSLOAD(IR *ins) {
@@ -532,6 +557,7 @@ void Assembler::emit(IR *ins) {
   switch (ins->opcode()) {
   case IR::kSLOAD: emitSLOAD(ins); break;
   case IR::kADD:   intArith(ins, XOg_ADD); break;
+  case IR::kSAVE:  save(ins); break;
   default:
     cerr << "NYI: codegen for ";
     ins->debugPrint(cerr, REF_BIAS + (IRRef1)(ins - ir_));
@@ -553,13 +579,49 @@ void Assembler::snapshotAlloc1(IRRef ref) {
 }
 
 /// Allocate registers to refs escaping to a snapshot.
-void Assembler::snapshotAlloc(Snapshot *snap, SnapshotData *snapmap) {
-  for (const SnapEntry *se = snap->begin(snapmap);
-       se != snap->end(snapmap); ++se) {
-    IRRef ref = se->ref();
+void Assembler::snapshotAlloc(Snapshot &snap, SnapshotData *snapmap) {
+  RA_DBGX((this, "<<SNAP $x>>", snapno_));
+  for (Snapshot::MapRef se = snap.begin(); se != snap.end(); ++se) {
+    IRRef ref = snapmap->slotRef(se);
     if (!irref_islit(ref)) {
       snapshotAlloc1(ref);
     }
+  }
+}
+
+void Assembler::save(IR *ins) {
+  SnapNo snapno = ins->op1();
+  Snapshot &snap = buf_->snap(snapno);
+  SnapshotData *snapmap = buf_->snapmap();
+  int relbase = snap.relbase();
+
+  // Adjust base pointer if necessary.
+  if (relbase != 0) {
+    if (relbase > 0) {
+      // TODO: Stack check (done after adjusting BASE)
+    }
+    RA_DBGX((this, "<<base += $x words>>", relbase));
+    // TODO: Use LEA?
+    emit_gri(XG_ARITHi(XOg_ADD), RID_BASE|REX_64, relbase * sizeof(Word));
+  }
+
+  for (Snapshot::MapRef se = snap.begin(); se != snap.end(); ++se) {
+    int slot = snapmap->slotId(se);
+    IRRef ref = snapmap->slotRef(se);
+    IR *ins = ir(ref);
+    RegSet allow = kGPR;
+    
+    memstore(RID_BASE, slot * sizeof(Word), ref, allow);
+  }
+}
+
+void Assembler::memstore(Reg base, int32_t ofs, IRRef ref, RegSet allow) {
+  int32_t k;
+  if (irref_islit(ref) && is32BitLiteral(ref, &k)) {
+    storei_u64(base, ofs, k);
+  } else {
+    Reg r = alloc1(ref, allow);
+    store_u64(base, ofs, r);
   }
 }
 

@@ -403,13 +403,15 @@ public:
   /// relative to the base at the start of the trace.
   inline int relbase() const { return relbase_; }
 
+  typedef size_t MapRef;
+
   /// Returns pointer to the first snapshot entry.  Note, that this
   /// pointer is only valid if it is different from the pointer
   /// returned by end().
-  const SnapEntry *begin(SnapshotData *snapmap) const;
+  MapRef begin() const { return mapofs_; }
 
   /// Returns a pointer one past the last entry for this snapshot.
-  const SnapEntry *end(SnapshotData *snapmap) const;
+  MapRef end() const { return mapofs_ + entries_; }
 
   void debugPrint(std::ostream&, SnapshotData *, SnapNo);
 
@@ -432,14 +434,13 @@ private:
 class SnapshotData {
 public:
   SnapshotData();
-private:
-  inline int slotId(size_t index) {
+  inline int slotId(Snapshot::MapRef index) {
     return (int)(data_.at(index) >> 16);
   }
-  inline IRRef1 slotRef(size_t index) {
+  inline IRRef1 slotRef(Snapshot::MapRef index) {
     return (IRRef1)data_.at(index);
   }
-
+private:
   std::vector<uint32_t> data_;
   size_t index_;
 
@@ -447,14 +448,6 @@ private:
   friend class Snapshot;
 };
 
-
-inline const SnapEntry *Snapshot::begin(SnapshotData *snapmap) const {
-  return (SnapEntry*)&snapmap[mapofs_];
-}
-
-inline const SnapEntry *Snapshot::end(SnapshotData *snapmap) const {
-  return (SnapEntry*)&snapmap[mapofs_ + entries_];
-}
 
 
 class AbstractStack {
@@ -597,7 +590,9 @@ public:
   inline void enableOptimisation(int optId) { flags_.set(optId); }
   inline void disableOptimisation(int optId) { flags_.clear(optId); }
 
-  Snapshot &snapshot(void *pc);
+  SnapNo snapshot(void *pc);
+  inline Snapshot &snap(SnapNo n) { return snaps_.at(n - 1); }
+  inline SnapNo numSnapshots() const { return snaps_.size(); }
 
   SnapshotData *snapmap() { return &snapmap_; }
 

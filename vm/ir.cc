@@ -271,11 +271,11 @@ TRef IRBuffer::optCSE() {
   return emit();
 }
 
-Snapshot &IRBuffer::snapshot(void *pc) {
+SnapNo IRBuffer::snapshot(void *pc) {
   Snapshot snap;
   slots_.snapshot(&snap, &snapmap_, bufmax_, pc);
   snaps_.push_back(snap);
-  return snaps_.back();
+  return snaps_.size();
 }
 
 AbstractStack::AbstractStack() {
