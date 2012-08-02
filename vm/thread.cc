@@ -38,7 +38,7 @@ void Thread::initialize(Word stackSizeInWords) {
   base_ = &stack_[3];
   top_ = &stack_[4];
   if (MiscClosures::stg_STOP_closure_addr == NULL) {
-    fprintf(stderr, "FATAL: Memory manager must be initialized "
+    fprintf(stderr, "FATAL: Loader must be initialized "
             "before creating first thread.\n");
     exit(1);
   }

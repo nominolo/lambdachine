@@ -1,6 +1,8 @@
 #include "jit.hh"
 
 #include <iostream>
+#include <string.h>
+
 
 _START_LAMBDACHINE_NAMESPACE
 
@@ -19,6 +21,7 @@ Jit::Jit()
     flags_(), targets_(), fragments_(),
     prng_(), mcode_(&prng_), asm_(this)
 {
+  memset(exitStubGroup_, 0, sizeof(exitStubGroup_));
 }
 
 Jit::~Jit() {

@@ -421,8 +421,15 @@ public:
 
   void assemble(IRBuffer *, MachineCode *);
 
+  typedef uint32_t ExitNo;
+
 private:
+  
+  MCode *generateExitstubGroup(ExitNo group, MachineCode *);
+  void setupExitStubs(ExitNo nexits, MachineCode *mcode);
+  MCode *exitstubAddr(ExitNo);
   void emitSLOAD(IR *);
+  void exitTo(SnapNo);
 
   /// Allocate a register for ref from the allowed set of registers.
   /// 
@@ -458,6 +465,8 @@ public:
 
 private:
   inline Jit *jit() { return jit_; }
+
+  void emit_jmp(MCode *target);
 
   inline void emit_i8(uint8_t i) { *--mcp = (MCode)i; }
   inline void emit_i32(int32_t i) { *(int32_t *)(mcp - 4) = i; mcp -= 4; }

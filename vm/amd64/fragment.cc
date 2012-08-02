@@ -1,15 +1,17 @@
 #include "common.hh"
 #include "jit.hh"
 #include "thread.hh"
+#include "assembler.hh"
+
+#include <iostream>
+
+using namespace std;
 
 _START_LAMBDACHINE_NAMESPACE
 
-#define RID_NUM_FPR 16
-#define RID_NUM_GPR 16
-
-/* This definition must match with the asmEnter/asmExit functions */
+/* This definition must match the asmEnter/asmExit functions */
 struct _ExitState {
-  double   fpr[RID_NUM_FPR];    /* Floating-point registers. */
+  double   fpr[0];    /* Floating-point registers. */
   Word     gpr[RID_NUM_GPR];    /* General-purpose registers. */
   Word     *hplim;              /* Heap Limit */
   Word     *stacklim;           /* Stack Limit */
@@ -19,7 +21,10 @@ struct _ExitState {
 };
 
 extern "C" void LC_USED
-exitTrace(ExitNo n, ExitState* s) {
+exitTrace(ExitNo n, ExitState *s) {
+  cerr << "Exited trace at: " << (int)n << endl;
+  cerr << "NYI: exit trace" << endl;
+  //  exit(2);
   // restoreSnapshot(n, s);
 }
 
@@ -62,7 +67,7 @@ asmEnterIsImplementedInAssembly(Fragment *F, Thread *T, Word *spillArea,
     "movq %%rsi,%%rbp\n\t"   /* rbp = &T         :: (Thread *)*/
     "addq %1,%%rbp\n\t"      /* rbp = &T.base    :: (Word **) */
     "movq (%%rbp),%%rbp\n\t" /* rbp = base       :: (Word *)  */
-    "subq %2,%%rbp\n\t"      /* rbp = T->base - 1:: (Word *)  */
+    //    "subq %2,%%rbp\n\t"      /* rbp = T->base - 1:: (Word *)  */
 
     /* load heap pointer */
     "movq %%rcx,%%r12\n\t"   /* r12 = hp */

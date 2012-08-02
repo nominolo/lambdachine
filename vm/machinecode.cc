@@ -114,8 +114,15 @@ void MachineCode::allocArea() {
 
 void MachineCode::commit(MCode *top) {
   LC_ASSERT(top <= (char*)area_ + size_);
+  LC_ASSERT(bottom_ <= top);
   top_ = top;
   protect(MCPROT_RUN);
+}
+
+void MachineCode::commitStub(MCode *bot) {
+  LC_ASSERT(bot >= bottom_);
+  LC_ASSERT(bot <= top_);
+  bottom_ = bot;
 }
 
 void MachineCode::abort() {
@@ -154,10 +161,12 @@ void MachineCode::syncCache(void *start, void *end) {
 
 
 void MachineCode::dumpAsm(ostream &out) {
-  MCode *p = start();
-  MCode *to = end();
-  
   out << ".text\ndump:\n";
+  dumpAsm(out, start(), end());
+}
+
+void MachineCode::dumpAsm(ostream &out, MCode *from, MCode *to) {
+  MCode *p = from;
   for ( ; p < to; ++p) {
     out << "\t.byte 0x" << hex << (int)(uint8_t)*p << dec << endl;
   }

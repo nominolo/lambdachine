@@ -88,15 +88,24 @@ public:
   //
   // @param top E
   void commit(MCode *top);
+  void commitStub(MCode *bot);
   void abort();
 
   // Synchronise data and instruction cache.
   void syncCache(void *start, void *end);
 
+  /// Compiled fragment code is in the range. [start()-end()]
   inline MCode *start() const { return top_; }
   inline MCode *end() const { return (MCode*)((char*)area_ + size_); }
 
+  /// Stub code is in the range [stubStart()-stubEnd()].
+  ///
+  /// INVARIANT: stubEnd() < start().
+  inline MCode *stubStart() const { return area_; }
+  inline MCode *stubEnd() const { return bottom_; }
+
   void dumpAsm(std::ostream &out);
+  void dumpAsm(std::ostream &out, MCode *from, MCode *to);
 
 private:
   void *alloc(size_t size);
@@ -165,6 +174,7 @@ private:
   MachineCode mcode_;
   IRBuffer buf_;
   Assembler asm_;
+  MCode *exitStubGroup_[16];
 
   void genCode(IRBuffer *buf);
   void genCode(IRBuffer *buf, IR *ir);

@@ -1038,6 +1038,16 @@ TEST_F(RegAlloc, Simple1) {
   as.assemble(jit->buffer(), jit->mcode());
   buf->debugPrint(cerr, 1);
   Dump();
+
+  Word spill[10];
+  MemoryManager mm;
+  Loader l(&mm, "tests");
+  Thread *T = Thread::createThread(NULL, 20);
+  Word *base = T->base();
+  base[0] = 4;
+  asmEnter(NULL, T, spill, NULL, NULL, T->stackLimit(), jit->mcode()->start());
+  cout << base[0] << endl;
+  //  asmEnter(NULL, 
 }
 
 int main(int argc, char *argv[]) {

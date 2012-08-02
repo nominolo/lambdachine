@@ -3,6 +3,7 @@
 #include "ir-inl.hh"
 
 #include <iostream>
+#include <fstream>
 
 #define MCLIM_REDZONE	64
 
@@ -11,6 +12,12 @@
 _START_LAMBDACHINE_NAMESPACE
 
 using namespace std;
+
+static inline int32_t jmprel(MCode *p, MCode *target) {
+  ptrdiff_t delta = target - p;
+  LC_ASSERT(delta == (int32_t)delta);
+  return (int32_t)delta;
+}
 
 Assembler::Assembler(Jit *J) {
   jit_ = J;
@@ -520,6 +527,7 @@ void Assembler::assemble(IRBuffer *buf, MachineCode *mcode) {
 
   setup(buf);
   setupMachineCode(mcode);
+  setupExitStubs(buf->numSnapshots() + 500, mcode);
 
   curins_ = nins_;
   IRRef stopins = REF_BASE;
@@ -590,10 +598,15 @@ void Assembler::snapshotAlloc(Snapshot &snap, SnapshotData *snapmap) {
 }
 
 void Assembler::save(IR *ins) {
+  LC_ASSERT(ins->opcode() == IR::kSAVE);
   SnapNo snapno = ins->op1();
+  int loop = ins->op2(); // A boolean really.
   Snapshot &snap = buf_->snap(snapno);
   SnapshotData *snapmap = buf_->snapmap();
   int relbase = snap.relbase();
+
+  if (!loop)
+    exitTo(snapno);
 
   // Adjust base pointer if necessary.
   if (relbase != 0) {
@@ -615,6 +628,18 @@ void Assembler::save(IR *ins) {
   }
 }
 
+void Assembler::emit_jmp(MCode *target) {
+  MCode *p = mcp;
+  *(int32_t*)(p - 4) = jmprel(p, target);
+  p[-5] = XI_JMP;
+  mcp = p - 5;
+}
+
+void Assembler::exitTo(SnapNo snapno) {
+  MCode *target = exitstubAddr(snapno - 1);
+  emit_jmp(target);
+}
+
 void Assembler::memstore(Reg base, int32_t ofs, IRRef ref, RegSet allow) {
   int32_t k;
   if (irref_islit(ref) && is32BitLiteral(ref, &k)) {
@@ -622,6 +647,81 @@ void Assembler::memstore(Reg base, int32_t ofs, IRRef ref, RegSet allow) {
   } else {
     Reg r = alloc1(ref, allow);
     store_u64(base, ofs, r);
+  }
+}
+
+#define EXITSTUBS_PER_GROUP 32
+#define EXITSTUB_SPACING    (2+2)
+
+MCode *Assembler::exitstubAddr(ExitNo exitno) {
+  // Cast to char because we're calculating in bytes.
+  char **group = (char**)jit_->exitStubGroup_;
+  LC_ASSERT(group[exitno / EXITSTUBS_PER_GROUP] != NULL);
+  return (MCode*)(group[exitno / EXITSTUBS_PER_GROUP] +
+                  EXITSTUB_SPACING * (exitno % EXITSTUBS_PER_GROUP));
+}
+
+MCode *Assembler::generateExitstubGroup(ExitNo group, MachineCode *mcode) {
+  ExitNo i;
+  ExitNo groupofs = (group * EXITSTUBS_PER_GROUP) & 0xff;
+  MCode *mxp = mcbot;
+  MCode *mxpstart = mxp;
+  if (mxp + (2+2) * EXITSTUBS_PER_GROUP + 8 + 5 >= mctop) {
+    cerr << "NYI: Overflow when generating exit stubs." << endl;
+    exit(2);
+  }
+  // For each ExitNo in the group generate:
+  //     push $(exitno)   // 8-bit immediate
+  //     jmp END      // 8-bit offset
+  *mxp++ = XI_PUSHi8; *mxp++ = (MCode)groupofs;  // groupofs + 0
+  for (i = 1; i < EXITSTUBS_PER_GROUP; i++) {
+    // Branch for the previous exitno
+    *mxp++ = XI_JMPs; *mxp++ = (MCode)((2+2)*(EXITSTUBS_PER_GROUP - i) - 2);
+    // The next exitno.
+    *mxp++ = XI_PUSHi8; *mxp++ = (MCode)(groupofs + i);
+  }
+  // We don't need a jump for the final exit in the group.  It's just
+  // a fall-through.
+  
+  // This is where where the END label occurs.
+
+  // Push the high byte of the exit no.
+  *mxp++ = XI_PUSHi8; *mxp++ = (MCode)((group*EXITSTUBS_PER_GROUP)>>8);
+  
+  // Jump (relative) to exit handler.
+  *mxp++ = XI_JMP;
+  mxp += 4;   // The jump is relative to the *end* of the instruction.
+  *((int32_t *)(mxp - 4)) = jmprel(mxp, (MCode*)(void *)asmExit);
+  
+  // Commit code for this group (even if assembly fails later on).
+  mcode->commitStub(mxp);
+  mcbot = mxp;
+  mclim = mcbot + MCLIM_REDZONE;
+
+  return mxpstart;
+}
+
+void Assembler::setupExitStubs(ExitNo nexits, MachineCode *mcode) {
+  ExitNo i;
+  if (nexits >= EXITSTUBS_PER_GROUP * 16) {
+    cerr << "FATAL: Too many exit stubs!" << endl;
+    exit(3);
+  }
+  ExitNo ngroups = (nexits + EXITSTUBS_PER_GROUP + 1) / EXITSTUBS_PER_GROUP;
+  for (i = 0; i < ngroups; ++i) {
+    if (jit_->exitStubGroup_[i] == NULL) {
+      jit_->exitStubGroup_[i] = generateExitstubGroup(i, mcode);
+      if (true) {
+        MCode *start = jit_->exitStubGroup_[i];
+        MCode *end = mcode->stubEnd();
+        ios_base::openmode mode = (i == 0) ? ios_base::trunc : ios_base::app;
+        ofstream out;
+        out.open("dump_exitstubs.s", ios_base::out | mode);
+        out << ".text\n" "stub_group_" << (int)i << ":\n";
+        mcode->dumpAsm(out, start, end);
+        out.close();
+      }
+    }
   }
 }
 
