@@ -550,7 +550,7 @@ void Assembler::assemble(IRBuffer *buf, MachineCode *mcode) {
 
   curins_ = nins_;
   IRRef stopins = REF_BASE;
-  snapno_ = buf->numSnapshots();
+  snapno_ = buf->numSnapshots() - 1;
   for (curins_--; curins_ > stopins; curins_--) {
     IR *ins = ir(curins_);
     if (ins->isGuard()) {
@@ -671,7 +671,7 @@ void Assembler::snapshotAlloc(Snapshot &snap, SnapshotData *snapmap) {
 
 void Assembler::save(IR *ins) {
   LC_ASSERT(ins->opcode() == IR::kSAVE);
-  SnapNo snapno = ins->op1();
+  SnapNo snapno = snapno_;
   int loop = ins->op2(); // A boolean really.
   Snapshot &snap = buf_->snap(snapno);
   SnapshotData *snapmap = buf_->snapmap();
@@ -708,7 +708,7 @@ void Assembler::emit_jmp(MCode *target) {
 }
 
 void Assembler::exitTo(SnapNo snapno) {
-  MCode *target = exitstubAddr(snapno - 1);
+  MCode *target = exitstubAddr(snapno);
   emit_jmp(target);
 }
 

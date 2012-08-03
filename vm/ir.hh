@@ -589,14 +589,16 @@ public:
 
   inline void enableOptimisation(int optId) { flags_.set(optId); }
   inline void disableOptimisation(int optId) { flags_.clear(optId); }
-
+  
+  void snapshot(IRRef ref, void *pc);
   SnapNo snapshot(void *pc);
-  inline Snapshot &snap(SnapNo n) { return snaps_.at(n - 1); }
+  inline Snapshot &snap(SnapNo n) { return snaps_.at(n); }
   inline SnapNo numSnapshots() const { return snaps_.size(); }
 
   SnapshotData *snapmap() { return &snapmap_; }
 
   inline bool regsAllocated() { return flags_.get(kRegsAllocated); }
+  inline void setPC(void *pc) { pc_ = pc; }
 private:
   inline void setRegsAllocated() { flags_.set(kRegsAllocated); }
 
@@ -616,6 +618,7 @@ private:
     return &fold_.ins;
   }
 
+  void *pc_;                    // Current PC
   IR *realbuffer_;
   IR *buffer_;  // biased
   Flags32 flags_;

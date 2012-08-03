@@ -1236,7 +1236,6 @@ TEST_F(RegAlloc, SnapTwice) {
   
   for (int i = 0; i < 16; ++i)
     buf->setSlot(i, t[i]);
-  SnapNo snap1 = buf->snapshot(NULL);
   buf->emit(IR::kLT, IRT_I64|IRT_GUARD, s[0], l1);
   
   TRef u[16];
@@ -1246,7 +1245,6 @@ TEST_F(RegAlloc, SnapTwice) {
 
   for (int i = 0; i < 16; ++i)
     buf->setSlot(i, u[i]);
-  SnapNo snap2 = buf->snapshot(NULL);
   buf->emit(IR::kLT, IRT_I64|IRT_GUARD, s[1], l1);
 
   TRef v[4];
@@ -1267,17 +1265,13 @@ TEST_F(RegAlloc, SnapTwice) {
   buf->setSlot(0, z);
   buf->setSlot(1, x[0]);
   buf->setSlot(2, x[1]);
-  SnapNo snap3 = buf->snapshot(NULL);
-  buf->emit(IR::kSAVE, IRT_VOID|IRT_GUARD, snap3, 0);
+  buf->emit(IR::kSAVE, IRT_VOID|IRT_GUARD, 0, 0);
 
   Word s0 = 10, s1 = 100, s2 = 1000, s3 = 10000;
   Word *base = Run(s0, s1, s2, s3);
 
   EXPECT_EQ((s0 + s1) + (s2 + s3), base[0]);
   buf->debugPrint(cerr, 1);
-  buf->snap(snap1).debugPrint(cerr, buf->snapmap(), snap1);
-  buf->snap(snap2).debugPrint(cerr, buf->snapmap(), snap2);
-  buf->snap(snap3).debugPrint(cerr, buf->snapmap(), snap3);
   Dump();
 }
 

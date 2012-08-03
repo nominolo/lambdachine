@@ -95,12 +95,12 @@ static inline void print_reg(ostream &out, Reg r, IRType ty) {
     out << ' ' << setfill(' ') << setw(5) << left
         << IR::regName(r, ty);
   } else
-    out << "      ";
+    out << " -    ";
 }
 
 static inline void print_spill(ostream &out, uint8_t sp) {
   if (sp != 0) {
-    out << '[' << setfill(' ') << setw(2) << left << (int)sp << ']';
+    out << '[' << setfill(' ') << setw(2) << right << (int)sp << ']';
   } else
     out << "    ";
 }
@@ -124,10 +124,18 @@ void IR::debugPrint(ostream &out, IRRef self, IRBuffer *buf, bool regs) {
 }
 
 void IRBuffer::debugPrint(ostream &out, int traceNo) {
+  SnapNo snapno = 0;
   out << "---- TRACE " << right << setw(4) << setfill('0') << traceNo 
       << " IR -----------" << endl;
   for (IRRef ref = bufmin_; ref < bufmax_; ++ref) {
-    ir(ref)->debugPrint(out, ref, this, regsAllocated());
+    IR *ins = ir(ref);
+    if (ins->isGuard()) {
+      Snapshot &sn = snap(snapno);
+      LC_ASSERT(sn.ref() == ref);
+      sn.debugPrint(out, snapmap(), snapno);
+      ++snapno;
+    }
+    ins->debugPrint(out, ref, this, regsAllocated());
   }
 }
 
@@ -195,6 +203,9 @@ TRef IRBuffer::emit() {
   ir1->setOp2(fold_.ins.op2());
   IR::Type t = fold_.ins.t();
   ir1->setT(t);
+
+  if (t & IRT_GUARD)
+    snapshot(ref, pc_);
 
   return TRef(ref, t);
 }
@@ -277,11 +288,15 @@ TRef IRBuffer::optCSE() {
   return emit();
 }
 
-SnapNo IRBuffer::snapshot(void *pc) {
+void IRBuffer::snapshot(IRRef ref, void *pc) {
   Snapshot snap;
-  slots_.snapshot(&snap, &snapmap_, bufmax_, pc);
+  slots_.snapshot(&snap, &snapmap_, ref, pc);
   snaps_.push_back(snap);
-  return snaps_.size();
+}
+
+SnapNo IRBuffer::snapshot(void *pc) {
+  snapshot(bufmax_, pc);
+  return snaps_.size() - 1;
 }
 
 AbstractStack::AbstractStack() {
@@ -348,12 +363,14 @@ void Snapshot::debugPrint(ostream &out, SnapshotData *snapmap, SnapNo snapno) {
   unsigned int ofs = mapofs_;
   int entries = entries_;
 
-  out << "SNAP #" << snapno << " [";
+  out << "  SNAP #" << snapno << " [";
 
   if (entries > 0) {
     int slotid = snapmap->slotId(ofs);
     bool printslotid = true;
+    bool nl = false;
     for ( ; entries > 0; ++slotid) {
+      if (nl) out << "\n           ";
       if (printslotid)
         out << COL_BLUE << slotid << ':' << COL_RESET;
       if (snapmap->slotId(ofs) == slotid) {
@@ -365,6 +382,7 @@ void Snapshot::debugPrint(ostream &out, SnapshotData *snapmap, SnapNo snapno) {
       }
       if (entries > 0) out << ' ';
       printslotid = (slotid % 4) == 3;
+      nl = (slotid % 8) == 7;
     }
   }
   out << ']' << endl;
