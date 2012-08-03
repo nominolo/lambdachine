@@ -90,22 +90,28 @@ static void printArg(ostream &out, uint8_t mode, uint16_t op, IR *ir, IRBuffer *
   }
 }
 
+static inline void print_reg(ostream &out, Reg r, IRType ty) {
+  if (isReg(r)) {
+    out << ' ' << setfill(' ') << setw(5) << left
+        << IR::regName(r, ty);
+  } else
+    out << "      ";
+}
+
+static inline void print_spill(ostream &out, uint8_t sp) {
+  if (sp != 0) {
+    out << '[' << setfill(' ') << setw(2) << left << (int)sp << ']';
+  } else
+    out << "    ";
+}
+
 void IR::debugPrint(ostream &out, IRRef self, IRBuffer *buf, bool regs) {
   IR::Opcode op = opcode();
   uint8_t ty = type();
   IR::printIRRef(out, self);
   if (regs) {
-    if (isReg(reg())) {
-      out << ' ' << setfill(' ') << setw(5) << left
-          << IR::regName(reg(), type());
-    } else {
-      int sp = spill();
-      if (sp == 0) {
-        out << " -    ";
-      } else {
-        out << " [" << setfill(' ') << setw(3) << left << 8 * sp << ']';
-      }
-    }
+    print_reg(out, reg(), type());
+    print_spill(out, spill());
   }
   out << "    "; // TODO: flags go here
   out << tycolorcode[tycolor[ty]];
@@ -180,7 +186,7 @@ TRef IRBuffer::emit() {
   IRRef ref = nextIns();
   IR *ir1 = ir(ref);
   IR::Opcode op = fold_.ins.opcode();
-
+  
   ir1->setPrev(chain_[op]);
   chain_[op] = (IRRef1)ref;
 

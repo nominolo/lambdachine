@@ -310,6 +310,16 @@ typedef enum {
 
 #define MODRM(mode, r1, r2)	((MCode)((mode)+(((r1)&7)<<3)+((r2)&7)))
 
+/* x86 condition codes. */
+typedef enum {
+  CC_O, CC_NO, CC_B, CC_NB, CC_E, CC_NE, CC_BE, CC_NBE,
+  CC_S, CC_NS, CC_P, CC_NP, CC_L, CC_NL, CC_LE, CC_NLE,
+  CC_C = CC_B, CC_NAE = CC_C, CC_NC = CC_NB, CC_AE = CC_NB,
+  CC_Z = CC_E, CC_NZ = CC_NE, CC_NA = CC_BE, CC_A = CC_NBE,
+  CC_PE = CC_P, CC_PO = CC_NP, CC_NGE = CC_L, CC_GE = CC_NL,
+  CC_NG = CC_LE, CC_G = CC_NLE
+} x86CC;
+
 #define FORCE_REX		0x200
 #define REX_64			(FORCE_REX|0x080000)
 
@@ -465,6 +475,8 @@ public:
 
 private:
   inline Jit *jit() { return jit_; }
+  void compare(IR *ins, int cc);
+  void guardcc(int);
 
   void emit_jmp(MCode *target);
 
@@ -504,6 +516,7 @@ private:
 
   void emit_mrm(x86Op xo, Reg rr, Reg rb);
   void emit_gri(x86Group xg, Reg rb, int32_t i);
+  void emit_gmrmi(x86Group xg, Reg rb, int32_t i);
 
   MCode *mcend;  // End of generated machine code.
   MCode *mcp;   // Current MCode pointer (grows down).

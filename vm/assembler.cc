@@ -185,6 +185,20 @@ void Assembler::emit_gri(x86Group xg, Reg rb, int32_t i)
   mcp = emit_opm(xo, XM_REG, (Reg)(xg & 7) | (rb & REX_64), rb, p, 0);
 }
 
+/* op rm/mrm, i */
+void Assembler::emit_gmrmi(x86Group xg, Reg rb, int32_t i) {
+  x86Op xo;
+  if (checki8(i)) {
+    emit_i8(i);
+    xo = XG_TOXOi8(xg);
+  } else {
+    emit_i32(i);
+    xo = XG_TOXOi(xg);
+  }
+  emit_mrm(xo, (Reg)(xg & 7) | (rb & REX_64), (rb & ~REX_64));
+}
+
+
 void Assembler::move(Reg dst, Reg src) {
   if (dst < RID_MAX_GPR) {
     emit_rr(XO_MOV, REX_64|dst, REX_64|src);
@@ -301,7 +315,7 @@ int32_t Assembler::spill(IR *ins) {
     }
     ins->setSpill(slot);
   }
-  return slot * 8;  // FIXME: hardcoded constant
+  return (256 + slot) * 8;  // FIXME: hardcoded constant
 }
 
 Reg Assembler::restoreReg(IRRef ref) {
@@ -314,7 +328,9 @@ Reg Assembler::restoreReg(IRRef ref) {
     LC_ASSERT(isReg(r));
     setHint(ins, r);  // Keep hint.
     freeReg(r);
-    store_u64(RID_BASE, ofs, r);
+    RA_DBGX((this, "restore   $i $r", ins, r));
+    load_u64(r, RID_BASE, ofs);
+    //    store_u64(RID_BASE, ofs, r);
     return r;
   }
 }
@@ -329,10 +345,12 @@ Reg Assembler::evictReg(RegSet allow) {
   IRRef ref;
   RegCost cost = kMaxCost;
   LC_ASSERT(!allow.isEmpty());
-  if (allow.raw() < RID_MAX_GPR) {
+  if (allow.raw() < (1 << RID_MAX_GPR)) {
     // Unrolled linear search for register with smallest cost.
     GPRDEF(MINCOST);
   } else {
+    cerr << "Trying to evict FP regs. (allow="
+         << hex << allow.raw() << ", max_gpr=" << RID_MAX_GPR << ')' << endl;
     exit(13);
   }
   ref = cost.ref();
@@ -398,7 +416,8 @@ Reg Assembler::destReg(IR *ins, RegSet allow) {
 }
 
 void Assembler::saveReg(IR *ins, Reg r) {
-  store_u64(RID_BASE, 8 * ins->spill(), r);
+  RA_DBGX((this, "save      $i $r", ins, r));
+  store_u64(RID_BASE, 8 * (256 + ins->spill()), r);
 }
 
 Reg Assembler::allocScratchReg(RegSet allow) {
@@ -536,11 +555,17 @@ void Assembler::assemble(IRBuffer *buf, MachineCode *mcode) {
     IR *ins = ir(curins_);
     if (ins->isGuard()) {
       Snapshot &snap = buf->snap(snapno_);
+      if (snap.ref() != curins_) {
+        cout << "snap.ref = " << snap.ref() - REF_BIAS
+             << " curins_ = " << curins_ - REF_BIAS << endl;
+      }
       LC_ASSERT(snap.ref() == curins_);
-      snapshotAlloc(snap, buf->snapmap());
+      if (ins->opcode() != IR::kSAVE)
+        snapshotAlloc(snap, buf->snapmap());
+      emit(ins);
       --snapno_;
-    }
-    emit(ins);
+    } else
+      emit(ins);
   }
 
   evictConstants();
@@ -561,11 +586,56 @@ void Assembler::emitSLOAD(IR *ins) {
   load_u64(dst, base, ofs);
 }
 
+#define COMPFLAGS(cs, cu)  ((cs)+((cu)<<4))
+static const uint16_t asm_compmap[IR::kNE - IR::kLT + 1] = {
+  /*                signed, unsigned */  
+  /* LT */ COMPFLAGS(CC_GE,  CC_AE),
+  /* GE */ COMPFLAGS(CC_L,   CC_B),
+  /* LE */ COMPFLAGS(CC_G,   CC_A),
+  /* GT */ COMPFLAGS(CC_LE,  CC_BE),
+  /* EQ */ COMPFLAGS(CC_NE,  CC_NE),
+  /* NE */ COMPFLAGS(CC_E,   CC_E)
+};
+
+void Assembler::guardcc(int cc) {
+  MCode *target = exitstubAddr(snapno_);
+  MCode *p = mcp;
+  *(int32_t *)(p - 4) = jmprel(p, target);
+  p[-5] = (MCode)(XI_JCCn+(cc&15));
+  p[-6] = 0x0f;
+  mcp = p - 6;
+}
+
+void Assembler::compare(IR *ins, int cc) {
+  IRRef lref = ins->op1(), rref = ins->op2();
+  int32_t imm = 0;
+
+  Reg left = alloc1(lref, kGPR);
+  if (is32BitLiteral(rref, &imm)) {
+    guardcc(cc);
+    emit_gmrmi(XG_ARITHi(XOg_CMP), left|REX_64, imm);
+  } else {
+    Reg right = alloc1(rref, kGPR);
+    guardcc(cc);
+    emit_mrm(XO_CMP, left|REX_64, right|REX_64);
+  }
+}
+
 void Assembler::emit(IR *ins) {
   switch (ins->opcode()) {
   case IR::kSLOAD: emitSLOAD(ins); break;
   case IR::kADD:   intArith(ins, XOg_ADD); break;
   case IR::kSAVE:  save(ins); break;
+  case IR::kLT: case IR::kGE:
+  case IR::kLE: case IR::kGT:
+  case IR::kEQ: case IR::kNE:
+    { int idx = (int)ins->opcode() - (int)IR::kLT;
+      LC_ASSERT(idx >= 0 && idx < countof(asm_compmap));
+      LC_ASSERT(buf_->snap(snapno_).ref() == curins_);
+      LC_ASSERT(ir(curins_) == ins);
+      compare(ins, asm_compmap[idx] & 15);
+      break;
+    }
   default:
     cerr << "NYI: codegen for ";
     ins->debugPrint(cerr, REF_BIAS + (IRRef1)(ins - ir_));
@@ -580,8 +650,10 @@ void Assembler::snapshotAlloc1(IRRef ref) {
     RegSet allow = kGPR;
     if (!freeset_.intersect(allow).isEmpty()) {
       allocRef(ref, allow);
+      RA_DBGX((this, "snapreg   $f $r", ref, ins->reg()));
     } else {
       spill(ins);
+      RA_DBGX((this, "snapspill $f $s", ref, ins->spill()));
     }
   }
 }

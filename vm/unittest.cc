@@ -988,20 +988,67 @@ protected:
   IRBuffer *buf;
   Jit *jit;
   Word *stack;
+  Word *spill;
+  Assembler *as;
+  MemoryManager *mm;
+  Loader *loader;
+  Thread *T;
 protected:
   virtual void SetUp() {
     stack = new Word[256];
     jit = new Jit();
     buf = jit->buffer();
-    buf->reset(&stack[11], &stack[18]);
+    buf->reset(&stack[11], &stack[108]);
     buf->disableOptimisation(IRBuffer::kOptFold);
+    as = NULL;
+    mm = NULL;
+    loader = NULL;
+    T = NULL;
+    spill = NULL;
   }
   virtual void TearDown() {
     buf = NULL;
-    if (stack) delete[] stack;
-    stack = NULL;
-    if (jit) delete jit;
-    jit = NULL;
+    if (stack) delete[] stack;  stack = NULL;
+    if (spill) delete[] spill;  spill = NULL;
+    if (jit) delete jit;  jit = NULL;
+    if (as) delete as;  as = NULL;
+    if (T) delete T;  T = NULL;
+    if (loader) delete loader;  loader = NULL;
+    if (mm) delete mm;  mm = NULL;
+  }
+  void Compile() {
+    buf->debugPrint(cerr, 1);
+    as = new Assembler(jit);
+    as->setup(buf);
+    as->assemble(jit->buffer(), jit->mcode());
+  }
+  Word *SetupThread() {
+    spill = new Word[255];
+    mm = new MemoryManager();
+    loader = new Loader(mm, "tests");
+    T = Thread::createThread(NULL, 20);
+    return T->base();
+  }
+  Word *RunAsm() {
+    Word *base = T->base();
+    asmEnter(NULL, T, spill, NULL, NULL, T->stackLimit(), jit->mcode()->start());
+    return base;
+  }
+  virtual Word *Run(Word arg1, Word arg2) {
+    Compile();
+    Word *base = SetupThread();    
+    base[0] = arg1;
+    base[1] = arg2;
+    return RunAsm();
+  }
+  virtual Word *Run(Word arg1, Word arg2, Word arg3, Word arg4) {
+    Compile();
+    Word *base = SetupThread();    
+    base[0] = arg1;
+    base[1] = arg2;
+    base[2] = arg3;
+    base[3] = arg4;
+    return RunAsm();
   }
 
   void Dump() {
@@ -1028,26 +1075,210 @@ TEST_F(RegAlloc, Simple1) {
   TRef tr3 = buf->emit(IR::kADD, IRT_I64, tr1, tr2);
   TRef tr4 = buf->emit(IR::kADD, IRT_I64, tr3, tr2);
   buf->setSlot(0, tr4);
+  buf->setSlot(1, tr2);
   SnapNo snapno = buf->snapshot(NULL);
-  buf->snap(snapno).debugPrint(cerr, buf->snapmap(), snapno);
+  //  buf->snap(snapno).debugPrint(cerr, buf->snapmap(), snapno);
   buf->emit(IR::kSAVE, IRT_VOID, snapno, 0);
 
-  Assembler as(jit);
-  as.setup(buf);
+  Word *base = Run(7, 0);
 
-  as.assemble(jit->buffer(), jit->mcode());
+  EXPECT_EQ(1234 + 1234 + 7, base[0]);
+  EXPECT_EQ(1234, base[1]);
   buf->debugPrint(cerr, 1);
   Dump();
+}
 
-  Word spill[10];
-  MemoryManager mm;
-  Loader l(&mm, "tests");
-  Thread *T = Thread::createThread(NULL, 20);
-  Word *base = T->base();
-  base[0] = 4;
-  asmEnter(NULL, T, spill, NULL, NULL, T->stackLimit(), jit->mcode()->start());
-  cout << base[0] << endl;
-  //  asmEnter(NULL, 
+TEST_F(RegAlloc, Simple2) {
+  Word lit = 0x500001234;
+  TRef tr1 = buf->slot(0);
+  TRef tr2 = buf->literal(IRT_I64, lit);
+  TRef tr3 = buf->emit(IR::kADD, IRT_I64, tr1, tr2);
+  TRef tr4 = buf->emit(IR::kADD, IRT_I64, tr3, tr2);
+  buf->setSlot(0, tr4);
+  buf->setSlot(1, tr2);
+  SnapNo snapno = buf->snapshot(NULL);
+  //  buf->snap(snapno).debugPrint(cerr, buf->snapmap(), snapno);
+  buf->emit(IR::kSAVE, IRT_VOID, snapno, 0);
+
+  Word *base = Run(7, 0);
+
+  EXPECT_EQ(lit + lit + 7, base[0]);
+  EXPECT_EQ(lit, base[1]);
+  buf->debugPrint(cerr, 1);
+  Dump();
+}
+
+TEST_F(RegAlloc, Simple3) {
+  Word lit1 = 0x500001234;
+  Word lit2 = 0x500001236;
+  TRef tr1 = buf->slot(0);
+  TRef tr2 = buf->literal(IRT_I64, lit1);
+  TRef tr3 = buf->emit(IR::kADD, IRT_I64, tr1, tr2);
+  TRef tr4 = buf->literal(IRT_I64, lit2);
+  TRef tr5 = buf->emit(IR::kADD, IRT_I64, tr3, tr4);
+  buf->setSlot(0, tr5);
+  buf->setSlot(1, tr2);
+  buf->setSlot(2, tr4);
+  SnapNo snapno = buf->snapshot(NULL);
+  //  buf->snap(snapno).debugPrint(cerr, buf->snapmap(), snapno);
+  buf->emit(IR::kSAVE, IRT_VOID, snapno, 0);
+
+  Word *base = Run(7, 0);
+
+  EXPECT_EQ(lit1 + lit2 + 7, base[0]);
+  EXPECT_EQ(lit1, base[1]);
+  EXPECT_EQ(lit2, base[2]);
+  buf->debugPrint(cerr, 1);
+  Dump();
+}
+
+TEST_F(RegAlloc, Simple4) {
+  TRef tr1 = buf->slot(0);
+  TRef tr2 = buf->literal(IRT_I64, 1234);
+  TRef tr3 = buf->emit(IR::kADD, IRT_I64, tr1, tr2);
+  TRef tr4 = buf->emit(IR::kADD, IRT_I64, tr3, tr2);
+  buf->setSlot(0, tr4);
+  buf->setSlot(1, tr2);
+  buf->setSlot(2, tr1);
+  buf->setSlot(3, tr3);
+  SnapNo snapno = buf->snapshot(NULL);
+  //  buf->snap(snapno).debugPrint(cerr, buf->snapmap(), snapno);
+  buf->emit(IR::kSAVE, IRT_VOID, snapno, 0);
+
+  Word *base = Run(7, 0);
+
+  EXPECT_EQ(1234 + 1234 + 7, base[0]);
+  EXPECT_EQ(1234, base[1]);
+  EXPECT_EQ(7, base[2]);
+  EXPECT_EQ(1234 + 7, base[3]);
+  buf->debugPrint(cerr, 1);
+  Dump();
+}
+
+TEST_F(RegAlloc, ManyRegs) {
+  Word lit1 = 0x100000000 + 1234;
+  Word lit2 = 0x100000000 + 8642;
+  TRef l1 = buf->literal(IRT_I64, lit1);
+  TRef l2 = buf->literal(IRT_I64, lit2);
+  TRef a = buf->slot(0);
+  TRef b = buf->slot(1);
+  TRef c = buf->slot(2);
+  TRef d = buf->slot(3);
+  TRef e = buf->emit(IR::kADD, IRT_I64, a, b);
+  TRef f = buf->emit(IR::kADD, IRT_I64, a, c);
+  TRef g = buf->emit(IR::kADD, IRT_I64, a, d);
+  TRef h = buf->emit(IR::kADD, IRT_I64, b, c);
+  TRef i = buf->emit(IR::kADD, IRT_I64, b, d);
+  TRef j = buf->emit(IR::kADD, IRT_I64, c, d);
+  TRef k = buf->emit(IR::kADD, IRT_I64, a, e);
+  TRef l = buf->emit(IR::kADD, IRT_I64, a, f);
+  TRef m = buf->emit(IR::kADD, IRT_I64, a, g);
+  TRef n = buf->emit(IR::kADD, IRT_I64, a, i);
+
+  buf->setSlot(0, n);
+  buf->setSlot(1, m);
+  buf->setSlot(2, l);
+  buf->setSlot(3, k);
+  buf->setSlot(4, j);
+  buf->setSlot(5, i);
+  buf->setSlot(6, h);
+  buf->setSlot(7, g);
+  buf->setSlot(8, f);
+  buf->setSlot(9, e);
+  // buf->setSlot(10, l1);
+  // buf->setSlot(11, l2);
+  buf->setSlot(12, a);
+  buf->setSlot(13, b);
+  buf->setSlot(14, c);
+  buf->setSlot(15, d);
+  SnapNo snapno = buf->snapshot(NULL);
+  buf->emit(IR::kSAVE, IRT_VOID, snapno, 0);
+
+  Word s0 = 10, s1 = 100, s2 = 1000, s3 = 10000;
+  Word *base = Run(s0, s1, s2, s3);
+
+  EXPECT_EQ(s0 + s1 + s3, base[0]);
+  EXPECT_EQ(s0 + s0 + s3, base[1]);
+  EXPECT_EQ(s0 + s0 + s2, base[2]);
+  EXPECT_EQ(s0 + s0 + s1, base[3]);
+  EXPECT_EQ(s2 + s3, base[4]);
+  EXPECT_EQ(s1 + s3, base[5]);
+  EXPECT_EQ(s1 + s2, base[6]);
+  EXPECT_EQ(s0 + s3, base[7]);
+  EXPECT_EQ(s0 + s2, base[8]);
+  EXPECT_EQ(s0 + s1, base[9]);
+  EXPECT_EQ(s0, base[12]);
+  EXPECT_EQ(s1, base[13]);
+  EXPECT_EQ(s2, base[14]);
+  EXPECT_EQ(s3, base[15]);
+  // EXPECT_EQ(1234, base[1]);
+  // EXPECT_EQ(7, base[2]);
+  // EXPECT_EQ(1234 + 7, base[3]);
+  buf->debugPrint(cerr, 1);
+  buf->snap(snapno).debugPrint(cerr, buf->snapmap(), snapno);
+  Dump();
+}
+
+TEST_F(RegAlloc, SnapTwice) {
+  Word lit1 = 0x50001234;
+  Word lit2 = 0x50001236;
+  TRef l1 = buf->literal(IRT_I64, lit1);
+  TRef l2 = buf->literal(IRT_I64, lit2);
+
+  TRef s[4];
+  for (int i = 0; i < 4; ++i)
+    s[i] = buf->slot(i);
+
+  TRef t[16];
+  for (int i = 0; i < 4; ++i)
+    for (int j = 0; j < 4; ++j)
+      t[i * 4 + j] = buf->emit(IR::kADD, IRT_I64, s[i], s[j]);
+  
+  for (int i = 0; i < 16; ++i)
+    buf->setSlot(i, t[i]);
+  SnapNo snap1 = buf->snapshot(NULL);
+  buf->emit(IR::kLT, IRT_I64|IRT_GUARD, s[0], l1);
+  
+  TRef u[16];
+  for (int i = 0; i < 16; ++i) {
+    u[i] = buf->emit(IR::kADD, IRT_I64, t[(i + 3) % 16], t[(i + 7) % 16]);
+  }
+
+  for (int i = 0; i < 16; ++i)
+    buf->setSlot(i, u[i]);
+  SnapNo snap2 = buf->snapshot(NULL);
+  buf->emit(IR::kLT, IRT_I64|IRT_GUARD, s[1], l1);
+
+  TRef v[4];
+  for (int i = 0; i < 4; ++i)
+    v[i] = buf->emit(IR::kADD, IRT_I64, u[i], u[7-i]);
+
+  TRef x[2];
+  for (int i = 0; i < 2; ++i) {
+    x[i] = buf->emit(IR::kADD, IRT_I64, v[i], v[3-i]);
+  }
+
+  TRef y1 = buf->emit(IR::kADD, IRT_I64, s[0], s[1]);
+  TRef y2 = buf->emit(IR::kADD, IRT_I64, s[2], s[3]);
+  TRef z = buf->emit(IR::kADD, IRT_I64, y1, y2);
+  for (int i = 0; i < 16; ++i)
+    buf->setSlot(i, TRef());
+
+  buf->setSlot(0, z);
+  buf->setSlot(1, x[0]);
+  buf->setSlot(2, x[1]);
+  SnapNo snap3 = buf->snapshot(NULL);
+  buf->emit(IR::kSAVE, IRT_VOID|IRT_GUARD, snap3, 0);
+
+  Word s0 = 10, s1 = 100, s2 = 1000, s3 = 10000;
+  Word *base = Run(s0, s1, s2, s3);
+
+  EXPECT_EQ((s0 + s1) + (s2 + s3), base[0]);
+  buf->debugPrint(cerr, 1);
+  buf->snap(snap1).debugPrint(cerr, buf->snapmap(), snap1);
+  buf->snap(snap2).debugPrint(cerr, buf->snapmap(), snap2);
+  buf->snap(snap3).debugPrint(cerr, buf->snapmap(), snap3);
+  Dump();
 }
 
 int main(int argc, char *argv[]) {
