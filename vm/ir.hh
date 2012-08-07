@@ -447,6 +447,7 @@ private:
 
   friend class AbstractStack;
   friend class Snapshot;
+  friend class Jit;
 };
 
 
@@ -617,8 +618,8 @@ private:
   IR *realbuffer_;
   IR *buffer_;  // biased
   Flags32 flags_;
-  IRRef bufmin_;
-  IRRef bufmax_;
+  IRRef bufmin_;  // Lowest IR constant
+  IRRef bufmax_;  // Next IR instruction
   IRRef bufstart_;
   IRRef bufend_;
   size_t size_;

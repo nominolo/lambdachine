@@ -160,6 +160,7 @@ private:
     Word idx = reinterpret_cast<Word>(startPc) >> 2;
     fragments_[idx] = F;
   }
+  Fragment *saveFragment();
   
   static const int kLastInsWasBranch = 0;
   static const int kIsReturnTrace = 1;
@@ -206,8 +207,19 @@ private:
   Flags32 flags_;
   uint32_t traceId_;
   BcIns *startPc_;
+
   BcIns **targets_;
   uint32_t numTargets_;
+  
+  IR *buffer_;           // Biased buffer
+  IRRef firstconstant_;  // Lowest IR constant. Biased with REF_BIAS
+  IRRef nextins_;        // Next IR instruction. Biased with REF_BIAS
+
+  Snapshot *snaps_;      
+  SnapshotData snapmap_;
+  
+  MCode *mcode_;
+  //  size_t sizemcode_;
 
   friend class Jit;
 };

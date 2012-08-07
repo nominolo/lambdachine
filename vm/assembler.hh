@@ -539,6 +539,8 @@ private:
   int32_t spill_;
   x86ModRM mrm_;
   //  RegSet weakset_;
+
+  friend class Jit;
 };
 
 

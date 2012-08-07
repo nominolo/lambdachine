@@ -1,4 +1,5 @@
 #include "jit.hh"
+#include "ir-inl.hh"
 
 #include <iostream>
 #include <string.h>
@@ -130,6 +131,39 @@ void Jit::genCode(IRBuffer *buf) {
     IR *tir = buf->ir(ref);
     genCode(buf, tir);
   }
+}
+
+Fragment *Jit::saveFragment() {
+  IRBuffer *buf = &buf_;
+  Assembler *as = &asm_;
+
+  Fragment *F = new Fragment();
+  F->startPc_ = startPc_;
+
+  F->numTargets_ = targets_.size();
+  F->targets_ = new BcIns*[F->numTargets_];
+  for (size_t i = 0; i < F->numTargets_; ++i)
+    F->targets_[i] = targets_.at(i);
+
+  long bufsize = (long)buf->bufmax_ - (long)buf->bufmin_;
+  IR *buffer = new IR[bufsize];
+  F->firstconstant_ = buf->bufmin_;
+  F->nextins_ = buf->bufmax_;
+  buffer = biasBuffer(buffer, -(F->firstconstant_ - REF_BIAS));
+  for (IRRef ref = F->firstconstant_; ref < F->nextins_; ++ref)
+    buffer[ref] = buf->buffer_[ref]; // TODO: use memcpy
+  F->buffer_ = buffer;
+
+  size_t nsnaps = buf->snaps_.size();
+  F->snaps_ = new Snapshot[nsnaps];
+  for (size_t i = 0; i < nsnaps; ++i)
+    F->snaps_[i] = buf->snaps_.at(i);
+  F->snapmap_.data_ = buf->snapmap_.data_;
+  F->snapmap_.index_ = buf->snapmap_.data_.size();
+
+  F->mcode_ = as->mcp;
+
+  return F;
 }
 
 #define SLOT_SIZE (LC_ARCH_BITS/8)
