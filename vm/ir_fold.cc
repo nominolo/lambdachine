@@ -111,6 +111,13 @@ FOLDF(kfold_arith) {
   return NEXTFOLD;
 }
 
+FOLDF(simplify_intadd_k) {
+  if (fold_.ins.type() == IRT_I64 &&
+      buf->literalValue(fold_.ins.op2()) == 0)
+    return LEFTFOLD;
+  return NEXTFOLD;
+}
+
 // Swap commutative arguments if likely to be benificial.
 //
 // This moves the smaller reference to the right, which tends to put
@@ -325,6 +332,9 @@ IRRef IRBuffer::doFold() {
   case IR::kADD:
     PATTERN(lit, lit, kfold_arith);
     PATTERN(ADD, lit, reassoc_int_arith);
+    /// i + 0 ==> i
+    PATTERN(any, lit, simplify_intadd_k);
+    /// i + j ==> j + i, if i < j
     PATTERN(any, any, comm_swap);
     break;
   case IR::kSUB:
