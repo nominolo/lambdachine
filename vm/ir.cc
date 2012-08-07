@@ -1,4 +1,5 @@
 #include "ir.hh"
+#include "ir-inl.hh"
 #include "assembler.hh"
 
 #include <iostream>
@@ -161,17 +162,9 @@ void IRBuffer::reset(Word *base, Word *top) {
   bufstart_ = REF_BIAS - nliterals;
   bufend_ = bufstart_ + size_;
 
-  // We want to have:
-  //
-  //     buffer_[REF_BIAS] = realbuffer_[nliterals];
-  //
-  // Thus:
-  //
-  //     buffer_ + REF_BIAS = realbuffer_ + nliterals
-  //
-  buffer_ = realbuffer_ + (nliterals - REF_BIAS);
+  buffer_ = biasBuffer(realbuffer_, nliterals);
   bufmin_ = REF_BIAS;
-  bufmax_ = REF_BIAS;
+  bufmax_ = REF_BASE;
 
   flags_.set(kOptCSE);
   flags_.set(kOptFold);
