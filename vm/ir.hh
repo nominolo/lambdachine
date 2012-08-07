@@ -34,18 +34,6 @@ typedef u4 IRRef;               /* Used to pass around references */
 //   none .. unised operand
 //
 #define IRDEF(_) \
-  _(NOP,     N,   ___, ___) \
-  _(BASE,    N,   lit, lit) \
-  _(FRAME,   S,   lit, lit) \
-  _(RET,     S,   lit, lit) \
-  _(LOOP,    N,   ___, ___) \
-  _(PHI,     N,   ref, ref) \
-  _(RENAME,  S,   ref, lit) \
-  \
-  _(KINT,    N,   cst, ___) \
-  _(KWORD,   N,   cst, ___) \
-  _(KBASEO,  N,   cst, ___) \
-  \
   _(LT,      G,   ref, ref) \
   _(GE,      G,   ref, ref) \
   _(LE,      G,   ref, ref) \
@@ -56,6 +44,19 @@ typedef u4 IRRef;               /* Used to pass around references */
   _(EQINFO,  G,   ref, ref) \
   _(HEAPCHK, G,   cst, ___) \
    \
+  _(NOP,     N,   ___, ___) \
+  _(BASE,    N,   lit, lit) \
+  _(FRAME,   S,   lit, lit) \
+  _(RET,     S,   lit, lit) \
+  _(LOOP,    N,   ___, ___) \
+  _(PHI,     N,   ref, ref) \
+  _(RENAME,  S,   ref, lit) \
+  \
+  _(KINT,    N,   cst, ___) \
+  _(KWORD,   N,   cst, ___) \
+  _(KWORDHI, N,   cst, ___) \
+  _(KBASEO,  N,   cst, ___) \
+  \
   _(BNOT,    N,   ref, ___) \
   _(BAND,    C,   ref, ref) \
   _(BOR,     C,   ref, ref) \
@@ -576,12 +577,6 @@ public:
   }
 
   void debugPrint(std::ostream&, int traceNo);
-  inline Word kword(uint32_t n) {
-    if (n < kwords_.size())
-      return kwords_[n];
-    else
-      return 0;
-  }
 
   static const int kOptCSE = 0;
   static const int kOptFold = 1;
@@ -632,7 +627,6 @@ private:
   AbstractStack slots_;
   SnapshotData snapmap_;
   std::vector<Snapshot> snaps_;
-  std::vector<Word> kwords_;
 
   friend class Jit;
   friend class Assembler;

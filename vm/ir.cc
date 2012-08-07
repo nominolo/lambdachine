@@ -77,9 +77,10 @@ static void printArg(ostream &out, uint8_t mode, uint16_t op, IR *ir, IRBuffer *
       char sign = (i < 0) ? '-' : '+';
       uint32_t k = (i < 0) ? -i : i;
       out << ' ' << COL_PURPLE << sign << k << COL_RESET;
-    } else if (ir->opcode() == IR::kKWORD && buf != NULL) {
-      out << ' ' << COL_BLUE "0x" << hex << buf->kword(ir->u32()) << dec
-          << COL_RESET;
+    } else if (ir->opcode() == IR::kKWORD && buf != NULL &&
+               (ir-1)->opcode() == IR::kKWORDHI) {
+      uint64_t k = (uint64_t)ir->u32() | ((uint64_t)(ir-1)->u32() << 32);
+      out << ' ' << COL_BLUE "0x" << hex << k << dec << COL_RESET;
     } else if (ir->opcode() == IR::kKBASEO) {
       out << " #" << left << ir->i32();
     } else {
@@ -142,7 +143,7 @@ void IRBuffer::debugPrint(ostream &out, int traceNo) {
 
 IRBuffer::IRBuffer()
   : realbuffer_(NULL), flags_(), size_(1024), slots_(),
-    snapmap_(), snaps_(), kwords_() {
+    snapmap_(), snaps_() {
   reset(NULL, NULL);
 }
 
@@ -220,20 +221,36 @@ TRef IRBuffer::literal(IRType ty, uint64_t lit) {
     chain_[IR::kKINT] = (IRRef1)ref;
     return TRef(ref, ty);
   } else {
+    // 64 bit constants are stored as a pair of KWORD and KWORDHI.
+    // This has the same overhead as having a per-buffer array of 64
+    // bit constants. We could reduce this overhead by having a pool
+    // of 64 bit constants that is shared between all traces. That
+    // requires a fast lookup mechanism, though, so I'm not sure it's
+    // worth it.
+    uint32_t klo = (uint32_t)lit;
+    uint32_t khi = (uint32_t)(lit >> 32);
     for (ref = chain_[IR::kKWORD]; ref != 0; ref = buffer_[ref].prev()) {
       if (buffer_[ref].type() == ty &&
-          kwords_[buffer_[ref].data_.u] == lit)
+          buffer_[ref].data_.u == klo &&
+          buffer_[ref-1].data_.u == khi)
         goto found;
     }
-    ref = nextLit();  // Invalidates any IR*!
-    IR *tir = ir(ref);
-    kwords_.push_back(lit);
-    tir->data_.u = kwords_.size() - 1;
-    tir->data_.t = (uint8_t)ty;
-    tir->data_.o = IR::kKWORD;
-    tir->data_.prev = chain_[IR::kKWORD];
-    chain_[IR::kKWORD] = (IRRef1)ref;
-    return TRef(ref, ty);
+    IRRef reflo = nextLit();  // Invalidates any IR*!
+    IRRef refhi = nextLit();
+    LC_ASSERT(refhi == reflo - 1);
+    IR *inslo = ir(reflo);
+    inslo->data_.u = klo;
+    inslo->data_.t = (uint8_t)ty;
+    inslo->data_.o = IR::kKWORD;
+    inslo->data_.prev = chain_[IR::kKWORD];
+    IR *inshi = ir(refhi);
+    inshi->data_.u = khi;
+    inshi->data_.t = (uint8_t)ty;
+    inshi->data_.o = IR::kKWORDHI;
+    inshi->data_.prev = chain_[IR::kKWORDHI];
+    chain_[IR::kKWORD] = (IRRef1)reflo;
+    chain_[IR::kKWORDHI] = (IRRef1)refhi;
+    return TRef(reflo, ty);
   }
  found:
   return TRef(ref, ty);
@@ -256,6 +273,21 @@ TRef IRBuffer::baseLiteral(Word *p) {
   chain_[IR::kKBASEO] = (IRRef1)ref;
  found:
   return TRef(ref, IRT_PTR);
+}
+
+uint64_t IRBuffer::literalValue(IRRef ref) {
+  IR *tir = ir(ref);
+  if (tir->opcode() == IR::kKINT) {
+    if (kOpIsSigned & (1 << (int)tir->type())) {
+      return (int64_t)(int32_t)tir->i32();
+    } else {
+      return (uint64_t)(uint32_t)tir->i32();
+    }
+  } else if (tir->opcode() == IR::kKWORD) {
+    return (uint64_t)tir->u32() | ((uint64_t)ir(ref-1)->u32() << 32);
+  }
+  LC_ASSERT(false);
+  return 0;
 }
 
 TRef IRBuffer::optCSE() {

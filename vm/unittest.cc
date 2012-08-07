@@ -440,7 +440,8 @@ TEST_F(IRTest, Literals4) {
   EXPECT_EQ((uint16_t)REF_BASE - 1, tr1.ref());
   EXPECT_EQ((uint8_t)IRT_I64, tr1.t());
   EXPECT_EQ(tr1, tr2);
-  EXPECT_EQ(2, buf->size());
+  EXPECT_EQ(3, buf->size());
+  EXPECT_EQ(5000000000, buf->literalValue(tr1));
   buf->debugPrint(cerr, 1);
 }
 

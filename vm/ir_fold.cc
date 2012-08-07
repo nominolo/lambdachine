@@ -302,21 +302,6 @@ TRef IRBuffer::optFold() {
   return TRef();
 }
 
-uint64_t IRBuffer::literalValue(IRRef ref) {
-  IR *tir = ir(ref);
-  if (tir->opcode() == IR::kKINT) {
-    if (kOpIsSigned & (1 << (int)tir->type())) {
-      return (int64_t)(int32_t)tir->i32();
-    } else {
-      return (uint64_t)(uint32_t)tir->i32();
-    }
-  } else if (tir->opcode() == IR::kKWORD) {
-    return kwords_[tir->u32()];
-  }
-  LC_ASSERT(false);
-  return 0;
-}
-
 IRRef IRBuffer::doFold() {
   IRRef ref;
   int retrycount = 0;
