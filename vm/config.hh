@@ -16,6 +16,8 @@
 /* #undef NDEBUG */
 /* #define DEBUG */
 
+#define LC_USE_VALGRIND 1
+
 #ifndef LC_DEBUG_LEVEL
 # ifdef NDEBUG
 #  define LC_DEBUG_LEVEL  0
