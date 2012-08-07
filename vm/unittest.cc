@@ -1026,7 +1026,7 @@ protected:
     spill = new Word[255];
     mm = new MemoryManager();
     loader = new Loader(mm, "tests");
-    T = Thread::createThread(NULL, 20);
+    T = Thread::createThread(NULL, 1000);
     return T->base();
   }
   Word *RunAsm() {
