@@ -258,7 +258,7 @@ $(LCC): $(HSSRCS) compiler/Opcodes.h $(DIST)/setup-config
 clean-interp:
 	rm -f $(SRCS:%.c=%.o) utils/*.o interp
 
-.PHONY: clean
+.PHONY: clean cleanvm
 clean:
 	rm -f $(SRCS:%.c=%.o) utils/*.o interp compiler/.depend \
 		compiler/lcc lcc $(DIST)/setup-config vm/*.o \
@@ -267,6 +267,9 @@ clean:
 	rm -rf $(HSBUILDDIR)
 	find . -name '*.gcov' -or -name '*.gcno' -or -name '*.gcda' | xargs rm -f
 	$(MAKE) -C tests clean
+
+cleanvm:
+	rm -f $(VM_SRCS:%.cc=%.o) unittest
 
 .PHONY: distclean
 distclean: clean
