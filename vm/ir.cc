@@ -78,8 +78,8 @@ static void printArg(ostream &out, uint8_t mode, uint16_t op, IR *ir, IRBuffer *
       uint32_t k = (i < 0) ? -i : i;
       out << ' ' << COL_PURPLE << sign << k << COL_RESET;
     } else if (ir->opcode() == IR::kKWORD && buf != NULL &&
-               (ir-1)->opcode() == IR::kKWORDHI) {
-      uint64_t k = (uint64_t)ir->u32() | ((uint64_t)(ir-1)->u32() << 32);
+               (ir - 1)->opcode() == IR::kKWORDHI) {
+      uint64_t k = (uint64_t)ir->u32() | ((uint64_t)(ir - 1)->u32() << 32);
       out << ' ' << COL_BLUE "0x" << hex << k << dec << COL_RESET;
     } else if (ir->opcode() == IR::kKBASEO) {
       out << " #" << left << ir->i32();
@@ -127,7 +127,7 @@ void IR::debugPrint(ostream &out, IRRef self, IRBuffer *buf, bool regs) {
 
 void IRBuffer::debugPrint(ostream &out, int traceNo) {
   SnapNo snapno = 0;
-  out << "---- TRACE " << right << setw(4) << setfill('0') << traceNo 
+  out << "---- TRACE " << right << setw(4) << setfill('0') << traceNo
       << " IR -----------" << endl;
   for (IRRef ref = bufmin_; ref < bufmax_; ++ref) {
     IR *ins = ir(ref);
@@ -188,7 +188,7 @@ TRef IRBuffer::emit() {
   IRRef ref = nextIns();
   IR *ir1 = ir(ref);
   IR::Opcode op = fold_.ins.opcode();
-  
+
   ir1->setPrev(chain_[op]);
   chain_[op] = (IRRef1)ref;
 
@@ -232,7 +232,7 @@ TRef IRBuffer::literal(IRType ty, uint64_t lit) {
     for (ref = chain_[IR::kKWORD]; ref != 0; ref = buffer_[ref].prev()) {
       if (buffer_[ref].type() == ty &&
           buffer_[ref].data_.u == klo &&
-          buffer_[ref-1].data_.u == khi)
+          buffer_[ref - 1].data_.u == khi)
         goto found;
     }
     IRRef reflo = nextLit();  // Invalidates any IR*!
@@ -252,7 +252,7 @@ TRef IRBuffer::literal(IRType ty, uint64_t lit) {
     chain_[IR::kKWORDHI] = (IRRef1)refhi;
     return TRef(reflo, ty);
   }
- found:
+found:
   return TRef(ref, ty);
 }
 
@@ -271,7 +271,7 @@ TRef IRBuffer::baseLiteral(Word *p) {
   tir->data_.o = IR::kKBASEO;
   tir->data_.prev = chain_[IR::kKBASEO];
   chain_[IR::kKBASEO] = (IRRef1)ref;
- found:
+found:
   return TRef(ref, IRT_PTR);
 }
 
@@ -284,7 +284,7 @@ uint64_t IRBuffer::literalValue(IRRef ref) {
       return (uint64_t)(uint32_t)tir->i32();
     }
   } else if (tir->opcode() == IR::kKWORD) {
-    return (uint64_t)tir->u32() | ((uint64_t)ir(ref-1)->u32() << 32);
+    return (uint64_t)tir->u32() | ((uint64_t)ir(ref - 1)->u32() << 32);
   } else if (tir->opcode() == IR::kKBASEO) {
     return (uint64_t)(slots_.origBase() + tir->i32());
   }
@@ -374,7 +374,7 @@ void AbstractStack::snapshot(Snapshot *snap, SnapshotData *snapmap,
       ++entries;
     }
   }
-  
+
   snap->ref_ = ref;
   snap->mapofs_ = snapmap->index_;
   snap->relbase_ = base_ - kInitialBase;
@@ -419,7 +419,7 @@ IRRef1 Snapshot::slot(int n, SnapshotData *snapmap) {
   // We use simple binary search.
   int lo = mapofs_;
   int hi = mapofs_ + entries_ - 1;
-  LC_ASSERT(hi < INT_MAX/2);
+  LC_ASSERT(hi < INT_MAX / 2);
   uint32_t data = 0;
 
   while (lo <= hi) {
@@ -430,12 +430,12 @@ IRRef1 Snapshot::slot(int n, SnapshotData *snapmap) {
       lo = mid + 1;
     } else if (n < slot) {
       hi = mid - 1;
-    } else { 
+    } else {
       goto found;
     }
   }
   data = 0;  // Only executed if we didn't find anything.
- found:
+found:
   return (IRRef1)data;
 }
 
@@ -443,15 +443,22 @@ SnapshotData::SnapshotData() : data_(), index_() { }
 
 const char *IR::regName(uint8_t r, IRType ty) {
   switch (ty) {
-  case IRT_I64: case IRT_U64:
-  case IRT_CLOS: case IRT_INFO: case IRT_PC:
-  case IRT_UNKNOWN: case IRT_PTR:
+  case IRT_I64:
+  case IRT_U64:
+  case IRT_CLOS:
+  case IRT_INFO:
+  case IRT_PC:
+  case IRT_UNKNOWN:
+  case IRT_PTR:
     LC_ASSERT(r < RID_MAX_GPR);
     return regNames64[r];
-  case IRT_I32: case IRT_U32: case IRT_CHR:
+  case IRT_I32:
+  case IRT_U32:
+  case IRT_CHR:
     LC_ASSERT(r < RID_MAX_GPR);
     return regNames32[r];
-  case IRT_F32: case IRT_F64:
+  case IRT_F32:
+  case IRT_F64:
     LC_ASSERT(RID_MIN_FPR <= r && r < RID_MAX_FPR);
     return fpRegNames[r - RID_MIN_FPR];
   default:
