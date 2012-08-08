@@ -11,7 +11,7 @@ const u2 closureFlags[] = {
 
 void printClosure(ostream &out, Closure *cl, bool oneline) {
   const InfoTable *info = cl->info();
-  
+
   if (!info) {
     out << "[UnknownClosure]";
     if (!oneline) out << endl;
@@ -19,17 +19,17 @@ void printClosure(ostream &out, Closure *cl, bool oneline) {
   }
 
   while (info->type() == IND) {
-    cl = (Closure*)cl->payload(0);
+    cl = (Closure *)cl->payload(0);
     info = cl->info();
     out << "IND -> ";
   }
-  
+
   out << info->name() << ' ';
 
   u4 bitmap = info->layout().bitmap;
   for (i4 i = 0; i < (i4)info->size(); ++i, bitmap >>= 1) {
     if (bitmap & 1)
-      out << (Word*)cl->payload(i) << ' ';
+      out << (Word *)cl->payload(i) << ' ';
     else
       out << (Word)cl->payload(i) << ' ';
   }
@@ -75,8 +75,8 @@ void InfoTable::debugPrint(ostream &out) const {
   }
   printPayload(out);
   if (hasCode()) {
-      CodeInfoTable *i = (CodeInfoTable*)this;
-      i->printCode(out);
+    CodeInfoTable *i = (CodeInfoTable *)this;
+    i->printCode(out);
   }
   out << endl;
 }
@@ -103,20 +103,18 @@ void Code::printLiteral(std::ostream &out, u4 litid) const {
       out << "u" << hex << (u4)lit << dec;
     break;
   case LIT_STRING:
-    out << '"' << (const char*)lit << '"';
+    out << '"' << (const char *)lit << '"';
     break;
-  case LIT_INFO:
-    {
-      const InfoTable *i = (const InfoTable *)lit;
-      out << "info " << i << " (" << i->name() << ")";
-      break;
-    }
-  case LIT_CLOSURE:
-    {
-      const Closure *cl = (const Closure*)lit;
-      out << "clos " << cl << " (" << cl->info()->name() << ")";
-      break;
-    }
+  case LIT_INFO: {
+    const InfoTable *i = (const InfoTable *)lit;
+    out << "info " << i << " (" << i->name() << ")";
+    break;
+  }
+  case LIT_CLOSURE: {
+    const Closure *cl = (const Closure *)lit;
+    out << "clos " << cl << " (" << cl->info()->name() << ")";
+    break;
+  }
   default:
     out << "???";
   }
@@ -132,8 +130,12 @@ static void printArgPointers(ostream &out, const u2 *bitmap, u4 arity) {
   out << '[';
   do {
     mask = *bitmap++;
-    for (int i = 0; i < 15 && args < arity; ++i, mask>>=1, ++args) {
-      if (mask & 1) { out << '*'; } else { out << '-'; }
+    for (int i = 0; i < 15 && args < arity; ++i, mask >>= 1, ++args) {
+      if (mask & 1) {
+        out << '*';
+      } else {
+        out << '-';
+      }
     }
   } while (mask != 0);
   out << ']';
@@ -150,7 +152,7 @@ void CodeInfoTable::printCode(std::ostream &out) const {
   }
   out << "  code"
       << " (arity=" << (int)code()->arity << '/';
-  printArgPointers(out, (const u2*)(code()->code + code()->sizecode),
+  printArgPointers(out, (const u2 *)(code()->code + code()->sizecode),
                    code()->arity);
   out << ", frame=" << (int)code()->framesize
       << ")" << endl;
