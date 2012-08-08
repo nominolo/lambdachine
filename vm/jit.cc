@@ -21,8 +21,7 @@ Jit::Jit()
   : cap_(NULL),
     startPc_(NULL), startBase_(NULL),
     flags_(), targets_(), fragments_(),
-    prng_(), mcode_(&prng_), asm_(this)
-{
+    prng_(), mcode_(&prng_), asm_(this) {
   memset(exitStubGroup_, 0, sizeof(exitStubGroup_));
 }
 
@@ -73,7 +72,9 @@ bool Jit::recordIns(BcIns *ins, Word *base) {
            << ")" << COL_RESET << endl;
       cerr << "    " << startPc_ << endl;
       for (size_t i = 0; i < targets_.size(); ++i) {
-        if ((i % 7) == 0) { cerr << "   "; }
+        if ((i % 7) == 0) {
+          cerr << "   ";
+        }
         cerr << ' ' << i << ':' << targets_[i];
         if (((i + 1) % 7) == 0) cerr << endl;
       }
@@ -182,7 +183,7 @@ inline uint64_t Fragment::literalValue(IRRef ref, Word *base) {
     else
       return (uint64_t)(uint32_t)ins->i32();
   } else if (ins->opcode() == IR::kKWORD) {
-    return (uint64_t)ins->u32() | ((uint64_t)ir(ref-1)->u32() << 32);
+    return (uint64_t)ins->u32() | ((uint64_t)ir(ref - 1)->u32() << 32);
   } else if (ins->opcode() == IR::kKBASEO) {
     return (uint64_t)(base + ins->i32());
   }
@@ -196,8 +197,8 @@ void Fragment::restoreSnapshot(ExitNo exitno, ExitState *ex) {
   Snapshot &sn = snap(exitno);
   IR *snapins = ir(sn.ref());
   if (snapins->opcode() != IR::kSAVE) {
-    Word *base = (Word*)ex->gpr[RID_BASE];
-    void *hp = (Word*)ex->gpr[RID_HP];
+    Word *base = (Word *)ex->gpr[RID_BASE];
+    void *hp = (Word *)ex->gpr[RID_HP];
     DBG(sn.debugPrint(cerr, &snapmap_, exitno));
     DBG(cerr << "  base = " << base << ", hp = " << hp << endl);
     for (Snapshot::MapRef i = sn.begin(); i < sn.end(); ++i) {
@@ -238,7 +239,9 @@ static void asmSLOAD(Assembler *as, IR *ir) {
 
 void Jit::genCode(IRBuffer *buf, IR *ir) {
   switch (ir->opcode()) {
-  case IR::kSLOAD: asmSLOAD(&asm_, ir); break;
+  case IR::kSLOAD:
+    asmSLOAD(&asm_, ir);
+    break;
   default:
     exit(11);
     //    load_u64(
