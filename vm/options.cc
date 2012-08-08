@@ -60,7 +60,7 @@ Options *OptionParser::parse(int argc, char *argv[]) {
     case OPT_PRINT_LOADER_STATE:
       opts()->printLoaderState_ = true;
       if (optarg != NULL) {
-	opts()->printLoaderStateFile_ = optarg;
+        opts()->printLoaderStateFile_ = optarg;
       }
       break;
     case OPT_TRACE_INTERPRETER:
@@ -77,13 +77,13 @@ Options *OptionParser::parse(int argc, char *argv[]) {
     case 's':
       opts()->stackSize_ = parseMemorySize(optarg);
       if (opts()->stackSize_ < 0) {
-	fprintf(stderr, "Could not parse stack size.  Using default.\n");
-	opts()->stackSize_ = MIN_STACK_SIZE;
+        fprintf(stderr, "Could not parse stack size.  Using default.\n");
+        opts()->stackSize_ = MIN_STACK_SIZE;
       }
       break;
-    // case 'S':
-    //   opts()->step_opts = optarg;
-    //   break;
+      // case 'S':
+      //   opts()->step_opts = optarg;
+      //   break;
     case 'l':
       opts()->entry_ = "";
       break;
@@ -105,7 +105,7 @@ Options *OptionParser::parse(int argc, char *argv[]) {
              "     --asm        Generate native code.\n"
              "  -B --base       Set loader base dir (default: cwd).\n"
              "                  Separate multiple paths with \":\""
-	     "     --stack=SIZE Specify the stack size in bytes, valid units are K,M,b,G.\n"
+             "     --stack=SIZE Specify the stack size in bytes, valid units are K,M,b,G.\n"
              "\n",
              argv[0]);
       res = NULL;
@@ -128,7 +128,7 @@ Options *OptionParser::parse(int argc, char *argv[]) {
   }
 
   res = opts_;
- ret:
+ret:
   if (res != opts_) {
     delete opts_;
   }
@@ -151,8 +151,7 @@ Options *OptionParser::parse(int argc, char *argv[]) {
  *     LONG_MAX; or -1 if no parse was found.
  */
 long
-parseMemorySize(const char *str)
-{
+parseMemorySize(const char *str) {
   char *end = NULL;
   long ans = -1;
   int shift = 0;
@@ -162,21 +161,25 @@ parseMemorySize(const char *str)
   }
 
   ans = strtol(str, &end, 10);
-  if (end == str) {		/* No parse */
+  if (end == str) {   /* No parse */
     return -1;
   }
 
   switch (*end) {
-  case 'b': case 'B':
+  case 'b':
+  case 'B':
     shift = 0;
     break;
-  case 'k': case 'K':
+  case 'k':
+  case 'K':
     shift = 10;
     break;
-  case 'm': case 'M':
+  case 'm':
+  case 'M':
     shift = 20;
     break;
-  case 'g': case 'G':
+  case 'g':
+  case 'G':
     shift = 30;
     break;
   default:
