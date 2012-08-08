@@ -75,7 +75,7 @@ BcIns *Capability::interpBranch(BcIns *srcPc, BcIns *dstPc, Word *base,
         opC_ = opC;
 
         if (DEBUG_COMPONENTS & DEBUG_TRACE_RECORDER) {
-          Closure *cl = (Closure*)base[-1];
+          Closure *cl = (Closure *)base[-1];
           cerr << COL_GREEN << "HOT: " << dstPc;
           if (branchType == kReturn) {
             cerr << " return from " << srcPc << " to " << dstPc
@@ -107,7 +107,7 @@ void Capability::finishRecording() {
 }
 
 static inline
-bool stackOverflow(Thread* T, Word* top, u4 increment) {
+bool stackOverflow(Thread *T, Word *top, u4 increment) {
   return T->stackLimit() < (top + increment);
 }
 
@@ -206,7 +206,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   // ----- Special Mode Implementations ------------------------------
   //
 
- debug:
+debug:
   --pc;
   {
     size_t depth = base - T->stackStart();
@@ -226,8 +226,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   ++pc;
   goto *dispatch2[opcode];
 
- record:
-  {
+record: {
     // don't change opC
     if (LC_UNLIKELY(jit_.recordIns(pc - 1, base))) {
       currentThread_->sync(pc - 1, base);
@@ -244,113 +243,113 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   // ----- Bytecode Implementations ----------------------------------
   //
 
- op_ISLT:
+op_ISLT:
   DECODE_AD;
   ++pc;
   if ((WordInt)base[opA] < (WordInt)base[opC])
     pc += (pc - 1)->j();
   DISPATCH_NEXT;
 
- op_ISGE:
+op_ISGE:
   DECODE_AD;
   ++pc;
   if ((WordInt)base[opA] >= (WordInt)base[opC])
     pc += (pc - 1)->j();
   DISPATCH_NEXT;
 
- op_ISLE:
+op_ISLE:
   DECODE_AD;
   ++pc;
   if ((WordInt)base[opA] <= (WordInt)base[opC])
     pc += (pc - 1)->j();
   DISPATCH_NEXT;
 
- op_ISGT:
+op_ISGT:
   DECODE_AD;
   ++pc;
   if ((WordInt)base[opA] > (WordInt)base[opC])
     pc += (pc - 1)->j();
   DISPATCH_NEXT;
 
- op_ISEQ:
+op_ISEQ:
   DECODE_AD;
   ++pc;
   if (base[opA] == base[opC])
     pc += (pc - 1)->j();
   DISPATCH_NEXT;
 
- op_ISNE:
+op_ISNE:
   DECODE_AD;
   ++pc;
   if (base[opA] != base[opC])
     pc += (pc - 1)->j();
   DISPATCH_NEXT;
 
- op_NOT:
+op_NOT:
   DECODE_AD;
   base[opA] = ~base[opC];
   DISPATCH_NEXT;
 
- op_NEG:
+op_NEG:
   DECODE_AD;
   base[opA] = -(WordInt)base[opC];
   DISPATCH_NEXT;
 
- op_MOV:
+op_MOV:
   DECODE_AD;
   base[opA] = base[opC];
   DISPATCH_NEXT;
 
- op_LOADSLF:
+op_LOADSLF:
   // TODO: This instruction becomes unnecessary if base[0] = Node
   base[opA] = base[-1];
   DISPATCH_NEXT;
 
- op_LOADF:
+op_LOADF:
   // A = target
   // B = closure ptr.
   // C = field offset, 1-based indexed!  TODO: fix this
   {
     DECODE_BC;
-    Closure *cl = (Closure*)base[opB];
+    Closure *cl = (Closure *)base[opB];
     base[opA] = cl->payload(opC - 1);
     DISPATCH_NEXT;
   }
 
- op_LOADFV:
+op_LOADFV:
   // TODO: This instruction becomes unnecessary if base[0] = Node.
   // A = target
   // C/D = field offset, 1-based index!  TODO: fix this
   {
     DECODE_AD;
-    Closure *node = (Closure*)base[-1];
+    Closure *node = (Closure *)base[-1];
     base[opA] = node->payload(opC - 1);
     DISPATCH_NEXT;
   }
 
- op_ADDRR:
+op_ADDRR:
   DECODE_BC;
   base[opA] = base[opB] + base[opC];
   DISPATCH_NEXT;
 
- op_SUBRR:
+op_SUBRR:
   DECODE_BC;
   base[opA] = base[opB] - base[opC];
   DISPATCH_NEXT;
 
- op_MULRR:
+op_MULRR:
   DECODE_BC;
   // Signed and unsigned multiplication are actually identical (except
   // for CPU flags).
   base[opA] = (WordInt)base[opB] * (WordInt)base[opC];
   DISPATCH_NEXT;
 
- op_DIVRR:
+op_DIVRR:
   DECODE_BC;
   base[opA] = (WordInt)base[opB] / (WordInt)base[opC];
   DISPATCH_NEXT;
 
- op_REMRR:
+op_REMRR:
   DECODE_BC;
   base[opA] = (WordInt)base[opB] % (WordInt)base[opC];
   DISPATCH_NEXT;
@@ -362,33 +361,33 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     goto heapOverflow; \
   }
 
- op_ALLOC1:
+op_ALLOC1:
   // A = target
   // B = itbl
   // C = payload[0]
   {
     DECODE_BC;
-    Closure *cl = (Closure*)heap;
+    Closure *cl = (Closure *)heap;
     BUMP_HEAP(1);
     ++pc;
-    cl->setInfo((InfoTable*)base[opB]);
+    cl->setInfo((InfoTable *)base[opB]);
     cl->setPayload(0, base[opC]);
     base[opA] = (Word)cl;
     DISPATCH_NEXT;
   }
 
- op_ALLOC:
+op_ALLOC:
   // A = target
   // B = itbl
   // C = payload size
   // payload regs in little endian order
   {
     DECODE_BC;
-    Closure *cl = (Closure*)heap;
+    Closure *cl = (Closure *)heap;
     const u1 *arg = (const u1 *)pc;
 
     BUMP_HEAP(opC);
-    cl->setInfo((InfoTable*)base[opB]);
+    cl->setInfo((InfoTable *)base[opB]);
     for (u4 i = 0; i < opC; ++i) {
       // cerr << "payload[" << i << "]=base[" << (int)*arg << "] ("
       //      << (Word)base[*arg] << ")" << endl;
@@ -401,7 +400,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     DISPATCH_NEXT;
   }
 
- op_ALLOCAP:
+op_ALLOCAP:
   // TODO: Any instance of ALLOCAP could be resolved statically.  It
   // could therefore be resolved by the loader.
   {
@@ -411,10 +410,10 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     // C = number of arguments *excluding* function
     u4 nargs = opC;
     u4 pointerMask = opB;
-    const u1 *args = (const u1*)pc;
+    const u1 *args = (const u1 *)pc;
     LC_ASSERT(nargs > 0);
 
-    Closure *cl = (Closure*)heap;
+    Closure *cl = (Closure *)heap;
     BUMP_HEAP(nargs + 1);
     cl->setInfo(MiscClosures::getApInfo(nargs, pointerMask));
     for (u4 i = 0; i < nargs + 1; ++i, ++args) {
@@ -427,7 +426,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     DISPATCH_NEXT;
   }
 
- heapOverflow:
+heapOverflow:
   --pc;
   // Convention: If GC is needed, T->pc points to the instruction that
   // tried to allocate.
@@ -437,8 +436,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   // re-dispatch last instruction
   DISPATCH_NEXT;
 
- heapOverflowPAP:
-  {
+heapOverflowPAP: {
     --pc;
     T->sync(pc, base);
     // Variable opC contains the pointer mask for the top of the
@@ -450,14 +448,14 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     ENTER; // Re-dispatch last instruction, but leave opC unchanged.
   }
 
- op_JMP:
+op_JMP:
   // Offsets are relative to the current PC which points to the
   // following instruction.  Hence, "JMP 0" is a no-op, "JMP -1" is an
   // infinite loop.
   pc += opC - BcIns::kBranchBias;
   DISPATCH_NEXT;
 
- op_EVAL:
+op_EVAL:
   // Format of an EVAL instruction:
   //
   //  +-----------+-----+-----+
@@ -473,7 +471,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     LC_ASSERT(mm_->looksLikeClosure(tnode));
 
     while (tnode->isIndirection()) {
-      tnode = (Closure*)tnode->payload(0);
+      tnode = (Closure *)tnode->payload(0);
     }
 
     if (tnode->isHNF()) {
@@ -481,7 +479,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
       ++pc;  // skip live-out info
       DISPATCH_NEXT;
     } else {
-      CodeInfoTable *info = static_cast<CodeInfoTable*>(tnode->info());
+      CodeInfoTable *info = static_cast<CodeInfoTable *>(tnode->info());
       u4 framesize = info->code()->framesize;
       Word *top = T->top();
 
@@ -507,8 +505,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     }
   }
 
- op_LOADK:
-  {
+op_LOADK: {
     DECODE_AD;
     u2 lit_id = opC;
     LC_ASSERT(lit_id < code->sizelits);
@@ -516,19 +513,18 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     DISPATCH_NEXT;
   }
 
- op_RET1:
+op_RET1:
   DECODE_AD;
   T->setLastResult(base[opA]);
 
- do_return:
-  {
+do_return: {
     T->top_ = base - 3;
-    BcIns *dst_pc = (BcIns*)base[-2];
-    base = (Word*)base[-3];
+    BcIns *dst_pc = (BcIns *)base[-2];
+    base = (Word *)base[-3];
     {
-      Closure *node = (Closure*)base[-1];
+      Closure *node = (Closure *)base[-1];
       LC_ASSERT(mm_->looksLikeClosure(node));
-      CodeInfoTable *info = static_cast<CodeInfoTable*>(node->info());
+      CodeInfoTable *info = static_cast<CodeInfoTable *>(node->info());
       DLOG("RETURN %s\n", info->name());
       code = info->code();
       LC_ASSERT(code->code < dst_pc && dst_pc < code->code + code->sizecode);
@@ -537,14 +533,13 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     BRANCH_TO(dst_pc, kReturn);
   }
 
- op_IRET:
+op_IRET:
   T->setLastResult(base[opA]);
   goto do_return;
 
- op_UPDATE:
-  {
-    Closure *oldnode = (Closure*)base[opA];
-    Closure *newnode = (Closure*)base[opC];
+op_UPDATE: {
+    Closure *oldnode = (Closure *)base[opA];
+    Closure *newnode = (Closure *)base[opC];
     InfoTable *info = oldnode->info();
     LC_ASSERT(oldnode != NULL && mm_->looksLikeClosure(oldnode));
     LC_ASSERT(newnode != NULL && mm_->looksLikeClosure(newnode));
@@ -560,13 +555,12 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     DISPATCH_NEXT;
   }
 
- op_MOV_RES:
+op_MOV_RES:
   DECODE_AD;
   base[opA] = T->lastResult();
   DISPATCH_NEXT;
 
- op_CALL:
-  {
+op_CALL: {
     // opA = function
     // opB = argument pointer mask
     // opC = no of arguments
@@ -580,7 +574,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
 
     //op_CALL_retry:
     nargs = callargs;
-    fnode = (Closure*)base[opA];
+    fnode = (Closure *)base[opA];
     top = T->top();
 
     LC_ASSERT(fnode != NULL);
@@ -591,7 +585,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
               fnode->info()->type() == THUNK ||
               fnode->info()->type() == PAP);
 
-    CodeInfoTable *info = (CodeInfoTable*)fnode->info();
+    CodeInfoTable *info = (CodeInfoTable *)fnode->info();
 
     DLOG("   ENTER: %s\n", info->name());
 
@@ -603,7 +597,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     BcIns *return_pc = pc + BC_ROUND(nargs) + 1;
     Word  *oldbase = base;
 
-    u1 *args = (u1*)pc;
+    u1 *args = (u1 *)pc;
     pushFrame(&top, &base, return_pc, fnode, nargs);
 
     for (u4 i = 0; i < callargs; ++i, ++args) {
@@ -617,8 +611,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     BRANCH_TO(code->code, kCall);
   }
 
- op_CALLT:
-  {
+op_CALLT: {
     DECODE_BC;
     // opA = function
     // opC = no of args
@@ -645,7 +638,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     // TODO: Remove indirections or make them callable, same for
     // blackhole.
 
-    CodeInfoTable *info = (CodeInfoTable*)fnode->info();
+    CodeInfoTable *info = (CodeInfoTable *)fnode->info();
 
     DLOG("   ENTER: %s\n", info->name());
 
@@ -664,11 +657,11 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     BRANCH_TO(code->code, kCall);
   }
 
- op_IFUNC:
+op_IFUNC:
   // IFUNC is functionally equivalent to FUNC. It is treated differently
-  // by the trace selector though: an IFUNC is never considered as a 
+  // by the trace selector though: an IFUNC is never considered as a
   // possible trace root.
- op_FUNC:
+op_FUNC:
   // The landing point of a CALL/PAP/EVAL
   //
   //  opA = stack frame size  -- TODO
@@ -724,14 +717,14 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
       DLOG("Partial application\n");
 
       u4 pap_size = 1 + given_args;
-      PapClosure *cl = (PapClosure*)heap;
+      PapClosure *cl = (PapClosure *)heap;
       heap += (wordsof(PapClosure) + pap_size) * sizeof(Word);
       if (LC_UNLIKELY(heap > heaplim)) {
         heap -= (wordsof(PapClosure) + pap_size) * sizeof(Word);
         goto heapOverflowPAP;
       }
 
-      Closure *fun = (Closure*)base[-1];
+      Closure *fun = (Closure *)base[-1];
       cl->init(MiscClosures::stg_PAP_info, ptr_mask,
                given_args, fun);
       for (u4 i = 0; i < given_args; ++i) {
@@ -754,12 +747,11 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     DISPATCH_NEXT;
   }
 
- op_FUNCPAP:
-  {
+op_FUNCPAP: {
     u4 given_args = (opC & 0xff);
     u4 pointer_mask = opC >> 8;
 
-    PapClosure *pap = (PapClosure*)base[-1];
+    PapClosure *pap = (PapClosure *)base[-1];
     LC_ASSERT(pap->info()->type() == PAP);
     u4 papArgs = pap->nargs_;
 
@@ -784,7 +776,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     base[-1] = (Word)pap->fun_;
 
     pointer_mask <<= papArgs;
-    const CodeInfoTable *info = (CodeInfoTable*)pap->fun_->info();
+    const CodeInfoTable *info = (CodeInfoTable *)pap->fun_->info();
     pointer_mask |= pap->pointerMask_;
 
     dout << "PAPENTER: " << info->name()
@@ -798,7 +790,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     ENTER;
   }
 
- op_CASE:
+op_CASE:
   // A case with compact targets.
   //
   //  +-----------+-----+-----+
@@ -826,7 +818,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   {
     Closure *cl = (Closure *)base[opA];
     u2 num_cases = opC;
-    u2 *table = (u2*)pc;
+    u2 *table = (u2 *)pc;
     pc += (num_cases + 1) >> 1;
 
     LC_ASSERT(mm_->looksLikeClosure(cl));
@@ -842,7 +834,7 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
     DISPATCH_NEXT;
   }
 
- op_SYNC:
+op_SYNC:
   // Synchronises the interpreter state from the capability.
   // Does NOT update the memory manager state!
   LOAD_STATE_FROM_CAP;
@@ -852,25 +844,25 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   opC = opC_;
   ENTER;
 
- op_LOADBH:
- op_INITF:
- op_KINT:
- op_NEW_INT:
- op_CASE_S:
- op_JFUNC:
- op_JRET:
-  cerr << "Unimplemented instruction: " << (pc-1)->name() << endl;
+op_LOADBH:
+op_INITF:
+op_KINT:
+op_NEW_INT:
+op_CASE_S:
+op_JFUNC:
+op_JRET:
+  cerr << "Unimplemented instruction: " << (pc - 1)->name() << endl;
   // not_yet_implemented:
   T->sync(pc, base);
   mm_->sync(heap, heaplim);
   return kInterpUnimplemented;
 
- op_STOP:
+op_STOP:
   T->sync(pc, base);
   mm_->sync(heap, heaplim);
   return kInterpOk;
 
- stack_overflow:
+stack_overflow:
   T->sync(pc, base);
   mm_->sync(heap, heaplim);
   return kInterpStackOverflow;
