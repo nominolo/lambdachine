@@ -5,7 +5,7 @@
 #include <iostream>
 #include <fstream>
 
-#define MCLIM_REDZONE	64
+#define MCLIM_REDZONE 64
 
 #include "assembler-debug.hh"
 
@@ -43,7 +43,7 @@ void Assembler::setupMachineCode(MachineCode *mcode) {
 void Assembler::setupRegAlloc() {
   freeset_ = kGPR;
   modset_ = RegSet();
-  //  weakset_ = 
+  //  weakset_ =
   phiset_ = RegSet();
 
   for (Reg r = RID_MIN_GPR; r < RID_MAX; r++) {
@@ -51,9 +51,9 @@ void Assembler::setupRegAlloc() {
   }
 }
 
-#define REGSP(r, s)		((r) + ((s) << 8))
-#define REGSP_HINT(r)		((r)|RID_NONE)
-#define REGSP_INIT		REGSP(RID_INIT, 0)
+#define REGSP(r, s)   ((r) + ((s) << 8))
+#define REGSP_HINT(r)   ((r)|RID_NONE)
+#define REGSP_INIT    REGSP(RID_INIT, 0)
 
 void Assembler::setup(IRBuffer *buf) {
   setupRegAlloc();
@@ -121,7 +121,7 @@ void Assembler::emit_rmro(x86Op xo, Reg rr, Reg rb, int32_t offset) {
       *--p = MODRM(XM_SCALE1, RID_ESP, RID_ESP);
   } else {
     // offset = absolute address.
-    *(int32_t *)(p-4) = offset;
+    *(int32_t *)(p - 4) = offset;
     p[-5] = MODRM(XM_SCALE1, RID_ESP, RID_EBP);
     p -= 5;
     rb = RID_ESP;
@@ -141,37 +141,36 @@ void Assembler::emit_mrm(x86Op xo, Reg rr, Reg rb) {
       p -= 4;
       *(int32_t *)p = mrm_.ofs;
       if (mrm_.idx != RID_NONE)
-	goto mrmidx;
+        goto mrmidx;
 #if 1 /* LJ_64 */
       *--p = MODRM(XM_SCALE1, RID_ESP, RID_EBP);
       rb = RID_ESP;
 #endif
     } else {
-      if (mrm_.ofs == 0 && (rb&7) != RID_EBP) {
-	mode = XM_OFS0;
+      if (mrm_.ofs == 0 && (rb & 7) != RID_EBP) {
+        mode = XM_OFS0;
       } else if (checki8(mrm_.ofs)) {
-	*--p = (MCode)mrm_.ofs;
-	mode = XM_OFS8;
+        *--p = (MCode)mrm_.ofs;
+        mode = XM_OFS8;
       } else {
-	p -= 4;
-	*(int32_t *)p = mrm_.ofs;
-	mode = XM_OFS32;
+        p -= 4;
+        *(int32_t *)p = mrm_.ofs;
+        mode = XM_OFS32;
       }
       if (mrm_.idx != RID_NONE) {
-      mrmidx:
-	mcp = emit_opmx(xo, mode, mrm_.scale, rr, rb, mrm_.idx, p);
-	return;
+mrmidx:
+        mcp = emit_opmx(xo, mode, mrm_.scale, rr, rb, mrm_.idx, p);
+        return;
       }
-      if ((rb&7) == RID_ESP)
-	*--p = MODRM(XM_SCALE1, RID_ESP, RID_ESP);
+      if ((rb & 7) == RID_ESP)
+        *--p = MODRM(XM_SCALE1, RID_ESP, RID_ESP);
     }
   }
   mcp = emit_opm(xo, mode, rr, rb, p, 0);
 }
 
 /* op r, i */
-void Assembler::emit_gri(x86Group xg, Reg rb, int32_t i)
-{
+void Assembler::emit_gri(x86Group xg, Reg rb, int32_t i) {
   MCode *p = mcp;
   x86Op xo;
   if (checki8(i)) {
@@ -201,7 +200,7 @@ void Assembler::emit_gmrmi(x86Group xg, Reg rb, int32_t i) {
 
 void Assembler::move(Reg dst, Reg src) {
   if (dst < RID_MAX_GPR) {
-    emit_rr(XO_MOV, REX_64|dst, REX_64|src);
+    emit_rr(XO_MOV, REX_64 | dst, REX_64 | src);
   } else { // XMM registers
     emit_rr(XO_MOVAPS, dst, src);
   }
@@ -248,26 +247,28 @@ void Assembler::ret() {
 
 void Assembler::load_u64(Reg dst, Reg base, int32_t offset) {
   if (dst < RID_MAX_GPR)
-    emit_rmro(XO_MOV, REX_64|dst, base, offset);
+    emit_rmro(XO_MOV, REX_64 | dst, base, offset);
   else
     emit_rmro(XO_MOVSD, dst, base, offset);
 }
 
 void Assembler::store_u64(Reg base, int32_t offset, Reg src) {
   if (src < RID_MAX_GPR)
-    emit_rmro(XO_MOVto, REX_64|src, base, offset);
+    emit_rmro(XO_MOVto, REX_64 | src, base, offset);
   else
     emit_rmro(XO_MOVSDto, src, base, offset);
 }
 
 void Assembler::storei_u64(Reg base, int32_t offset, int32_t i) {
   emit_i32(i);
-  emit_rmro(XO_MOVmi, REX_64|0, base, offset);
+  emit_rmro(XO_MOVmi, REX_64 | 0, base, offset);
 }
 
 // --- Register Allocation -------------------------------------------
 
-inline bool canRemat(IRRef ref) { return ref < REF_BIAS; }
+inline bool canRemat(IRRef ref) {
+  return ref < REF_BIAS;
+}
 
 Reg Assembler::allocRef(IRRef ref, RegSet allow) {
   IR *ins = ir(ref);
@@ -295,7 +296,7 @@ Reg Assembler::allocRef(IRRef ref, RegSet allow) {
   } else { // No regs available.
     r = evictReg(allow);
   }
- found:
+found:
   RA_DBGX((this, "alloc     $f $r", ref, r));
   ins->setReg(r);
   freeset_.clear(r);
@@ -384,7 +385,7 @@ Reg Assembler::rematConstant(IRRef ref) {
   } else {
     LC_ASSERT(ins->opcode() == IR::kKBASEO);
     int32_t ofs = ins->i32() * 8;  // TODO: Hardcoded word width.
-    emit_rmro(XO_LEA, r|REX_64, RID_BASE, ofs);
+    emit_rmro(XO_LEA, r | REX_64, RID_BASE, ofs);
   }
   return r;
 }
@@ -447,7 +448,7 @@ void Assembler::allocLeft(Reg dest, IRRef lref) {
     }
     if (!hasHint(left))
       setHint(ins, dest);  // Propagate register hint.
-    
+
     LC_ASSERT(dest < RID_MAX_GPR); // FIXME: FP support.
     left = allocRef(lref, kGPR);
   }
@@ -483,7 +484,7 @@ Reg Assembler::allocConst(IRRef ref, RegSet allow, int32_t *k) {
 }
 */
 
-/// Fuse 
+/// Fuse an operand into a memory reference or immediate, if possible.
 Reg Assembler::fuseLoad(IRRef ref, RegSet allow) {
   IR *ins = ir(ref);
   if (isReg(ins->reg())) {
@@ -516,7 +517,7 @@ void Assembler::intArith(IR *ins, x86Arith xa) {
   int32_t k = 0;
   IRRef lref = ins->op1();
   IRRef rref = ins->op2();
-  
+
   Reg right = ir(rref)->reg();
   if (isReg(right)) {
     allow.clear(right);
@@ -530,9 +531,9 @@ void Assembler::intArith(IR *ins, x86Arith xa) {
 
   if (xa != XOg_X_IMUL) {
     if (isReg(right)) {
-      emit_mrm(XO_ARITH(xa), REX_64|dest, right);
+      emit_mrm(XO_ARITH(xa), REX_64 | dest, right);
     } else {
-      emit_gri(XG_ARITHi(xa), REX_64|dest, k);
+      emit_gri(XG_ARITHi(xa), REX_64 | dest, k);
     }
   } else {
     cerr << "NYI: IMUL" << endl;
@@ -588,7 +589,7 @@ void Assembler::emitSLOAD(IR *ins) {
 
 #define COMPFLAGS(cs, cu)  ((cs)+((cu)<<4))
 static const uint16_t asm_compmap[IR::kNE - IR::kLT + 1] = {
-  /*                signed, unsigned */  
+  /*                signed, unsigned */
   /* LT */ COMPFLAGS(CC_GE,  CC_AE),
   /* GE */ COMPFLAGS(CC_L,   CC_B),
   /* LE */ COMPFLAGS(CC_G,   CC_A),
@@ -601,7 +602,7 @@ void Assembler::guardcc(int cc) {
   MCode *target = exitstubAddr(snapno_);
   MCode *p = mcp;
   *(int32_t *)(p - 4) = jmprel(p, target);
-  p[-5] = (MCode)(XI_JCCn+(cc&15));
+  p[-5] = (MCode)(XI_JCCn + (cc & 15));
   p[-6] = 0x0f;
   mcp = p - 6;
 }
@@ -613,29 +614,38 @@ void Assembler::compare(IR *ins, int cc) {
   Reg left = alloc1(lref, kGPR);
   if (is32BitLiteral(rref, &imm)) {
     guardcc(cc);
-    emit_gmrmi(XG_ARITHi(XOg_CMP), left|REX_64, imm);
+    emit_gmrmi(XG_ARITHi(XOg_CMP), left | REX_64, imm);
   } else {
     Reg right = alloc1(rref, kGPR);
     guardcc(cc);
-    emit_mrm(XO_CMP, left|REX_64, right|REX_64);
+    emit_mrm(XO_CMP, left | REX_64, right | REX_64);
   }
 }
 
 void Assembler::emit(IR *ins) {
   switch (ins->opcode()) {
-  case IR::kSLOAD: emitSLOAD(ins); break;
-  case IR::kADD:   intArith(ins, XOg_ADD); break;
-  case IR::kSAVE:  save(ins); break;
-  case IR::kLT: case IR::kGE:
-  case IR::kLE: case IR::kGT:
-  case IR::kEQ: case IR::kNE:
-    { int idx = (int)ins->opcode() - (int)IR::kLT;
-      LC_ASSERT(idx >= 0 && idx < countof(asm_compmap));
-      LC_ASSERT(buf_->snap(snapno_).ref() == curins_);
-      LC_ASSERT(ir(curins_) == ins);
-      compare(ins, asm_compmap[idx] & 15);
-      break;
-    }
+  case IR::kSLOAD:
+    emitSLOAD(ins);
+    break;
+  case IR::kADD:
+    intArith(ins, XOg_ADD);
+    break;
+  case IR::kSAVE:
+    save(ins);
+    break;
+  case IR::kLT:
+  case IR::kGE:
+  case IR::kLE:
+  case IR::kGT:
+  case IR::kEQ:
+  case IR::kNE: {
+    int idx = (int)ins->opcode() - (int)IR::kLT;
+    LC_ASSERT(idx >= 0 && idx < countof(asm_compmap));
+    LC_ASSERT(buf_->snap(snapno_).ref() == curins_);
+    LC_ASSERT(ir(curins_) == ins);
+    compare(ins, asm_compmap[idx] & 15);
+    break;
+  }
   default:
     cerr << "NYI: codegen for ";
     ins->debugPrint(cerr, REF_BIAS + (IRRef1)(ins - ir_));
@@ -687,7 +697,7 @@ void Assembler::save(IR *ins) {
     }
     RA_DBGX((this, "<<base += $x words>>", relbase));
     // TODO: Use LEA?
-    emit_gri(XG_ARITHi(XOg_ADD), RID_BASE|REX_64, relbase * sizeof(Word));
+    emit_gri(XG_ARITHi(XOg_ADD), RID_BASE | REX_64, relbase * sizeof(Word));
   }
 
   for (Snapshot::MapRef se = snap.begin(); se != snap.end(); ++se) {
@@ -695,14 +705,14 @@ void Assembler::save(IR *ins) {
     IRRef ref = snapmap->slotRef(se);
     IR *ins = ir(ref);
     RegSet allow = kGPR;
-    
+
     memstore(RID_BASE, slot * sizeof(Word), ref, allow);
   }
 }
 
 void Assembler::emit_jmp(MCode *target) {
   MCode *p = mcp;
-  *(int32_t*)(p - 4) = jmprel(p, target);
+  *(int32_t *)(p - 4) = jmprel(p, target);
   p[-5] = XI_JMP;
   mcp = p - 5;
 }
@@ -727,10 +737,10 @@ void Assembler::memstore(Reg base, int32_t ofs, IRRef ref, RegSet allow) {
 
 MCode *Assembler::exitstubAddr(ExitNo exitno) {
   // Cast to char because we're calculating in bytes.
-  char **group = (char**)jit_->exitStubGroup_;
+  char **group = (char **)jit_->exitStubGroup_;
   LC_ASSERT(group[exitno / EXITSTUBS_PER_GROUP] != NULL);
-  return (MCode*)(group[exitno / EXITSTUBS_PER_GROUP] +
-                  EXITSTUB_SPACING * (exitno % EXITSTUBS_PER_GROUP));
+  return (MCode *)(group[exitno / EXITSTUBS_PER_GROUP] +
+                   EXITSTUB_SPACING * (exitno % EXITSTUBS_PER_GROUP));
 }
 
 MCode *Assembler::generateExitstubGroup(ExitNo group, MachineCode *mcode) {
@@ -738,33 +748,37 @@ MCode *Assembler::generateExitstubGroup(ExitNo group, MachineCode *mcode) {
   ExitNo groupofs = (group * EXITSTUBS_PER_GROUP) & 0xff;
   MCode *mxp = mcbot;
   MCode *mxpstart = mxp;
-  if (mxp + (2+2) * EXITSTUBS_PER_GROUP + 8 + 5 >= mctop) {
+  if (mxp + (2 + 2) * EXITSTUBS_PER_GROUP + 8 + 5 >= mctop) {
     cerr << "NYI: Overflow when generating exit stubs." << endl;
     exit(2);
   }
   // For each ExitNo in the group generate:
   //     push $(exitno)   // 8-bit immediate
   //     jmp END      // 8-bit offset
-  *mxp++ = XI_PUSHi8; *mxp++ = (MCode)groupofs;  // groupofs + 0
+  *mxp++ = XI_PUSHi8;
+  *mxp++ = (MCode)groupofs;  // groupofs + 0
   for (i = 1; i < EXITSTUBS_PER_GROUP; i++) {
     // Branch for the previous exitno
-    *mxp++ = XI_JMPs; *mxp++ = (MCode)((2+2)*(EXITSTUBS_PER_GROUP - i) - 2);
+    *mxp++ = XI_JMPs;
+    *mxp++ = (MCode)((2 + 2) * (EXITSTUBS_PER_GROUP - i) - 2);
     // The next exitno.
-    *mxp++ = XI_PUSHi8; *mxp++ = (MCode)(groupofs + i);
+    *mxp++ = XI_PUSHi8;
+    *mxp++ = (MCode)(groupofs + i);
   }
   // We don't need a jump for the final exit in the group.  It's just
   // a fall-through.
-  
+
   // This is where where the END label occurs.
 
   // Push the high byte of the exit no.
-  *mxp++ = XI_PUSHi8; *mxp++ = (MCode)((group*EXITSTUBS_PER_GROUP)>>8);
-  
+  *mxp++ = XI_PUSHi8;
+  *mxp++ = (MCode)((group * EXITSTUBS_PER_GROUP) >> 8);
+
   // Jump (relative) to exit handler.
   *mxp++ = XI_JMP;
   mxp += 4;   // The jump is relative to the *end* of the instruction.
-  *((int32_t *)(mxp - 4)) = jmprel(mxp, (MCode*)(void *)asmExit);
-  
+  *((int32_t *)(mxp - 4)) = jmprel(mxp, (MCode *)(void *)asmExit);
+
   // Commit code for this group (even if assembly fails later on).
   mcode->commitStub(mxp);
   mcbot = mxp;
@@ -808,7 +822,7 @@ const char *regNames64[RID_NUM_GPR] = {
 };
 
 const char *fpRegNames[RID_NUM_FPR] = {
-  "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7", 
+  "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7",
   "xmm8", "xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15"
 };
 
