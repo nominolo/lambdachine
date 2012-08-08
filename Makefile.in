@@ -191,7 +191,8 @@ irtest: unittest
 
 .PHONY: fixstyle
 fixstyle:
-	astyle --style=java --lineend=linux -s2 --convert-tabs --preserve-date \
+	astyle --style=java --lineend=linux -s2 --convert-tabs \
+		--preserve-date --indent-labels \
 	        --pad-header --align-pointer=name --pad-oper -n \
 		$(VM_SRCS)
 

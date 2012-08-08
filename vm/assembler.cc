@@ -158,7 +158,7 @@ void Assembler::emit_mrm(x86Op xo, Reg rr, Reg rb) {
         mode = XM_OFS32;
       }
       if (mrm_.idx != RID_NONE) {
-mrmidx:
+      mrmidx:
         mcp = emit_opmx(xo, mode, mrm_.scale, rr, rb, mrm_.idx, p);
         return;
       }
