@@ -29,11 +29,11 @@ using namespace std;
 #endif
 
 #if LC_ARCH_BITS == 64
-char *const kMMapRegionStart = reinterpret_cast<char*>(0x100000000);
-char *const kMMapRegionEnd = reinterpret_cast<char*>(1UL << 40); // 1 Tbyte
+char *const kMMapRegionStart = reinterpret_cast<char *>(0x100000000);
+char *const kMMapRegionEnd = reinterpret_cast<char *>(1UL << 40); // 1 Tbyte
 #elif LC_ARCH_BITS == 32
-char *const kMMapRegionStart = reinterpret_cast<char*>(0x10000);
-char *const kMMapRegionEnd = reinterpret_cast<char*>(1UL << 31); // 2 GB
+char *const kMMapRegionStart = reinterpret_cast<char *>(0x10000);
+char *const kMMapRegionEnd = reinterpret_cast<char *>(1UL << 31); // 2 GB
 #else
 # error "Only 32 bit and 64 bit architectures supported."
 #endif
@@ -60,7 +60,7 @@ Region *Region::newRegion(RegionType regionType) {
   char *ptr;
 
   for (;;) {
-    ptr = static_cast<char*>(mmap(alloc_hint, size, kMMapProtection, kMMapFlags, -1, 0));
+    ptr = static_cast<char *>(mmap(alloc_hint, size, kMMapProtection, kMMapFlags, -1, 0));
     if (ptr != MAP_FAILED && isAlignedAtPowerOf2(kRegionSize, ptr)) {
       // Success!
       alloc_hint += size;
@@ -69,14 +69,14 @@ Region *Region::newRegion(RegionType regionType) {
     if (ptr == MAP_FAILED) {
       munmap(ptr, size);
       if (alloc_hint >= kMMapRegionEnd) {
-	outOfMemory();
+        outOfMemory();
       }
     }
   }
 
   DLOG("Allocated region %p-%p\n", ptr, ptr + size);
 
-  Region *region = reinterpret_cast<Region*>(ptr);
+  Region *region = reinterpret_cast<Region *>(ptr);
   region->region_info_ = regionType;
   region->region_link_ = NULL;
   region->initBlocks();
@@ -86,14 +86,14 @@ Region *Region::newRegion(RegionType regionType) {
 
 void Region::initBlocks() {
   // Mark all blocks as free.
-  char *ptr = reinterpret_cast<char*>(this) + sizeof(Region);
+  char *ptr = reinterpret_cast<char *>(this) + sizeof(Region);
   for (Word i = 0; i < kBlocksPerRegion; i++) {
     blocks_[i].flags_ = Block::kUninitialized;
     blocks_[i].start_ = ptr;
     blocks_[i].free_ = ptr;
     ptr = alignToBlockBoundary(ptr + 1);
     blocks_[i].end_ = ptr;
-    blocks_[i].link_ = &blocks_[i+1];
+    blocks_[i].link_ = &blocks_[i + 1];
   }
   blocks_[kBlocksPerRegion - 1].link_ = NULL; // Overwrite last link
   next_free_ = &blocks_[0];
@@ -104,7 +104,7 @@ void Region::operator delete(void *) {
 }
 
 Region::~Region() {
-  char *ptr = reinterpret_cast<char*>(this);
+  char *ptr = reinterpret_cast<char *>(this);
   DLOG("Freeing region %p-%p\n", ptr, ptr + kRegionSize);
 
   munmap(ptr, kRegionSize);
@@ -188,8 +188,8 @@ void MemoryManager::bumpAllocatorFull(char **heap, char **heaplim,
     blockFull(&closures_);
   }
   getBumpAllocatorBounds(heap, heaplim);
-  dout << "MM: heap=" << (void*)*heap
-       << " heaplim=" << (void*)*heaplim
+  dout << "MM: heap=" << (void *)*heap
+       << " heaplim=" << (void *)*heaplim
        << " nextGC=" << nextGC_
        << endl;
 }
@@ -214,7 +214,7 @@ bool MemoryManager::looksLikeClosure(void *p) {
   if (!(block->contents() == Block::kStaticClosures ||
         block->contents() == Block::kClosures))
     return false;
-  Closure *cl = (Closure*)p;
+  Closure *cl = (Closure *)p;
   return cl->info() != NULL && looksLikeInfoTable(cl->info());
 }
 
@@ -226,27 +226,27 @@ static char blockContentShortname[][Block::kMaxContentType] = {
 
 // Useful mainly for debugging.
 
-std::ostream& operator<<(std::ostream& out, const Block& b) {
+std::ostream &operator<<(std::ostream &out, const Block &b) {
   out << blockContentShortname[b.contents()]
-      << " [" << (void*)b.start() << '-' << (void*)b.end();
+      << " [" << (void *)b.start() << '-' << (void *)b.end();
   size_t blockSize = static_cast<size_t>(b.end() - b.start());
   size_t blockFull = static_cast<size_t>(b.free() - b.start());
-  cout << " full:" << (100 * blockFull + (blockSize/2)) / blockSize
-       << "% link:" << (void*)(b.link_ != NULL ? b.link_->start() : NULL) << "]";
+  cout << " full:" << (100 * blockFull + (blockSize / 2)) / blockSize
+       << "% link:" << (void *)(b.link_ != NULL ? b.link_->start() : NULL) << "]";
   return out;
 }
 
-std::ostream& operator<<(std::ostream& out, const Region& r) {
+std::ostream &operator<<(std::ostream &out, const Region &r) {
   const char *ptr = r.regionId();
-  out << "Region [" << (void*)ptr << "-"
-      << (void*)(ptr + Region::kRegionSize) << "]" << endl;
+  out << "Region [" << (void *)ptr << "-"
+      << (void *)(ptr + Region::kRegionSize) << "]" << endl;
   for (Word i = 0; i < Region::kBlocksPerRegion; i++) {
     out << "  " << r.blocks_[i] << endl;
   }
   return out;
 }
 
-std::ostream& operator<<(std::ostream& out, const MemoryManager& mm) {
+std::ostream &operator<<(std::ostream &out, const MemoryManager &mm) {
   Region *r = mm.region_;
   while (r != NULL) {
     out << *r;
@@ -310,7 +310,7 @@ void MemoryManager::performGC(Capability *cap) {
 
   // TODO: Add sanity check.  Everything reachable from the roots must
   // be in a k[Static]Closures block now.
-  
+
 
 
   // TODO: Is this correct?
@@ -352,7 +352,7 @@ void MemoryManager::evacuate(Closure **p) {
   LC_ASSERT(q != NULL);
   dout << "MM: Evac: " COL_RED << q << COL_RESET;
 
- loop:
+loop:
   info = q->info();
 
   if (isForwardingPointer(info)) {
@@ -380,20 +380,19 @@ void MemoryManager::evacuate(Closure **p) {
     break;
 
   case IND:
-    q = (Closure*)q->payload(0);
+    q = (Closure *)q->payload(0);
     dout << " -I-> " << q;
     *p = q;
     goto loop;
 
-  case PAP:
-    {
-      PapClosure *pap = (PapClosure*)q;
-      u4 size = pap->nargs_ + wordsof(PapClosure)
-        - wordsof(ClosureHeader);
-      dout << " -PAP(" << pap->nargs_ << ")-> " << pap;
-      copy(this, p, info, size);
-    }
-    break;
+  case PAP: {
+    PapClosure *pap = (PapClosure *)q;
+    u4 size = pap->nargs_ + wordsof(PapClosure)
+              - wordsof(ClosureHeader);
+    dout << " -PAP(" << pap->nargs_ << ")-> " << pap;
+    copy(this, p, info, size);
+  }
+  break;
 
   default:
     dout << " -cannot evacuate yet: " << info->type() << endl;
@@ -404,7 +403,7 @@ void MemoryManager::evacuate(Closure **p) {
 void MemoryManager::scavengeFrame(Word *base, Word *top, const u2 *bitmaps) {
   dout << "Scavenging frame " << base << '-' << top << endl;
   dout << "-1:";
-  evacuate((Closure**)&base[-1]);  // The frame node
+  evacuate((Closure **)&base[-1]); // The frame node
   if (bitmaps == NULL)
     return;
   u2 bitmap;
@@ -417,7 +416,7 @@ void MemoryManager::scavengeFrame(Word *base, Word *top, const u2 *bitmaps) {
       if (bitmap & 1) {
         LC_ASSERT(slot < slots);
         dout << slot << ": ";
-        evacuate((Closure**)&base[slot]);
+        evacuate((Closure **)&base[slot]);
       }
     }
   } while (bitmap != 0);
@@ -456,82 +455,80 @@ void MemoryManager::scavengeStack(Word *base, Word *top, const BcIns *pc) {
   }
   scavengeFrame(base, top, bitmask);
   top = base - 3;
-  pc = (BcIns*)base[-2];
-  base = (Word*)base[-3];
+  pc = (BcIns *)base[-2];
+  base = (Word *)base[-3];
 
   while (base) {
     scavengeFrame(base, top, BcIns::offsetToBitmask(pc - 1));
     top = base - 3;
-    pc = (BcIns*)base[-2];
-    base = (Word*)base[-3];
+    pc = (BcIns *)base[-2];
+    base = (Word *)base[-3];
   }
 }
 
 void MemoryManager::scavengeStaticRoots(Closure *cl) {
   dout << "MM: Scavenging static roots" << endl;
   while (cl) {
-    evacuate((Closure**)&cl->payload_[0]);
-    cl = (Closure*)cl->payload_[1];
+    evacuate((Closure **)&cl->payload_[0]);
+    cl = (Closure *)cl->payload_[1];
   }
 }
 
 void MemoryManager::scavengeBlock(Block *block) {
-  dout << "MM: Scavenging block: " << (void*)block->start()
-       << '-' << (void*)block->end() << endl;
+  dout << "MM: Scavenging block: " << (void *)block->start()
+       << '-' << (void *)block->end() << endl;
 
   char *p = block->start();
 
   // We might be evacuating into the same block that we're scavenging.
   // That is `bd->free` might change during the loop, so recheck here.
-  while ((char*)p < block->free()) {
-    Closure *cl = (Closure*)p;
+  while ((char *)p < block->free()) {
+    Closure *cl = (Closure *)p;
     InfoTable *info = cl->info();
     LC_ASSERT(!isForwardingPointer(info));
     switch (info->type()) {
     case CONSTR:
     case THUNK:
-    case FUN:
-      {
-        u4 bitmap = info->layout().bitmap;
-        u4 size = info->size();
-        dout << "MM: * Scav " << (void*)cl
-             << ' ' << info->name() << ' ';
-        IFDBG(InfoTable::printPayload(dout, bitmap, size));
-        dout << endl;
+    case FUN: {
+      u4 bitmap = info->layout().bitmap;
+      u4 size = info->size();
+      dout << "MM: * Scav " << (void *)cl
+           << ' ' << info->name() << ' ';
+      IFDBG(InfoTable::printPayload(dout, bitmap, size));
+      dout << endl;
 
-        LC_ASSERT(bitmap < (1UL << size));
-        for (u4 i = 0; bitmap != 0 && i < size; ++i, bitmap >>= 1) {
-          if (bitmap & 1) {
-            evacuate((Closure**)&cl->payload_[i]);
-          }
+      LC_ASSERT(bitmap < (1UL << size));
+      for (u4 i = 0; bitmap != 0 && i < size; ++i, bitmap >>= 1) {
+        if (bitmap & 1) {
+          evacuate((Closure **)&cl->payload_[i]);
         }
-        p += (wordsof(ClosureHeader) + size) * sizeof(Word);
       }
-      break;
-      
-    case PAP:
-      {
-        PapClosure *pap = (PapClosure*)cl;
-        // In principle we could get the bitmap from the function
-        // argument itself.  That would require following a few more
-        // pointers, though, so let's not do that if we can avoid it.
-        u4 bitmap = pap->pointerMask_;
-        u4 size = pap->nargs_;
-        dout << "MM: * Scav " << (void*)cl << " PAP";
-        IFDBG(InfoTable::printPayload(dout, bitmap, size));
-        dout << endl;
+      p += (wordsof(ClosureHeader) + size) * sizeof(Word);
+    }
+    break;
 
-        evacuate(&pap->fun_);
+    case PAP: {
+      PapClosure *pap = (PapClosure *)cl;
+      // In principle we could get the bitmap from the function
+      // argument itself.  That would require following a few more
+      // pointers, though, so let's not do that if we can avoid it.
+      u4 bitmap = pap->pointerMask_;
+      u4 size = pap->nargs_;
+      dout << "MM: * Scav " << (void *)cl << " PAP";
+      IFDBG(InfoTable::printPayload(dout, bitmap, size));
+      dout << endl;
 
-        LC_ASSERT(bitmap < (1UL << size));
-        for (u4 i = 0; bitmap != 0 && i < size; ++i, bitmap >>= 1) {
-          if (bitmap & 1) {
-            evacuate((Closure**)&pap->payload_[i]);
-          }
+      evacuate(&pap->fun_);
+
+      LC_ASSERT(bitmap < (1UL << size));
+      for (u4 i = 0; bitmap != 0 && i < size; ++i, bitmap >>= 1) {
+        if (bitmap & 1) {
+          evacuate((Closure **)&pap->payload_[i]);
         }
-        p += (wordsof(PapClosure) + size) * sizeof(Word);
       }
-      break;
+      p += (wordsof(PapClosure) + size) * sizeof(Word);
+    }
+    break;
 
     default:
       cerr << "Can't scavenge object type, yet: " << info->type()
@@ -541,8 +538,8 @@ void MemoryManager::scavengeBlock(Block *block) {
     }
   }
   block->setFlag(Block::kScavenged);
-  dout << "MM: DONE Scavenging block: " << (void*)block->start()
-       << '-' << (void*)block->end() << endl;
+  dout << "MM: DONE Scavenging block: " << (void *)block->start()
+       << '-' << (void *)block->end() << endl;
 }
 
 _END_LAMBDACHINE_NAMESPACE
