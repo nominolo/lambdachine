@@ -285,6 +285,8 @@ uint64_t IRBuffer::literalValue(IRRef ref) {
     }
   } else if (tir->opcode() == IR::kKWORD) {
     return (uint64_t)tir->u32() | ((uint64_t)ir(ref-1)->u32() << 32);
+  } else if (tir->opcode() == IR::kKBASEO) {
+    return (uint64_t)(slots_.origBase() + tir->i32());
   }
   LC_ASSERT(false);
   return 0;

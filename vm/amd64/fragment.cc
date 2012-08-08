@@ -9,23 +9,13 @@ using namespace std;
 
 _START_LAMBDACHINE_NAMESPACE
 
-/* This definition must match the asmEnter/asmExit functions */
-struct _ExitState {
-  double   fpr[0];    /* Floating-point registers. */
-  Word     gpr[RID_NUM_GPR];    /* General-purpose registers. */
-  Word     *hplim;              /* Heap Limit */
-  Word     *stacklim;           /* Stack Limit */
-  Word     *spill;              /* Spill slots. */
-  Thread   *T;                  /* Currently executing thread */
-  Fragment *F;                  /* Fragment under execution */
-};
 
 extern "C" void LC_USED
 exitTrace(ExitNo n, ExitState *s) {
-  cerr << "Exited trace at: " << (int)n << endl;
-  cerr << "NYI: exit trace" << endl;
-  //  exit(2);
-  // restoreSnapshot(n, s);
+  if (LC_UNLIKELY(s->F == NULL))
+    cerr << "No fragment, skipping snapshot restore.\n";
+  else
+    s->F->restoreSnapshot(n, s);
 }
 
 #define ASM_ENTER NAME_PREFIX "asmEnter"

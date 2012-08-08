@@ -1276,6 +1276,51 @@ TEST_F(RegAlloc, SnapTwice) {
   Dump();
 }
 
+TEST(TestFragment, TestFragment) {
+  MemoryManager mm;
+  Loader loader(&mm, "tests");
+  Capability cap(&mm);
+  Thread *T = Thread::createThread(&cap, 1000);
+  Jit jit;
+  IRBuffer *buf = jit.buffer();
+  Word stack[200];
+  buf->reset(&stack[10], &stack[18]);
+  //  buf->disableOptimisation(IRBuffer::kOptFold);
+
+  TRef tr1 = buf->slot(0);
+  TRef tr2 = buf->literal(IRT_I64, 5);
+  TRef tr3 = buf->emit(IR::kADD, IRT_I64, tr1, tr2);
+  buf->setSlot(0, tr3);
+  buf->setSlot(1, tr2);
+  buf->emit(IR::kLT, IRT_VOID|IRT_GUARD, tr1, tr2);
+  TRef tr4 = buf->emit(IR::kADD, IRT_I64, tr3, tr2);
+  TRef tr5 = buf->baseLiteral(&stack[12]);
+  buf->setSlot(0, tr4);
+  buf->setSlot(1, tr5);
+  buf->emit(IR::kSAVE, IRT_VOID|IRT_GUARD, 0, 0);
+
+  Assembler *as = jit.assembler();
+  as->setup(buf);
+  as->assemble(buf, jit.mcode());
+  buf->debugPrint(cerr, 1);
+  Fragment *F = jit.saveFragment();
+
+  Word *base = T->base();
+  // Should abort at the first guard.
+  base[0] = 10;
+  base[1] = 0;
+  asmEnter(F, T, base + 10, NULL, NULL, T->stackLimit(), F->entry());
+  EXPECT_EQ(15, base[0]);
+  EXPECT_EQ(5, base[1]);
+
+  // Should run to the end.
+  base[0] = 4;
+  base[1] = 0;
+  asmEnter(F, T, base + 10, NULL, NULL, T->stackLimit(), F->entry());
+  EXPECT_EQ(14, base[0]);
+  EXPECT_EQ((Word)(base + 2), base[1]);
+}
+
 int main(int argc, char *argv[]) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

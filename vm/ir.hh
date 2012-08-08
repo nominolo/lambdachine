@@ -375,10 +375,10 @@ inline SnapEntry::SnapEntry(int s, IRRef1 r)
 ///
 /// To iterate over a snapshot's entries use this idiom:
 ///
-///     for (const SnapEntry *sn = snap->begin(snapmap);
-///          sn < snap->end(snapmap); ++sn) {
-///       IRRef1 ref = sn->ref();
-///       int slot = sn->slot();
+///     for (Snapshot::MapRef sn = snap->begin();
+///          sn < snap->end(); ++sn) {
+///       IRRef1 ref = snapmap->slotRef(sn);
+///       int slot = snapmap->slotId(sn);
 ///       ...
 ///     }
 ///
@@ -493,6 +493,8 @@ public:
     return p - realOrigBase_;
   }
 
+  inline Word *origBase() const { return realOrigBase_; }
+
   // TODO: Create snapshots.
   void snapshot(Snapshot *snap, SnapshotData *snapmap,
                 IRRef1 ref, void *pc);
@@ -588,7 +590,10 @@ public:
   
   void snapshot(IRRef ref, void *pc);
   SnapNo snapshot(void *pc);
-  inline Snapshot &snap(SnapNo n) { return snaps_.at(n); }
+  inline Snapshot &snap(SnapNo n) {
+    LC_ASSERT(n >= 0 && n < snaps_.size());
+    return snaps_.at(n);
+  }
   inline SnapNo numSnapshots() const { return snaps_.size(); }
 
   SnapshotData *snapmap() { return &snapmap_; }

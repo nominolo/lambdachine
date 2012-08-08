@@ -1,5 +1,6 @@
 #include "jit.hh"
 #include "ir-inl.hh"
+#include "assembler.hh"
 
 #include <iostream>
 #include <string.h>
@@ -155,6 +156,7 @@ Fragment *Jit::saveFragment() {
   F->buffer_ = buffer;
 
   size_t nsnaps = buf->snaps_.size();
+  F->nsnaps_ = nsnaps;
   F->snaps_ = new Snapshot[nsnaps];
   for (size_t i = 0; i < nsnaps; ++i)
     F->snaps_[i] = buf->snaps_.at(i);
@@ -165,6 +167,64 @@ Fragment *Jit::saveFragment() {
 
   return F;
 }
+
+#if (DEBUG_COMPONENTS & DEBUG_TRACE_ENTEREXIT) != 0
+#define DBG(stmt) do { stmt; } while(0)
+#else
+#define DBG(stmt) do {} while(0)
+#endif
+
+inline uint64_t Fragment::literalValue(IRRef ref, Word *base) {
+  IR *ins = ir(ref);
+  if (ins->opcode() == IR::kKINT) {
+    if (kOpIsSigned & (1 << (int)ins->type()))
+      return (int64_t)(int32_t)ins->i32();
+    else
+      return (uint64_t)(uint32_t)ins->i32();
+  } else if (ins->opcode() == IR::kKWORD) {
+    return (uint64_t)ins->u32() | ((uint64_t)ir(ref-1)->u32() << 32);
+  } else if (ins->opcode() == IR::kKBASEO) {
+    return (uint64_t)(base + ins->i32());
+  }
+  return 0;
+}
+
+void Fragment::restoreSnapshot(ExitNo exitno, ExitState *ex) {
+  Word *spill = ex->spill;
+  LC_ASSERT(0 <= exitno && exitno < nsnaps_);
+  DBG(cerr << "Restoring from snapshot " << (int)exitno << endl);
+  Snapshot &sn = snap(exitno);
+  IR *snapins = ir(sn.ref());
+  if (snapins->opcode() != IR::kSAVE) {
+    Word *base = (Word*)ex->gpr[RID_BASE];
+    void *hp = (Word*)ex->gpr[RID_HP];
+    DBG(sn.debugPrint(cerr, &snapmap_, exitno));
+    DBG(cerr << "  base = " << base << ", hp = " << hp << endl);
+    for (Snapshot::MapRef i = sn.begin(); i < sn.end(); ++i) {
+      int slot = snapmap_.slotId(i);
+      int ref = snapmap_.slotRef(i);
+      IR *ins = ir(ref);
+      DBG(cerr << "    Restoring "; IR::printIRRef(cerr, ref));
+      DBG(cerr << ":  base[" << slot << "] = ");
+      if (irref_islit(ref)) {
+        uint64_t k = literalValue(ref, base);
+        DBG(cerr << "literal (" << hex << k << ")" << endl);
+        base[slot] = k;
+      } else if (ins->spill() != 0) {
+        DBG(cerr << "spill[" << (int)ins->spill() << "] ("
+            << hex << spill[ins->spill()] << ")" << endl);
+        base[slot] = spill[ins->spill()];
+      } else {
+        LC_ASSERT(isReg(ins->reg()));
+        DBG(cerr << IR::regName(ins->reg(), ins->type()) << " ("
+            << hex << ex->gpr[ins->reg()] << ")" << endl);
+        base[slot] = ex->gpr[ins->reg()];
+      }
+    }
+  }
+}
+
+#undef DBG
 
 #define SLOT_SIZE (LC_ARCH_BITS/8)
 

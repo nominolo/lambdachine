@@ -152,6 +152,9 @@ public:
 
   inline MachineCode *mcode() { return &mcode_; }
   inline IRBuffer *buffer() { return &buf_; }
+  inline Assembler *assembler() { return &asm_; }
+
+  Fragment *saveFragment();
 
 private:
   void finishRecording();
@@ -160,7 +163,6 @@ private:
     Word idx = reinterpret_cast<Word>(startPc) >> 2;
     fragments_[idx] = F;
   }
-  Fragment *saveFragment();
   
   static const int kLastInsWasBranch = 0;
   static const int kIsReturnTrace = 1;
@@ -197,10 +199,18 @@ public:
   inline uint32_t targetCount() const { return numTargets_; }
   inline BcIns *target(uint32_t n) const { return targets_[n]; }
   
-
+  inline MCode *entry() { return mcode_; }
+  uint64_t literalValue(IRRef, Word* base);
+  void restoreSnapshot(ExitNo, ExitState *);
 private:
   Fragment();
   ~Fragment();
+
+  inline IR *ir(IRRef ref) { return &buffer_[ref]; }
+  inline Snapshot &snap(SnapNo n) {
+    LC_ASSERT(n >= 0 && n < nsnaps_);
+    return snaps_[n];
+  }
 
   static const int kIsCompiled = 1;
 
@@ -211,10 +221,11 @@ private:
   BcIns **targets_;
   uint32_t numTargets_;
   
-  IR *buffer_;           // Biased buffer
   IRRef firstconstant_;  // Lowest IR constant. Biased with REF_BIAS
   IRRef nextins_;        // Next IR instruction. Biased with REF_BIAS
+  IR *buffer_;           // Biased buffer
 
+  size_t nsnaps_;
   Snapshot *snaps_;      
   SnapshotData snapmap_;
   
@@ -222,6 +233,17 @@ private:
   //  size_t sizemcode_;
 
   friend class Jit;
+};
+
+/* This definition must match the asmEnter/asmExit functions */
+struct _ExitState {
+  double   fpr[RID_NUM_FPR];    /* Floating-point registers. */
+  Word     gpr[RID_NUM_GPR];    /* General-purpose registers. */
+  Word     *hplim;              /* Heap Limit */
+  Word     *stacklim;           /* Stack Limit */
+  Word     *spill;              /* Spill slots. */
+  Thread   *T;                  /* Currently executing thread */
+  Fragment *F;                  /* Fragment under execution */
 };
 
 extern "C" void asmEnter(Fragment *F, Thread *T, Word *spillArea,
