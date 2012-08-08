@@ -208,7 +208,7 @@ private:
 
   inline IR *ir(IRRef ref) { return &buffer_[ref]; }
   inline Snapshot &snap(SnapNo n) {
-    LC_ASSERT(n >= 0 && n < nsnaps_);
+    LC_ASSERT(n < nsnaps_);
     return snaps_[n];
   }
 

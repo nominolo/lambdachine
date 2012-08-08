@@ -591,7 +591,7 @@ public:
   void snapshot(IRRef ref, void *pc);
   SnapNo snapshot(void *pc);
   inline Snapshot &snap(SnapNo n) {
-    LC_ASSERT(n >= 0 && n < snaps_.size());
+    LC_ASSERT(n < snaps_.size());
     return snaps_.at(n);
   }
   inline SnapNo numSnapshots() const { return snaps_.size(); }
