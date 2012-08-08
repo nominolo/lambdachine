@@ -92,11 +92,21 @@ enum {
 
 static int64_t kfold_intop(int64_t k1, int64_t k2, IR::Opcode op) {
   switch (op) {
-  case IR::kADD: k1 += k2; break;
-  case IR::kSUB: k1 -= k2; break;
-  case IR::kMUL: k1 *= k2; break;
-  case IR::kNEG: k1 = -k1; break;
-  default: LC_ASSERT(0); break;
+  case IR::kADD:
+    k1 += k2;
+    break;
+  case IR::kSUB:
+    k1 -= k2;
+    break;
+  case IR::kMUL:
+    k1 *= k2;
+    break;
+  case IR::kNEG:
+    k1 = -k1;
+    break;
+  default:
+    LC_ASSERT(0);
+    break;
   }
   return k1;
 }
@@ -305,13 +315,17 @@ TRef IRBuffer::optFold() {
 IRRef IRBuffer::doFold() {
   IRRef ref;
   int retrycount = 0;
- retry:
+retry:
   ref = NEXTFOLD;
   IR::Opcode op = fins()->opcode();
   IRRef left = fins()->op1();
   IRRef right = fins()->op2();
-  if (left != 0) { fold_.left = *ir(left); }
-  if (right != 0) { fold_.right = *ir(right); }
+  if (left != 0) {
+    fold_.left = *ir(left);
+  }
+  if (right != 0) {
+    fold_.right = *ir(right);
+  }
 
   switch (op) {
   case IR::kADD:
