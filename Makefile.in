@@ -189,6 +189,12 @@ asmtest: unittest
 irtest: unittest
 	@./unittest --gtest_filter=IRTest*
 
+.PHONY: fixstyle
+fixstyle:
+	astyle --style=java --lineend=linux -s2 --convert-tabs --preserve-date \
+	        --pad-header --align-pointer=name --pad-oper -n \
+		$(VM_SRCS)
+
 .PHONY: analyse analyze
 analyze: analyse
 analyse: $(VM_SRCS)
