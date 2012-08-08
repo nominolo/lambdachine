@@ -13,15 +13,15 @@ _START_LAMBDACHINE_NAMESPACE
 using namespace std;
 
 #ifndef MAP_ANONYMOUS
-#define MAP_ANONYMOUS	MAP_ANON
+#define MAP_ANONYMOUS MAP_ANON
 #endif
 
-#define MCPROT_RW	(PROT_READ|PROT_WRITE)
-#define MCPROT_RX	(PROT_READ|PROT_EXEC)
-#define MCPROT_RWX	(PROT_READ|PROT_WRITE|PROT_EXEC)
+#define MCPROT_RW (PROT_READ|PROT_WRITE)
+#define MCPROT_RX (PROT_READ|PROT_EXEC)
+#define MCPROT_RWX  (PROT_READ|PROT_WRITE|PROT_EXEC)
 
-#define MCPROT_GEN	MCPROT_RW
-#define MCPROT_RUN	MCPROT_RX
+#define MCPROT_GEN  MCPROT_RW
+#define MCPROT_RUN  MCPROT_RX
 
 #define LC_TARGET_JUMPRANGE 31
 
@@ -51,7 +51,7 @@ void *MachineCode::alloc(size_t size) {
   const uintptr_t range = (1u << LC_TARGET_JUMPRANGE) - (1u << 21);
   uintptr_t hint = 0;
   for (int i = 0; i < 32; ++i) {
-    if (isValidMachineCodePtr((void*)hint)) {
+    if (isValidMachineCodePtr((void *)hint)) {
       void *p = allocAt(hint, size, MCPROT_GEN);
       if (isValidMachineCodePtr(p)) {
         // See if it's in range.
@@ -73,7 +73,7 @@ void *MachineCode::alloc(size_t size) {
 }
 
 void *MachineCode::allocAt(uintptr_t hint, size_t size, int prot) {
-  void *p = mmap((void *)hint, size, prot, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+  void *p = mmap((void *)hint, size, prot, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   if (p == MAP_FAILED && !hint) {
     cerr << "Failed to allocate memory from OS." << endl;
     exit(23);
@@ -109,11 +109,11 @@ void MachineCode::allocArea() {
   sizeTotal_ = size;
   protection_ = MCPROT_GEN;
   bottom_ = area_;
-  top_ = (MCode*)((char *)area_ + size_);
+  top_ = (MCode *)((char *)area_ + size_);
 }
 
 void MachineCode::commit(MCode *top) {
-  LC_ASSERT(top <= (char*)area_ + size_);
+  LC_ASSERT(top <= (char *)area_ + size_);
   LC_ASSERT(bottom_ <= top);
   top_ = top;
   protect(MCPROT_RUN);
@@ -138,12 +138,13 @@ void MachineCode::protect(int prot) {
 
 void MachineCode::syncCache(void *start, void *end) {
 #ifdef LUAJIT_USE_VALGRIND
-  VALGRIND_DISCARD_TRANSLATIONS(start, (char *)end-(char *)start);
+  VALGRIND_DISCARD_TRANSLATIONS(start, (char *)end - (char *)start);
 #endif
 
 #if LC_TARGET_X86ORX64
   // x86 ensures cache consistency automatically.
-  UNUSED(start); UNUSED(end);
+  UNUSED(start);
+  UNUSED(end);
 
 // #elif LJ_TARGET_IOS
 //   sys_icache_invalidate(start, (char *)end-(char *)start);
