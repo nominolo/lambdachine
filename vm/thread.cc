@@ -16,7 +16,7 @@ void Thread::destroy() {
   top_ = NULL;
 }
 
-// Used to initialize the 
+// Used to initialize a new thread.
 BcIns Thread::stopCode_[] = { BcIns::ad(BcIns::kSTOP, 0, 0) };
 
 void Thread::initialize(Word stackSizeInWords) {
@@ -42,8 +42,8 @@ void Thread::initialize(Word stackSizeInWords) {
             "before creating first thread.\n");
     exit(1);
   }
-  CodeInfoTable *info = static_cast<CodeInfoTable*>
-    (MiscClosures::stg_STOP_closure_addr->info());
+  CodeInfoTable *info = static_cast<CodeInfoTable *>
+                        (MiscClosures::stg_STOP_closure_addr->info());
   pc_ = &info->code()->code[0];
 }
 
