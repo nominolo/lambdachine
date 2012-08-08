@@ -20,8 +20,8 @@ InfoTable **MiscClosures::smallApInfos = NULL;
 APMAP *MiscClosures::otherApInfos = NULL;
 
 void MiscClosures::initStopClosure(MemoryManager &mm) {
-  CodeInfoTable *info = static_cast<FuncInfoTable*>
-    (mm.allocInfoTable(wordsof(FuncInfoTable)));
+  CodeInfoTable *info = static_cast<FuncInfoTable *>
+                        (mm.allocInfoTable(wordsof(FuncInfoTable)));
   info->type_ = FUN;
   info->size_ = 1;
   info->tagOrBitmap_ = 0;
@@ -34,10 +34,10 @@ void MiscClosures::initStopClosure(MemoryManager &mm) {
   info->code_.sizebitmaps = 2;
   info->code_.lits = NULL;
   info->code_.littypes = NULL;
-  info->code_.code = static_cast<BcIns*>
-    (mm.allocCode(info->code_.sizecode, info->code_.sizebitmaps));
+  info->code_.code = static_cast<BcIns *>
+                     (mm.allocCode(info->code_.sizecode, info->code_.sizebitmaps));
   BcIns *code = info->code_.code;
-  u2 *bitmasks = cast(u2*, code + info->code_.sizecode);
+  u2 *bitmasks = cast(u2 *, code + info->code_.sizecode);
 
   code[0] = BcIns::ad(BcIns::kEVAL, 0, 0);  // eval r0;
   code[1] = BcIns::bitmapOffset(byteOffset32(&code[1], bitmasks));
@@ -51,13 +51,13 @@ void MiscClosures::initStopClosure(MemoryManager &mm) {
   bitmasks[1] = 0;
 
   Closure *stg_STOP_closure = mm.allocStaticClosure(0);
-  stg_STOP_closure->setInfo((InfoTable*)info);
+  stg_STOP_closure->setInfo((InfoTable *)info);
   MiscClosures::stg_STOP_closure_addr = stg_STOP_closure;
 }
 
 void MiscClosures::initUpdateClosure(MemoryManager &mm) {
-  CodeInfoTable *info = static_cast<FuncInfoTable*>
-    (mm.allocInfoTable(wordsof(FuncInfoTable)));
+  CodeInfoTable *info = static_cast<FuncInfoTable *>
+                        (mm.allocInfoTable(wordsof(FuncInfoTable)));
   info->type_ = UPDATE_FRAME;
   info->size_ = 2;
   info->tagOrBitmap_ = 0;
@@ -70,10 +70,10 @@ void MiscClosures::initUpdateClosure(MemoryManager &mm) {
   info->code_.sizebitmaps = 2;
   info->code_.lits = NULL;
   info->code_.littypes = NULL;
-  info->code_.code = static_cast<BcIns*>
-    (mm.allocCode(info->code_.sizecode, info->code_.sizebitmaps));
+  info->code_.code = static_cast<BcIns *>
+                     (mm.allocCode(info->code_.sizecode, info->code_.sizebitmaps));
   BcIns *code = info->code_.code;
-  u2 *bitmasks = cast(u2*, code + info->code_.sizecode);
+  u2 *bitmasks = cast(u2 *, code + info->code_.sizecode);
 
   // never executed, only for the bitmasks
   code[0] = BcIns::ad(BcIns::kEVAL, 0, 0);
@@ -94,13 +94,13 @@ void MiscClosures::initUpdateClosure(MemoryManager &mm) {
   MiscClosures::stg_UPD_return_pc = &code[2];
 
   Closure *stg_UPD_closure = mm.allocStaticClosure(0);
-  stg_UPD_closure->setInfo((InfoTable*)info);
+  stg_UPD_closure->setInfo((InfoTable *)info);
   MiscClosures::stg_UPD_closure_addr = stg_UPD_closure;
 }
 
-void MiscClosures::initIndirectionItbl(MemoryManager& mm) {
-  InfoTable *info = static_cast<InfoTable*>
-    (mm.allocInfoTable(wordsof(InfoTable)));
+void MiscClosures::initIndirectionItbl(MemoryManager &mm) {
+  InfoTable *info = static_cast<InfoTable *>
+                    (mm.allocInfoTable(wordsof(InfoTable)));
   info->type_ = IND;
   info->size_ = 1;
   info->tagOrBitmap_ = 1;
@@ -121,8 +121,7 @@ static int formatBitmap(char *p, u4 nargs, u4 pointerMask) {
   return nargs;
 }
 
-static int bitmapSize(u4 bitmap)
-{
+static int bitmapSize(u4 bitmap) {
   if (bitmap < (1u << 15))
     return 1;
   if (bitmap < (1u << 30))
@@ -135,8 +134,7 @@ static int bitmapSize(u4 bitmap)
 #define BITMASK_CONT   (1u << 15)
 
 // Write bitmask to dest.  Returns number of u2's written.
-static int encodeBitmask(u2 *dest, u4 bitmap)
-{
+static int encodeBitmask(u2 *dest, u4 bitmap) {
   int i, s;
   u2 m;
   s = bitmapSize(bitmap);
@@ -157,8 +155,8 @@ void MiscClosures::buildApCont(MemoryManager *mm, ApContInfo *out,
   LC_ASSERT(nargs < 32);
   LC_ASSERT(pointerMask < (1u << nargs));
 
-  CodeInfoTable *info = static_cast<FuncInfoTable*>
-    (mm->allocInfoTable(wordsof(FuncInfoTable)));
+  CodeInfoTable *info = static_cast<FuncInfoTable *>
+                        (mm->allocInfoTable(wordsof(FuncInfoTable)));
   info->type_ = AP_CONT;
   info->size_ = 0;
   info->tagOrBitmap_ = 0; // pointerMask;
@@ -183,13 +181,13 @@ void MiscClosures::buildApCont(MemoryManager *mm, ApContInfo *out,
 
   info->code_.lits = NULL;
   info->code_.littypes = NULL;
-  info->code_.code = static_cast<BcIns*>
-    (mm->allocCode(info->code_.sizecode, info->code_.sizebitmaps));
+  info->code_.code = static_cast<BcIns *>
+                     (mm->allocCode(info->code_.sizecode, info->code_.sizebitmaps));
   BcIns *code = info->code_.code;
-  u2 *bitmasks = cast(u2*, code + info->code_.sizecode);
+  u2 *bitmasks = cast(u2 *, code + info->code_.sizecode);
 
   LC_ASSERT(nargs <= 8);  // need to change encoding of CALL/CALLT to
-                          // fix this
+  // fix this
 
   //
   // Code for an APK closure of length N:
@@ -254,8 +252,8 @@ void MiscClosures::getApCont(Closure **closure, BcIns **returnAddr,
 }
 
 void MiscClosures::initPapItbl(MemoryManager *mm) {
-  CodeInfoTable *info = static_cast<FuncInfoTable*>
-    (mm->allocInfoTable(wordsof(FuncInfoTable)));
+  CodeInfoTable *info = static_cast<FuncInfoTable *>
+                        (mm->allocInfoTable(wordsof(FuncInfoTable)));
   info->type_ = PAP;
   info->size_ = 0;  // special layout
   info->tagOrBitmap_ = 0;
@@ -269,8 +267,8 @@ void MiscClosures::initPapItbl(MemoryManager *mm) {
   info->code_.sizebitmaps = 0;
   info->code_.lits = NULL;
   info->code_.littypes = NULL;
-  info->code_.code = static_cast<BcIns*>
-    (mm->allocCode(info->code_.sizecode, info->code_.sizebitmaps));
+  info->code_.code = static_cast<BcIns *>
+                     (mm->allocCode(info->code_.sizecode, info->code_.sizebitmaps));
 
   BcIns *code = info->code_.code;
 
@@ -279,10 +277,10 @@ void MiscClosures::initPapItbl(MemoryManager *mm) {
   MiscClosures::stg_PAP_info = info;
 }
 
-InfoTable* MiscClosures::buildApInfo(MemoryManager *mm, u4 nargs, u4 pointerMask) {
+InfoTable *MiscClosures::buildApInfo(MemoryManager *mm, u4 nargs, u4 pointerMask) {
   LC_ASSERT(nargs <= 8);
-  CodeInfoTable *info = static_cast<CodeInfoTable*>
-    (mm->allocInfoTable(wordsof(CodeInfoTable)));
+  CodeInfoTable *info = static_cast<CodeInfoTable *>
+                        (mm->allocInfoTable(wordsof(CodeInfoTable)));
   info->type_ = THUNK;
   info->size_ = 1 + nargs;
   info->tagOrBitmap_ = (pointerMask << 1) | 1u;
@@ -304,8 +302,8 @@ InfoTable* MiscClosures::buildApInfo(MemoryManager *mm, u4 nargs, u4 pointerMask
   info->code_.sizebitmaps = 0;
   info->code_.lits = NULL;
   info->code_.littypes = NULL;
-  info->code_.code = static_cast<BcIns*>
-    (mm->allocCode(info->code_.sizecode, info->code_.sizebitmaps));
+  info->code_.code = static_cast<BcIns *>
+                     (mm->allocCode(info->code_.sizecode, info->code_.sizebitmaps));
 
   BcIns *code = info->code_.code;
   // Don't allow AP thunks as a trace entry point.  It's way too
