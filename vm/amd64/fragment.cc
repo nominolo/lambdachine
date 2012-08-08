@@ -31,10 +31,10 @@ asmEnterIsImplementedInAssembly(Fragment *F, Thread *T, Word *spillArea,
     ".globl " ASM_ENTER "\n"
     ASM_ENTER ":\n\t"
 
-     /* save %rbp and also makes %rsp 16-byte aligned */
+    /* save %rbp and also makes %rsp 16-byte aligned */
     "push %%rbp\n\t"
 
-    "movq 16(%%rsp),%%r10\n\t"	/* r10 = code :: (MCode *) */
+    "movq 16(%%rsp),%%r10\n\t"  /* r10 = code :: (MCode *) */
 
     /* save other callee saved regs */
     "movq %%rsp, %%rax\n\t"
@@ -49,7 +49,7 @@ asmEnterIsImplementedInAssembly(Fragment *F, Thread *T, Word *spillArea,
     "movq %%rdi,-48(%%rax)\n\t" /* F */
     "movq %%rsi,-56(%%rax)\n\t" /* T */
     "movq %%rdx,-64(%%rax)\n\t" /* S */
-    "movq %%r9,-72(%%rax)\n\t"	/* StackLim */
+    "movq %%r9,-72(%%rax)\n\t"  /* StackLim */
     "movq %%r8,-80(%%rax)\n\t"  /* HpLim */
     /* &HpLim = [rsp + 0] */
 
@@ -65,10 +65,11 @@ asmEnterIsImplementedInAssembly(Fragment *F, Thread *T, Word *spillArea,
     /* jump to code */
     "jmp *%%r10\n\t"
 
-    : : "i"(SAVE_SIZE /*stack frame size*/), /* %0 */
-        "i"(offsetof(Thread,base_)), /* %1 */
-        "i"(sizeof(Word))		    /* %2 */
-    );
+    : :
+    "i"(SAVE_SIZE /*stack frame size*/), /* %0 */
+    "i"(offsetof(Thread, base_)), /* %1 */
+    "i"(sizeof(Word))       /* %2 */
+  );
 }
 
 static void LC_USED
@@ -87,10 +88,10 @@ asmExitIsImplementedInAssembly() {
     "push %%rdi\n\t"
     "push %%rsi\n\t"
     "push %%rbp\n\t"
-      /* save the value of rsp that we ahd during exection of our machine code
-       * That rsp was 88 higher than its current level for the 11 pushes
-       * we have done since we started exection. Two pushes for the exit number
-       * plus the 9 pushes of the registers we have saved so far */
+    /* save the value of rsp that we ahd during exection of our machine code
+     * That rsp was 88 higher than its current level for the 11 pushes
+     * we have done since we started exection. Two pushes for the exit number
+     * plus the 9 pushes of the registers we have saved so far */
     "lea  88(%%rsp), %%rbp\n\t"
     "push %%rbp\n\t"
     "push %%rbx\n\t"
@@ -135,7 +136,7 @@ asmExitIsImplementedInAssembly() {
     "movsd %%xmm0,  -128(%%rbp)\n\t"
 #endif
 
-    /* call the generic restore routine exitTrace(ExitNo n, ExitState *s) 
+    /* call the generic restore routine exitTrace(ExitNo n, ExitState *s)
      * rdi = ExitNo
      * rsi = ExitState* (stored on the c-stack */
     "movq %%rsp, %%rsi\n\t"
