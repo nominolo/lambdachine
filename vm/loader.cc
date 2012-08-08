@@ -67,7 +67,7 @@ bool BytecodeFile::magic(const char *bytes) {
 #define VERSION_MAJOR  0
 #define VERSION_MINOR  1
 
-Loader::Loader(MemoryManager *mm, const char* basepaths)
+Loader::Loader(MemoryManager *mm, const char *basepaths)
   : mm_(mm), loadedModules_(10), infoTables_(100), closures_(100),
     basepaths_(NULL) {
   initBasePath(basepaths);
@@ -75,7 +75,7 @@ Loader::Loader(MemoryManager *mm, const char* basepaths)
 }
 
 Loader::~Loader() {
-  STRING_MAP(Module*)::iterator it;
+  STRING_MAP(Module *)::iterator it;
   for (it = loadedModules_.begin();
        it != loadedModules_.end(); ++it) {
     delete it->second;
@@ -103,8 +103,7 @@ void Loader::appendBasePathEntry(BasePathEntry *entry) {
   entry->next = NULL;
 }
 
-void Loader::addBasePath(const char *path)
-{
+void Loader::addBasePath(const char *path) {
   BasePathEntry *b;
   char buf[PATH_MAX + 1];
   const char *real = realpath(path, buf);
@@ -118,14 +117,13 @@ void Loader::addBasePath(const char *path)
   b = new BasePathEntry();
   b->next = NULL;
   size_t len = strlen(real);
-  b->path = static_cast<const char*>(mm_->allocString(len));
-  memmove((void*)b->path, real, len + 1);
+  b->path = static_cast<const char *>(mm_->allocString(len));
+  memmove((void *)b->path, real, len + 1);
 
   appendBasePathEntry(b);
 }
 
-void Loader::initBasePath(const char *path)
-{
+void Loader::initBasePath(const char *path) {
   if (path == NULL) path = "";
   const char *path_end;
   char buf[PATH_MAX + 1];
@@ -151,7 +149,7 @@ void Loader::initBasePath(const char *path)
         // Skip if path is too long
         fprintf(stderr, "WARNING: Path too long - ignoring: %s\n", path);
       } else {
-        memmove((void*)buf, path, path_len);
+        memmove((void *)buf, path, path_len);
         buf[path_len] = '\0';
         addBasePath(buf);
       }
@@ -176,8 +174,7 @@ const char *Loader::basePath(unsigned int index) const {
 }
 
 static char *
-moduleNameToFile(const char *basepath, const char *name)
-{
+moduleNameToFile(const char *basepath, const char *name) {
   size_t   baselen  = strlen(basepath);
   size_t   len      = strlen(name);
   size_t   rsltlen;
@@ -211,8 +208,9 @@ moduleNameToFile(const char *basepath, const char *name)
   return filename;
 }
 
-const char *const wired_in_packages[] =
-  { "ghc-prim", "integer-gmp", "base" };
+const char *const wired_in_packages[] = {
+  "ghc-prim", "integer-gmp", "base"
+};
 
 char *Loader::findModule(const char *moduleName) {
   char  *filename;
@@ -253,8 +251,7 @@ char *Loader::findModule(const char *moduleName) {
   return NULL;
 }
 
-bool Loader::loadModule(const char *moduleName)
-{
+bool Loader::loadModule(const char *moduleName) {
   return loadModule(moduleName, 0) && checkNoForwardRefs();
 }
 
@@ -299,8 +296,7 @@ bool Loader::loadModule(const char *moduleName, int level) {
   return true;
 }
 
-void Loader::loadStringTabEntry(BytecodeFile &f, StringTabEntry *e /*out*/)
-{
+void Loader::loadStringTabEntry(BytecodeFile &f, StringTabEntry *e /*out*/) {
   e->len = f.get_varuint();
   e->str = f.get_string(e->len);
 }
@@ -315,8 +311,7 @@ void Loader::loadStringTabEntry(BytecodeFile &f, StringTabEntry *e /*out*/)
 // TODO: There is currently some duplication when loading IDs,
 // because each module has its own string table.
 const char *Loader::loadId(BytecodeFile &f, const StringTabEntry *strings,
-                           const char* sep)
-{
+                           const char *sep) {
   u4 numparts;
   u4 parts[MAX_PARTS];
   size_t seplen = strlen(sep);
@@ -351,8 +346,7 @@ const char *Loader::loadId(BytecodeFile &f, const StringTabEntry *strings,
 }
 
 
-Module *Loader::loadModuleHeader(BytecodeFile &f)
-{
+Module *Loader::loadModuleHeader(BytecodeFile &f) {
   Module *mdl;
   u2 major, minor;
   u4 secmagic;
@@ -412,7 +406,7 @@ Module *Loader::loadModuleHeader(BytecodeFile &f)
 bool Loader::checkNoForwardRefs() {
   int errors = 0;
 
-  for (STRING_MAP(InfoTable*)::iterator it = infoTables_.begin();
+  for (STRING_MAP(InfoTable *)::iterator it = infoTables_.begin();
        it != infoTables_.end(); ++it) {
     InfoTable *info = it->second;
     if (info->type() == INVALID_OBJECT) {
@@ -421,7 +415,7 @@ bool Loader::checkNoForwardRefs() {
     }
   }
 
-  for (STRING_MAP(Closure*)::iterator it = closures_.begin();
+  for (STRING_MAP(Closure *)::iterator it = closures_.begin();
        it != closures_.end(); ++it) {
     Closure *cl = it->second;
     if (cl->info() == NULL) {
@@ -463,7 +457,7 @@ InfoTable *Loader::loadInfoTable(BytecodeFile &f,
   u2 cl_type = f.get_varuint();
   InfoTable *new_itbl = NULL;
   FwdRefInfoTable *old_itbl =
-    static_cast<FwdRefInfoTable*>(infoTables_[itbl_name]);
+    static_cast<FwdRefInfoTable *>(infoTables_[itbl_name]);
 
   if (old_itbl && old_itbl->type() != INVALID_OBJECT) {
     fprintf(stderr, "ERROR: Duplicate info table: %s\n", itbl_name);
@@ -473,45 +467,44 @@ InfoTable *Loader::loadInfoTable(BytecodeFile &f,
   switch (cl_type) {
   case CONSTR:
     // A statically allocated constructor
-    {
-      DLOG("itbl.CONSTR %s\n", itbl_name);
-      ConInfoTable *info = static_cast<ConInfoTable*>
-        (mm_->allocInfoTable(wordsof(ConInfoTable)));
-      info->type_ = cl_type;
-      info->tagOrBitmap_ = f.get_varuint();  // tag
-      Word sz = f.get_varuint();
-      assert(sz <= 32);
-      info->size_ = sz;
-      info->layout_.bitmap = sz > 0 ? f.get_u4() : 0;
-      // info->i.layout.payload.ptrs = fget_varuint(f);
-      // info->i.layout.payload.nptrs = fget_varuint(f);
-      info->name_ = loadId(f, strings, ".");
-      new_itbl = (InfoTable*)info;
-    }
-    break;
+  {
+    DLOG("itbl.CONSTR %s\n", itbl_name);
+    ConInfoTable *info = static_cast<ConInfoTable *>
+                         (mm_->allocInfoTable(wordsof(ConInfoTable)));
+    info->type_ = cl_type;
+    info->tagOrBitmap_ = f.get_varuint();  // tag
+    Word sz = f.get_varuint();
+    assert(sz <= 32);
+    info->size_ = sz;
+    info->layout_.bitmap = sz > 0 ? f.get_u4() : 0;
+    // info->i.layout.payload.ptrs = fget_varuint(f);
+    // info->i.layout.payload.nptrs = fget_varuint(f);
+    info->name_ = loadId(f, strings, ".");
+    new_itbl = (InfoTable *)info;
+  }
+  break;
   case CAF:
   case THUNK:
-  case FUN:
-    {
-      DLOG("itbl.FUN/CAF/THK %s\n", itbl_name);
-      CodeInfoTable *info = static_cast<CodeInfoTable*>
-        (mm_->allocInfoTable(wordsof(CodeInfoTable)));
-      info->type_ = cl_type;
-      info->tagOrBitmap_ = 0; // TODO: anything useful to put in here?
-      Word sz = f.get_varuint();
-      assert(sz <= 32);
-      info->size_ = sz;
-      info->layout_.bitmap = sz > 0 ? f.get_u4() : 0;
-      info->name_ = loadId(f, strings, ".");
-      loadCode(f, &info->code_, strings);
-      new_itbl = (InfoTable*)info;
-    }
-    break;
+  case FUN: {
+    DLOG("itbl.FUN/CAF/THK %s\n", itbl_name);
+    CodeInfoTable *info = static_cast<CodeInfoTable *>
+                          (mm_->allocInfoTable(wordsof(CodeInfoTable)));
+    info->type_ = cl_type;
+    info->tagOrBitmap_ = 0; // TODO: anything useful to put in here?
+    Word sz = f.get_varuint();
+    assert(sz <= 32);
+    info->size_ = sz;
+    info->layout_.bitmap = sz > 0 ? f.get_u4() : 0;
+    info->name_ = loadId(f, strings, ".");
+    loadCode(f, &info->code_, strings);
+    new_itbl = (InfoTable *)info;
+  }
+  break;
   default:
     fprintf(stderr, "ERROR: Unknown info table type (%d)", cl_type);
     exit(1);
   }
-  
+
   fixInfoTableForwardReference(itbl_name, new_itbl);
 
   DLOG("loadInfoTable: %s " COLOURED(COL_YELLOW, "%p") "\n",
@@ -535,12 +528,12 @@ void Loader::loadCode(BytecodeFile &f, Code *code /* out */,
   for (u2 i = 0; i < code->sizelits; ++i) {
     loadLiteral(f, &code->littypes[i], &code->lits[i], strings);
   }
-  code->code = static_cast<BcIns*>
-    (mm_->allocCode(code->sizecode, code->sizebitmaps));
+  code->code = static_cast<BcIns *>
+               (mm_->allocCode(code->sizecode, code->sizebitmaps));
   for (u2 i = 0; i < code->sizecode; ++i) {
     code->code[i] = f.get_u4();
   }
-  bitmaps = (u2*)&code->code[code->sizecode];
+  bitmaps = (u2 *)&code->code[code->sizecode];
   for (u2 i = 0; i < code->sizebitmaps; i++) {
     *bitmaps = f.get_u2();
     ++bitmaps;
@@ -569,16 +562,16 @@ void Loader::loadLiteral(BytecodeFile &f,
     i = f.get_varuint();
     *literal = (Word)strings[i].str;
     break;
-  case LIT_CLOSURE:
-    { const char *clname = loadId(f, strings, ".");
-      loadClosureReference(clname, literal);
-    }
-    break;
-  case LIT_INFO:
-    { const char *infoname = loadId(f, strings, ".");
-      loadInfoTableReference(infoname, literal);
-    }
-    break;
+  case LIT_CLOSURE: {
+    const char *clname = loadId(f, strings, ".");
+    loadClosureReference(clname, literal);
+  }
+  break;
+  case LIT_INFO: {
+    const char *infoname = loadId(f, strings, ".");
+    loadInfoTableReference(infoname, literal);
+  }
+  break;
   default:
     fprintf(stderr, "ERROR: Unknown literal type (%d) "
             "when loading file: %s\n",
@@ -609,7 +602,7 @@ void Loader::loadLiteral(BytecodeFile &f,
 //       +---------+    |        :                :
 //                      '--------* next           |
 //                               +----------------+
-// 
+//
 // Now we encounter another forward reference:
 //
 //     reference1:            infoTables_[infoTableName] =
@@ -652,8 +645,8 @@ void Loader::loadClosureReference(const char *name, Word *literal /* out */) {
   Closure *cl = closures_[name];
   if (cl == NULL) {
     // 1st forward ref, create the link
-    cl = reinterpret_cast<Closure*>
-      (new Word[(wordsof(ClosureHeader) + 1)]);
+    cl = reinterpret_cast<Closure *>
+         (new Word[(wordsof(ClosureHeader) + 1)]);
     cl->setInfo(NULL);
     cl->payload_[0] = (Word)literal;
     *literal = (Word)NULL;
@@ -676,16 +669,16 @@ void Loader::fixClosureForwardReference(const char *name, Closure *cl) {
   if (fwd_ref != NULL) {
     // fixup forward refs
     void **p, *next;
-    for (p = (void**)fwd_ref->payload_[0]; p != NULL;
-         p = (void**)next) {
+    for (p = (void **)fwd_ref->payload_[0]; p != NULL;
+         p = (void **)next) {
       next = *p;
       DLOG("Fixing closure forward ref: %s, "
            FMT_FWD_PTR " -> " FMT_CLOS_PTR "\n",
            name, p, cl);
-      *p = (void*)cl;
+      *p = (void *)cl;
     }
 
-    delete[] (Word*)fwd_ref;
+    delete[] (Word *)fwd_ref;
   }
 }
 
@@ -696,14 +689,14 @@ void Loader::loadInfoTableReference(const char *name, Word *literal) {
     // 1st forward ref
     info2 = new FwdRefInfoTable();
     info2->type_ = INVALID_OBJECT;
-    info2->next = (void**)literal;
+    info2->next = (void **)literal;
     *literal = (Word)NULL;
     infoTables_[name] = info2;
   } else if (info->type() == INVALID_OBJECT) {
     // subsequent forward ref
-    info2 = (FwdRefInfoTable*)info;
+    info2 = (FwdRefInfoTable *)info;
     *literal = (Word)info2->next;
-    info2->next = (void**)literal;
+    info2->next = (void **)literal;
   } else {
     *literal = (Word)info;
   }
@@ -711,7 +704,7 @@ void Loader::loadInfoTableReference(const char *name, Word *literal) {
 
 void Loader::fixInfoTableForwardReference(const char *name, InfoTable *info) {
   FwdRefInfoTable *old_itbl =
-    static_cast<FwdRefInfoTable*>(infoTables_[name]);
+    static_cast<FwdRefInfoTable *>(infoTables_[name]);
   // new_itbl is the new info table.  There may have been forward
   // references (even during loading the code for this info table).
   if (old_itbl != NULL) {
@@ -721,8 +714,8 @@ void Loader::fixInfoTableForwardReference(const char *name, InfoTable *info) {
 
     for (p = old_itbl->next; p != NULL; ) {
       next = *p;
-      *p = (void*)info;
-      p = (void**)next;
+      *p = (void *)info;
+      p = (void **)next;
     }
 
     delete old_itbl;
@@ -738,7 +731,7 @@ void Loader::loadClosure(BytecodeFile &f,
   u4 payloadsize = f.get_varuint();
   const char *itbl_name = loadId(f, strings, ".");
   InfoTable *info = infoTables_[itbl_name];
-  
+
   // Info tables must all be fully loaded by now.
   LC_ASSERT(info != NULL && info->type() != INVALID_OBJECT);
   LC_ASSERT((info->type() != CAF && payloadsize == info->size()) ||
@@ -763,7 +756,7 @@ void Loader::loadClosure(BytecodeFile &f,
 }
 
 void Loader::printInfoTables(ostream &out) {
-  STRING_MAP(InfoTable*)::iterator it;
+  STRING_MAP(InfoTable *)::iterator it;
   for (it = infoTables_.begin();
        it != infoTables_.end(); ++it) {
     it->second->debugPrint(out);
@@ -771,7 +764,7 @@ void Loader::printInfoTables(ostream &out) {
 }
 
 void Loader::printClosures(ostream &out) {
-  STRING_MAP(Closure*)::iterator it;
+  STRING_MAP(Closure *)::iterator it;
   for (it = closures_.begin();
        it != closures_.end(); ++it) {
     const char *name = it->first;
