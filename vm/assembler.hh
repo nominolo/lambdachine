@@ -440,7 +440,8 @@ private:
   MCode *exitstubAddr(ExitNo);
   void emitSLOAD(IR *);
   void exitTo(SnapNo);
-
+  void prepareTail(IRBuffer *buf);
+  void fixupTail(MCode *target);
   /// Allocate a register for ref from the allowed set of registers.
   /// 
   /// Note: This function assumes that the ref does NOT have a

@@ -542,6 +542,25 @@ void Assembler::intArith(IR *ins, x86Arith xa) {
   allocLeft(dest, lref);
 }
 
+void Assembler::prepareTail(IRBuffer *buf) {
+  MCode *p = mctop;
+  IRRef saveref = buf->chain_[IR::kSAVE];
+  if (saveref && ir(saveref)->op1()) {
+    // The SAVE instruction loops back somewhere.  Reserve space for
+    // the JMP instruction.
+    p -= 5;
+  }
+  mcp = p;
+}
+
+void Assembler::fixupTail(MCode *target) {
+  MCode *p = mctop;
+  if (target != NULL) {
+    *(int32_t *)(p - 4) = jmprel(p, target);
+    p[-5] = XI_JMP;
+  }
+}
+
 void Assembler::assemble(IRBuffer *buf, MachineCode *mcode) {
   RA_DBG_START();
 
@@ -552,6 +571,9 @@ void Assembler::assemble(IRBuffer *buf, MachineCode *mcode) {
   curins_ = nins_;
   IRRef stopins = REF_BASE;
   snapno_ = buf->numSnapshots() - 1;
+
+  prepareTail(buf);
+
   for (curins_--; curins_ > stopins; curins_--) {
     IR *ins = ir(curins_);
     if (ins->isGuard()) {
@@ -570,6 +592,13 @@ void Assembler::assemble(IRBuffer *buf, MachineCode *mcode) {
   }
 
   evictConstants();
+
+  MCode *target = NULL;
+  IRRef saveref = buf->chain_[IR::kSAVE];
+  if (saveref && ir(saveref)->op1()) {
+    target = mcp;
+  }
+  fixupTail(target);
 
   buf->setRegsAllocated();
   // TODO: Save to trace fragment
@@ -682,7 +711,7 @@ void Assembler::snapshotAlloc(Snapshot &snap, SnapshotData *snapmap) {
 void Assembler::save(IR *ins) {
   LC_ASSERT(ins->opcode() == IR::kSAVE);
   SnapNo snapno = snapno_;
-  int loop = ins->op2(); // A boolean really.
+  int loop = ins->op1(); // A boolean really.
   Snapshot &snap = buf_->snap(snapno);
   SnapshotData *snapmap = buf_->snapmap();
   int relbase = snap.relbase();
@@ -703,7 +732,6 @@ void Assembler::save(IR *ins) {
   for (Snapshot::MapRef se = snap.begin(); se != snap.end(); ++se) {
     int slot = snapmap->slotId(se);
     IRRef ref = snapmap->slotRef(se);
-    IR *ins = ir(ref);
     RegSet allow = kGPR;
 
     memstore(RID_BASE, slot * sizeof(Word), ref, allow);

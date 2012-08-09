@@ -1276,7 +1276,63 @@ TEST_F(RegAlloc, SnapTwice) {
   Dump();
 }
 
-TEST(TestFragment, TestFragment) {
+class TestFragment : public ::testing::Test {
+protected:
+  MemoryManager mm;
+  Loader loader;
+  Capability cap;
+  Thread *T;
+  Jit jit;
+  IRBuffer *buf;
+  Word stack[200];
+  Fragment *F;
+
+public:
+  TestFragment() : mm(), loader(&mm, "tests"), cap(&mm),
+                   T(NULL), jit(), buf(NULL), F(NULL) {
+  }
+  ~TestFragment() { TearDown(); }
+  virtual void SetUp() {
+    T = Thread::createThread(&cap, 1000);
+    buf = jit.buffer();
+    buf->reset(&stack[10], &stack[18]);
+  }
+
+  virtual void TearDown() {
+    if (T) delete T; T = NULL;
+    if (F) delete F; F = NULL;
+    buf = NULL;
+  }
+
+  void Assemble() {
+    buf->debugPrint(cerr, 1);
+    Assembler *as = jit.assembler();
+    as->setup(buf);
+    as->assemble(buf, jit.mcode());
+    buf->debugPrint(cerr, 1);
+    F = jit.saveFragment();
+    Dump();
+  }
+
+  void Dump() {
+    const ::testing::TestInfo* const test_info =
+      ::testing::UnitTest::GetInstance()->current_test_info();
+    ofstream out;
+    string filename("dump_TestFragment_");
+    filename += test_info->name();
+    filename += ".s";
+    out.open(filename.c_str());
+    jit.mcode()->dumpAsm(out);
+    out.close();
+  }
+
+  void Run() {
+    Word *base = T->base();
+    asmEnter(F, T, base + 10, NULL, NULL, T->stackLimit(), F->entry());
+  }
+};
+
+TEST(TestFragment2, TestFragment2) {
   MemoryManager mm;
   Loader loader(&mm, "tests");
   Capability cap(&mm);
@@ -1299,6 +1355,7 @@ TEST(TestFragment, TestFragment) {
   buf->setSlot(1, tr5);
   buf->emit(IR::kSAVE, IRT_VOID|IRT_GUARD, 0, 0);
 
+  buf->debugPrint(cerr, 1);
   Assembler *as = jit.assembler();
   as->setup(buf);
   as->assemble(buf, jit.mcode());
@@ -1319,6 +1376,65 @@ TEST(TestFragment, TestFragment) {
   asmEnter(F, T, base + 10, NULL, NULL, T->stackLimit(), F->entry());
   EXPECT_EQ(14, base[0]);
   EXPECT_EQ((Word)(base + 2), base[1]);
+}
+
+TEST_F(TestFragment, Test1) {
+  TRef tr1 = buf->slot(0);
+  TRef tr2 = buf->literal(IRT_I64, 5);
+  TRef tr3 = buf->emit(IR::kADD, IRT_I64, tr1, tr2);
+  buf->setSlot(0, tr3);
+  buf->setSlot(1, tr2);
+  buf->emit(IR::kLT, IRT_VOID|IRT_GUARD, tr1, tr2);
+  TRef tr4 = buf->emit(IR::kADD, IRT_I64, tr3, tr2);
+  TRef tr5 = buf->baseLiteral(&stack[12]);
+  buf->setSlot(0, tr4);
+  buf->setSlot(1, tr5);
+  buf->emit(IR::kSAVE, IRT_VOID|IRT_GUARD, 0, 0);
+
+  Assemble();
+
+  Word *base = T->base();
+  // Should abort at the first guard.
+  base[0] = 10;
+  base[1] = 0;
+  Run();
+  EXPECT_EQ(15, base[0]);
+  EXPECT_EQ(5, base[1]);
+
+  EXPECT_EQ(T->base(), base);
+  // Should run to the end.
+  base[0] = 4;
+  base[1] = 0;
+  Run();
+  EXPECT_EQ(14, base[0]);
+  EXPECT_EQ((Word)(base + 2), base[1]);
+}
+
+TEST_F(TestFragment, Test2) {
+  // Program:
+  //   f(x, y): if (y <= 0) return x; else f(x + 5, y - 1);
+  //  
+
+  TRef x = buf->slot(0);
+  TRef y = buf->slot(1);
+  TRef five = buf->literal(IRT_I64, 5);
+  TRef one = buf->literal(IRT_I64, 1);
+  TRef zero = buf->literal(IRT_I64, 0);
+  buf->emit(IR::kGT, IRT_VOID|IRT_GUARD, y, zero);
+  TRef x1 = buf->emit(IR::kADD, IRT_I64, x, five);
+  buf->setSlot(0, x1);
+  TRef y1 = buf->emit(IR::kSUB, IRT_I64, y, one);
+  buf->setSlot(1, y1);
+  buf->emit(IR::kSAVE, IRT_VOID|IRT_GUARD, IR_SAVE_LOOP, 0);  // loop
+
+  Assemble();
+
+  Word *base = T->base();
+  base[0] = 0;
+  base[1] = 5;
+  Run();
+  EXPECT_EQ(5 * 5, base[0]);
+  EXPECT_EQ(0, base[1]);
 }
 
 int main(int argc, char *argv[]) {

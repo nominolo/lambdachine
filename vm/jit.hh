@@ -202,9 +202,11 @@ public:
   inline MCode *entry() { return mcode_; }
   uint64_t literalValue(IRRef, Word* base);
   void restoreSnapshot(ExitNo, ExitState *);
+
+  ~Fragment();
+
 private:
   Fragment();
-  ~Fragment();
 
   inline IR *ir(IRRef ref) { return &buffer_[ref]; }
   inline Snapshot &snap(SnapNo n) {

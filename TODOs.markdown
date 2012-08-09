@@ -46,6 +46,17 @@ Benchmarks
     nested case expressions.  This is a good test whether trace sizes
     can become large.
 
+
+Code generation
+---------------
+
+There are a lot of special cases for the SAVE instruction.  We do need
+something like it for unrolled traces with increasing or decreasing
+stack. However, there can only ever be one SAVE per trace, so we could
+store it in the IR buffer or assembler state instead and always create
+an automatic snapshot at the end.
+
+
 Configuration
 -------------
 

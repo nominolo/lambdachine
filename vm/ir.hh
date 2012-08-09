@@ -303,6 +303,8 @@ private:
   IRIns data_;
 };
 
+#define IR_SAVE_LOOP  1
+
 enum {
   REF_BIAS  = 0x8000,
   REF_BASE  = REF_BIAS,
