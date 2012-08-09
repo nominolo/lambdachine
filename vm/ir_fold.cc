@@ -292,6 +292,9 @@ TRef IRBuffer::optFold() {
   IR::IRMode irmode = IR::mode(op);
   //  if (op == IR::kSLOAD) {
   //    return slots_.getAbsolute((int)fins()->op1());
+  if (op == IR::kSAVE)
+    return emit();
+
   IRRef ref = NEXTFOLD;
   if (flags_.get(kOptFold))
     ref = doFold();
