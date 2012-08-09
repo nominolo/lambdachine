@@ -502,7 +502,7 @@ Reg Assembler::fuseLoad(IRRef ref, RegSet allow) {
 }
 
 bool Assembler::is32BitLiteral(IRRef ref, int32_t *k) {
-  if (irref_islit(ref)) {
+  if (irref_islit(ref) && ir(ref)->opcode() != IR::kKBASEO) {
     uint64_t k64 = buf_->literalValue(ref);
     if (checki32(k64)) {
       *k = (int32_t)k64;
