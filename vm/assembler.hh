@@ -434,6 +434,7 @@ public:
   typedef uint32_t ExitNo;
 
 private:
+  inline int32_t spillOffset(uint8_t spillSlot) const;
   
   MCode *generateExitstubGroup(ExitNo group, MachineCode *);
   void setupExitStubs(ExitNo nexits, MachineCode *mcode);
@@ -538,6 +539,7 @@ private:
   RegSet phiset_;   // PHI registers.
   RegCost cost_[RID_MAX];  // References and spill cost for registers.
   int32_t spill_;
+  int32_t spillOffset_;
   x86ModRM mrm_;
   //  RegSet weakset_;
 

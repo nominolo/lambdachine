@@ -61,6 +61,7 @@ void Assembler::setup(IRBuffer *buf) {
   ir_ = buf->buffer_;  // REF-biased
   buf_ = buf; // For looking up constants.
 
+  spillOffset_ = buf->slots_.highestSlot();
   spill_ = 1;
   curins_ = buf->bufmax_;
   nins_ = buf->bufmax_;
@@ -304,6 +305,10 @@ found:
   return r;
 }
 
+inline int32_t Assembler::spillOffset(uint8_t spillSlot) const {
+  return sizeof(Word) * (spillOffset_ + spillSlot - 1);
+}
+
 int32_t Assembler::spill(IR *ins) {
   int32_t slot = ins->spill();
   if (slot == 0) {
@@ -316,7 +321,7 @@ int32_t Assembler::spill(IR *ins) {
     }
     ins->setSpill(slot);
   }
-  return (256 + slot) * 8;  // FIXME: hardcoded constant
+  return spillOffset(slot);
 }
 
 Reg Assembler::restoreReg(IRRef ref) {
@@ -418,7 +423,7 @@ Reg Assembler::destReg(IR *ins, RegSet allow) {
 
 void Assembler::saveReg(IR *ins, Reg r) {
   RA_DBGX((this, "save      $i $r", ins, r));
-  store_u64(RID_BASE, 8 * (256 + ins->spill()), r);
+  store_u64(RID_BASE, spillOffset(ins->spill()), r);
 }
 
 Reg Assembler::allocScratchReg(RegSet allow) {
@@ -491,7 +496,8 @@ Reg Assembler::fuseLoad(IRRef ref, RegSet allow) {
     if (!allow.isEmpty()) {  // Fast path.
       return ins->reg();
     }
-    // Otherwise, access operand directly from memory.
+    // Only memory operands are allowed. Access operand directly from
+    // memory.
     mrm_.base = RID_ESP;
     mrm_.ofs = spill(ins);
     mrm_.idx = RID_NONE;

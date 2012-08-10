@@ -198,6 +198,12 @@ public:
   // They're really only useful for loop truncation.
   inline uint32_t targetCount() const { return numTargets_; }
   inline BcIns *target(uint32_t n) const { return targets_[n]; }
+
+  /// Maximum amount of stack space needed by this fragment. This is
+  /// the sum of all spill slots and the highest snapshot write.
+  /// 
+  /// TODO: What if a side trace needs to increase this value?
+  inline uint16_t frameSize() const { return frameSize_; }
   
   inline MCode *entry() { return mcode_; }
   uint64_t literalValue(IRRef, Word* base);
@@ -226,8 +232,9 @@ private:
   IRRef firstconstant_;  // Lowest IR constant. Biased with REF_BIAS
   IRRef nextins_;        // Next IR instruction. Biased with REF_BIAS
   IR *buffer_;           // Biased buffer
-
-  size_t nsnaps_;
+  
+  uint16_t frameSize_;
+  uint16_t nsnaps_;
   Snapshot *snaps_;      
   SnapshotData snapmap_;
   

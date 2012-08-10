@@ -156,6 +156,9 @@ Fragment *Jit::saveFragment() {
     buffer[ref] = buf->buffer_[ref]; // TODO: use memcpy
   F->buffer_ = buffer;
 
+  LC_ASSERT(buf->slots_.highestSlot() >= 0);
+  F->frameSize_ = buf->slots_.highestSlot() + as->spill_ - 1;
+
   size_t nsnaps = buf->snaps_.size();
   F->nsnaps_ = nsnaps;
   F->snaps_ = new Snapshot[nsnaps];

@@ -999,7 +999,7 @@ protected:
     stack = new Word[256];
     jit = new Jit();
     buf = jit->buffer();
-    buf->reset(&stack[11], &stack[108]);
+    buf->reset(&stack[11], &stack[28]);
     buf->disableOptimisation(IRBuffer::kOptFold);
     as = NULL;
     mm = NULL;

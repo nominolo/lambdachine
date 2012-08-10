@@ -497,6 +497,8 @@ public:
 
   inline Word *origBase() const { return realOrigBase_; }
 
+  inline int highestSlot() const { return high_ - kInitialBase; }
+
   // TODO: Create snapshots.
   void snapshot(Snapshot *snap, SnapshotData *snapmap,
                 IRRef1 ref, void *pc);

@@ -326,7 +326,9 @@ SnapNo IRBuffer::snapshot(void *pc) {
   return snaps_.size() - 1;
 }
 
-AbstractStack::AbstractStack() {
+AbstractStack::AbstractStack() 
+  : slots_(NULL), base_(0), top_(0), low_(0), high_(0),
+    realOrigBase_(NULL) {
   slots_ = new TRef[kSlots];
   reset(NULL, NULL);
 }
