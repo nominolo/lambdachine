@@ -204,6 +204,7 @@ public:
   /// 
   /// TODO: What if a side trace needs to increase this value?
   inline uint16_t frameSize() const { return frameSize_; }
+  inline int32_t spillOffset() const { return spillOffset_; }
   
   inline MCode *entry() { return mcode_; }
   uint64_t literalValue(IRRef, Word* base);
@@ -235,6 +236,7 @@ private:
   
   uint16_t frameSize_;
   uint16_t nsnaps_;
+  int32_t spillOffset_;
   Snapshot *snaps_;      
   SnapshotData snapmap_;
   

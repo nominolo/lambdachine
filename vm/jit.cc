@@ -157,7 +157,8 @@ Fragment *Jit::saveFragment() {
   F->buffer_ = buffer;
 
   LC_ASSERT(buf->slots_.highestSlot() >= 0);
-  F->frameSize_ = buf->slots_.highestSlot() + as->spill_ - 1;
+  F->spillOffset_ = buf->slots_.highestSlot();
+  F->frameSize_ = buf->slots_.highestSlot() + as->spill_;
 
   size_t nsnaps = buf->snaps_.size();
   F->nsnaps_ = nsnaps;
@@ -203,7 +204,10 @@ void Fragment::restoreSnapshot(ExitNo exitno, ExitState *ex) {
     Word *base = (Word *)ex->gpr[RID_BASE];
     void *hp = (Word *)ex->gpr[RID_HP];
     DBG(sn.debugPrint(cerr, &snapmap_, exitno));
-    DBG(cerr << "  base = " << base << ", hp = " << hp << endl);
+    DBG(cerr << "  base = " << base << ", hp = " << hp
+        << ", spill=" << spill
+        << " (delta=" << hex << (char*)spill - (char*)base
+        << endl);
     for (Snapshot::MapRef i = sn.begin(); i < sn.end(); ++i) {
       int slot = snapmap_.slotId(i);
       int ref = snapmap_.slotRef(i);
@@ -216,7 +220,9 @@ void Fragment::restoreSnapshot(ExitNo exitno, ExitState *ex) {
         base[slot] = k;
       } else if (ins->spill() != 0) {
         DBG(cerr << "spill[" << (int)ins->spill() << "] ("
-            << hex << spill[ins->spill()] << ")" << endl);
+            << hex << spill[ins->spill()] << "/" 
+            << dec << spill[ins->spill()] << ")"
+            << endl);
         base[slot] = spill[ins->spill()];
       } else {
         LC_ASSERT(isReg(ins->reg()));

@@ -306,7 +306,10 @@ found:
 }
 
 inline int32_t Assembler::spillOffset(uint8_t spillSlot) const {
-  return sizeof(Word) * (spillOffset_ + spillSlot - 1);
+  // spillOffset_ points to the highest written slot.  Hence,
+  // spillOffset_[0] most not be written to.  However, spillSlots
+  // start at 1, not 0, so that's all fine.
+  return sizeof(Word) * (spillOffset_ + spillSlot);
 }
 
 int32_t Assembler::spill(IR *ins) {

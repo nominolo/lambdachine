@@ -1328,7 +1328,8 @@ public:
 
   void Run() {
     Word *base = T->base();
-    asmEnter(F, T, base + 10, NULL, NULL, T->stackLimit(), F->entry());
+    asmEnter(F, T, base + F->spillOffset(), NULL, NULL,
+             T->stackLimit(), F->entry());
   }
 };
 
@@ -1435,6 +1436,80 @@ TEST_F(TestFragment, Test2) {
   Run();
   EXPECT_EQ(5 * 5, base[0]);
   EXPECT_EQ(0, base[1]);
+}
+
+TEST_F(TestFragment, RestoreSnapSpill) {
+  buf->disableOptimisation(IRBuffer::kOptFold);
+  TRef s[5];
+  for (int i = 0; i < 5; ++i) {
+    s[i] = buf->slot(i);
+  }
+  TRef t[16];
+  for (int i = 0; i < 4; ++i) {
+    for (int j = 0; j < 4; ++j) {
+      t[i * 4 + j] = buf->emit(IR::kADD, IRT_I64, s[i], s[j]);
+    }
+  }
+  TRef stop = buf->slot(5);  // non-zero = exit at snapshot
+
+  TRef u[16];
+  for (int i = 0; i < 16; ++i) {
+    u[i] = buf->emit(IR::kSUB, IRT_I64, t[i], s[4]);
+    buf->setSlot(i, ((i % 2) == 1) ? t[i] : u[i]);
+  }
+  TRef zero = buf->literal(IRT_I64, 0);
+  buf->emit(IR::kEQ, IRT_VOID|IRT_GUARD, stop, zero);
+  TRef v[8];
+  for (int i = 0; i < 8; ++i) {
+    v[i] = buf->emit(IR::kADD, IRT_I64, u[2 * i], u[2 * i + 1]);
+  }
+  TRef w[4];
+  for (int i = 0; i < 4; ++i) {
+    w[i] = buf->emit(IR::kADD, IRT_I64, v[2 * i], v[2 * i + 1]);
+  }
+  for (int i = 0; i < 2; ++i) {
+    TRef x = buf->emit(IR::kADD, IRT_I64, w[2 * i], w[2 * i + 1]);
+    buf->setSlot(i, x);
+  }
+  buf->emit(IR::kSAVE, IRT_VOID|IRT_GUARD, 0, 0);
+
+  Assemble();
+
+  Word *base = T->base();
+  Word s0, s1, s2, s3, s4, s5;
+  base[0] = s0 = 1;
+  base[1] = s1 = 10;
+  base[2] = s2 = 100;
+  base[3] = s3 = 1000;
+  base[4] = s4 = 7;
+  base[5] = s5 = 1;  // exit at snapshot;
+  Run();
+  EXPECT_EQ((Word)(s0 + s0 - s4), base[0]);
+  EXPECT_EQ((Word)(s0 + s1), base[1]);
+  EXPECT_EQ((Word)(s0 + s2 - s4), base[2]);
+  EXPECT_EQ((Word)(s0 + s3), base[3]);
+  EXPECT_EQ((Word)(s1 + s0 - s4), base[4]);
+  EXPECT_EQ((Word)(s1 + s1), base[5]);
+  EXPECT_EQ((Word)(s1 + s2 - s4), base[6]);
+  EXPECT_EQ((Word)(s1 + s3), base[7]);
+  EXPECT_EQ((Word)(s2 + s0 - s4), base[8]);
+  EXPECT_EQ((Word)(s2 + s1), base[9]);
+  EXPECT_EQ((Word)(s2 + s2 - s4), base[10]);
+  EXPECT_EQ((Word)(s2 + s3), base[11]);
+  EXPECT_EQ((Word)(s3 + s0 - s4), base[12]);
+  EXPECT_EQ((Word)(s3 + s1), base[13]);
+  EXPECT_EQ((Word)(s3 + s2 - s4), base[14]);
+  EXPECT_EQ((Word)(s3 + s3), base[15]);
+
+  base[0] = 1;
+  base[1] = 10;
+  base[2] = 100;
+  base[3] = 1000;
+  base[4] = 7;
+  base[5] = 0;  // exit at snapshot;
+  Run();
+  EXPECT_EQ(2210, base[0]);
+  EXPECT_EQ(6566, base[1]);
 }
 
 int main(int argc, char *argv[]) {
