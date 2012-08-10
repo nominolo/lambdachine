@@ -665,6 +665,9 @@ void Assembler::emit(IR *ins) {
   case IR::kADD:
     intArith(ins, XOg_ADD);
     break;
+  case IR::kSUB:
+    intArith(ins, XOg_SUB);
+    break;
   case IR::kSAVE:
     save(ins);
     break;
