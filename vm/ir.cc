@@ -363,7 +363,7 @@ void AbstractStack::snapshot(Snapshot *snap, SnapshotData *snapmap,
   unsigned int slot = low_;
   unsigned int entries = 0;
   unsigned int ofs = snapmap->index_;
-  snapmap->data_.resize(ofs + high_ - low_);
+  snapmap->data_.resize(ofs + high_ - low_ + 1);
 
   for ( ; slot <= high_; ++slot) {
     TRef tr = slots_[slot];
