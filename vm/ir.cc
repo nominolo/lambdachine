@@ -326,7 +326,7 @@ SnapNo IRBuffer::snapshot(void *pc) {
   return snaps_.size() - 1;
 }
 
-AbstractStack::AbstractStack() 
+AbstractStack::AbstractStack()
   : slots_(NULL), base_(0), top_(0), low_(0), high_(0),
     realOrigBase_(NULL) {
   slots_ = new TRef[kSlots];
@@ -410,11 +410,11 @@ void Snapshot::debugPrint(ostream &out, SnapshotData *snapmap, SnapNo snapno) {
         out << "----";
       }
       if (entries > 0) out << ' ';
-      printslotid = (slotid % 4) == 3;
+      printslotid = ((slotid + 1) % 4) == 0;
       nl = (slotid % 8) == 7;
     }
   }
-  out << ']' << endl;
+  out << "] pc=" << pc_ << endl;
 }
 
 IRRef1 Snapshot::slot(int n, SnapshotData *snapmap) {

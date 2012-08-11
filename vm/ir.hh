@@ -421,6 +421,8 @@ public:
   // Warning: quite slow (only use for testing/debugging).
   IRRef1 slot(int n, SnapshotData *);
 
+  BcIns *pc() const { return (BcIns*)pc_; }
+
 private:
 
   IRRef1 ref_;

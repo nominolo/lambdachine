@@ -228,7 +228,7 @@ debug:
 
 record: {
     // don't change opC
-    if (LC_UNLIKELY(jit_.recordIns(pc - 1, base))) {
+    if (LC_UNLIKELY(jit_.recordIns(pc - 1, base, code))) {
       currentThread_->sync(pc - 1, base);
       opC_ = opC;
       finishRecording();
@@ -844,12 +844,20 @@ op_SYNC:
   opC = opC_;
   ENTER;
 
+op_JFUNC: {
+    Fragment *F = jit_.lookupFragment(pc - 1);
+    asmEnter(F, T, base + F->spillOffset(),
+             (Word *)heap, (Word *)heaplim,
+             T->stackLimit(), F->entry());
+    goto op_SYNC;
+    exit(22);
+  }
+
 op_LOADBH:
 op_INITF:
 op_KINT:
 op_NEW_INT:
 op_CASE_S:
-op_JFUNC:
 op_JRET:
   cerr << "Unimplemented instruction: " << (pc - 1)->name() << endl;
   // not_yet_implemented:

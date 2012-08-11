@@ -6,6 +6,7 @@
 #include "bytecode.hh"
 #include "ir.hh"
 #include "assembler.hh"
+#include "objects.hh"
 
 #include <vector>
 #include HASH_MAP_H
@@ -141,7 +142,7 @@ public:
                       bool isReturn);
 
   // Returns true if recording finished
-  bool recordIns(BcIns *, Word *base);
+  bool recordIns(BcIns *, Word *base, const Code *);
 
   inline bool isRecording() const { return cap_ != NULL; }
 
@@ -155,6 +156,10 @@ public:
   inline Assembler *assembler() { return &asm_; }
 
   Fragment *saveFragment();
+  Fragment *lookupFragment(BcIns *pc) {
+    Word idx = reinterpret_cast<Word>(pc) >> 2;
+    return fragments_[idx];
+  }
 
 private:
   void finishRecording();

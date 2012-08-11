@@ -970,6 +970,10 @@ TEST_F(RunFileTest, SumSquare1) {
   run("Bench.SumSquare1");
 }
 
+TEST_F(RunFileTest, SumNoAlloc) {
+  run("Bc.SumNoAlloc");
+}
+
 TEST(HotCounters, Simple) {
   HotCounters counters(5);
   BcIns pc[] = { BcIns::ad(BcIns::kFUNC, 3, 0) };
