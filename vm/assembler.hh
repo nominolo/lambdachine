@@ -423,8 +423,10 @@ public:
 
   bool is32BitLiteral(IRRef ref, int32_t *k);
   void intArith(IR *ins, x86Arith xa);
+  
 
   /// Generate code for the given instruction.
+  void itblGuard(IR *ins);
   void emit(IR *ins);
   void save(IR *ins);
   void memstore(IRRef ref, int32_t ofs, Reg base, RegSet allow);

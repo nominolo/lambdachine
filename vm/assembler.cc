@@ -625,6 +625,36 @@ void Assembler::emitSLOAD(IR *ins) {
   load_u64(dst, base, ofs);
 }
 
+void Assembler::itblGuard(IR *ins) {
+  // Emit a guard for an info table. On x86 `EQINFO x kinfo` compiles
+  // to the following two instructions:
+  //
+  //     cmp [x], kinfo
+  //     jne _exit<N>
+  //
+  IRRef closref = ins->op1();
+  IRRef itblref = ins->op2();
+  LC_ASSERT(irref_islit(itblref));
+  Reg closreg = alloc1(closref, kGPR);
+  int32_t imm = 0;
+
+  guardcc(CC_NE);
+  LC_ASSERT(closreg != RID_ESP && closreg != RID_EBP);
+
+  if (is32BitLiteral(itblref, &imm)) {
+    mrm_.base = closreg;
+    mrm_.ofs = 0;
+    mrm_.idx = RID_NONE;
+    emit_gmrmi(XG_ARITHi(XOg_CMP), RID_MRM | REX_64, imm);
+  } else {
+    Reg right = alloc1(itblref, kGPR);
+    mrm_.base = closreg;
+    mrm_.ofs = 0;
+    mrm_.idx = RID_NONE;
+    emit_mrm(XO_CMP, right | REX_64, RID_MRM);
+  }
+}
+
 #define COMPFLAGS(cs, cu)  ((cs)+((cu)<<4))
 static const uint16_t asm_compmap[IR::kNE - IR::kLT + 1] = {
   /*                signed, unsigned */
@@ -687,6 +717,9 @@ void Assembler::emit(IR *ins) {
     compare(ins, asm_compmap[idx] & 15);
     break;
   }
+  case IR::kEQINFO:
+    itblGuard(ins);
+    break;
   default:
     cerr << "NYI: codegen for ";
     ins->debugPrint(cerr, REF_BIAS + (IRRef1)(ins - ir_));

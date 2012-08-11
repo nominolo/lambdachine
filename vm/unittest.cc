@@ -1512,6 +1512,45 @@ TEST_F(TestFragment, RestoreSnapSpill) {
   EXPECT_EQ(6566, base[1]);
 }
 
+TEST_F(TestFragment, ItblGuard) {
+  TRef clos1 = buf->slot(0);
+  TRef clos2 = buf->slot(1);
+  TRef lit1 = buf->literal(IRT_I64, 5);
+  TRef lit2 = buf->literal(IRT_I64, 15);
+  TRef lit3 = buf->literal(IRT_I64, 25);
+  TRef itbl1 = buf->literal(IRT_I64, 1234);
+  TRef itbl2 = buf->literal(IRT_I64, 500000001234);
+  buf->setSlot(0, lit1);
+  buf->emit(IR::kEQINFO, IRT_VOID|IRT_GUARD, clos1, itbl1);
+  buf->setSlot(0, lit2);
+  buf->emit(IR::kEQINFO, IRT_VOID|IRT_GUARD, clos2, itbl2);
+  buf->setSlot(0, lit3);
+  buf->emit(IR::kSAVE, IRT_VOID|IRT_GUARD, 0, 0);
+
+  Assemble();
+
+  Word *base = T->base();
+
+  Word heap[2];
+  heap[0] = 1234;
+  heap[1] = 500000001234;
+  // Should abort at the first guard.
+  base[0] = (Word)&heap[0];
+  base[1] = (Word)&heap[1];
+  Run();
+  EXPECT_EQ(25, base[0]);
+
+  base[0] = (Word)&heap[0];
+  base[1] = (Word)&heap[0];  // Second guard should fail.
+  Run();
+  EXPECT_EQ(15, base[0]);
+
+  base[0] = (Word)&heap[1];  // First guard should fail.
+  base[1] = (Word)&heap[1];
+  Run();
+  EXPECT_EQ(5, base[0]);
+}
+
 int main(int argc, char *argv[]) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
