@@ -438,7 +438,7 @@ class SnapshotData {
 public:
   SnapshotData();
   inline int slotId(Snapshot::MapRef index) {
-    return (int)(data_.at(index) >> 16);
+    return (int32_t)data_.at(index) >> 16;
   }
   inline IRRef1 slotRef(Snapshot::MapRef index) {
     return (IRRef1)data_.at(index);
