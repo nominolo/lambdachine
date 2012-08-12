@@ -1,4 +1,5 @@
 #include "ir.hh"
+#include "objects.hh"
 
 #include <iostream>
 
@@ -283,6 +284,17 @@ FOLDF(simplify_intsubaddadd_cancel) {
   return NEXTFOLD;
 }
 
+// Constant-fold an EQGUARD where the closure is a literal. The
+// second operand will always be a literal.
+FOLDF(kfold_eqinfo) {
+  Closure *cl = (Closure*)buf->literalValue(fins->op1());
+  InfoTable *itbl = (InfoTable*)buf->literalValue(fins->op2());
+  if (cl->info() == itbl)
+    return DROPFOLD;
+  else
+    return FAILFOLD;
+}
+
 #undef fins
 #undef fleft
 #undef fright
@@ -364,6 +376,9 @@ retry:
     /// (y + x) - (x + z) ==> y - z
     /// (y + x) - (z + x) ==> y - z
     PATTERN(ADD, ADD, simplify_intsubaddadd_cancel);
+    break;
+  case IR::kEQINFO:
+    PATTERN(lit, lit, kfold_eqinfo);
     break;
   default:
     break;
