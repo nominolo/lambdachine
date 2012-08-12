@@ -46,6 +46,7 @@ void Jit::beginRecording(Capability *cap, BcIns *startPc, Word *base, bool isRet
   flags_.clear(kLastInsWasBranch);
   flags_.set(kIsReturnTrace, isReturn);
   buf_.reset(base, cap->currentThread()->top());
+  lastResult_ = TRef();
 }
 
 static IRType littypeToIRType(uint8_t littype) {
@@ -174,6 +175,40 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
   case BcIns::kMOV:
     buf_.setSlot(ins->a(), buf_.slot(ins->d()));
     break;
+
+  case BcIns::kEVAL: {
+    Closure *tnode = (Closure *)base[ins->a()];
+    if (tnode->isIndirection()) {
+      cerr << "NYI: EVAL of indirections" << endl;
+      goto abort_recording;
+    }
+    if (!tnode->isHNF()) {
+      cerr << "NYI: EVAL of thunk" << endl;
+    }
+    TRef noderef = buf_.slot(ins->a());
+    TRef inforef = buf_.literal(IRT_INFO, (Word)tnode->info());
+    buf_.emit(IR::kEQINFO, IRT_VOID|IRT_GUARD, noderef, inforef);
+    lastResult_ = noderef;
+    // TODO: Clear dead registers.
+    break;
+  }
+
+  case BcIns::kMOV_RES: {
+    if (!(IRRef)lastResult_) {
+      cerr << "NYI: MOV_RES with out-of trace input." << endl;
+      goto abort_recording;
+    }
+    buf_.setSlot(ins->a(), lastResult_);
+    break;
+  }
+
+  case BcIns::kLOADF: {
+    TRef rbase = buf_.slot(ins->b());
+    TRef fref = buf_.emit(IR::kFREF, IRT_PTR, rbase, ins->c());
+    TRef res = buf_.emit(IR::kFLOAD, IRT_UNKNOWN, fref, 0);
+    buf_.setSlot(ins->a(), res);
+    break;
+  }
 
   default:
     cerr << "NYI: Recording of " << ins->name() << endl;

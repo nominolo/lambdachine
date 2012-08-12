@@ -176,6 +176,7 @@ private:
   BcIns *startPc_;
   Word *startBase_;
   Flags32 flags_;
+  TRef lastResult_;
   std::vector<BcIns*> targets_;
   FRAGMENT_MAP fragments_;
   Prng prng_;

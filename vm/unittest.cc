@@ -974,6 +974,10 @@ TEST_F(RunFileTest, SumNoAlloc) {
   run("Bc.SumNoAlloc");
 }
 
+TEST_F(RunFileTest, SumMemLoad) {
+  run("Bc.SumMemLoad");
+}
+
 TEST(HotCounters, Simple) {
   HotCounters counters(5);
   BcIns pc[] = { BcIns::ad(BcIns::kFUNC, 3, 0) };
