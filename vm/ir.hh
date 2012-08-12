@@ -305,6 +305,9 @@ private:
 
 #define IR_SAVE_LOOP  1
 
+#define irmode_left(mode) ((uint8_t)(mode) & 3)
+#define irmode_right(mode) (((uint8_t)(mode) >> 2) & 3)
+
 enum {
   REF_BIAS  = 0x8000,
   REF_BASE  = REF_BIAS,

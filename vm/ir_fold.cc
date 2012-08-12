@@ -333,8 +333,9 @@ IRRef IRBuffer::doFold() {
 retry:
   ref = NEXTFOLD;
   IR::Opcode op = fins()->opcode();
-  IRRef left = fins()->op1();
-  IRRef right = fins()->op2();
+  IR::IRMode mode = IR::mode(op);
+  IRRef left = irmode_left(mode) == IR::IRMref ? fins()->op1() : 0;
+  IRRef right = irmode_right(mode) == IR::IRMref ? fins()->op2() : 0;
   if (left != 0) {
     fold_.left = *ir(left);
   }
