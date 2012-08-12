@@ -2,11 +2,13 @@
 #include "ir-inl.hh"
 #include "assembler.hh"
 #include "thread.hh"
+#include "capability.hh"
 
 #include <iostream>
 #include <string.h>
 #include <fstream>
 #include <sstream>
+#include <iomanip>
 
 
 _START_LAMBDACHINE_NAMESPACE
@@ -43,7 +45,7 @@ void Jit::beginRecording(Capability *cap, BcIns *startPc, Word *base, bool isRet
   startBase_ = base;
   flags_.clear(kLastInsWasBranch);
   flags_.set(kIsReturnTrace, isReturn);
-  buf_.reset(base, base + 1);  // TODO: Correct top slot.
+  buf_.reset(base, cap->currentThread()->top());
 }
 
 static IRType littypeToIRType(uint8_t littype) {
@@ -89,15 +91,12 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
           cerr << COL_GREEN << "REC: Inner loop." << COL_RESET << endl;
 
           // TODO: Truncate.
-
-          resetRecorderState();
-          return true;
+          goto abort_recording;
         }
       }
 
       targets_.push_back(ins);
     } else {
-    abort_tracing:
       cerr << COL_RED << "TRACE TOO LONG (" << targets_.size()
            << ")" << COL_RESET << endl;
       cerr << "    " << startPc_ << endl;
@@ -110,8 +109,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
       }
       cerr << endl;
 
-      resetRecorderState();
-      return true;
+      goto abort_recording;
     }
   }
 
@@ -168,7 +166,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
            << (int)itbl->code()->arity << "  name="
            << itbl << endl;
       exit(4);
-      goto abort_tracing;
+      goto abort_recording;
     }
     flags_.set(kLastInsWasBranch);
     break;
@@ -178,7 +176,8 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     break;
 
   default:
-    goto abort_tracing;
+    cerr << "NYI: Recording of " << ins->name() << endl;
+    goto abort_recording;
 
     // case BcIns::kCALL:
     // case BcIns::kEVAL:
@@ -190,6 +189,10 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     //   break;
   }
   return false;
+
+ abort_recording:
+  resetRecorderState();
+  return true;
 }
 
 inline void Jit::resetRecorderState() {
@@ -299,6 +302,19 @@ inline uint64_t Fragment::literalValue(IRRef ref, Word *base) {
   return 0;
 }
 
+static void printRegisters(ostream &out, Word *gpr) {
+  for (RegSet work = kGPR; !work.isEmpty(); ) {
+    Reg r = work.pickBot();
+    work.clear(r);
+    cerr << "    " << setw(3) << left << IR::regName(r, IRT_I64)
+         << " = 0x"
+         << setw(16) << setfill('0') << right << hex << gpr[r]
+         << " / "
+         << setw(20) << setfill(' ') << right << dec << (WordInt)gpr[r]
+         << endl;
+  }
+}
+
 void Fragment::restoreSnapshot(ExitNo exitno, ExitState *ex) {
   Word *spill = ex->spill;
   LC_ASSERT(0 <= exitno && exitno < nsnaps_);
@@ -313,12 +329,7 @@ void Fragment::restoreSnapshot(ExitNo exitno, ExitState *ex) {
         << ", spill=" << spill
         << " (delta=" << hex << (char *)spill - (char *)base
         << endl);
-    DBG(for (RegSet work = kGPR; !work.isEmpty(); ) {
-    Reg r = work.pickBot();
-      work.clear(r);
-      cerr << "    " << IR::regName(r, IRT_I64) << " = 0x"
-      << hex << ex->gpr[r] << " / " << dec << ex->gpr[r] << endl;
-    });
+    DBG(printRegisters(cerr, &ex->gpr[0]));
     for (Snapshot::MapRef i = sn.begin(); i < sn.end(); ++i) {
       int slot = snapmap_.slotId(i);
       int ref = snapmap_.slotRef(i);
