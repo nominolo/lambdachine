@@ -1555,6 +1555,28 @@ TEST_F(TestFragment, ItblGuard) {
   EXPECT_EQ(5, base[0]);
 }
 
+TEST_F(TestFragment, LoadField) {
+  TRef clos1 = buf->slot(0);
+  TRef lit1 = buf->literal(IRT_I64, 5);
+  buf->setSlot(0, lit1);  // Set to some default value.
+  TRef ref = buf->emit(IR::kFREF, IRT_PTR, clos1, 1);
+  TRef val = buf->emit(IR::kFLOAD, IRT_UNKNOWN, ref, 0);
+  buf->setSlot(0, val);
+  buf->emit(IR::kSAVE, IRT_VOID|IRT_GUARD, 0, 0);
+
+  Assemble();
+
+  Word *base = T->base();
+
+  Word heap[2];
+  heap[0] = 1234;
+  // Use 64 bit literal, to ensure we're loading the full 64 bits.
+  heap[1] = 500000001234;
+  base[0] = (Word)&heap[0];
+  Run();
+  EXPECT_EQ((Word)500000001234, base[0]);
+}
+
 int main(int argc, char *argv[]) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

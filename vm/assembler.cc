@@ -690,6 +690,17 @@ void Assembler::compare(IR *ins, int cc) {
   }
 }
 
+void Assembler::fieldLoad(IR *ins) {
+  IRRef fref = ins->op1();
+  LC_ASSERT(fref && ir(fref)->opcode() == IR::kFREF);
+  IR *frefins = ir(fref);
+  IRRef base = frefins->op1();
+  int fieldid = frefins->op2();
+  Reg dst = destReg(ins, kGPR);
+  Reg basereg = alloc1(base, kGPR);
+  load_u64(dst, basereg, sizeof(Word) * fieldid);
+}
+
 void Assembler::emit(IR *ins) {
   switch (ins->opcode()) {
   case IR::kSLOAD:
@@ -719,6 +730,12 @@ void Assembler::emit(IR *ins) {
   }
   case IR::kEQINFO:
     itblGuard(ins);
+    break;
+  case IR::kFREF:
+    // Always fused into its use sites.
+    break;
+  case IR::kFLOAD:
+    fieldLoad(ins);
     break;
   default:
     cerr << "NYI: codegen for ";
