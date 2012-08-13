@@ -701,6 +701,41 @@ void Assembler::fieldLoad(IR *ins) {
   load_u64(dst, basereg, sizeof(Word) * fieldid);
 }
 
+void Assembler::heapCheck(IR *ins) {
+  int32_t bytes = sizeof(Word) * ins->op1();
+  if (bytes != 0) {
+    guardcc(CC_A);
+
+    // HpLim == [rsp + HPLIM_SP_OFFS]
+    emit_rmro(XO_CMP, RID_HP | REX_64, RID_ESP | REX_64, HPLIM_SP_OFFS);
+
+    // TODO: Emit guard
+    emit_rmro(XO_LEA, RID_HP | REX_64, RID_HP | REX_64, bytes);
+  }
+}
+
+void Assembler::insNew(IR *ins) {
+  IRBuffer::HeapEntry eid = ins->op2();
+  AbstractHeapEntry &entry = buf_->heap_.entry(eid);
+  LC_ASSERT(ir(entry.ref()) == ins);
+  int ofs = entry.hpOffset();
+
+  // TODO: The result of an allocation is fuseable.  OTOH, we can
+  // almost always do store-to-load forwarding, so not sure if that
+  // matters.
+  Reg dest = destReg(ins, kGPR);
+  emit_rmro(XO_LEA, dest | REX_64, RID_HP | REX_64,
+            ofs * sizeof(Word));
+
+  // Initialise fields backwards.
+  for (int i = entry.size() - 1; i >= 0; --i) {
+    IRRef ref = buf_->getField(eid, i);
+    memstore(RID_HP, sizeof(Word) * (ofs + 1 + i), ref, kGPR);
+  }
+  // Write info table.
+  memstore(RID_HP, sizeof(Word) * ofs, ins->op1(), kGPR);
+}
+
 void Assembler::emit(IR *ins) {
   switch (ins->opcode()) {
   case IR::kSLOAD:
@@ -730,6 +765,12 @@ void Assembler::emit(IR *ins) {
   }
   case IR::kEQINFO:
     itblGuard(ins);
+    break;
+  case IR::kHEAPCHK:
+    heapCheck(ins);
+    break;
+  case IR::kNEW:
+    insNew(ins);
     break;
   case IR::kFREF:
     // Always fused into its use sites.

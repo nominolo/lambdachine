@@ -287,8 +287,8 @@ FOLDF(simplify_intsubaddadd_cancel) {
 // Constant-fold an EQGUARD where the closure is a literal. The
 // second operand will always be a literal.
 FOLDF(kfold_eqinfo) {
-  Closure *cl = (Closure*)buf->literalValue(fins->op1());
-  InfoTable *itbl = (InfoTable*)buf->literalValue(fins->op2());
+  Closure *cl = (Closure *)buf->literalValue(fins->op1());
+  InfoTable *itbl = (InfoTable *)buf->literalValue(fins->op2());
   if (cl->info() == itbl)
     return DROPFOLD;
   else

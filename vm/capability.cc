@@ -849,6 +849,8 @@ op_JFUNC: {
     asmEnter(F, T, base + F->spillOffset(),
              (Word *)heap, (Word *)heaplim,
              T->stackLimit(), F->entry());
+    heap = (char *)traceExitHp_;
+    heaplim = (char *)traceExitHpLim_;
     goto op_SYNC;
     exit(22);
   }

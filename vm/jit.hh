@@ -263,6 +263,8 @@ struct _ExitState {
   Fragment *F;                  /* Fragment under execution */
 };
 
+#define HPLIM_SP_OFFS  0
+
 extern "C" void asmEnter(Fragment *F, Thread *T, Word *spillArea,
                          Word *hp, Word *hplim, Word *stacklim, MCode *code);
 

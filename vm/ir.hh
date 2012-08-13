@@ -42,7 +42,7 @@ typedef u4 IRRef;               /* Used to pass around references */
   _(NE,      G,   ref, ref) \
   _(EQRET,   G,   ref, ref) \
   _(EQINFO,  G,   ref, ref) \
-  _(HEAPCHK, G,   cst, ___) \
+  _(HEAPCHK, G,   lit, ___) \
    \
   _(NOP,     N,   ___, ___) \
   _(BASE,    N,   lit, lit) \
@@ -458,6 +458,85 @@ private:
 };
 
 
+class HeapSnapData {
+public:
+  HeapSnapData();
+  ~HeapSnapData();
+  void reset();
+  inline IRRef1 at(int idx) { LC_ASSERT(idx < size_); return data_[idx]; }
+private:
+  inline int push_back(IRRef1 ref);
+  //  void compact();
+  void growTop();
+  int reserve(int n);
+  void set(int n, IRRef1 ref);
+
+  IRRef1 *data_;
+  size_t size_;
+  size_t next_;
+
+  friend class IRBuffer;
+  friend class AbstractHeap;
+};
+
+
+inline int HeapSnapData::push_back(IRRef1 ref) {
+  if (LC_UNLIKELY(next_ >= size_))
+    growTop();
+  int res = next_++;
+  data_[res] = ref;
+  return res;
+}
+
+inline int HeapSnapData::reserve(int n) {
+  while (next_ + n >= size_) { growTop(); }
+  int res = next_;
+  next_ += n;
+  return res;
+}
+
+inline void HeapSnapData::set(int n, IRRef1 ref) {
+  LC_ASSERT(n < next_);  // Must call reserve first.
+  data_[n] = ref;
+}
+
+class AbstractHeapEntry {
+public:
+  AbstractHeapEntry(IRRef1 ref, uint16_t size,
+                    int ofs, int hpofs)
+    : ref_(ref), size_(size), ofs_(ofs), hpofs_(hpofs) {}
+  inline IRRef1 ref() const { return ref_; }
+  inline int size() const { return size_; }
+  inline int mapentry() const { return ofs_; }
+  inline int hpOffset() const { return hpofs_; }
+private:
+  IRRef1 ref_;
+  uint16_t size_;
+  uint16_t ofs_;
+  int16_t hpofs_;
+
+  friend class AbstractHeap;
+};
+
+
+class AbstractHeap {
+public:
+  AbstractHeap();
+  int newEntry(IRRef1 ref, int nfields);
+  void reset();
+  inline void heapCheck(int nwords) { reserved_ += nwords; }
+  inline AbstractHeapEntry &entry(int n) { return entries_[n]; }
+private:
+  void grow();
+  AbstractHeapEntry *entries_;
+  uint32_t nentries_;
+  uint32_t nextentry_;
+  HeapSnapData data_;
+  int reserved_;
+
+  friend class IRBuffer;
+};
+
 
 class AbstractStack {
 public:
@@ -607,6 +686,16 @@ public:
 
   SnapshotData *snapmap() { return &snapmap_; }
 
+  inline void emitHeapCheck(int nwords) {
+    emit(IR::kHEAPCHK, IRT_VOID|IRT_GUARD, nwords, 0);
+    heap_.heapCheck(nwords);
+  }
+
+  typedef int HeapEntry;
+  TRef emitNEW(IRRef1 itblref, int nfields, HeapEntry *entry1);
+  inline void setField(HeapEntry entry, int field, IRRef1 ref);
+  inline IRRef1 getField(HeapEntry entry, int field);
+
   inline bool regsAllocated() { return flags_.get(kRegsAllocated); }
   inline void setPC(void *pc) { pc_ = pc; }
 private:
@@ -642,6 +731,7 @@ private:
   AbstractStack slots_;
   SnapshotData snapmap_;
   std::vector<Snapshot> snaps_;
+  AbstractHeap heap_;
 
   friend class Jit;
   friend class Assembler;
@@ -659,6 +749,15 @@ inline IRRef IRBuffer::nextLit() {
   if (LC_UNLIKELY(ref <= bufstart_)) growBottom();
   bufmin_ = --ref;
   return ref;
+}
+
+inline
+void IRBuffer::setField(HeapEntry entry, int field, IRRef1 ref) {
+  heap_.data_.set(heap_.entries_[entry].mapentry() + field, ref);
+}
+
+inline IRRef1 IRBuffer::getField(HeapEntry entry, int field) {
+  return heap_.data_.at(heap_.entries_[entry].mapentry() + field);
 }
 
 // Can invert condition by toggling lowest bit.

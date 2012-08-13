@@ -33,6 +33,9 @@ public:
     return flags_.get(kRecording);
   }
 
+  inline Word *traceExitHp() const { return traceExitHp_; }
+  inline Word *traceExitHpLim() const { return traceExitHpLim_; }
+
 private:
   typedef enum {
     kModeInit,
@@ -70,6 +73,10 @@ private:
   static const int kTraceBytecode = 0;
   static const int kRecording     = 1;
   Flags32 flags_;
+
+  Word *traceExitHp_;
+  Word *traceExitHpLim_;
+  friend class Fragment;
 };
 
 _END_LAMBDACHINE_NAMESPACE

@@ -1339,6 +1339,12 @@ public:
     asmEnter(F, T, base + F->spillOffset(), NULL, NULL,
              T->stackLimit(), F->entry());
   }
+
+  void RunWithHeap(Word *hp, Word *hplim) {
+    Word *base = T->base();
+    asmEnter(F, T, base + F->spillOffset(), hp, hplim,
+             T->stackLimit(), F->entry());
+  }
 };
 
 TEST(TestFragment2, TestFragment2) {
@@ -1579,6 +1585,104 @@ TEST_F(TestFragment, LoadField) {
   base[0] = (Word)&heap[0];
   Run();
   EXPECT_EQ((Word)500000001234, base[0]);
+}
+
+TEST_F(TestFragment, Alloc1) {
+  TRef itbl = buf->literal(IRT_INFO, 0x123456789);
+  TRef lit1 = buf->literal(IRT_I64, 5);
+  TRef lit2 = buf->literal(IRT_I64, 500000001234);
+  TRef lit3 = buf->literal(IRT_I64, 23);
+  TRef lit4 = buf->literal(IRT_I64, 34);
+  buf->setSlot(0, lit3);
+  buf->emitHeapCheck(3);  // Alloc three words
+  IRBuffer::HeapEntry he = 0;
+  TRef alloc = buf->emitNEW(itbl, 2, &he);
+  buf->setField(he, 0, lit1);
+  buf->setField(he, 1, lit2);
+  buf->setSlot(0, lit4);
+  buf->setSlot(1, alloc);
+  buf->emit(IR::kSAVE, IRT_VOID|IRT_GUARD, 0, 0);
+
+  Assemble();
+
+  Word heap[10];
+
+  // Run 1: Allocate normally
+  memset(heap, 0, sizeof(heap));
+  Word *base = T->base();
+  base[0] = 0;
+  RunWithHeap(&heap[0], &heap[10]);
+  EXPECT_EQ(34, base[0]);
+  EXPECT_EQ(&heap[3], cap.traceExitHp());
+  EXPECT_EQ(&heap[10], cap.traceExitHpLim());
+  EXPECT_EQ((Word)&heap[0], base[1]);
+  EXPECT_EQ(0x123456789, heap[0]);
+  EXPECT_EQ(5, heap[1]);
+  EXPECT_EQ(500000001234, heap[2]);
+  EXPECT_EQ(0, heap[3]);  // Should not be touched.
+
+  // Run 2: Heap check should fail. We have only 2 words.
+  memset(heap, 0, sizeof(heap));
+  base = T->base();
+  base[0] = 0;
+  RunWithHeap(&heap[0], &heap[2]);
+  EXPECT_EQ(23, base[0]);
+  EXPECT_EQ(&heap[3], cap.traceExitHp());
+  EXPECT_EQ(&heap[2], cap.traceExitHpLim());
+  
+  // Run 3: Heap check should succeed.  We have exactly 3 words.
+  memset(heap, 0, sizeof(heap));
+  base = T->base();
+  base[0] = 0;
+  RunWithHeap(&heap[0], &heap[3]);
+  EXPECT_EQ(34, base[0]);
+  EXPECT_EQ(&heap[3], cap.traceExitHp());
+  EXPECT_EQ(&heap[3], cap.traceExitHpLim());
+}
+
+TEST_F(TestFragment, Alloc2) {
+  TRef itbl = buf->literal(IRT_INFO, 0x123456789);
+  TRef lit1 = buf->literal(IRT_I64, 5);
+  TRef lit2 = buf->literal(IRT_I64, 7);
+  TRef field1 = buf->slot(0);
+  TRef field2 = buf->slot(1);
+  buf->emitHeapCheck(6);
+  IRBuffer::HeapEntry he = 0;
+  TRef alloc1 = buf->emitNEW(itbl, 2, &he);
+  buf->setField(he, 0, field1);
+  buf->setField(he, 1, field2);
+
+  TRef field3 = buf->emit(IR::kADD, IRT_I64, field1, lit1);
+  TRef field4 = buf->emit(IR::kADD, IRT_I64, field2, lit2);
+
+  TRef alloc2 = buf->emitNEW(itbl, 2, &he);
+  cerr << "he " << he << endl;
+  buf->setField(he, 0, field3);
+  buf->setField(he, 1, field4);
+
+  buf->setSlot(0, alloc1);
+  buf->setSlot(1, alloc2);
+  buf->emit(IR::kSAVE, IRT_VOID|IRT_GUARD, 0, 0);
+
+  Assemble();
+
+  Word heap[10];
+
+  memset(heap, 0, sizeof(heap));
+  Word *base = T->base();
+  base[0] = 123;
+  base[1] = 37;
+  RunWithHeap(&heap[0], &heap[10]);
+  EXPECT_EQ(&heap[6], cap.traceExitHp());
+  EXPECT_EQ(&heap[10], cap.traceExitHpLim());
+  EXPECT_EQ((Word)&heap[0], base[0]);
+  EXPECT_EQ((Word)&heap[3], base[1]);
+  EXPECT_EQ(0x123456789, heap[0]);
+  EXPECT_EQ(123, heap[1]);
+  EXPECT_EQ(37, heap[2]);
+  EXPECT_EQ(0x123456789, heap[3]);
+  EXPECT_EQ(123 + 5, heap[4]);
+  EXPECT_EQ(37 + 7, heap[5]);
 }
 
 int main(int argc, char *argv[]) {

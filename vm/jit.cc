@@ -187,7 +187,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     }
     TRef noderef = buf_.slot(ins->a());
     TRef inforef = buf_.literal(IRT_INFO, (Word)tnode->info());
-    buf_.emit(IR::kEQINFO, IRT_VOID|IRT_GUARD, noderef, inforef);
+    buf_.emit(IR::kEQINFO, IRT_VOID | IRT_GUARD, noderef, inforef);
     lastResult_ = noderef;
     // TODO: Clear dead registers.
     break;
@@ -225,7 +225,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
   }
   return false;
 
- abort_recording:
+abort_recording:
   resetRecorderState();
   return true;
 }
@@ -395,7 +395,11 @@ void Fragment::restoreSnapshot(ExitNo exitno, ExitState *ex) {
   }
   ex->T->base_ = base;
   ex->T->pc_ = sn.pc();
-  // TODO: Sync heap pointer as well.
+
+  Capability *cap = ex->T->owner();
+  LC_ASSERT(cap != NULL);
+  cap->traceExitHp_ = (Word *)ex->gpr[RID_HP];
+  cap->traceExitHpLim_ = ex->hplim;
 }
 
 #undef DBG

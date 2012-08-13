@@ -428,6 +428,8 @@ public:
   /// Generate code for the given instruction.
   void itblGuard(IR *ins);
   void fieldLoad(IR *ins);
+  void heapCheck(IR *ins);
+  void insNew(IR *ins);
   void emit(IR *ins);
   void save(IR *ins);
   void memstore(IRRef ref, int32_t ofs, Reg base, RegSet allow);

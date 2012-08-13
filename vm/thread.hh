@@ -38,6 +38,8 @@ public:
   void initialize(Word stackSizeInWords);
   void destroy();
 
+  inline Capability *owner() const { return owner_; }
+
   inline void sync(BcIns *pc, Word *base) {
     pc_ = pc; base_ = base;
   }
@@ -53,6 +55,7 @@ public:
   Word *top_;
   Word lastResult_;
   Word *stack_;
+  Capability *owner_;
 };
 
 _END_LAMBDACHINE_NAMESPACE

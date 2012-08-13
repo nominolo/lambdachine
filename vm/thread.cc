@@ -23,6 +23,7 @@ void Thread::initialize(Word stackSizeInWords) {
   header_ = 0;
   base_ = NULL;
   top_ = NULL;
+  owner_ = NULL;
   lastResult_ = 0;
   stack_ = NULL;
   if (stackSizeInWords < kMinStackWords) {
@@ -47,9 +48,10 @@ void Thread::initialize(Word stackSizeInWords) {
   pc_ = &info->code()->code[0];
 }
 
-Thread *Thread::createThread(Capability *, Word stackSizeInWords) {
+Thread *Thread::createThread(Capability *cap, Word stackSizeInWords) {
   Thread *T = new Thread;
   T->initialize(stackSizeInWords);
+  T->owner_ = cap;
   return T;
 }
 

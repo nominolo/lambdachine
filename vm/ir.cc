@@ -143,7 +143,7 @@ void IRBuffer::debugPrint(ostream &out, int traceNo) {
 
 IRBuffer::IRBuffer()
   : realbuffer_(NULL), flags_(), size_(1024), slots_(),
-    snapmap_(), snaps_() {
+    snapmap_(), snaps_(), heap_() {
   reset(NULL, NULL);
 }
 
@@ -157,6 +157,7 @@ void IRBuffer::reset(Word *base, Word *top) {
   slots_.reset(base, top);
   if (realbuffer_) delete[] realbuffer_;
   realbuffer_ = new IR[size_];
+  heap_.reset();
 
   size_t nliterals = size_ / 4;
 
@@ -326,6 +327,15 @@ SnapNo IRBuffer::snapshot(void *pc) {
   return snaps_.size() - 1;
 }
 
+TRef IRBuffer::emitNEW(IRRef1 itblref, int nfields, HeapEntry *out) {
+  TRef tref = emitRaw(IRT(IR::kNEW, IRT_CLOS), itblref, 0);
+  IRRef ref = tref.ref();
+  int entry = heap_.newEntry(ref, nfields);
+  ir(ref)->setOp2(entry);
+  *out = entry;
+  return tref;
+}
+
 AbstractStack::AbstractStack()
   : slots_(NULL), base_(0), top_(0), low_(0), high_(0),
     realOrigBase_(NULL) {
@@ -442,6 +452,84 @@ found:
 }
 
 SnapshotData::SnapshotData() : data_(), index_() { }
+
+HeapSnapData::HeapSnapData() : data_(NULL), size_(0), next_(0) {
+  // We initialize to NULL and trigger buffer allocation on the first
+  // write.  This avoids allocating JIT memory in case no heap
+  // allocation occurs on the trace.
+}
+
+void HeapSnapData::reset() {
+  if (data_) free(data_);
+  size_ = 0;
+  next_ = 0;
+}
+
+HeapSnapData::~HeapSnapData() {
+  if (data_) free(data_);
+  data_ = NULL;
+}
+
+void HeapSnapData::growTop() {
+  cerr << "snapdata growing top" << endl;
+  if (LC_UNLIKELY(size_ > 50000)) {
+    cerr << "FATAL: Heap snapshot too large." << endl;
+    exit(2);
+  }
+  size_ *= 2;
+  if (size_ < 32) size_ = 32;
+  data_ = (IRRef1 *)realloc(data_, size_ * sizeof(IRRef1));
+}
+
+
+// void HeapSnapData::compact() {
+//   if (data_) {
+//     IRRef1 *compactdata = (IRRef1*)malloc(end_ * sizeof(IRRef1));
+//     memcpy(compactdata, data_, end_ * sizeof(IRRef1));
+//     free(data_);
+//     data_ = compactdata;
+//   }
+// }
+
+AbstractHeap::AbstractHeap()
+  : entries_(NULL), nentries_(0), nextentry_(0),
+    data_(), reserved_(0) {
+}
+
+void AbstractHeap::reset() {
+  if (entries_) free(entries_);
+  entries_ = NULL;
+  nentries_ = 0;
+  nextentry_ = 0;
+  reserved_ = 0;
+  data_.reset();
+}
+
+void AbstractHeap::grow() {
+  if (nentries_ < 32)
+    nentries_ = 32;
+  else if (nentries_ >= MAX_HEAP_ENTRIES) {
+    cerr << "FATAL: Too many heap snapshot entries." << endl;
+    exit(2);
+  }
+  nentries_ *= 2;
+  if (nentries_ > MAX_HEAP_ENTRIES)
+    nentries_ = MAX_HEAP_ENTRIES;
+  entries_ = (AbstractHeapEntry *)realloc(entries_, nentries_ * sizeof(AbstractHeapEntry));
+}
+
+int AbstractHeap::newEntry(IRRef1 ref, int nfields) {
+  if (LC_UNLIKELY(nextentry_ >= nentries_))
+    grow();
+  LC_ASSERT(reserved_ >= nfields + 1);
+  AbstractHeapEntry *e = &entries_[nextentry_++];
+  e->size_ = nfields;
+  e->ofs_ = data_.reserve(nfields);
+  e->ref_ = ref;
+  e->hpofs_ = -reserved_;
+  reserved_ -= nfields + 1;
+  return nextentry_ - 1;
+}
 
 const char *IR::regName(uint8_t r, IRType ty) {
   switch (ty) {
