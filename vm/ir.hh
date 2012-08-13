@@ -693,6 +693,7 @@ public:
 
   typedef int HeapEntry;
   TRef emitNEW(IRRef1 itblref, int nfields, HeapEntry *entry1);
+  inline int numFields(HeapEntry entry);
   inline void setField(HeapEntry entry, int field, IRRef1 ref);
   inline IRRef1 getField(HeapEntry entry, int field);
 
@@ -758,6 +759,10 @@ void IRBuffer::setField(HeapEntry entry, int field, IRRef1 ref) {
 
 inline IRRef1 IRBuffer::getField(HeapEntry entry, int field) {
   return heap_.data_.at(heap_.entries_[entry].mapentry() + field);
+}
+
+inline int IRBuffer::numFields(HeapEntry entry) {
+  return heap_.entries_[entry].size();
 }
 
 // Can invert condition by toggling lowest bit.

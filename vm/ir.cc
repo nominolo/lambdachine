@@ -107,6 +107,17 @@ static inline void print_spill(ostream &out, uint8_t sp) {
     out << "    ";
 }
 
+static void print_heapentry(ostream &out, IRBuffer *buf,
+                            uint16_t entry) {
+  char prefix = '[';
+  for (int i = 0; i < buf->numFields(entry); ++i) {
+    out << prefix;
+    prefix = ' ';
+    IR::printIRRef(out, (IRRef)buf->getField(entry, i));
+  }
+  out << ']';
+}
+
 void IR::debugPrint(ostream &out, IRRef self, IRBuffer *buf, bool regs) {
   IR::Opcode op = opcode();
   uint8_t ty = type();
@@ -122,6 +133,8 @@ void IR::debugPrint(ostream &out, IRRef self, IRBuffer *buf, bool regs) {
   uint8_t mod = mode(op);
   printArg(out, mod & 3, op1(), this, buf);
   printArg(out, (mod >> 2) & 3, op2(), this, buf);
+  if (op == IR::kNEW && buf)
+    print_heapentry(out, buf, op2());
   out << endl;
 }
 
