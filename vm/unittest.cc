@@ -895,7 +895,7 @@ protected:
     EXPECT_EQ(string("IND -> GHC.Bool.True`con_info "), out.str());
   }
 
-private:
+protected:
   MemoryManager *mm;
   Loader *loader;
   Capability *cap;

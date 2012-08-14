@@ -32,6 +32,7 @@ public:
   inline bool isRecording() const {
     return flags_.get(kRecording);
   }
+  inline Jit *jit() { return &jit_; }
 
   inline Word *traceExitHp() const { return traceExitHp_; }
   inline Word *traceExitHpLim() const { return traceExitHpLim_; }

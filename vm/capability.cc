@@ -123,6 +123,8 @@ void pushFrame(Word **top, Word **base, BcIns *ret, Closure *clos,
   *top = *base + framesize;
 }
 
+extern Word *traceDebugLastHp;
+
 static const int kStackFrameWords = 3;
 static const int kUpdateFrameWords = 5;
 
@@ -846,13 +848,18 @@ op_SYNC:
 
 op_JFUNC: {
     Fragment *F = jit_.lookupFragment(pc - 1);
+    T->sync(pc - 1, base);
+    //    traceDebugLastHp = (Word *)heap;
     asmEnter(F, T, base + F->spillOffset(),
              (Word *)heap, (Word *)heaplim,
              T->stackLimit(), F->entry());
     heap = (char *)traceExitHp_;
     heaplim = (char *)traceExitHpLim_;
-    goto op_SYNC;
-    exit(22);
+    
+    LOAD_STATE_FROM_CAP;
+    if (isEnabledBytecodeTracing())
+      dispatch = dispatch_debug;
+    DISPATCH_NEXT;
   }
 
 op_LOADBH:

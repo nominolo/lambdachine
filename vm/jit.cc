@@ -350,6 +350,19 @@ static void printRegisters(ostream &out, Word *gpr) {
   }
 }
 
+static void printExitState(ostream &out, ExitState *ex) {
+  Word *base = (Word*)ex->gpr[RID_BASE];
+  Word *hp = (Word*)ex->gpr[RID_HP];
+  out << "  base = " << base << ", hp = " << hp
+      << ", hplim = " << ex->hplim
+      << ", spill=" << ex->spill
+      << " (delta=" << hex << (char *)ex->spill - (char *)base
+      << endl;
+  printRegisters(cerr, &ex->gpr[0]);
+}
+
+Word *traceDebugLastHp = NULL;
+
 void Fragment::restoreSnapshot(ExitNo exitno, ExitState *ex) {
   Word *spill = ex->spill;
   LC_ASSERT(0 <= exitno && exitno < nsnaps_);
@@ -357,14 +370,10 @@ void Fragment::restoreSnapshot(ExitNo exitno, ExitState *ex) {
   Snapshot &sn = snap(exitno);
   IR *snapins = ir(sn.ref());
   Word *base = (Word *)ex->gpr[RID_BASE];
-  void *hp = (Word *)ex->gpr[RID_HP];
+  traceDebugLastHp = NULL;
   if (snapins->opcode() != IR::kSAVE) {
     DBG(sn.debugPrint(cerr, &snapmap_, exitno));
-    DBG(cerr << "  base = " << base << ", hp = " << hp
-        << ", spill=" << spill
-        << " (delta=" << hex << (char *)spill - (char *)base
-        << endl);
-    DBG(printRegisters(cerr, &ex->gpr[0]));
+    DBG(printExitState(cerr, ex));
     for (Snapshot::MapRef i = sn.begin(); i < sn.end(); ++i) {
       int slot = snapmap_.slotId(i);
       int ref = snapmap_.slotRef(i);
@@ -423,6 +432,27 @@ void Jit::genCode(IRBuffer *buf, IR *ir) {
     exit(11);
     //    load_u64(
   }
+}
+
+extern "C" void LC_USED
+debugTrace(ExitState *ex) {
+  cerr << "Debug trace called" << endl;
+  printExitState(cerr, ex);
+  if (traceDebugLastHp != NULL) {
+    cerr << "Allocated: " << endl;
+    Word *hp = traceDebugLastHp;
+    Word *newhp = (Word*)ex->gpr[RID_HP];
+    int n = 0;
+    while (hp < newhp) {
+      if ((n % 4) == 0)
+        cerr << hp << ":";
+      cerr << " " << setw(16) << setfill('0') << right << hex << *hp;
+      if ((++n % 4) == 0) cerr << endl;
+      ++hp;
+    }
+    cerr << endl;
+  }
+  traceDebugLastHp = (Word*)ex->gpr[RID_HP];
 }
 
 _END_LAMBDACHINE_NAMESPACE

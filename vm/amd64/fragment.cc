@@ -20,6 +20,7 @@ exitTrace(ExitNo n, ExitState *s) {
 
 #define ASM_ENTER NAME_PREFIX "asmEnter"
 #define ASM_EXIT  NAME_PREFIX "asmExit"
+#define ASM_TRACE NAME_PREFIX "asmTrace"
 
 #define SAVE_SIZE 80
 
@@ -158,6 +159,77 @@ asmExitIsImplementedInAssembly() {
 
     : : "i"(SAVE_SIZE + 256/* 256 bytes for int and float regs
                             * plus the extra space used by SAVE_SIZE */));
+}
+
+static void LC_USED
+asmTraceIsImplementedInAssembly(void) {
+  asm volatile(
+    ".globl " ASM_TRACE "\n"
+    ASM_TRACE ":\n\t"
+
+    // Stack is unaligned at this point, but we don't have a free
+    // register. We align the stack later, before calling another
+    // function.
+
+    // "push %%rbp\n\t"            // Align stack
+    //"mov %%rsp, %%rbp\n\t"
+
+    /* Save all the registers 16 * 8 = 128 bytes */
+    "push %%r14\n\t"
+    "movq 8(%%rsp), %%r14\n\t"  // Save return address in r14
+    "movq %%r15, 8(%%rsp)\n\t"  // Replace return address with r15
+    "push %%r13\n\t"
+    "push %%r12\n\t"
+    "push %%r11\n\t"
+    "push %%r10\n\t"
+    "push %%r9\n\t"
+    "push %%r8\n\t"
+    "push %%rdi\n\t"
+    "push %%rsi\n\t"
+    "push %%rbp\n\t"
+    "pushq %%r14\n\t"  // store return address in place of %rsp
+    "push %%rbx\n\t"
+    "push %%rdx\n\t"
+    "push %%rcx\n\t"
+    "push %%rax\n\t"
+
+    // TODO: Build proper C frame?
+    
+    /* Make room for xmm registers.  We only save the lower 8 bytes of
+       the 16 byte registers, so we only need 16 * 8 = 128 bytes */
+    "subq $128, %%rsp\n\t"
+
+#if 0
+    // TODO: Actually write XMM registers here.
+#endif
+
+    "movq %%rsp, %%rdi\n\t"  // Pointer to exit state as 1st argument
+    "call " NAME_PREFIX "debugTrace\n\t"
+    "addq $256, %%rsp\n\t"
+    
+    // Restore caller-save registers,
+    //  -8(rsp) = r15
+    // -16(rsp) = r14
+    // -24(rsp) = r13
+    // -32(rsp) = r12
+    "movq -40(%%rsp), %%r11\n\t"
+    "movq -48(%%rsp), %%r10\n\t"
+    "movq -56(%%rsp), %%r9\n\t"
+    "movq -64(%%rsp), %%r8\n\t"
+    "movq -72(%%rsp), %%rdi\n\t"
+    "movq -80(%%rsp), %%rsi\n\t"
+    //    "movq -88(%%rsp), %%rbp\n\t"   callee-save
+    // rsp is the return address
+    "movq -96(%%rsp), %%rax\n\t"
+    //    "movq -104(%%rsp), %%rbx\n\t"  callee-save
+    "movq -112(%%rsp), %%rdx\n\t"
+    "movq -120(%%rsp), %%rcx\n\t"
+    "movq %%rax, -8(%%rsp)\n\t" // Restore return address
+    "movq -128(%%rsp), %%rax\n\t"
+    "subq $8, %%rsp\n\t"
+    "ret\n\t"
+
+    : : );
 }
 
 _END_LAMBDACHINE_NAMESPACE

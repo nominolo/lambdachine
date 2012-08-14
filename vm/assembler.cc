@@ -559,6 +559,10 @@ void Assembler::prepareTail(IRBuffer *buf) {
     // the JMP instruction.
     p -= 5;
   }
+  if (jit()->flags_.get(Jit::kDebugTrace)) {
+    // Reserve space for CALL to asmTrace
+    p -= 5;
+  }
   mcp = p;
 }
 
@@ -567,6 +571,11 @@ void Assembler::fixupTail(MCode *target) {
   if (target != NULL) {
     *(int32_t *)(p - 4) = jmprel(p, target);
     p[-5] = XI_JMP;
+    p -= 5;
+  }
+  if (jit()->flags_.get(Jit::kDebugTrace)) {
+    *(int32_t *)(p - 4) = jmprel(p, (MCode*)(void*)&asmTrace);
+    p[-5] = XI_CALL;
   }
 }
 

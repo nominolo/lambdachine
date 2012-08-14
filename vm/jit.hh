@@ -161,6 +161,8 @@ public:
     return fragments_[idx];
   }
 
+  inline void setDebugTrace(bool val) { flags_.set(kDebugTrace, val); }
+
 private:
   void finishRecording();
   void resetRecorderState();
@@ -171,6 +173,7 @@ private:
   
   static const int kLastInsWasBranch = 0;
   static const int kIsReturnTrace = 1;
+  static const int kDebugTrace = 2;
 
   Capability *cap_;
   BcIns *startPc_;
@@ -269,6 +272,9 @@ extern "C" void asmEnter(Fragment *F, Thread *T, Word *spillArea,
                          Word *hp, Word *hplim, Word *stacklim, MCode *code);
 
 extern "C" void asmExit(int);
+
+extern "C" void asmTrace(void);
+extern "C" void debugTrace(ExitState *);
 
 _END_LAMBDACHINE_NAMESPACE
 
