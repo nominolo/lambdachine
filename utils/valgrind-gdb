@@ -1,0 +1,16 @@
+#! /bin/sh
+
+if [ $# -lt 1 ]
+then
+        echo "USAGE: $0 <program> <program-arguments>"
+        exit 1
+fi
+
+echo ">>> Starting Valgrind with GDB callback support"
+echo ">>> Please in a separate terminal open GDB:"
+echo ">>>   gdb $1"
+echo ">>> Then on the GDB prompt paste:"  
+echo ">>>   target remote | vgdb"
+echo "##############################################"
+
+valgrind --vgdb=yes --vgdb-error=0 $*
