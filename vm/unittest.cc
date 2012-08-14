@@ -788,6 +788,18 @@ TEST_F(ArithTest, BranchEq) {
   ASSERT_FALSE(branchTest(BcIns::kISEQ, -4, -5));
 }
 
+TEST_F(ArithTest, BranchNotEq) {
+  ASSERT_TRUE(branchTest(BcIns::kISNE, 1, 0));
+  ASSERT_TRUE(branchTest(BcIns::kISNE, 4, 5));
+  ASSERT_TRUE(branchTest(BcIns::kISNE, -4, 5));
+  ASSERT_TRUE(branchTest(BcIns::kISNE, 0, 1));
+  ASSERT_TRUE(branchTest(BcIns::kISNE, -1, 0));
+  ASSERT_FALSE(branchTest(BcIns::kISNE, 4, 4));
+  ASSERT_FALSE(branchTest(BcIns::kISNE, -4, -4));
+  ASSERT_TRUE(branchTest(BcIns::kISNE, 4, -4));
+  ASSERT_TRUE(branchTest(BcIns::kISNE, -4, -5));
+}
+
 TEST_F(ArithTest, Alloc1) {
   uint64_t alloc_before = mm.allocated();
   T->setPC(&code_[0]);

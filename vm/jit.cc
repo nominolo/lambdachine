@@ -72,6 +72,31 @@ static IRType littypeToIRType(uint8_t littype) {
   }
 }
 
+static inline
+uint8_t bcCond2irCond(uint8_t bc, bool invert) {
+  return (IR::kLT + (bc - BcIns::kISLT)) ^ (uint8_t)(invert ? 1 : 0);
+}
+
+static bool evalCond(BcIns::Opcode opc, Word left, Word right) {
+  switch (opc) {
+  case BcIns::kISLT:
+    return (WordInt)left < (WordInt)right;
+  case BcIns::kISGE:
+    return (WordInt)left >= (WordInt)right;
+  case BcIns::kISLE:
+    return (WordInt)left <= (WordInt)right;
+  case BcIns::kISGT:
+    return (WordInt)left > (WordInt)right;
+  case BcIns::kISEQ:
+    return (WordInt)left == (WordInt)right;
+  case BcIns::kISNE:
+    return (WordInt)left != (WordInt)right;
+  default:
+    cerr << "FATAL: (REC) Cannot evaluate condition: " << (int)opc;
+    exit(2);
+  }
+}
+
 bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
   buf_.pc_ = ins;
   cerr << "REC: " << ins << " " << ins->name() << endl;
@@ -125,11 +150,17 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     buf_.setSlot(ins->a(), litref);
     break;
   }
-  case BcIns::kISGT: {
-    bool taken = (WordInt)base[ins->a()] > (WordInt)base[ins->d()];
+  case BcIns::kISGT:
+  case BcIns::kISLT:
+  case BcIns::kISGE:
+  case BcIns::kISLE:
+  case BcIns::kISEQ:
+  case BcIns::kISNE: {
+    bool taken = evalCond(ins->opcode(), base[ins->a()], base[ins->d()]);
     TRef aref = buf_.slot(ins->a());
     TRef bref = buf_.slot(ins->d());
-    buf_.emit(taken ? IR::kGT : IR::kLE, IRT_VOID | IRT_GUARD, aref, bref);
+    uint8_t iropc = bcCond2irCond(ins->opcode(), !taken);
+    buf_.emit(iropc, IRT_VOID | IRT_GUARD, aref, bref);
     break;
   }
   case BcIns::kSUBRR: {
