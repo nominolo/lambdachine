@@ -440,6 +440,24 @@ void Fragment::restoreSnapshot(ExitNo exitno, ExitState *ex) {
   LC_ASSERT(cap != NULL);
   cap->traceExitHp_ = (Word *)ex->gpr[RID_HP];
   cap->traceExitHpLim_ = ex->hplim;
+
+  if (snapins->opcode() == IR::kHEAPCHK) {
+    cerr << "Heap check failure" << endl;
+    // We exited due to a heap overflow.
+    
+    // TODO: If we only reached the end of a block, then we only
+    // need to adjust r12 and HpLim.  This we could simply re-enter
+    // the trace.  That's probably better handled via specialised
+    // code in the codegen.  It's also a bit involved since we may
+    // have to take the full exit if a GC is indeed required.
+    
+    // 1. Found out by how much we incremented.
+    cap->traceExitHp_ -= (int)snapins->op1();
+
+    // 2. We could directly grab a new block, but we have to be
+    // careful about what happens if we trigger a GC.  So for now, we
+    // let the interpreter handle all of this.
+  }
 }
 
 #undef DBG
