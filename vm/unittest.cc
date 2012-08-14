@@ -990,6 +990,10 @@ TEST_F(RunFileTest, SumMemLoad) {
   run("Bc.SumMemLoad");
 }
 
+TEST_F(RunFileTest, Alloc1) {
+  run("Bc.Alloc1");
+}
+
 TEST(HotCounters, Simple) {
   HotCounters counters(5);
   BcIns pc[] = { BcIns::ad(BcIns::kFUNC, 3, 0) };
@@ -1639,7 +1643,7 @@ TEST_F(TestFragment, Alloc1) {
   base[0] = 0;
   RunWithHeap(&heap[0], &heap[2]);
   EXPECT_EQ(23, base[0]);
-  EXPECT_EQ(&heap[3], cap.traceExitHp());
+  EXPECT_EQ(&heap[0], cap.traceExitHp());
   EXPECT_EQ(&heap[2], cap.traceExitHpLim());
   
   // Run 3: Heap check should succeed.  We have exactly 3 words.

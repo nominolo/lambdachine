@@ -241,6 +241,39 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     break;
   }
 
+  case BcIns::kALLOC1: {
+    TRef itbl = buf_.slot(ins->b());
+    TRef field = buf_.slot(ins->c());
+    buf_.emitHeapCheck(2);
+    IRBuffer::HeapEntry entry = 0;
+    TRef clos = buf_.emitNEW(itbl, 1, &entry);
+    buf_.setField(entry, 0, field);
+    buf_.setSlot(ins->a(), clos);
+    break;
+  }
+
+  case BcIns::kALLOC: {
+    TRef itbl = buf_.slot(ins->b());
+    int nfields = ins->c();
+    buf_.emitHeapCheck(1 + nfields);
+    IRBuffer::HeapEntry entry = 0;
+    const uint8_t *args = (const uint8_t *)(ins + 1);
+
+    // Make sure we have a ref for each field before emitting the NEW.
+    // This may emit SLOAD instructions, so make sure those occur
+    // before the NEW.
+    for (int i = 0; i < nfields; ++i) buf_.slot(*args++);
+    
+    TRef clos = buf_.emitNEW(itbl, nfields, &entry);
+    args = (const uint8_t *)(ins + 1);
+    for (int i = 0; i < nfields; ++i) {
+      TRef field = buf_.slot(*args++);
+      buf_.setField(entry, i, field);
+    }
+    buf_.setSlot(ins->a(), clos);
+    break;
+  }
+
   default:
     cerr << "NYI: Recording of " << ins->name() << endl;
     goto abort_recording;
