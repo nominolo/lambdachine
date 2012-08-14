@@ -474,6 +474,7 @@ HeapSnapData::HeapSnapData() : data_(NULL), size_(0), next_(0) {
 
 void HeapSnapData::reset() {
   if (data_) free(data_);
+  data_ = NULL;
   size_ = 0;
   next_ = 0;
 }
