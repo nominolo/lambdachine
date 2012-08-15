@@ -954,31 +954,33 @@ TEST_F(RunFileTest, Gc03) {
   run("Bc.Gc03");
 }
 
-TEST_F(RunFileTest, Primes) {
+class BenchTest : public RunFileTest {};
+
+TEST_F(BenchTest, DISABLED_Primes) {
   run("Bench.Primes");
 }
 
-TEST_F(RunFileTest, Append) {
+TEST_F(BenchTest, DISABLED_Append) {
   run("Bench.Append");
 }
 
-TEST_F(RunFileTest, SumFromTo1) {
+TEST_F(BenchTest, DISABLED_SumFromTo1) {
   run("Bench.SumFromTo1");
 }
 
-TEST_F(RunFileTest, SumFromTo2) {
+TEST_F(BenchTest, DISABLED_SumFromTo2) {
   run("Bench.SumFromTo2");
 }
 
-TEST_F(RunFileTest, SumFromTo3) {
+TEST_F(BenchTest, DISABLED_SumFromTo3) {
   run("Bench.SumFromTo3");
 }
 
-TEST_F(RunFileTest, SumFromTo4) {
+TEST_F(BenchTest, DISABLED_SumFromTo4) {
   run("Bench.SumFromTo4");
 }
 
-TEST_F(RunFileTest, SumSquare1) {
+TEST_F(BenchTest, DISABLED_SumSquare1) {
   run("Bench.SumSquare1");
 }
 
@@ -992,6 +994,10 @@ TEST_F(RunFileTest, SumMemLoad) {
 
 TEST_F(RunFileTest, Alloc1) {
   run("Bc.Alloc1");
+}
+
+TEST_F(RunFileTest, EvalThunk) {
+  run("Bc.EvalThunk");
 }
 
 TEST(HotCounters, Simple) {

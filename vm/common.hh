@@ -135,7 +135,8 @@ static inline int32_t byteOffset32(void *from, void *to) {
 #define CLEAR_FLAG(dst, f) ((dst) &= ~(f))
 
 /* Note: a and b must not have side effects. */
-#define MAX(a, b) ((a) < (b) ? (b) : (a));
+#define MAX(a, b) ((a) < (b) ? (b) : (a))
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 /*  
 Inlining 

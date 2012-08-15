@@ -3,6 +3,7 @@
 #include "assembler.hh"
 #include "thread.hh"
 #include "capability.hh"
+#include "miscclosures.hh"
 
 #include <iostream>
 #include <string.h>
@@ -102,11 +103,16 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
   cerr << "REC: " << ins << " " << ins->name() << endl;
   if (flags_.get(kLastInsWasBranch)) {
     if (ins == startPc_) {
-      cerr << "REC: Loop detected." << endl
+      cerr << "REC: Loop to entry detected." << endl
            << "  Loop: " << startPc_ << endl;
       for (size_t i = 0; i < targets_.size(); ++i) {
         cerr << "    " << targets_[i] << endl;
       }
+      if (lastResult_.ref() != 0) {
+        cerr << "NYI: Pending return result. Cannot compile trace." << endl;
+        goto abort_recording;
+      }
+
       buf_.emit(IR::kSAVE, IRT_VOID | IRT_GUARD, IR_SAVE_LOOP, 0);
       finishRecording();
       return true;
@@ -217,14 +223,81 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
       cerr << "NYI: EVAL of indirections" << endl;
       goto abort_recording;
     }
-    if (!tnode->isHNF()) {
-      cerr << "NYI: EVAL of thunk" << endl;
-    }
     TRef noderef = buf_.slot(ins->a());
-    TRef inforef = buf_.literal(IRT_INFO, (Word)tnode->info());
-    buf_.emit(IR::kEQINFO, IRT_VOID | IRT_GUARD, noderef, inforef);
-    lastResult_ = noderef;
-    // TODO: Clear dead registers.
+    if (tnode->isHNF()) {
+      TRef inforef = buf_.literal(IRT_INFO, (Word)tnode->info());
+      buf_.emit(IR::kEQINFO, IRT_VOID | IRT_GUARD, noderef, inforef);
+      lastResult_ = noderef;
+      // TODO: Clear dead registers.
+    } else {
+      Word *top = cap_->currentThread()->top();
+      int topslot = top - base;
+      LC_ASSERT(buf_.slots_.top() == topslot);
+      CodeInfoTable *info = static_cast<CodeInfoTable *>(tnode->info());
+      u4 framesize = info->code()->framesize;
+      // TODO: Check for stack overflow and abort recording?
+      BcIns *returnPc = ins + 2;
+
+      buf_.slots_.debugPrint(cerr);
+
+      buf_.setSlot(topslot + 0, buf_.baseLiteral(base));
+      buf_.setSlot(topslot + 1, buf_.literal(IRT_PC, (Word)returnPc));
+      TRef upd_clos_lit =
+        buf_.literal(IRT_CLOS, (Word)MiscClosures::stg_UPD_closure_addr);
+      buf_.setSlot(topslot + 2, upd_clos_lit);
+      if (!buf_.slots_.frame(top + 3, top + 3 + 2)) {
+        cerr << "Abstract stack overflow/underflow" << endl;
+        goto abort_recording;
+      }
+      buf_.setSlot(0, noderef);
+      buf_.setSlot(1, TRef());
+
+      topslot = 2;
+      buf_.setSlot(topslot + 0, buf_.baseLiteral(top + 3));
+      buf_.setSlot(topslot + 1,
+                   buf_.literal(IRT_PC, (Word)MiscClosures::stg_UPD_return_pc));
+      buf_.setSlot(topslot + 2, noderef);
+      Word *newbase = top + 3 + 2 + 3;
+      if (!buf_.slots_.frame(newbase, newbase + framesize)) {
+        cerr << "Abstract stack overflow/underflow" << endl;
+        goto abort_recording;
+      }
+      for (int i = 0; i < framesize; ++i) {
+        buf_.setSlot(i, TRef());
+      }
+      
+      buf_.slots_.debugPrint(cerr);
+
+    }
+    break;
+  }
+
+  case BcIns::kIRET:
+  case BcIns::kRET1: {
+    buf_.slots_.debugPrint(cerr);
+
+    TRef retref = buf_.slot(-2);
+    TRef expectedReturnPc = buf_.literal(IRT_PC, base[-2]);
+    buf_.emit(IR::kEQ, IRT_VOID | IRT_GUARD, retref, expectedReturnPc);
+    TRef resultref = buf_.slot(ins->a());
+    lastResult_ = resultref;
+    
+    // Clear current frame.
+    for (int i = -3; i < (int)buf_.slots_.top(); ++i) {
+      buf_.setSlot(i, TRef());
+    }
+    cerr << endl;
+
+    // Return address implies framesize, thus we don't need an extra
+    // guard.  In fact, storing all these frame pointers on the stack
+    // is quite wasteful.
+    Word *newbase = (Word*)base[-3];
+    if (!buf_.slots_.frame(newbase, base - 3)) {
+      cerr << "Abstract stack overflow/underflow" << endl;
+      goto abort_recording;
+    }
+
+    buf_.slots_.debugPrint(cerr);
     break;
   }
 
@@ -234,6 +307,23 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
       goto abort_recording;
     }
     buf_.setSlot(ins->a(), lastResult_);
+    // Clear lastResult_.  If lastResult_ is not cleared at the end of
+    // a trace we have a pending return result and cannot compile the
+    // trace (ATM).
+    lastResult_ = TRef();
+    break;
+  }
+
+  case BcIns::kUPDATE: {
+    Closure *oldnode = (Closure *)base[ins->a()];
+    InfoTable *info = oldnode->info();
+    if (info->type() == CAF) {
+      cerr << "NYI: UPDATE of a CAF." << endl;
+      goto abort_recording;
+    }
+    TRef oldref = buf_.slot(ins->a());
+    TRef newref = buf_.slot(ins->d());
+    buf_.emit(IR::kUPDATE, IRT_VOID, oldref, newref);
     break;
   }
 
@@ -487,10 +577,13 @@ void Fragment::restoreSnapshot(ExitNo exitno, ExitState *ex) {
     }
   }
   if (sn.relbase() != 0) {
-    cerr << "NYI: non-zero relbase" << endl;
-    exit(3);
+    base += (int)sn.relbase();
+    // cerr << "NYI: non-zero relbase" << endl;
+    // cerr << "   relbase = " << dec << sn.relbase() << endl;
+    // exit(3);
   }
   ex->T->base_ = base;
+  ex->T->top_ = base + sn.framesize();
   ex->T->pc_ = sn.pc();
 
   Capability *cap = ex->T->owner();

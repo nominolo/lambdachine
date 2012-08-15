@@ -337,6 +337,7 @@ public:
   inline bool isNone() const { return raw_ == 0; }
   inline bool isLiteral() const { return ref() < REF_BASE; }
   inline void markWritten() { raw_ |= kWritten; }
+  inline bool isWritten() const { return raw_ & kWritten; }
   
   bool operator==(const TRef &t) const { return raw_ == t.raw_; }
   bool operator!=(const TRef &t) const { return raw_ != t.raw_; }
@@ -408,6 +409,9 @@ public:
   /// The address of the base pointer when this snapshot was taken
   /// relative to the base at the start of the trace.
   inline int relbase() const { return relbase_; }
+
+  // The size of the frame when the snapshot was taken.
+  inline int framesize() const { return (int)framesize_; }
 
   typedef size_t MapRef;
 

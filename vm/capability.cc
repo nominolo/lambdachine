@@ -859,6 +859,11 @@ op_JFUNC: {
     LOAD_STATE_FROM_CAP;
     if (isEnabledBytecodeTracing())
       dispatch = dispatch_debug;
+
+    // Reload code/KBASE
+    Closure *cl = (Closure*)base[-1];
+    code = ((CodeInfoTable*)cl->info())->code();
+    
     DISPATCH_NEXT;
   }
 

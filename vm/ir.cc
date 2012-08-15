@@ -376,9 +376,11 @@ void AbstractStack::reset(Word *base, Word *top) {
 
 bool AbstractStack::frame(Word *base, Word *top) {
   int delta = base - realOrigBase_;
-  if (delta < -(kInitialBase - 1)) return false;  // underflow
   base_ = kInitialBase + delta;
+  low_ = MIN(low_, base_);
+  if (base_ < 1) return false;  // underflow
   top_ = base_ + (top - base);
+  high_ = MAX(high_, top_ - 1);
   if (top_ >= kSlots) return false; // overflow
   return true;
 }
@@ -462,7 +464,7 @@ void Snapshot::debugPrint(ostream &out, SnapshotData *snapmap, SnapNo snapno) {
       }
       if (entries > 0) out << ' ';
       printslotid = ((slotid + 1) % 4) == 0;
-      nl = (slotid % 8) == 7;
+      //      nl = (slotid % 8) == 7;
     }
   }
   out << "] pc=" << pc_ << endl;
