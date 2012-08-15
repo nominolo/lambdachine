@@ -207,6 +207,10 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     buf_.setSlot(ins->a(), buf_.slot(ins->d()));
     break;
 
+  case BcIns::kLOADSLF:
+    buf_.setSlot(ins->a(), buf_.slot(-1));
+    break;
+
   case BcIns::kEVAL: {
     Closure *tnode = (Closure *)base[ins->a()];
     if (tnode->isIndirection()) {
@@ -236,6 +240,14 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
   case BcIns::kLOADF: {
     TRef rbase = buf_.slot(ins->b());
     TRef fref = buf_.emit(IR::kFREF, IRT_PTR, rbase, ins->c());
+    TRef res = buf_.emit(IR::kFLOAD, IRT_UNKNOWN, fref, 0);
+    buf_.setSlot(ins->a(), res);
+    break;
+  }
+
+  case BcIns::kLOADFV: {
+    TRef rbase = buf_.slot(-1);
+    TRef fref = buf_.emit(IR::kFREF, IRT_PTR, rbase, ins->d());
     TRef res = buf_.emit(IR::kFLOAD, IRT_UNKNOWN, fref, 0);
     buf_.setSlot(ins->a(), res);
     break;
@@ -281,6 +293,10 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     buf_.emit(IR::kEQINFO, IRT_VOID | IRT_GUARD, clos, itbl);
     break;
   }
+
+  case BcIns::kJMP:
+    // Nothing to do here.
+    break;
 
   default:
     cerr << "NYI: Recording of " << ins->name() << endl;
