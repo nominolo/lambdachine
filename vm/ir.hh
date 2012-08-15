@@ -588,6 +588,8 @@ public:
   void snapshot(Snapshot *snap, SnapshotData *snapmap,
                 IRRef1 ref, void *pc);
 
+  void debugPrint(std::ostream &);
+
 private:
   static const unsigned int kSlots = 500;
   static const unsigned int kInitialBase = 250;

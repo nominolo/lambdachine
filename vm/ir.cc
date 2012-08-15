@@ -413,6 +413,32 @@ void AbstractStack::snapshot(Snapshot *snap, SnapshotData *snapmap,
   snapmap->index_ = ofs;
 }
 
+void AbstractStack::debugPrint(ostream &out) {
+  out << "    [";
+  bool printslotid = true;
+  for (unsigned int slot = low_; slot < MAX(high_ + 1,top_); ++slot) {
+    int slotid = slot - kInitialBase;
+    if (slot == base_)
+      out << '{';
+    else if (slot == top_)
+      out << '}';
+    else
+      out << ' ';
+    if (printslotid)
+      out << COL_BLUE << dec << slotid << ':' << COL_RESET;
+    TRef tref = slots_[slot];
+    if (!tref.isNone()) {
+      if (tref.isWritten()) out << COL_UNDERLINE;
+      IR::printIRRef(out, tref.ref());
+      if (tref.isWritten()) out << COL_RESET;
+    } else
+      out << "----";
+    printslotid = ((slotid + 1) % 4) == 0;
+  }
+  if (top_ >= high_) out << '}';
+  out << ']' << endl;
+}
+
 void Snapshot::debugPrint(ostream &out, SnapshotData *snapmap, SnapNo snapno) {
   unsigned int ofs = mapofs_;
   int entries = entries_;
