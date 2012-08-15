@@ -42,7 +42,7 @@ typedef u4 IRRef;               /* Used to pass around references */
   _(NE,      G,   ref, ref) \
   _(EQRET,   G,   ref, ref) \
   _(EQINFO,  G,   ref, ref) \
-  _(HEAPCHK, G,   lit, ___) \
+  _(HEAPCHK, S,   lit, ___) \
    \
   _(NOP,     N,   ___, ___) \
   _(BASE,    N,   lit, lit) \
