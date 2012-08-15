@@ -171,6 +171,8 @@ void IRBuffer::reset(Word *base, Word *top) {
   if (realbuffer_) delete[] realbuffer_;
   realbuffer_ = new IR[size_];
   heap_.reset();
+  snaps_.clear();
+  snapmap_.reset();
 
   size_t nliterals = size_ / 4;
 
@@ -465,6 +467,11 @@ found:
 }
 
 SnapshotData::SnapshotData() : data_(), index_() { }
+
+void SnapshotData::reset() {
+  index_ = 0;
+  data_.clear();
+}
 
 HeapSnapData::HeapSnapData() : data_(NULL), size_(0), next_(0) {
   // We initialize to NULL and trigger buffer allocation on the first

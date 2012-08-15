@@ -448,6 +448,7 @@ public:
   inline IRRef1 slotRef(Snapshot::MapRef index) {
     return (IRRef1)data_.at(index);
   }
+  void reset();
 private:
   std::vector<uint32_t> data_;
   size_t index_;
