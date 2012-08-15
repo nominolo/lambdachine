@@ -745,6 +745,11 @@ void Assembler::insNew(IR *ins) {
   memstore(RID_HP, sizeof(Word) * ofs, ins->op1(), kGPR);
 }
 
+void Assembler::insUpdate(IR *ins) {
+  Reg oldptr = alloc1(ins->op1(), kGPR);
+  memstore(oldptr, sizeof(Word), ins->op2(), kGPR);
+}
+
 void Assembler::emit(IR *ins) {
   switch (ins->opcode()) {
   case IR::kSLOAD:
@@ -786,6 +791,9 @@ void Assembler::emit(IR *ins) {
     break;
   case IR::kFLOAD:
     fieldLoad(ins);
+    break;
+  case IR::kUPDATE:
+    insUpdate(ins);
     break;
   default:
     cerr << "NYI: codegen for ";

@@ -430,9 +430,10 @@ public:
   void fieldLoad(IR *ins);
   void heapCheck(IR *ins);
   void insNew(IR *ins);
+  void insUpdate(IR *ins);
   void emit(IR *ins);
   void save(IR *ins);
-  void memstore(IRRef ref, int32_t ofs, Reg base, RegSet allow);
+  void memstore(Reg base, int32_t ofs, IRRef ref, RegSet allow);
 
   void assemble(IRBuffer *, MachineCode *);
 
