@@ -274,6 +274,14 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     break;
   }
 
+  case BcIns::kCASE: {
+    Closure *cl = (Closure *)base[ins->a()];
+    TRef clos = buf_.slot(ins->a());
+    TRef itbl = buf_.literal(IRT_INFO, (Word)cl->info());
+    buf_.emit(IR::kEQINFO, IRT_VOID | IRT_GUARD, clos, itbl);
+    break;
+  }
+
   default:
     cerr << "NYI: Recording of " << ins->name() << endl;
     goto abort_recording;
