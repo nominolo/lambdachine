@@ -357,17 +357,23 @@ void IRBuffer::setHeapOffsets() {
   IRRef href = chain_[IR::kNEW];
   IRRef chkref = chain_[IR::kHEAPCHK];
   IRRef cur = href;
-  while (cur) {
+  for (;;) {
     while (chkref > cur) {
+      // Check that we've reserved exactly the amount needed.
+      LC_ASSERT((int)ir(chkref)->op1() == -offset);
       offset = 0;
       chkref = ir(chkref)->prev();
     }
+    if (!cur)
+      break;
     AbstractHeapEntry &entry = heap_.entry(ir(cur)->op2());
     int sz = entry.size() + 1;
     offset -= sz;
     entry.hpofs_ = offset;
     cur = ir(cur)->prev();
   }
+  // Non-zero offset indicates missing heap check.
+  LC_ASSERT(offset == 0);
 }
 
 AbstractStack::AbstractStack()
