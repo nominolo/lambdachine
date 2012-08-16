@@ -960,7 +960,7 @@ TEST_F(BenchTest, Primes) {
   run("Bench.Primes");
 }
 
-TEST_F(BenchTest, DISABLED_Append) {
+TEST_F(BenchTest, Append) {
   run("Bench.Append");
 }
 

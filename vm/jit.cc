@@ -204,7 +204,6 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
       cerr << "  args=" << (int)ins->c() << "  arity="
            << (int)itbl->code()->arity << "  name="
            << itbl << endl;
-      exit(4);
       goto abort_recording;
     }
     flags_.set(kLastInsWasBranch);
