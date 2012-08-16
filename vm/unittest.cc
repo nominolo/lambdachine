@@ -964,15 +964,15 @@ TEST_F(BenchTest, DISABLED_Append) {
   run("Bench.Append");
 }
 
-TEST_F(BenchTest, DISABLED_SumFromTo1) {
+TEST_F(BenchTest, SumFromTo1) {
   run("Bench.SumFromTo1");
 }
 
-TEST_F(BenchTest, DISABLED_SumFromTo2) {
+TEST_F(BenchTest, SumFromTo2) {
   run("Bench.SumFromTo2");
 }
 
-TEST_F(BenchTest, DISABLED_SumFromTo3) {
+TEST_F(BenchTest, SumFromTo3) {
   run("Bench.SumFromTo3");
 }
 

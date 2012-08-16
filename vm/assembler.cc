@@ -584,7 +584,7 @@ void Assembler::assemble(IRBuffer *buf, MachineCode *mcode) {
 
   setup(buf);
   setupMachineCode(mcode);
-  setupExitStubs(buf->numSnapshots() + 500, mcode);
+  setupExitStubs(buf->numSnapshots(), mcode);
 
   curins_ = nins_;
   IRRef stopins = REF_BASE;
@@ -938,7 +938,7 @@ MCode *Assembler::generateExitstubGroup(ExitNo group, MachineCode *mcode) {
 void Assembler::setupExitStubs(ExitNo nexits, MachineCode *mcode) {
   ExitNo i;
   if (nexits >= EXITSTUBS_PER_GROUP * 16) {
-    cerr << "FATAL: Too many exit stubs!" << endl;
+    cerr << "FATAL: Too many exit stubs! (" << nexits << ")" << endl;
     exit(3);
   }
   ExitNo ngroups = (nexits + EXITSTUBS_PER_GROUP + 1) / EXITSTUBS_PER_GROUP;
