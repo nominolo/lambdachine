@@ -521,6 +521,7 @@ private:
   int16_t hpofs_;
 
   friend class AbstractHeap;
+  friend class IRBuffer;
 };
 
 
@@ -700,6 +701,7 @@ public:
 
   typedef int HeapEntry;
   TRef emitNEW(IRRef1 itblref, int nfields, HeapEntry *entry1);
+  void setHeapOffsets();
   inline int numFields(HeapEntry entry);
   inline void setField(HeapEntry entry, int field, IRRef1 ref);
   inline IRRef1 getField(HeapEntry entry, int field);
@@ -712,6 +714,8 @@ private:
   void growTop();
   void growBottom();
   TRef emit(); // Emit without optimisation.
+
+  IRRef foldHeapcheck();
 
   IRRef doFold();
 

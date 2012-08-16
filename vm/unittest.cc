@@ -1050,7 +1050,6 @@ protected:
   void Compile() {
     buf->debugPrint(cerr, 1);
     as = new Assembler(jit);
-    as->setup(buf);
     as->assemble(jit->buffer(), jit->mcode());
   }
   Word *SetupThread() {
@@ -1337,7 +1336,6 @@ public:
   void Assemble() {
     buf->debugPrint(cerr, 1);
     Assembler *as = jit.assembler();
-    as->setup(buf);
     as->assemble(buf, jit.mcode());
     buf->debugPrint(cerr, 1);
     F = jit.saveFragment();
@@ -1394,7 +1392,6 @@ TEST(TestFragment2, TestFragment2) {
 
   buf->debugPrint(cerr, 1);
   Assembler *as = jit.assembler();
-  as->setup(buf);
   as->assemble(buf, jit.mcode());
   buf->debugPrint(cerr, 1);
   Fragment *F = jit.saveFragment();
@@ -1677,6 +1674,52 @@ TEST_F(TestFragment, Alloc2) {
   TRef field3 = buf->emit(IR::kADD, IRT_I64, field1, lit1);
   TRef field4 = buf->emit(IR::kADD, IRT_I64, field2, lit2);
 
+  TRef alloc2 = buf->emitNEW(itbl, 2, &he);
+  cerr << "he " << he << endl;
+  buf->setField(he, 0, field3);
+  buf->setField(he, 1, field4);
+
+  buf->setSlot(0, alloc1);
+  buf->setSlot(1, alloc2);
+  buf->emit(IR::kSAVE, IRT_VOID|IRT_GUARD, 0, 0);
+
+  Assemble();
+
+  Word heap[10];
+
+  memset(heap, 0, sizeof(heap));
+  Word *base = T->base();
+  base[0] = 123;
+  base[1] = 37;
+  RunWithHeap(&heap[0], &heap[10]);
+  EXPECT_EQ(&heap[6], cap.traceExitHp());
+  EXPECT_EQ(&heap[10], cap.traceExitHpLim());
+  EXPECT_EQ((Word)&heap[0], base[0]);
+  EXPECT_EQ((Word)&heap[3], base[1]);
+  EXPECT_EQ(0x123456789, heap[0]);
+  EXPECT_EQ(123, heap[1]);
+  EXPECT_EQ(37, heap[2]);
+  EXPECT_EQ(0x123456789, heap[3]);
+  EXPECT_EQ(123 + 5, heap[4]);
+  EXPECT_EQ(37 + 7, heap[5]);
+}
+
+TEST_F(TestFragment, Alloc3) {
+  TRef itbl = buf->literal(IRT_INFO, 0x123456789);
+  TRef lit1 = buf->literal(IRT_I64, 5);
+  TRef lit2 = buf->literal(IRT_I64, 7);
+  TRef field1 = buf->slot(0);
+  TRef field2 = buf->slot(1);
+  buf->emitHeapCheck(3);
+  IRBuffer::HeapEntry he = 0;
+  TRef alloc1 = buf->emitNEW(itbl, 2, &he);
+  buf->setField(he, 0, field1);
+  buf->setField(he, 1, field2);
+
+  TRef field3 = buf->emit(IR::kADD, IRT_I64, field1, lit1);
+  TRef field4 = buf->emit(IR::kADD, IRT_I64, field2, lit2);
+
+  buf->emitHeapCheck(3);
   TRef alloc2 = buf->emitNEW(itbl, 2, &he);
   cerr << "he " << he << endl;
   buf->setField(he, 0, field3);

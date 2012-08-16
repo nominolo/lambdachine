@@ -284,6 +284,17 @@ FOLDF(simplify_intsubaddadd_cancel) {
   return NEXTFOLD;
 }
 
+IRRef IRBuffer::foldHeapcheck() {
+  IRRef hpchkref = chain_[IR::kHEAPCHK];
+  if (hpchkref /* && hpchkref >= loop_ */) { 
+    IR *hpchk = ir(hpchkref);
+    uint16_t nwords = hpchk->op1() + fins->op1();
+    hpchk->setOp1(nwords);
+    return DROPFOLD;
+  }
+  return NEXTFOLD;
+}
+
 // Constant-fold an EQGUARD where the closure is a literal. The
 // second operand will always be a literal.
 FOLDF(kfold_eqinfo) {
@@ -380,6 +391,10 @@ retry:
     break;
   case IR::kEQINFO:
     PATTERN(lit, lit, kfold_eqinfo);
+    break;
+  case IR::kHEAPCHK:
+    /// heapchk N, heapchk M ==> heapchk (N+M)
+    ref = foldHeapcheck();
     break;
   default:
     break;

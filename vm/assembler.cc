@@ -55,7 +55,11 @@ void Assembler::setupRegAlloc() {
 #define REGSP_HINT(r)   ((r)|RID_NONE)
 #define REGSP_INIT    REGSP(RID_INIT, 0)
 
+// NOTE: This operation is NOT idempotent!  We assume that
+// the prev() fields of the input instructions are valid.
+// This won't be the case after this function finishes.
 void Assembler::setup(IRBuffer *buf) {
+  buf->setHeapOffsets();
   setupRegAlloc();
 
   ir_ = buf->buffer_;  // REF-biased

@@ -352,6 +352,24 @@ TRef IRBuffer::emitNEW(IRRef1 itblref, int nfields, HeapEntry *out) {
   return tref;
 }
 
+void IRBuffer::setHeapOffsets() {
+  int offset = 0;
+  IRRef href = chain_[IR::kNEW];
+  IRRef chkref = chain_[IR::kHEAPCHK];
+  IRRef cur = href;
+  while (cur) {
+    while (chkref > cur) {
+      offset = 0;
+      chkref = ir(chkref)->prev();
+    }
+    AbstractHeapEntry &entry = heap_.entry(ir(cur)->op2());
+    int sz = entry.size() + 1;
+    offset -= sz;
+    entry.hpofs_ = offset;
+    cur = ir(cur)->prev();
+  }
+}
+
 AbstractStack::AbstractStack()
   : slots_(NULL), base_(0), top_(0), low_(0), high_(0),
     realOrigBase_(NULL) {
@@ -602,6 +620,7 @@ const char *IR::regName(uint8_t r, IRType ty) {
     LC_ASSERT(RID_MIN_FPR <= r && r < RID_MAX_FPR);
     return fpRegNames[r - RID_MIN_FPR];
   default:
+    cerr << "\nFATAL: regName: Unknown type: " << (int)ty << endl;
     exit(44);
   }
 }

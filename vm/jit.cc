@@ -416,7 +416,6 @@ inline void Jit::resetRecorderState() {
 
 void Jit::finishRecording() {
   cerr << "Recorded: " << endl;
-  asm_.setup(buffer());
   asm_.assemble(buffer(), mcode());
   buf_.debugPrint(cerr, 1);
 
