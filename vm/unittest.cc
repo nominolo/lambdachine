@@ -956,7 +956,7 @@ TEST_F(RunFileTest, Gc03) {
 
 class BenchTest : public RunFileTest {};
 
-TEST_F(BenchTest, DISABLED_Primes) {
+TEST_F(BenchTest, Primes) {
   run("Bench.Primes");
 }
 
@@ -976,11 +976,11 @@ TEST_F(BenchTest, SumFromTo3) {
   run("Bench.SumFromTo3");
 }
 
-TEST_F(BenchTest, DISABLED_SumFromTo4) {
+TEST_F(BenchTest, SumFromTo4) {
   run("Bench.SumFromTo4");
 }
 
-TEST_F(BenchTest, DISABLED_SumSquare1) {
+TEST_F(BenchTest, SumSquare1) {
   run("Bench.SumSquare1");
 }
 

@@ -147,6 +147,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
 
   switch (ins->opcode()) {
   case BcIns::kFUNC:
+    buf_.slots_.frame(base, base + ins->a());
     break;
   case BcIns::kLOADK: {
     u2 lit_id = ins->d();
