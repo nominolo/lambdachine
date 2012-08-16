@@ -183,6 +183,7 @@ void IRBuffer::reset(Word *base, Word *top) {
   bufmin_ = REF_BIAS;
   bufmax_ = REF_BASE;
 
+  flags_.clear();
   flags_.set(kOptCSE);
   flags_.set(kOptFold);
 
