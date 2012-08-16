@@ -145,6 +145,9 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     }
   }
 
+  // This is overwritten by branch instructions.
+  flags_.clear(kLastInsWasBranch);
+
   switch (ins->opcode()) {
   case BcIns::kFUNC:
     buf_.slots_.frame(base, base + ins->a());
@@ -168,6 +171,8 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     TRef bref = buf_.slot(ins->d());
     uint8_t iropc = bcCond2irCond(ins->opcode(), !taken);
     buf_.emit(iropc, IRT_VOID | IRT_GUARD, aref, bref);
+    // These branches cannot trigger a new trace to start.
+    //    flags_.set(kLastInsWasBranch);
     break;
   }
   case BcIns::kSUBRR: {
@@ -267,6 +272,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
       }
       
       buf_.slots_.debugPrint(cerr);
+      flags_.set(kLastInsWasBranch);
 
     }
     break;
@@ -298,6 +304,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     }
 
     buf_.slots_.debugPrint(cerr);
+    flags_.set(kLastInsWasBranch);
     break;
   }
 
@@ -391,16 +398,8 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
   default:
     cerr << "NYI: Recording of " << ins->name() << endl;
     goto abort_recording;
-
-    // case BcIns::kCALL:
-    // case BcIns::kEVAL:
-    // case BcIns::kRET1:
-    //   flags_.set(kLastInsWasBranch);
-    //   break;
-    // default:
-    //   flags_.clear(kLastInsWasBranch);
-    //   break;
   }
+
   return false;
 
 abort_recording:
