@@ -576,7 +576,9 @@ void Fragment::restoreSnapshot(ExitNo exitno, ExitState *ex) {
     }
   }
   if (sn.relbase() != 0) {
+    DBG(cerr << "base + " << dec << (int)sn.relbase() << " => ");
     base += (int)sn.relbase();
+    DBG(cerr << base << endl);
     // cerr << "NYI: non-zero relbase" << endl;
     // cerr << "   relbase = " << dec << sn.relbase() << endl;
     // exit(3);
