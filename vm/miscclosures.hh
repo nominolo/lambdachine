@@ -30,6 +30,8 @@ public:
 
   static Closure *stg_UPD_closure_addr;
   static BcIns *stg_UPD_return_pc;
+  static const uint32_t UPD_frame_size = 2;
+  
   static Closure *stg_STOP_closure_addr;
   static InfoTable *stg_IND_info;
   static InfoTable *stg_PAP_info;

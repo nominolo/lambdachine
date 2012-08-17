@@ -246,28 +246,20 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
 
       buf_.slots_.debugPrint(cerr);
 
-      buf_.setSlot(topslot + 0, buf_.baseLiteral(base));
-      buf_.setSlot(topslot + 1, buf_.literal(IRT_PC, (Word)returnPc));
       TRef upd_clos_lit =
         buf_.literal(IRT_CLOS, (Word)MiscClosures::stg_UPD_closure_addr);
-      buf_.setSlot(topslot + 2, upd_clos_lit);
-      if (!buf_.slots_.frame(top + 3, top + 3 + 2)) {
-        cerr << "Abstract stack overflow/underflow" << endl;
-        goto abort_recording;
-      }
+      Word *newbase = pushFrame(base, returnPc, upd_clos_lit,
+                                MiscClosures::UPD_frame_size);
+      if (!newbase) goto abort_recording;
+
       buf_.setSlot(0, noderef);
       buf_.setSlot(1, TRef());
 
-      topslot = 2;
-      buf_.setSlot(topslot + 0, buf_.baseLiteral(top + 3));
-      buf_.setSlot(topslot + 1,
-                   buf_.literal(IRT_PC, (Word)MiscClosures::stg_UPD_return_pc));
-      buf_.setSlot(topslot + 2, noderef);
-      Word *newbase = top + 3 + 2 + 3;
-      if (!buf_.slots_.frame(newbase, newbase + framesize)) {
-        cerr << "Abstract stack overflow/underflow" << endl;
-        goto abort_recording;
-      }
+      newbase = pushFrame(newbase, MiscClosures::stg_UPD_return_pc,
+                          noderef, framesize);
+      if (!newbase) goto abort_recording;
+
+      // Clear all slots, just to be safe.
       for (int i = 0; i < framesize; ++i) {
         buf_.setSlot(i, TRef());
       }
@@ -491,6 +483,21 @@ Fragment *Jit::saveFragment() {
   F->mcode_ = as->mcp;
 
   return F;
+}
+
+Word *Jit::pushFrame(Word *base, BcIns *returnPc,
+                    TRef noderef, uint32_t framesize) {
+  int topslot = buf_.slots_.top();
+  
+  buf_.setSlot(topslot + 0, buf_.baseLiteral(base));
+  buf_.setSlot(topslot + 1, buf_.literal(IRT_PC, (Word)returnPc));
+  buf_.setSlot(topslot + 2, noderef);
+  Word *newbase = base + topslot + 3;
+  if (!buf_.slots_.frame(newbase, newbase + framesize)) {
+    cerr << "Abstract stack overflow." << endl;
+    return NULL;
+  }
+  return newbase;
 }
 
 #if (DEBUG_COMPONENTS & DEBUG_TRACE_ENTEREXIT) != 0

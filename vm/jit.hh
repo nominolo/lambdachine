@@ -164,6 +164,8 @@ public:
   inline void setDebugTrace(bool val) { flags_.set(kDebugTrace, val); }
 
 private:
+  Word *pushFrame(Word *base, BcIns *returnPc, TRef noderef,
+                  uint32_t framesize);
   void finishRecording();
   void resetRecorderState();
   void registerFragment(BcIns *startPc, Fragment *F) {
