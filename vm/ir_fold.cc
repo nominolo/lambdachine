@@ -307,6 +307,23 @@ FOLDF(kfold_eqinfo) {
     return FAILFOLD;
 }
 
+// Constant fold any arithmetic comparison operation.
+FOLDF(kfold_cmp) {
+  uint64_t k1 = buf->literalValue(fins->op1());
+  uint64_t k2 = buf->literalValue(fins->op2());
+  switch (fins->opcode()) {
+  case IR::kEQ:
+    return (k1 == k2) ? DROPFOLD : FAILFOLD;
+  case IR::kNE:
+    return (k1 == k2) ? DROPFOLD : FAILFOLD;
+  default:
+    cerr << "FATAL: kfold_cmp called on unsupported instruction.\n";
+    fins->debugPrint(cerr, 0);
+    cerr << endl;
+    exit(3);
+  }
+}
+
 #undef fins
 #undef fleft
 #undef fright
@@ -396,6 +413,10 @@ retry:
   case IR::kHEAPCHK:
     /// heapchk N, heapchk M ==> heapchk (N+M)
     ref = foldHeapcheck();
+    break;
+  case IR::kEQ:
+  case IR::kNE:
+    PATTERN(lit, lit, kfold_cmp);
     break;
   default:
     break;
