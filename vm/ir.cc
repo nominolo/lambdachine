@@ -305,6 +305,9 @@ uint64_t IRBuffer::literalValue(IRRef ref) {
   } else if (tir->opcode() == IR::kKBASEO) {
     return (uint64_t)(slots_.origBase() + tir->i32());
   }
+  cerr << "FATAL: literalValue called on invalid opcode." << endl;
+  tir->debugPrint(cerr, ref);
+  cerr << endl;
   LC_ASSERT(false);
   return 0;
 }

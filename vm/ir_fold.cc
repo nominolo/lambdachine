@@ -146,7 +146,8 @@ FOLDF(comm_swap) {
 // (x op k1) op k2  =>  x op (k1 op k2)
 // (x op k1) op k2  =>  x op k1, if (k1 op k2) == k1
 FOLDF(reassoc_int_arith) {
-  if (fold_.ins.type() == IRT_I64) {
+  if (fold_.ins.type() == IRT_I64 &&
+      irref_islit(fleft->op2())) {
     int64_t k1 = buf->literalValue(fold_.left.op2());
     int64_t k2 = buf->literalValue(fold_.ins.op2());
     int64_t k = kfold_intop(k1, k2, fold_.ins.opcode());
