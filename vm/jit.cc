@@ -206,7 +206,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
 
     if (ins->c() != ((FuncInfoTable *)info)->code()->arity) {
       FuncInfoTable *itbl = ((FuncInfoTable *)info);
-      cerr << "NYI: Recording of non-exact applications" << endl;
+      cerr << "NYI: Recording of non-exact applications (CALLT)" << endl;
       cerr << "  args=" << (int)ins->c() << "  arity="
            << (int)itbl->code()->arity << "  name="
            << itbl << endl;
@@ -215,6 +215,48 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     flags_.set(kLastInsWasBranch);
     break;
   }
+
+  case BcIns::kCALL: {
+    TRef fnode = buf_.slot(ins->a());
+    Closure *clos = (Closure *)base[ins->a()];
+    InfoTable *info = clos->info();
+    TRef iref = buf_.literal(IRT_INFO, (Word)info);
+    buf_.emit(IR::kEQINFO, IRT_VOID | IRT_GUARD, fnode, iref);
+    uint32_t nargs = ins->c();
+
+    const Code *code = ((FuncInfoTable *)info)->code();
+    TRef argref[32];
+    LC_ASSERT(nargs <= 32);
+
+    uint8_t *arg = (uint8_t *)(ins + 1);
+
+    for (int i = 0; i < nargs; ++i, ++arg) {
+      argref[i] = buf_.slot(*arg);
+    }
+
+    if (nargs != code->arity) {
+      FuncInfoTable *itbl = ((FuncInfoTable *)info);
+      cerr << "NYI: Recording of non-exact applications (CALL)" << endl;
+      cerr << "  args=" << (int)ins->c() << "  arity="
+           << (int)itbl->code()->arity << "  name="
+           << itbl << endl;
+      goto abort_recording;
+    }
+
+    // See interpreter implementation for details.
+    BcIns *returnPc = ins + 1 + BC_ROUND(nargs) + 1;
+
+    Word *newbase = pushFrame(base, returnPc, fnode, code->framesize);
+    if (!newbase) goto abort_recording;
+
+    for (int i = 0; i < nargs; ++i) {
+      buf_.setSlot(i, argref[i]);
+    }
+    
+    flags_.set(kLastInsWasBranch);
+    break;
+  }
+
   case BcIns::kMOV:
     buf_.setSlot(ins->a(), buf_.slot(ins->d()));
     break;
