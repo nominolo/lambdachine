@@ -229,9 +229,9 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
       goto abort_recording;
     }
     TRef noderef = buf_.slot(ins->a());
+    TRef inforef = buf_.literal(IRT_INFO, (Word)tnode->info());
+    buf_.emit(IR::kEQINFO, IRT_VOID | IRT_GUARD, noderef, inforef);
     if (tnode->isHNF()) {
-      TRef inforef = buf_.literal(IRT_INFO, (Word)tnode->info());
-      buf_.emit(IR::kEQINFO, IRT_VOID | IRT_GUARD, noderef, inforef);
       lastResult_ = noderef;
       // TODO: Clear dead registers.
     } else {
