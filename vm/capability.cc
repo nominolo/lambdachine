@@ -213,7 +213,8 @@ debug:
   {
     size_t depth = base - T->stackStart();
     size_t framesize = T->top() - base;
-    cerr << '[' << setfill(' ') << setw(3) << depth << ':' << framesize << "] ... ";
+    cerr << '[' << setfill(' ') << setw(3) << dec
+         << depth << ':' << framesize << "] ... ";
     for (u4 i = 0; i < framesize; ++i) {
       cerr << i << ':' << hex << base[i] << dec << ' ';
     }
