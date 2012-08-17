@@ -149,6 +149,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
   flags_.clear(kLastInsWasBranch);
 
   switch (ins->opcode()) {
+  case BcIns::kIFUNC:
   case BcIns::kFUNC:
     buf_.slots_.frame(base, base + ins->a());
     break;
