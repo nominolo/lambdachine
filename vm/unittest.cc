@@ -1000,6 +1000,10 @@ TEST_F(RunFileTest, EvalThunk) {
   run("Bc.EvalThunk");
 }
 
+TEST_F(RunFileTest, TraceCall) {
+  run("Bc.TraceCall");
+}
+
 TEST(HotCounters, Simple) {
   HotCounters counters(5);
   BcIns pc[] = { BcIns::ad(BcIns::kFUNC, 3, 0) };
