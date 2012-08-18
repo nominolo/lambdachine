@@ -4,7 +4,7 @@ module Lambdachine.Grin.Analyse
     M, runM,
     analyseAndRewriteBCOBwd,
     -- * Liveness Analysis
-    livenessAnalysis2, LiveVars, live,
+    livenessAnalysis2, LiveVars, live, insDefines,
 {-
     -- * Liveness Analysis with Symbolic Live Ranges
     SymLives(..), SymRange(..), symLivenessLattice,
@@ -102,6 +102,13 @@ live ins f = case ins of
  where
    fact :: FactBase (S.Set a) -> Label -> S.Set a
    fact f l = fromMaybe S.empty (lookupFact l f)
+
+insDefines :: BcIns e x -> S.Set BcVar
+insDefines ins = case ins of
+  Assign x _ -> S.singleton x
+  Eval _ _ r -> S.singleton r
+  Call (Just (r, _, _)) _ _ -> S.singleton r
+  _ -> S.empty
 
 insUses :: BcIns e x -> [BcVar]
 insUses (Assign _ rhs)   = universeBi rhs

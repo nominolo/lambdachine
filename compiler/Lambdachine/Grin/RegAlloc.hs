@@ -66,7 +66,7 @@ allocRegsGraph lives g =
 --   * Calculate the frame size (number of registers needed).
 --
 finaliseCode :: Int -> LinearCode -> FinalCode
-finaliseCode arity (LinearCode code0 lives labels) =
+finaliseCode arity lc@(LinearCode code0 lives _ labels) =
   FinalCode framesize code
  where
    -- Frame size is determined by the largest register used by the
@@ -115,24 +115,27 @@ finaliseCode arity (LinearCode code0 lives labels) =
 
 -- | Contains linear bytecode annotated with liveness info for each graph.
 data LinearCode = LinearCode
-  { lc_code    :: Vector LinearIns
-  , lc_liveIns :: Vector LiveVars
-  , lc_labels  :: M.Map Label Int
+  { lc_code     :: Vector LinearIns
+  , lc_liveIns  :: Vector LiveVars
+  , lc_liveOuts :: Vector LiveVars
+  , lc_labels   :: M.Map Label Int
   }
 
 instance Pretty LinearCode where
-  ppr (LinearCode is ls lbls) =
+  ppr (LinearCode is ls live_outs lbls) =
     --ppr lbls $+$
     vcat (Vec.toList (Vec.zipWith pp is ls))
    where pp i l = fillBreak 30 (ppr i) <+> ppr l
 
 lineariseCode :: FactBase LiveVars -> Graph BcIns O C -> LinearCode
 lineariseCode live_facts g@(GMany (JustO entry) body NothingO) =
-   LinearCode (annotateWithLiveouts live_ins lin_code) live_ins labels
+   LinearCode (annotateWithLiveouts live_ins lin_code)
+              live_ins live_outs labels
  where
    lin_code = Vec.fromList $ concat $ 
                 lineariseBlock live_facts entry : map (lineariseBlock live_facts) body_blocks
    live_ins = liveIns live_facts lin_code
+   live_outs = liveOuts live_facts lin_code
    body_blocks = postorder_dfs g  -- excludes entry sequence
    labels = Vec.ifoldl' ins_if_label M.empty lin_code
    ins_if_label :: M.Map Label Int -> Int -> LinearIns -> M.Map Label Int
@@ -169,6 +172,14 @@ lineariseBlock live_facts blk = entry_ins (map Mid middles ++ tail_ins)
 liveIns :: FactBase LiveVars -> Vector LinearIns -> Vector LiveVars
 liveIns global_live_outs inss =
   Vec.postscanr' calcLives S.empty inss
+ where
+   calcLives (Lst ins) live_out = live ins global_live_outs
+   calcLives (Mid ins) live_out = live ins live_out
+   calcLives (Fst ins) live_out = live ins live_out
+
+liveOuts :: FactBase LiveVars -> Vector LinearIns -> Vector LiveVars
+liveOuts global_live_outs inss =
+  Vec.prescanr' calcLives S.empty inss
  where
    calcLives (Lst ins) live_out = live ins global_live_outs
    calcLives (Mid ins) live_out = live ins live_out
@@ -237,7 +248,7 @@ type IGraph = Gr.Graph BcVar RegClass FinalReg
 --    different registers (the register allocation invariant).
 --
 assignRegs :: LinearCode -> LinearCode
-assignRegs lc@(LinearCode code lives lbls) =
+assignRegs lc@(LinearCode code lives live_outs lbls) =
   let !assign1 = colourGraph (buildInterferenceGraph lc)
       !code' = Vec.map (transformBi assign1) code
   in
@@ -245,7 +256,7 @@ assignRegs lc@(LinearCode code lives lbls) =
       error $ "BUG-IN-REGALLOC\n" ++ pretty code ++ "\n\n"
 --            ++ pretty ig
      else
-       LinearCode code' lives lbls
+       LinearCode code' lives live_outs lbls
  where
    -- An allocation is valid if registers that are live at the same
    -- time are all assigned different colours.
@@ -278,19 +289,35 @@ colourGraph igraph =
          -> get_alloc' ig co ot y
 
 buildInterferenceGraph :: LinearCode -> IGraph
-buildInterferenceGraph lc@(LinearCode code0 lives lbls) =
+buildInterferenceGraph lc@(LinearCode code0 lives live_outs lbls) =
   gr3
  where
-   !gr1 = Vec.foldl' add_conflicts Gr.newGraph lives
+   !gr1 = Vec.ifoldl' add_conflicts Gr.newGraph code0
    !gr2 = Vec.foldl' add_coalesces gr1 code0
    !gr3 = fixColours gr2
 
    -- TODO: Can be optimised by detecting which new nodes are becoming
    -- live and only adding those.  Each call to Gr.addConflicts is
    -- O(n^2) in the size of the lives set.
-   add_conflicts :: IGraph -> LiveVars -> IGraph
-   add_conflicts gr lives =
-     Gr.addConflicts (conv lives) (const Size1) gr
+   add_conflicts :: IGraph -> Int -> LinearIns -> IGraph
+   add_conflicts gr idx instr =
+     let live_ins = lives Vec.! idx in
+     let outs = live_outs Vec.! idx in
+     let gr1 = Gr.addConflicts (conv live_ins) (const Size1) gr in
+     let defs = defines instr in
+     if defs `S.isSubsetOf` outs then gr1 else
+       -- Even if the output of this instruction is not live-out
+       -- we still need to allocate a register for it.  We can't
+       -- just pick any register, but we must pick one that's not
+       -- live-out. Hence, we add a conflict between the defines
+       -- and all live-out variables.
+       Gr.addConflicts (conv (defs `S.union` outs))
+         (const Size1) gr1
+
+   defines :: LinearIns -> LiveVars
+   defines (Mid mid) = insDefines mid
+   defines (Lst lst) = insDefines lst
+   defines _ = S.empty
 
    conv :: LiveVars -> UniqueSet BcVar
    conv vs = fromListUS (S.toList vs)
@@ -314,15 +341,15 @@ buildInterferenceGraph lc@(LinearCode code0 lives lbls) =
 
 -- | The linear-scan register allocator.
 mkAllocMap :: LinearCode -> LinearCode -- M.Map BcVar BcVar
-mkAllocMap lc@(LinearCode code0 lives lbls) =
+mkAllocMap lc@(LinearCode code0 lives liveouts lbls) =
   let (alloc, _, _) = Vec.foldl' alloc1 (M.empty, allRegs, S.empty) lives
       code' = assignRegs alloc code0
   in
     if not (verifyAlloc alloc lives) then
-      let lc' = LinearCode code' (Vec.map (S.map (alloc M.!)) lives) lbls in
+      let lc' = LinearCode code' (Vec.map (S.map (alloc M.!)) lives) liveouts lbls in
       error ("BUG-IN-REGALLOC\n" ++ pretty lc ++ "\n\n" ++ pretty alloc ++ "\n" ++ pretty lc')
      else
-       LinearCode code' lives lbls
+       LinearCode code' lives liveouts lbls
  where
    verifyAlloc alloc lives =
      Vec.and (Vec.map (\l -> S.size (S.map (alloc M.!) l) == S.size l) lives)
