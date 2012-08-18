@@ -184,6 +184,10 @@ inline bool isIntegerType(IRType t) {
   return kOpIsInteger & (1u << (int)t);
 }
 
+inline bool isSigned(IRType t) {
+  return kOpIsSigned & (1u << (int)t);
+}
+
 static const uint32_t kOpIsFloat =
   (1u << (int)IRT_F32) | (1u << (int)IRT_F64);
 

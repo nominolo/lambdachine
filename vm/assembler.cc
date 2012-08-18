@@ -439,6 +439,16 @@ Reg Assembler::allocScratchReg(RegSet allow) {
   return r;
 }
 
+void Assembler::evictSet(RegSet drop) {
+  RegSet work;
+  work = drop.intersect(freeset_.complement()).intersect(kGPR);
+  while (!work.isEmpty()) {
+    Reg r = work.pickBot();
+    restoreReg(cost_[r].ref());
+    work.clear(r);
+  }
+}
+
 Reg Assembler::pickReg(RegSet allow) {
   RegSet pick = freeset_.intersect(allow);
   if (pick.isEmpty()) {
@@ -553,6 +563,58 @@ void Assembler::intArith(IR *ins, x86Arith xa) {
     exit(4);
   }
   allocLeft(dest, lref);
+}
+
+void Assembler::divmod(IR *ins, DivModOp op, bool useSigned) {
+  if (!useSigned) {
+    cerr << "NYI: Unsigned DIV/MOD." << endl;
+    exit(3);
+  }
+
+  // Intel's DIV/IDIV expects its first argument in rdx:rax:
+  //
+  //     reg <- right (anything but rdx,rax)
+  //     rax <- left
+  //     cwdq  -- sign-extend rax into rdx
+  //     idiv reg
+  //     mov dest, rax (DIV) -or-  mov dest, rdx (MOD)
+  //
+  
+  Reg resultReg = (op == DIVMOD_DIV) ? RID_EAX : RID_EDX;
+  Reg otherReg = (op == DIVMOD_DIV) ? RID_EDX : RID_EAX;
+
+  RegSet allow = kGPR.exclude(RID_EAX).exclude(RID_EDX);
+
+  // TODO: We could add hinting to the output of DIV/MOD instructions.
+  // That may avoid a few spills.
+
+  evictSet(RegSet::fromReg(otherReg));
+
+  Reg dest = destReg(ins, allow.include(resultReg));
+  if (dest != resultReg) {
+    evictSet(RegSet::fromReg(resultReg));
+    move(dest, resultReg);
+  }
+  // At this point RID_EAX/EDX are free. For each register, we either
+  // we evicted it, or it was the output of this instruction.
+
+  // Alloc1 ignores the allowed range if the ref already has a
+  // register assigned.  However, we know that at this point, no
+  // (other) instruction has RID_EAX or RID_EDX allocated.
+  
+  Reg right = alloc1(ins->op2(), allow);
+  LC_ASSERT(right != RID_EAX && right != RID_EDX);
+
+  x86Group3 xg = useSigned ? XOg_IDIV : XOg_DIV;
+  emit_rr(XO_GROUP3, xg | REX_64, right);
+  if (useSigned) {
+    emit_i8(XI_CDQ);  // sign-extend rax into rdx:rax
+    emit_i8(0x48);  // REX.W, force 64-bit variant
+  } else {
+    // TODO: Is it safe to use XOR here? It sets the flags.
+    loadi_i32(REX_64 | RID_EDX, 0);
+  }
+  allocLeft(RID_EAX, ins->op1());
 }
 
 void Assembler::prepareTail(IRBuffer *buf) {
@@ -764,6 +826,14 @@ void Assembler::emit(IR *ins) {
     break;
   case IR::kSUB:
     intArith(ins, XOg_SUB);
+    break;
+  case IR::kDIV:
+    LC_ASSERT(isIntegerType(ins->type()));
+    divmod(ins, DIVMOD_DIV, isSigned(ins->type()));
+    break;
+  case IR::kREM:
+    LC_ASSERT(isIntegerType(ins->type()));
+    divmod(ins, DIVMOD_MOD, isSigned(ins->type()));
     break;
   case IR::kSAVE:
     save(ins);

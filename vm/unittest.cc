@@ -1610,6 +1610,52 @@ TEST_F(TestFragment, LoadField) {
   EXPECT_EQ((Word)500000001234, base[0]);
 }
 
+TEST_F(TestFragment, DivMod) {
+  TRef inp1 = buf->slot(0);
+  TRef inp2 = buf->slot(1);
+  TRef inp3 = buf->slot(2);
+  TRef lit1 = buf->literal(IRT_I64, 500000123123);
+  TRef res = buf->emit(IR::kDIV, IRT_I64, inp1, inp2);
+  TRef res2 = buf->emit(IR::kREM, IRT_I64, inp1, inp2);
+  TRef res3 = buf->emit(IR::kREM, IRT_I64, inp2, inp3);
+  buf->setSlot(0, lit1);
+  buf->setSlot(1, res2);
+  buf->setSlot(2, res);
+  buf->setSlot(3, res3);
+  buf->emit(IR::kSAVE, IRT_VOID|IRT_GUARD, 0, 0);
+
+  Assemble();
+
+  Word *base = T->base();
+
+  base[0] = 17;
+  base[1] = 5;
+  base[2] = -3;
+  Run();
+  EXPECT_EQ((Word)500000123123, base[0]);
+  EXPECT_EQ(3, base[2]);
+  EXPECT_EQ(2, base[1]);
+  EXPECT_EQ(2, base[3]);
+
+  base[0] = 1700000000001;
+  base[1] = 500000001;
+  base[2] = -111;
+  Run();
+  EXPECT_EQ((Word)500000123123, base[0]);
+  EXPECT_EQ(3399, base[2]);
+  EXPECT_EQ(499996602, base[1]);
+  EXPECT_EQ(57, base[3]);
+
+  base[0] = 1700000000001;
+  base[1] = -500000001;
+  base[2] = -111;
+  Run();
+  EXPECT_EQ((Word)500000123123, base[0]);
+  EXPECT_EQ((WordInt)-3399, (WordInt)base[2]);
+  EXPECT_EQ((WordInt)499996602, (WordInt)base[1]);
+  EXPECT_EQ((WordInt)-57, (WordInt)base[3]);
+}
+
 TEST_F(TestFragment, Alloc1) {
   TRef itbl = buf->literal(IRT_INFO, 0x123456789);
   TRef lit1 = buf->literal(IRT_I64, 5);

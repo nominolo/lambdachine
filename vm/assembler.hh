@@ -132,8 +132,10 @@ public:
   inline bool isEmpty() const { return data_ == 0; }
   inline void set(Reg r) { data_ |= kOne << r; }
   inline void clear(Reg r) { data_ &= ~(kOne << r); }
-  inline RegSet exclude(Reg r) { return RegSet(data_ & ~(kOne << r)); }
-  inline RegSet include(Reg r) { return RegSet(data_ | (kOne << r)); }
+  inline RegSet exclude(Reg r) const {
+    return RegSet(data_ & ~(kOne << r)); }
+  inline RegSet include(Reg r) const {
+    return RegSet(data_ | (kOne << r)); }
   inline Reg pickTop() const { return (Reg)lc_fls(data_); }
   inline Reg pickBot() const { return (Reg)lc_ffs(data_); }
   
@@ -181,6 +183,7 @@ typedef enum {
   /* Fixed length opcodes. XI_* prefix. */
   XI_NOP =	0x90,
   XI_CALL =	0xe8,
+  XI_CDQ =	0x99,
   XI_JMP =	0xe9,
   XI_JMPs =	0xeb,
   XI_PUSH =	0x50, /* Really 50+r. */
@@ -308,6 +311,10 @@ typedef enum {
   XOg_X_IMUL
 } x86Arith;
 
+typedef enum {
+  XOg_TEST, XOg_TEST_, XOg_NOT, XOg_NEG, XOg_MUL, XOg_IMUL, XOg_DIV, XOg_IDIV
+} x86Group3;
+
 #define MODRM(mode, r1, r2)	((MCode)((mode)+(((r1)&7)<<3)+((r2)&7)))
 
 /* x86 condition codes. */
@@ -423,7 +430,13 @@ public:
 
   bool is32BitLiteral(IRRef ref, int32_t *k);
   void intArith(IR *ins, x86Arith xa);
-  
+
+  typedef uint32_t DivModOp;
+  enum {
+    DIVMOD_DIV = 0,
+    DIVMOD_MOD = 1,
+  };
+  void divmod(IR *ins, DivModOp op, bool useSigned);
 
   /// Generate code for the given instruction.
   void itblGuard(IR *ins);
@@ -460,6 +473,9 @@ private:
 
   /// Evict the register with the lowest cost.
   Reg evictReg(RegSet allow);
+
+  /// Evict all the registers in the given set.
+  void evictSet(RegSet drop);
 
   /// Evict (rematerialise) all constants.
   ///
