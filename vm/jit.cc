@@ -219,10 +219,10 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
 
     if (ins->c() != ((FuncInfoTable *)info)->code()->arity) {
       FuncInfoTable *itbl = ((FuncInfoTable *)info);
-      cerr << "NYI: Recording of non-exact applications (CALLT)" << endl;
+      cerr << "NYI: Recording of non-exact applications (CALLT)";
       cerr << "  args=" << (int)ins->c() << "  arity="
            << (int)itbl->code()->arity << "  name="
-           << itbl << endl;
+           << itbl->name() << endl;
       goto abort_recording;
     }
     flags_.set(kLastInsWasBranch);
@@ -249,10 +249,10 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
 
     if (nargs != code->arity) {
       FuncInfoTable *itbl = ((FuncInfoTable *)info);
-      cerr << "NYI: Recording of non-exact applications (CALL)" << endl;
+      cerr << "NYI: Recording of non-exact applications (CALL)";
       cerr << "  args=" << (int)ins->c() << "  arity="
            << (int)itbl->code()->arity << "  name="
-           << itbl << endl;
+           << itbl->name() << endl;
       goto abort_recording;
     }
 
