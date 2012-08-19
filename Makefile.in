@@ -164,7 +164,8 @@ TEST_FILES := tests/Bc/Bc0016.lcbc tests/Bc/Bc0014.lcbc \
 	tests/Bench/SumFromTo3.lcbc tests/Bench/SumFromTo4.lcbc \
 	tests/Bench/SumSquare1.lcbc tests/Bc/SumNoAlloc.lcbc \
 	tests/Bc/SumMemLoad.lcbc tests/Bc/Alloc1.lcbc \
-	tests/Bc/EvalThunk.lcbc tests/Bc/TraceCall.lcbc
+	tests/Bc/EvalThunk.lcbc tests/Bc/TraceCall.lcbc \
+	tests/Bc/QuotRem.lcbc
 
 lcvm: $(VM_SRCS:.cc=.o) vm/main.o
 	@echo "LINK $(filter %.o %.a, $^) => $@"

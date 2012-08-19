@@ -190,7 +190,20 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     buf_.setSlot(ins->a(), aref);
     break;
   }
-
+  case BcIns::kREMRR: {
+    TRef bref = buf_.slot(ins->b());
+    TRef cref = buf_.slot(ins->c());
+    TRef aref = buf_.emit(IR::kREM, IRT_I64, bref, cref);
+    buf_.setSlot(ins->a(), aref);
+    break;
+  }
+  case BcIns::kDIVRR: {
+    TRef bref = buf_.slot(ins->b());
+    TRef cref = buf_.slot(ins->c());
+    TRef aref = buf_.emit(IR::kDIV, IRT_I64, bref, cref);
+    buf_.setSlot(ins->a(), aref);
+    break;
+  }
   case BcIns::kCALLT: {
     // TODO: Detect and optimise recursive calls into trace specially?
     TRef fnode = buf_.slot(ins->a());

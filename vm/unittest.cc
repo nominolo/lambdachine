@@ -1004,6 +1004,10 @@ TEST_F(RunFileTest, TraceCall) {
   run("Bc.TraceCall");
 }
 
+TEST_F(RunFileTest, QuotRem) {
+  run("Bc.QuotRem");
+}
+
 TEST(HotCounters, Simple) {
   HotCounters counters(5);
   BcIns pc[] = { BcIns::ad(BcIns::kFUNC, 3, 0) };
