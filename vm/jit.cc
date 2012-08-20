@@ -265,7 +265,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     for (int i = 0; i < nargs; ++i) {
       buf_.setSlot(i, argref[i]);
     }
-    
+
     flags_.set(kLastInsWasBranch);
     break;
   }
@@ -318,7 +318,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
       for (int i = 0; i < framesize; ++i) {
         buf_.setSlot(i, TRef());
       }
-      
+
       buf_.slots_.debugPrint(cerr);
       flags_.set(kLastInsWasBranch);
 
@@ -335,7 +335,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     buf_.emit(IR::kEQ, IRT_VOID | IRT_GUARD, retref, expectedReturnPc);
     TRef resultref = buf_.slot(ins->a());
     lastResult_ = resultref;
-    
+
     // Clear current frame.
     for (int i = -3; i < (int)buf_.slots_.top(); ++i) {
       buf_.setSlot(i, TRef());
@@ -345,7 +345,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     // Return address implies framesize, thus we don't need an extra
     // guard.  In fact, storing all these frame pointers on the stack
     // is quite wasteful.
-    Word *newbase = (Word*)base[-3];
+    Word *newbase = (Word *)base[-3];
     if (!buf_.slots_.frame(newbase, base - 3)) {
       cerr << "Abstract stack overflow/underflow" << endl;
       goto abort_recording;
@@ -439,7 +439,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     // This may emit SLOAD instructions, so make sure those occur
     // before the NEW.
     for (int i = 0; i < nfields; ++i) buf_.slot(*args++);
-    
+
     TRef clos = buf_.emitNEW(itbl, nfields, &entry);
     args = (const uint8_t *)(ins + 1);
     for (int i = 0; i < nfields; ++i) {
@@ -560,9 +560,9 @@ Fragment *Jit::saveFragment() {
 }
 
 Word *Jit::pushFrame(Word *base, BcIns *returnPc,
-                    TRef noderef, uint32_t framesize) {
+                     TRef noderef, uint32_t framesize) {
   int topslot = buf_.slots_.top();
-  
+
   buf_.setSlot(topslot + 0, buf_.baseLiteral(base));
   buf_.setSlot(topslot + 1, buf_.literal(IRT_PC, (Word)returnPc));
   buf_.setSlot(topslot + 2, noderef);
@@ -609,8 +609,8 @@ static void printRegisters(ostream &out, Word *gpr) {
 }
 
 static void printExitState(ostream &out, ExitState *ex) {
-  Word *base = (Word*)ex->gpr[RID_BASE];
-  Word *hp = (Word*)ex->gpr[RID_HP];
+  Word *base = (Word *)ex->gpr[RID_BASE];
+  Word *hp = (Word *)ex->gpr[RID_HP];
   out << "  base = " << base << ", hp = " << hp
       << ", hplim = " << ex->hplim
       << ", spill=" << ex->spill
@@ -676,13 +676,13 @@ void Fragment::restoreSnapshot(ExitNo exitno, ExitState *ex) {
   if (snapins->opcode() == IR::kHEAPCHK) {
     cerr << "Heap check failure" << endl;
     // We exited due to a heap overflow.
-    
+
     // TODO: If we only reached the end of a block, then we only
     // need to adjust r12 and HpLim.  This we could simply re-enter
     // the trace.  That's probably better handled via specialised
     // code in the codegen.  It's also a bit involved since we may
     // have to take the full exit if a GC is indeed required.
-    
+
     // 1. Found out by how much we incremented.
     cap->traceExitHp_ -= (int)snapins->op1();
 
@@ -722,7 +722,7 @@ debugTrace(ExitState *ex) {
   if (traceDebugLastHp != NULL) {
     cerr << "Allocated: " << endl;
     Word *hp = traceDebugLastHp;
-    Word *newhp = (Word*)ex->gpr[RID_HP];
+    Word *newhp = (Word *)ex->gpr[RID_HP];
     int n = 0;
     while (hp < newhp) {
       if ((n % 4) == 0)
@@ -733,7 +733,7 @@ debugTrace(ExitState *ex) {
     }
     cerr << endl;
   }
-  traceDebugLastHp = (Word*)ex->gpr[RID_HP];
+  traceDebugLastHp = (Word *)ex->gpr[RID_HP];
 }
 
 _END_LAMBDACHINE_NAMESPACE
