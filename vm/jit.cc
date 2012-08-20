@@ -372,12 +372,31 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
   case BcIns::kUPDATE: {
     Closure *oldnode = (Closure *)base[ins->a()];
     InfoTable *info = oldnode->info();
+
     if (info->type() == CAF) {
       cerr << "NYI: UPDATE of a CAF." << endl;
       goto abort_recording;
     }
+
+
     TRef oldref = buf_.slot(ins->a());
     TRef newref = buf_.slot(ins->d());
+
+    // TODO: Update behaves differently for CAFs and for Thunks. CAFs
+    // need to be added to the static references table. For now, we
+    // overspecialise, by emitting a guard on the info table. An
+    // alternative could be to do the additional work by triggering a
+    // write barrier which is needed for generational/incremental GC,
+    // anyway.
+    //
+    // Note: In most cases, this guard should be redundant because the
+    // update was executed because we evaluated a thunk on the trace.
+    // If we change the code of thunks to do the update themselves
+    // we can also use two variants of UPDATE, one for CAFs and one for
+    // regular thunks.
+    TRef inforef = buf_.literal(IRT_INFO, (Word)info);
+    buf_.emit(IR::kEQINFO, IRT_VOID | IRT_GUARD, oldref, inforef);
+
     buf_.emit(IR::kUPDATE, IRT_VOID, oldref, newref);
     break;
   }
