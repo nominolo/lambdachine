@@ -190,6 +190,13 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     buf_.setSlot(ins->a(), aref);
     break;
   }
+  case BcIns::kMULRR: {
+    TRef bref = buf_.slot(ins->b());
+    TRef cref = buf_.slot(ins->c());
+    TRef aref = buf_.emit(IR::kMUL, IRT_I64, bref, cref);
+    buf_.setSlot(ins->a(), aref);
+    break;
+  }
   case BcIns::kREMRR: {
     TRef bref = buf_.slot(ins->b());
     TRef cref = buf_.slot(ins->c());
