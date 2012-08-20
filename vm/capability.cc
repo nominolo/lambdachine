@@ -57,6 +57,9 @@ bool isStartOfTrace(BcIns *srcPc, BcIns *dstPc,
 inline
 BcIns *Capability::interpBranch(BcIns *srcPc, BcIns *dstPc, Word *base,
                                 u4 opC, BranchType branchType) {
+#if !LC_JIT
+  return dstPc;
+#else
   if (LC_UNLIKELY(isRecording())) {
     return dstPc;
   } else {
@@ -98,6 +101,7 @@ BcIns *Capability::interpBranch(BcIns *srcPc, BcIns *dstPc, Word *base,
     }
     return dstPc;
   }
+#endif
 }
 
 void Capability::finishRecording() {

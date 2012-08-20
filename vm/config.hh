@@ -26,6 +26,8 @@
 # endif
 #endif
 
+#define LC_JIT   1
+
 #define MAX_HEAP_ENTRIES      300
 
 #define DEBUG_MEMORY_MANAGER  0x00000001L
