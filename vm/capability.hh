@@ -51,7 +51,7 @@ private:
   } InterpExitCode;
 
   InterpExitCode interpMsg(InterpMode mode);
-  BcIns *interpBranch(BcIns *srcPc, BcIns *dst_pc, Word *base, u4 opC, BranchType);
+  BcIns *interpBranch(BcIns *srcPc, BcIns *dst_pc, Word *base, BranchType);
   void finishRecording();
   typedef void *AsmFunction;
 
@@ -66,7 +66,6 @@ private:
   const AsmFunction *dispatch_record_;
   const AsmFunction *dispatch_single_step_;
   BcIns *reload_state_pc_; // used by interpBranch
-  u4 opC_;
 
   HotCounters counters_;
   Jit jit_;

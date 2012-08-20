@@ -56,7 +56,7 @@ bool isStartOfTrace(BcIns *srcPc, BcIns *dstPc,
 
 inline
 BcIns *Capability::interpBranch(BcIns *srcPc, BcIns *dstPc, Word *base,
-                                u4 opC, BranchType branchType) {
+                                BranchType branchType) {
 #if !LC_JIT
   return dstPc;
 #else
@@ -75,7 +75,6 @@ BcIns *Capability::interpBranch(BcIns *srcPc, BcIns *dstPc, Word *base,
 
       } else if (counters_.tick(dstPc)) {
         currentThread_->sync(dstPc, base);
-        opC_ = opC;
 
         if (DEBUG_COMPONENTS & DEBUG_TRACE_RECORDER) {
           Closure *cl = (Closure *)base[-1];
@@ -187,15 +186,9 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   ++pc; \
   goto *dispatch[opcode]
 
-# define ENTER \
-  opcode = pc->opcode(); \
-  opA = pc->a(); \
-  ++pc; \
-  goto *dispatch[opcode]
-
 # define BRANCH_TO(dst_pc, branch_type) \
-  pc = interpBranch(pc, (dst_pc), base, opC, (branch_type)); \
-  ENTER;
+  pc = interpBranch(pc, (dst_pc), base, (branch_type)); \
+  DISPATCH_NEXT;
 
 # define DECODE_BC \
   opB = opC >> 8; \
@@ -237,7 +230,6 @@ record: {
     // don't change opC
     if (LC_UNLIKELY(jit_.recordIns(pc - 1, base, code))) {
       currentThread_->sync(pc - 1, base);
-      opC_ = opC;
       finishRecording();
       goto op_SYNC;
     } else {
@@ -443,18 +435,6 @@ heapOverflow:
   // re-dispatch last instruction
   DISPATCH_NEXT;
 
-heapOverflowPAP: {
-    --pc;
-    T->sync(pc, base);
-    // Variable opC contains the pointer mask for the top of the
-    // stack.  Since we may trigger a GC, we communicate that
-    // information to the GC, just in case.
-    mm_->setTopOfStackMask(opC >> 8);
-    mm_->bumpAllocatorFull(&heap, &heaplim, this);
-    mm_->setTopOfStackMask(MemoryManager::kNoMask);  // Reset mask.
-    ENTER; // Re-dispatch last instruction, but leave opC unchanged.
-  }
-
 op_JMP:
   // Offsets are relative to the current PC which points to the
   // following instruction.  Hence, "JMP 0" is a no-op, "JMP -1" is an
@@ -614,8 +594,7 @@ op_CALL: {
     T->top_ = top;
     code = info->code();
     opC = (nargs & 0xff) | (pointer_mask << 8);
-
-    BRANCH_TO(code->code, kCall);
+    goto generic_apply;
   }
 
 op_CALLT: {
@@ -653,15 +632,12 @@ op_CALLT: {
       goto stack_overflow;
     }
 
-    // T->top_ is set by FUNC at the entry point
-
     // Arguments are already in place.  Just dispatch to target.
 
     base[-1] = (Word)fnode;
     code = info->code();
     opC = (nargs & 0xff) | (pointer_mask << 8);
-
-    BRANCH_TO(code->code, kCall);
+    goto generic_apply;
   }
 
 op_IFUNC:
@@ -669,133 +645,9 @@ op_IFUNC:
   // by the trace selector though: an IFUNC is never considered as a
   // possible trace root.
 op_FUNC:
-  // The landing point of a CALL/PAP/EVAL
-  //
-  //  opA = stack frame size  -- TODO
-  //  opC = lower 8 bits: number of arguments, upper 24 bits: pointer mask
-  //  code points to current function
-  {
-    u4 given_args = opC & 0xff;
-    u4 ptr_mask = opC >> 8;
-    u4 arity = code->arity;
-
-    DLOG("FUNC (args=%d, arity=%d, ptrs=%x)\n", given_args, arity, ptr_mask);
-
-    if (LC_UNLIKELY(given_args > arity)) {
-      DLOG("Overapplication (args=%d, arity=%d)\n", given_args, arity);
-      // Assume: given_args = M, arity = N
-      //
-      // Then we want to transform the stack
-      //
-      //     -+----+----+-  -+----+----+-  -+----+
-      //      | f  | a1 | .. | aN |aN+1| .. | aM |
-      //     -+----+----+-  -+----+----+-  -+----+
-      //
-      // into the stack
-      //
-      //     -+----+----+-  -+----+-------+----+----+-  -+----+
-      //      | APK|aN+1| .. | aM | frame |  f | a1 | .. | aN |
-      //     -+----+----+-  -+----+-------+----+----+-  -+----+
-      //
-      u4 extra_args = given_args - arity;
-      u4 apk_frame_size = MiscClosures::apContFrameSize(extra_args) + 3;
-      if (stackOverflow(T, base, apk_frame_size + given_args))
-        goto stack_overflow;
-
-      // We could do some clever swapping scheme here, but it
-      // would be very branchy and probably not worth it.
-
-      BcIns *apk_return_addr = NULL;
-      Closure *apk_closure = NULL;
-      MiscClosures::getApCont(&apk_closure, &apk_return_addr,
-                              extra_args, ptr_mask >> arity);
-
-      memmove(&base[apk_frame_size], &base[0],
-              given_args * sizeof(Word));
-      base[apk_frame_size - 1] = base[-1];
-      base[apk_frame_size - 2] = (Word)apk_return_addr;
-      base[apk_frame_size - 3] = (Word)&base[0];
-      base[-1] = (Word)apk_closure;
-      memmove(&base[0], &base[apk_frame_size + arity],
-              extra_args * sizeof(Word));
-      base = &base[apk_frame_size];
-
-    } else if (LC_UNLIKELY(given_args < code->arity)) {
-      DLOG("Partial application\n");
-
-      u4 pap_size = 1 + given_args;
-      PapClosure *cl = (PapClosure *)heap;
-      heap += (wordsof(PapClosure) + pap_size) * sizeof(Word);
-      if (LC_UNLIKELY(heap > heaplim)) {
-        heap -= (wordsof(PapClosure) + pap_size) * sizeof(Word);
-        goto heapOverflowPAP;
-      }
-
-      Closure *fun = (Closure *)base[-1];
-      cl->init(MiscClosures::stg_PAP_info, ptr_mask,
-               given_args, fun);
-      for (u4 i = 0; i < given_args; ++i) {
-        cl->setPayload(i, base[i]);
-      }
-
-      T->setLastResult((Word)cl);
-      goto do_return;
-    }
-
-    LC_ASSERT(opA == code->framesize);
-
-    if (stackOverflow(T, base, opA)) {
-      goto stack_overflow;
-    }
-
-    T->top_ = base + opA;
-
-    // ATM, this is just a NOP.  It may be overwritten by a JFUNC.
-    DISPATCH_NEXT;
-  }
-
-op_FUNCPAP: {
-    u4 given_args = (opC & 0xff);
-    u4 pointer_mask = opC >> 8;
-
-    PapClosure *pap = (PapClosure *)base[-1];
-    LC_ASSERT(pap->info()->type() == PAP);
-    u4 papArgs = pap->nargs_;
-
-    dout << "FUNCPAP (args=" << given_args
-         << ", ptrs=" << hex << pointer_mask << dec
-         << ") PAP=(args=" << papArgs << ")"
-         << endl;
-
-    u4 framesize = pap->nargs_ + given_args;
-    if (stackOverflow(T, base, framesize)) {
-      goto stack_overflow;
-    }
-    T->top_ = base + framesize;
-
-    for (int i = given_args - 1; i >= 0; --i) {
-      base[papArgs + i] = base[i];
-    }
-
-    for (u4 i = 0; i < papArgs; ++i) {
-      base[i] = pap->payload(i);
-    }
-    base[-1] = (Word)pap->fun_;
-
-    pointer_mask <<= papArgs;
-    const CodeInfoTable *info = (CodeInfoTable *)pap->fun_->info();
-    pointer_mask |= pap->pointerMask_;
-
-    dout << "PAPENTER: " << info->name()
-         << hex << info->layout().bitmap << dec
-         << endl;
-
-    opC = (pointer_mask << 8) | (given_args + papArgs);
-    code = info->code();
-    pc = code->code;
-
-    ENTER;
-  }
+op_FUNCPAP:
+  LC_ASSERT(opA == T->top_ - base);
+  DISPATCH_NEXT;
 
 op_CASE:
   // A case with compact targets.
@@ -848,8 +700,7 @@ op_SYNC:
   if (isEnabledBytecodeTracing())
     dispatch = dispatch_debug;
   // TODO: this is hacky.
-  opC = opC_;
-  ENTER;
+  DISPATCH_NEXT;
 
 op_JFUNC: {
     Fragment *F = jit_.lookupFragment(pc - 1);
@@ -860,15 +711,15 @@ op_JFUNC: {
              T->stackLimit(), F->entry());
     heap = (char *)traceExitHp_;
     heaplim = (char *)traceExitHpLim_;
-    
+
     LOAD_STATE_FROM_CAP;
     if (isEnabledBytecodeTracing())
       dispatch = dispatch_debug;
 
     // Reload code/KBASE
-    Closure *cl = (Closure*)base[-1];
-    code = ((CodeInfoTable*)cl->info())->code();
-    
+    Closure *cl = (Closure *)base[-1];
+    code = ((CodeInfoTable *)cl->info())->code();
+
     DISPATCH_NEXT;
   }
 
@@ -893,6 +744,189 @@ stack_overflow:
   T->sync(pc, base);
   mm_->sync(heap, heaplim);
   return kInterpStackOverflow;
+
+generic_apply: {
+    Closure *fnode = (Closure *)base[-1];
+    u4 given_args = opC & 0xff;
+    u4 pointer_mask = opC >> 8;
+
+    // INV: code == fnode->code()
+
+    // Stack at this point:
+    //
+    //     -+-------+-----+-  -+-----+
+    //      | fnode | a_1 | .. | a_N |  where N = given_args
+    //     -+-------+-----+-  -+-----+
+    //
+    // Also, bit(i-1) of ptr_mask describes pointerhood of a_i.
+
+  generic_apply_retry:
+    LC_ASSERT((Word)fnode == base[-1]);
+    LC_ASSERT(code == ((CodeInfoTable *)fnode->info())->code());
+
+    switch (fnode->info()->type()) {
+    case PAP: {
+      //
+      //                +-------+-----+-   -+-----+
+      //     fnode *--> | pap_f | p_1 | ... | p_M | where M = pap->nargs_;
+      //                +-------+-----+-   -+-----+
+      //
+      // We need to transform the stack into:
+      //
+      //     -+-------+-----+-  -+-----+-----+-  -+-----+
+      //      | pap_f | p_1 | .. | p_M | a_1 | .. | a_N |  where N = given_args
+      //     -+-------+-----+-  -+-----+-----+-  -+-----+
+      //
+      // And then retry.
+      PapClosure *pap = (PapClosure *)fnode;
+      LC_ASSERT(pap->info()->type() == PAP);
+      u4 papArgs = pap->nargs_;
+
+      dout << "FUNCPAP (args=" << given_args
+           << ", ptrs=" << hex << pointer_mask << dec
+           << ") PAP=(args=" << papArgs << ")"
+           << endl;
+
+      u4 framesize = pap->nargs_ + given_args;
+      if (stackOverflow(T, base, framesize)) {
+        goto stack_overflow;
+      }
+      T->top_ = base + framesize;
+
+      // Move up a_1 .. a_N
+      for (int i = given_args - 1; i >= 0; --i)
+        base[papArgs + i] = base[i];
+
+      // Copy p_1 .. p_M onto the stack.
+      for (u4 i = 0; i < papArgs; ++i)
+        base[i] = pap->payload(i);
+
+      fnode = pap->fun_;
+      base[-1] = (Word)fnode;
+      pointer_mask <<= papArgs;
+      pointer_mask |= pap->pointerMask_;
+      given_args += papArgs;
+
+      const CodeInfoTable *info = (CodeInfoTable *)fnode->info();
+      code = info->code();
+      goto generic_apply_retry;
+    }
+    case THUNK:
+    case CAF: {
+      //  1. Turn all current arguments into APK.
+      BcIns *apk_return_addr = NULL;
+      Closure *apk_closure = NULL;
+      MiscClosures::getApCont(&apk_closure, &apk_return_addr,
+                              given_args, pointer_mask);
+      uint32_t apk_framesize = MiscClosures::apContFrameSize(given_args);
+      base[-1] = (Word)apk_closure;
+      Word *top = &base[apk_framesize];
+      const CodeInfoTable *info = (CodeInfoTable *)fnode->info();
+      code = info->code();
+
+      if (stackOverflow(T, base, apk_framesize + kStackFrameWords +
+                        kUpdateFrameWords + kStackFrameWords +
+                        code->framesize))
+        goto stack_overflow;
+
+      pushFrame(&top, &base, apk_return_addr,
+                MiscClosures::stg_UPD_closure_addr, kUpdateFrameWords);
+      // 2. Setup update frame.
+      base[0] = (Word)fnode;
+      base[1] = 0xbadbadff;
+      pushFrame(&top, &base, MiscClosures::stg_UPD_return_pc, fnode,
+                code->framesize);
+
+      LC_ASSERT(top == base + code->framesize);
+      T->top_ = top;
+      BRANCH_TO(code->code, kCall);
+    }
+    case FUN: {
+      const CodeInfoTable *info = (CodeInfoTable *)fnode->info();
+      uint32_t arity = info->code()->arity;
+      code = info->code();
+
+      if (LC_UNLIKELY(arity < given_args)) {
+
+        DLOG("Overapplication (args=%d, arity=%d)\n", given_args, arity);
+        // Assume: given_args = M, arity = N
+        //
+        // Then we want to transform the stack
+        //
+        //     -+----+----+-  -+----+----+-  -+----+
+        //      | f  | a1 | .. | aN |aN+1| .. | aM |
+        //     -+----+----+-  -+----+----+-  -+----+
+        //
+        // into the stack
+        //
+        //     -+----+----+-  -+----+-------+----+----+-  -+----+
+        //      | APK|aN+1| .. | aM | frame |  f | a1 | .. | aN |
+        //     -+----+----+-  -+----+-------+----+----+-  -+----+
+        //
+        u4 extra_args = given_args - arity;
+        u4 apk_frame_size = MiscClosures::apContFrameSize(extra_args) + 3;
+        if (stackOverflow(T, base, apk_frame_size + given_args))
+          goto stack_overflow;
+
+        // We could do some clever swapping scheme here, but it
+        // would be very branchy and probably not worth it.
+
+        BcIns *apk_return_addr = NULL;
+        Closure *apk_closure = NULL;
+        MiscClosures::getApCont(&apk_closure, &apk_return_addr,
+                                extra_args, pointer_mask >> arity);
+
+        memmove(&base[apk_frame_size], &base[0],
+                given_args * sizeof(Word));
+        base[apk_frame_size - 1] = base[-1];
+        base[apk_frame_size - 2] = (Word)apk_return_addr;
+        base[apk_frame_size - 3] = (Word)&base[0];
+        base[-1] = (Word)apk_closure;
+        memmove(&base[0], &base[apk_frame_size + arity],
+                extra_args * sizeof(Word));
+        base = &base[apk_frame_size];
+
+      } else if (LC_UNLIKELY(given_args < arity)) {
+
+        DLOG("Partial application\n");
+
+        u4 pap_size = 1 + given_args;
+        PapClosure *pap = (PapClosure *)heap;
+        heap += (wordsof(PapClosure) + pap_size) * sizeof(Word);
+        while (LC_UNLIKELY(heap > heaplim)) {
+          heap -= (wordsof(PapClosure) + pap_size) * sizeof(Word);
+          // PC points after the CALL/CALLT/EVAL. We're setting the
+          // top of stack pointer mask, though, so the GC really only
+          // needs the correct base pointer.
+          T->sync(pc, base);
+          mm_->setTopOfStackMask(pointer_mask);
+          mm_->bumpAllocatorFull(&heap, &heaplim, this);
+          mm_->setTopOfStackMask(MemoryManager::kNoMask);  // Reset mask.
+
+          // Try again.
+          pap = (PapClosure *)heap;
+          heap += (wordsof(PapClosure) + pap_size) * sizeof(Word);
+        }
+
+        pap->init(MiscClosures::stg_PAP_info, pointer_mask, given_args,
+                  fnode);
+        for (u4 i = 0; i < given_args; ++i) {
+          pap->setPayload(i, base[i]);
+        }
+
+        T->setLastResult((Word)pap);
+        goto do_return;
+      }
+
+      T->top_ = base + code->framesize;
+      BRANCH_TO(code->code, kCall);
+    }
+    default:
+      cerr << "Unsupported closure type for CALL/CALLT:"
+           << (int)fnode->info()->type();
+      return kInterpUnimplemented;
+    }
+  }
 }
 
 _END_LAMBDACHINE_NAMESPACE
