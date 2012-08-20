@@ -446,7 +446,7 @@ void AbstractStack::snapshot(Snapshot *snap, SnapshotData *snapmap,
 void AbstractStack::debugPrint(ostream &out) {
   out << "    [";
   bool printslotid = true;
-  for (unsigned int slot = low_; slot < MAX(high_ + 1,top_); ++slot) {
+  for (unsigned int slot = low_; slot < MAX(high_ + 1, top_); ++slot) {
     int slotid = slot - kInitialBase;
     if (slot == base_)
       out << '{';

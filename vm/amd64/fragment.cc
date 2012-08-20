@@ -194,7 +194,7 @@ asmTraceIsImplementedInAssembly(void) {
     "push %%rax\n\t"
 
     // TODO: Build proper C frame?
-    
+
     /* Make room for xmm registers.  We only save the lower 8 bytes of
        the 16 byte registers, so we only need 16 * 8 = 128 bytes */
     "subq $128, %%rsp\n\t"
@@ -206,7 +206,7 @@ asmTraceIsImplementedInAssembly(void) {
     "movq %%rsp, %%rdi\n\t"  // Pointer to exit state as 1st argument
     "call " NAME_PREFIX "debugTrace\n\t"
     "addq $256, %%rsp\n\t"
-    
+
     // Restore caller-save registers,
     //  -8(rsp) = r15
     // -16(rsp) = r14

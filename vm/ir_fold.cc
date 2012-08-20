@@ -287,7 +287,7 @@ FOLDF(simplify_intsubaddadd_cancel) {
 
 IRRef IRBuffer::foldHeapcheck() {
   IRRef hpchkref = chain_[IR::kHEAPCHK];
-  if (hpchkref /* && hpchkref >= loop_ */) { 
+  if (hpchkref /* && hpchkref >= loop_ */) {
     IR *hpchk = ir(hpchkref);
     uint16_t nwords = hpchk->op1() + fins->op1();
     hpchk->setOp1(nwords);

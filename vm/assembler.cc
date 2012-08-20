@@ -579,7 +579,7 @@ void Assembler::divmod(IR *ins, DivModOp op, bool useSigned) {
   //     idiv reg
   //     mov dest, rax (DIV) -or-  mov dest, rdx (MOD)
   //
-  
+
   Reg resultReg = (op == DIVMOD_DIV) ? RID_EAX : RID_EDX;
   Reg otherReg = (op == DIVMOD_DIV) ? RID_EDX : RID_EAX;
 
@@ -601,7 +601,7 @@ void Assembler::divmod(IR *ins, DivModOp op, bool useSigned) {
   // Alloc1 ignores the allowed range if the ref already has a
   // register assigned.  However, we know that at this point, no
   // (other) instruction has RID_EAX or RID_EDX allocated.
-  
+
   Reg right = alloc1(ins->op2(), allow);
   LC_ASSERT(right != RID_EAX && right != RID_EDX);
 
@@ -640,7 +640,7 @@ void Assembler::fixupTail(MCode *target) {
     p -= 5;
   }
   if (jit()->flags_.get(Jit::kDebugTrace)) {
-    *(int32_t *)(p - 4) = jmprel(p, (MCode*)(void*)&asmTrace);
+    *(int32_t *)(p - 4) = jmprel(p, (MCode *)(void *)&asmTrace);
     p[-5] = XI_CALL;
   }
 }
