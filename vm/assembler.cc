@@ -558,9 +558,23 @@ void Assembler::intArith(IR *ins, x86Arith xa) {
     } else {
       emit_gri(XG_ARITHi(xa), REX_64 | dest, k);
     }
-  } else {
-    cerr << "NYI: IMUL" << endl;
-    exit(4);
+  } else { // xa == XOg_X_IMUL
+    if (isReg(right)) {         // IMUL r, mrm
+      emit_mrm(XO_IMUL, REX_64 | dest, right);
+    } else {                    // IMUL r, mrm, k
+      LC_ASSERT(irref_islit(rref));
+      Reg left = fuseLoad(lref, kGPR);
+      x86Op xo;
+      if (checki8(k)) {
+        emit_i8(k);
+        xo = XO_IMULi8;
+      } else {
+        emit_i32(k);
+        xo = XO_IMULi;
+      }
+      emit_mrm(xo, REX_64 | dest, left);
+      return;  // Skip allocLeft.
+    }
   }
   allocLeft(dest, lref);
 }
@@ -826,6 +840,9 @@ void Assembler::emit(IR *ins) {
     break;
   case IR::kSUB:
     intArith(ins, XOg_SUB);
+    break;
+  case IR::kMUL:
+    intArith(ins, XOg_X_IMUL);
     break;
   case IR::kDIV:
     LC_ASSERT(isIntegerType(ins->type()));

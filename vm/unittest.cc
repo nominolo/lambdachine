@@ -1660,6 +1660,54 @@ TEST_F(TestFragment, DivMod) {
   EXPECT_EQ((WordInt)-57, (WordInt)base[3]);
 }
 
+TEST_F(TestFragment, Mul) {
+  TRef inp1 = buf->slot(0);
+  TRef inp2 = buf->slot(1);
+  TRef inp3 = buf->slot(2);
+  TRef lit64bit = buf->literal(IRT_I64, 500000123123);
+  TRef lit8bit = buf->literal(IRT_I64, -123);
+  TRef lit32bit = buf->literal(IRT_I64, 12345);
+  TRef res = buf->emit(IR::kMUL, IRT_I64, inp1, inp2);
+  TRef res2 = buf->emit(IR::kMUL, IRT_I64, inp2, lit8bit);
+  TRef res3 = buf->emit(IR::kMUL, IRT_I64, inp3, lit32bit);
+  buf->setSlot(0, lit64bit);
+  buf->setSlot(1, res2);
+  buf->setSlot(2, res);
+  buf->setSlot(3, res3);
+  buf->setSlot(4, inp2);
+  buf->setSlot(5, inp3);
+  buf->setSlot(6, inp1);
+  buf->emit(IR::kSAVE, IRT_VOID|IRT_GUARD, 0, 0);
+
+  Assemble();
+
+  Word *base = T->base();
+
+  base[0] = 17;
+  base[1] = 5;
+  base[2] = -3;
+  Run();
+  EXPECT_EQ((WordInt)500000123123, (WordInt)base[0]);
+  EXPECT_EQ((WordInt)(5 * -123), (WordInt)base[1]);
+  EXPECT_EQ((WordInt)(17 * 5), (WordInt)base[2]);
+  EXPECT_EQ((WordInt)(-3 * 12345), (WordInt)base[3]);
+  EXPECT_EQ(17, base[6]);
+  EXPECT_EQ(5, base[4]);
+  EXPECT_EQ(-3, base[5]);
+
+  base[0] = -17312638712;
+  base[1] = -13125;
+  base[2] = 0;
+  Run();
+  EXPECT_EQ((WordInt)500000123123, (WordInt)base[0]);
+  EXPECT_EQ((WordInt)(-13125 * -123), (WordInt)base[1]);
+  EXPECT_EQ((WordInt)(-17312638712 * -13125), (WordInt)base[2]);
+  EXPECT_EQ((WordInt)(0 * 12345), (WordInt)base[3]);
+  EXPECT_EQ(-17312638712, base[6]);
+  EXPECT_EQ(-13125, base[4]);
+  EXPECT_EQ(0, base[5]);
+}
+
 TEST_F(TestFragment, Alloc1) {
   TRef itbl = buf->literal(IRT_INFO, 0x123456789);
   TRef lit1 = buf->literal(IRT_I64, 5);
