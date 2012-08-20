@@ -1,5 +1,5 @@
-#include "Bytecode.h"
-#include "InfoTables.h"
+#include "bytecode.hh"
+#include "objects.hh"
 
 #include <stdio.h>
 
@@ -7,25 +7,26 @@
 
 #define STR(x) #x
 
+using namespace lambdachine;
+
 int
 main(int argc, char **argv)
 {
   printf("#ifndef _LAMBDACHINE_OPCODES_H\n"
          "#define _LAMBDACHINE_OPCODES_H\n\n");
   printf("/* DO NOT EDIT.  This is an auto-generated file. */\n");
-  printf("/* See utils/genopcodes.c */\n\n");
+  printf("/* See utils/genopcodes.cc */\n\n");
 
-  printf("#define branch_BIAS 0x%x\n", BCBIAS_J);
-  printf("#define cMAX_CALL_ARGS %d\n\n", BCMAX_CALL_ARGS);
+  printf("#define branch_BIAS 0x%x\n", BcIns::kBranchBias);
+  printf("#define cMAX_CALL_ARGS %d\n\n", BcIns::kMaxCallArgs);
   
 #define DEF_LINE(name,fmt)                                         \
-  printf("#define " STR(opc_ ## name) " %d\n", BC_##name);
+  printf("#define " STR(opc_ ## name) " %d\n", BcIns::k##name);
   
   BCDEF(DEF_LINE)
 #undef DEF_LINE  
     ;
-
-  printf("#define opc_STOP %d\n\n", BC__MAX);
+  printf("\n");
 
   printf("#define littype_INT %d\n", LIT_INT);
   printf("#define littype_WORD %d\n", LIT_WORD);

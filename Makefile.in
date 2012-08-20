@@ -86,7 +86,7 @@ SRCS = rts/Bytecode.c rts/Capability.c rts/ClosureFlags.c \
        rts/GC.c rts/ShadowHeap.c \
 	rts/Jit.c
 
-UTILSRCS = utils/genopcodes.c
+UTILSRCS = utils/genopcodes.cc
 
 echo:
 	@echo "SRCS = $(SRCS)"
@@ -206,7 +206,7 @@ analyse: $(VM_SRCS)
 
 utils/genopcodes: utils/genopcodes.o
 	@echo "LINK $^ => $@"
-	@$(CC) -o $@ $^
+	@$(CXX) -o $@ $^
 
 utils/print_config: utils/print_config.o
 	@echo "LINK $^ => $@"
@@ -346,6 +346,6 @@ clean-bytecode:
 gtest: $(GTEST_A)
 
 -include $(SRCS:%.c=$(DEPDIR)/%.P)
--include $(UTILSRCS:%.c=$(DEPDIR)/%.P)
+-include $(UTILSRCS:%.cc=$(DEPDIR)/%.P)
 -include $(DEPDIR)/vm/unittest.P
 -include $(VM_SRCS:%.cc=$(DEPDIR)/%.P)
