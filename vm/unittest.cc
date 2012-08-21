@@ -1716,7 +1716,7 @@ TEST_F(TestFragment, Mul) {
 }
 
 TEST_F(TestFragment, Alloc1) {
-  TRef itbl = buf->literal(IRT_INFO, 0x123456789);
+  TRef itbl = buf->literal(IRT_INFO, 0x123456783);
   TRef lit1 = buf->literal(IRT_I64, 5);
   TRef lit2 = buf->literal(IRT_I64, 500000001234);
   TRef lit3 = buf->literal(IRT_I64, 23);
@@ -1744,7 +1744,7 @@ TEST_F(TestFragment, Alloc1) {
   EXPECT_EQ(&heap[3], cap.traceExitHp());
   EXPECT_EQ(&heap[10], cap.traceExitHpLim());
   EXPECT_EQ((Word)&heap[0], base[1]);
-  EXPECT_EQ(0x123456789, heap[0]);
+  EXPECT_EQ(0x123456783, heap[0]);
   EXPECT_EQ(5, heap[1]);
   EXPECT_EQ(500000001234, heap[2]);
   EXPECT_EQ(0, heap[3]);  // Should not be touched.
@@ -1769,7 +1769,7 @@ TEST_F(TestFragment, Alloc1) {
 }
 
 TEST_F(TestFragment, Alloc2) {
-  TRef itbl = buf->literal(IRT_INFO, 0x123456789);
+  TRef itbl = buf->literal(IRT_INFO, 0x123456783);
   TRef lit1 = buf->literal(IRT_I64, 5);
   TRef lit2 = buf->literal(IRT_I64, 7);
   TRef field1 = buf->slot(0);
@@ -1805,16 +1805,16 @@ TEST_F(TestFragment, Alloc2) {
   EXPECT_EQ(&heap[10], cap.traceExitHpLim());
   EXPECT_EQ((Word)&heap[0], base[0]);
   EXPECT_EQ((Word)&heap[3], base[1]);
-  EXPECT_EQ(0x123456789, heap[0]);
+  EXPECT_EQ(0x123456783, heap[0]);
   EXPECT_EQ(123, heap[1]);
   EXPECT_EQ(37, heap[2]);
-  EXPECT_EQ(0x123456789, heap[3]);
+  EXPECT_EQ(0x123456783, heap[3]);
   EXPECT_EQ(123 + 5, heap[4]);
   EXPECT_EQ(37 + 7, heap[5]);
 }
 
 TEST_F(TestFragment, Alloc3) {
-  TRef itbl = buf->literal(IRT_INFO, 0x123456789);
+  TRef itbl = buf->literal(IRT_INFO, 0x123456783);
   TRef lit1 = buf->literal(IRT_I64, 5);
   TRef lit2 = buf->literal(IRT_I64, 7);
   TRef field1 = buf->slot(0);
@@ -1851,10 +1851,10 @@ TEST_F(TestFragment, Alloc3) {
   EXPECT_EQ(&heap[10], cap.traceExitHpLim());
   EXPECT_EQ((Word)&heap[0], base[0]);
   EXPECT_EQ((Word)&heap[3], base[1]);
-  EXPECT_EQ(0x123456789, heap[0]);
+  EXPECT_EQ(0x123456783, heap[0]);
   EXPECT_EQ(123, heap[1]);
   EXPECT_EQ(37, heap[2]);
-  EXPECT_EQ(0x123456789, heap[3]);
+  EXPECT_EQ(0x123456783, heap[3]);
   EXPECT_EQ(123 + 5, heap[4]);
   EXPECT_EQ(37 + 7, heap[5]);
 }

@@ -83,6 +83,25 @@ static void printArg(ostream &out, uint8_t mode, uint16_t op, IR *ir, IRBuffer *
                (ir - 1)->opcode() == IR::kKWORDHI) {
       uint64_t k = (uint64_t)ir->u32() | ((uint64_t)(ir - 1)->u32() << 32);
       out << ' ' << COL_BLUE "0x" << hex << k << dec << COL_RESET;
+      if ((k & 2) == 0) {
+        // Real info tables are always aligned at 4 or 8 bytes.  For
+        // testing, we use dummy info tables which are intentionally
+        // unaligned.
+        switch (ir->type()) {
+        case IRT_INFO: {
+          InfoTable *info = (InfoTable *)k;
+          out << " " << info->name();
+          break;
+        }
+        case IRT_CLOS: {
+          Closure *cl = (Closure *)k;
+          out << " " << cl->info()->name();
+          break;
+        }
+        default:
+          break;
+        }
+      }
     } else if (ir->opcode() == IR::kKBASEO) {
       out << " #" << left << ir->i32();
     } else {
@@ -152,7 +171,8 @@ void IRBuffer::debugPrint(ostream &out, int traceNo) {
       sn.debugPrint(out, snapmap(), snapno);
       ++snapno;
     }
-    ins->debugPrint(out, ref, this, regsAllocated());
+    if (ins->opcode() != IR::kKWORDHI)
+      ins->debugPrint(out, ref, this, regsAllocated());
   }
 }
 
