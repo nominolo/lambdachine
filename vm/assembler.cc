@@ -828,6 +828,7 @@ void Assembler::insNew(IR *ins) {
 void Assembler::insUpdate(IR *ins) {
   Reg oldptr = alloc1(ins->op1(), kGPR);
   memstore(oldptr, sizeof(Word), ins->op2(), kGPR);
+  memstore(oldptr, 0, REF_IND, kGPR);
 }
 
 void Assembler::emit(IR *ins) {

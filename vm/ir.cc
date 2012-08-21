@@ -1,6 +1,8 @@
 #include "ir.hh"
 #include "ir-inl.hh"
 #include "assembler.hh"
+#include "objects.hh"
+#include "miscclosures.hh"
 
 #include <iostream>
 #include <iomanip>
@@ -189,6 +191,8 @@ void IRBuffer::reset(Word *base, Word *top) {
 
   memset(chain_, 0, sizeof(chain_));
   emitRaw(IRT(IR::kBASE, IRT_PTR), 0, 0);
+  TRef upd_itbl = literal(IRT_INFO, (Word)MiscClosures::stg_IND_info);
+  LC_ASSERT(upd_itbl.ref() == REF_IND);
 }
 
 void IRBuffer::growTop() {

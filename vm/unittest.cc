@@ -372,12 +372,15 @@ protected:
     TearDown();
   }
 
+#define IRTEST_INITIAL_BUFFER_SIZE 2
+#define IRTEST_INITIAL_LITERALS 1
+
   IRBuffer *buf;
   Word *stack;
 };
 
 TEST_F(IRTest, Simple) {
-  EXPECT_EQ(1, buf->size());
+  EXPECT_EQ(IRTEST_INITIAL_BUFFER_SIZE, buf->size());
   EXPECT_EQ(IR::kBASE, buf->ir(REF_BASE)->opcode());
 }
 
@@ -385,7 +388,7 @@ TEST_F(IRTest, Slots) {
   TRef tr = buf->slot(0);
   IRRef ref = tr.ref();
   EXPECT_EQ(ref, (uint16_t)REF_FIRST);
-  EXPECT_EQ(2, buf->size());
+  EXPECT_EQ(IRTEST_INITIAL_BUFFER_SIZE + 1, buf->size());
   EXPECT_EQ(IR::kSLOAD, buf->ir(ref)->opcode());
   EXPECT_EQ(0, buf->ir(ref)->op1());
   buf->debugPrint(cerr, 1);
@@ -396,7 +399,7 @@ TEST_F(IRTest, Slots2) {
   TRef tr2 = buf->emit(IRT(IR::kADD, IRT_I64), tr1.ref(), tr1.ref());
   IRRef ref = tr2.ref();
   EXPECT_EQ(ref, (uint16_t)REF_FIRST + 1);
-  EXPECT_EQ(3, buf->size());
+  EXPECT_EQ(IRTEST_INITIAL_BUFFER_SIZE + 2, buf->size());
   EXPECT_EQ(IR::kADD, buf->ir(ref)->opcode());
   EXPECT_EQ((uint16_t)tr1.ref(), buf->ir(ref)->op1());
   buf->debugPrint(cerr, 1);
@@ -405,10 +408,10 @@ TEST_F(IRTest, Slots2) {
 TEST_F(IRTest, Literals1) {
   TRef tr1 = buf->literal(IRT_I64, 1234);
   TRef tr2 = buf->literal(IRT_I64, 1234);
-  EXPECT_EQ((uint16_t)REF_BASE - 1, tr1.ref());
+  EXPECT_EQ((uint16_t)REF_BASE - IRTEST_INITIAL_LITERALS - 1, tr1.ref());
   EXPECT_EQ((uint8_t)IRT_I64, tr1.t());
   EXPECT_EQ(tr1, tr2);
-  EXPECT_EQ(2, buf->size());
+  EXPECT_EQ(IRTEST_INITIAL_BUFFER_SIZE + 1, buf->size());
   buf->debugPrint(cerr, 1);
 }
 
@@ -437,21 +440,21 @@ TEST_F(IRTest, Literals3) {
 TEST_F(IRTest, Literals4) {
   TRef tr1 = buf->literal(IRT_I64, 5000000000);
   TRef tr2 = buf->literal(IRT_I64, 5000000000);
-  EXPECT_EQ((uint16_t)REF_BASE - 1, tr1.ref());
+  EXPECT_EQ((uint16_t)REF_BASE - IRTEST_INITIAL_LITERALS - 1, tr1.ref());
   EXPECT_EQ((uint8_t)IRT_I64, tr1.t());
   EXPECT_EQ(tr1, tr2);
-  EXPECT_EQ(3, buf->size());
+  EXPECT_EQ(IRTEST_INITIAL_BUFFER_SIZE + 2, buf->size());
   EXPECT_EQ(5000000000, buf->literalValue(tr1));
   buf->debugPrint(cerr, 1);
 }
 
 TEST_F(IRTest, Literals5) {
   TRef tr1 = buf->literal(IRT_I64, 5000000000);
-  TRef tr2 = buf->literal(IRT_CLOS, 5000000000);
+  TRef tr2 = buf->literal(IRT_PC, 5000000000);
   EXPECT_TRUE(!tr1.isNone() && tr1.isLiteral());
   EXPECT_TRUE(!tr2.isNone() && tr2.isLiteral());
   EXPECT_EQ((uint8_t)IRT_I64, tr1.t());
-  EXPECT_EQ((uint8_t)IRT_CLOS, tr2.t());
+  EXPECT_EQ((uint8_t)IRT_PC, tr2.t());
   EXPECT_NE(tr1.ref(), tr2.ref());
   buf->debugPrint(cerr, 1);
 }

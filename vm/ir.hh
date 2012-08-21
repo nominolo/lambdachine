@@ -316,6 +316,7 @@ enum {
   REF_BIAS  = 0x8000,
   REF_BASE  = REF_BIAS,
   REF_FIRST = REF_BIAS + 1,
+  REF_IND   = REF_BIAS - 1,
   REF_DROP  = 0xffff
 };
 
