@@ -622,7 +622,7 @@ void AbstractHeap::grow() {
 int AbstractHeap::newEntry(IRRef1 ref, int nfields) {
   if (LC_UNLIKELY(nextentry_ >= nentries_))
     grow();
-  LC_ASSERT(reserved_ >= nfields + 1);
+  LC_ASSERT(reserved_ >= nfields + 1);  // Heapcheck missing?
   AbstractHeapEntry *e = &entries_[nextentry_++];
   e->size_ = nfields;
   e->ofs_ = data_.reserve(nfields);

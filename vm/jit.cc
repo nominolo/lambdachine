@@ -98,6 +98,71 @@ static bool evalCond(BcIns::Opcode opc, Word left, Word right) {
   }
 }
 
+bool Jit::recordGenericApply(uint32_t call_info, Word *base,
+                             TRef fnode_ref, Closure *fnode,
+                             const Code *code) {
+  uint32_t given_args = call_info & 0xff;
+  uint32_t pointer_mask = call_info >> 8;
+  switch (fnode->info()->type()) {
+  case PAP:
+    cerr << "NYI: Calling of PAPs." << endl;
+    return false;
+  case THUNK:
+  case CAF:
+    cerr << "NYI: Calling of THUNK/CAFs." << endl;
+    return false;
+  case FUN: {
+    const CodeInfoTable *info = (CodeInfoTable *)fnode->info();
+    uint32_t arity = info->code()->arity;
+    if (arity == given_args)
+      return true;
+    if (arity > given_args) {
+      cerr << "NYI: Partial applications." << endl;
+      return false;
+    }
+
+    // Overapplication.
+    cerr << "REC: overapplication" << endl;
+
+    TRef scratch[BcIns::kMaxCallArgs];
+    for (int i = 0; i < given_args; ++i) {
+      scratch[i] = buf_.slot(i);
+    }
+    uint32_t extra_args = given_args - arity;
+
+    BcIns *apk_return_addr = NULL;
+    Closure *apk_closure = NULL;
+    MiscClosures::getApCont(&apk_closure, &apk_return_addr,
+                            extra_args, pointer_mask >> arity);
+    uint32_t apk_frame_size = MiscClosures::apContFrameSize(extra_args);
+
+    // 1. Turn current frame into App continuation.
+    buf_.setSlot(-1, buf_.literal(IRT_CLOS, (Word)apk_closure));
+    for (int i = 0; i < extra_args; ++i) {
+      buf_.setSlot(i, scratch[arity + i]);
+    }
+    buf_.setSlot(extra_args, TRef());
+
+    buf_.slots_.frame(base, base + apk_frame_size);
+
+
+    // 2. Build new frame for actual application.
+    uint32_t framesize = info->code()->framesize;
+    Word *newbase = pushFrame(base, apk_return_addr, fnode_ref, framesize);
+    if (!newbase)
+      return false;
+    for (int i = 0; i < arity; ++i) {
+      buf_.setSlot(i, scratch[i]);
+    }
+
+    return true;
+  }
+  default:
+    cerr << "ERROR: Recorded call to non-FUN/PAP/THUNK." << endl;
+    return false;
+  }
+}
+
 bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
   buf_.pc_ = ins;
   cerr << "REC: " << ins << " " << ins->name() << endl;
@@ -117,13 +182,21 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
       finishRecording();
       return true;
     } else if (targets_.size() <= 100) {
+      // Really, we should do false loop filtering.
+      if (ins != MiscClosures::stg_UPD_return_pc) {
       // Try to find inner loop.
-      for (size_t i = 0; i < targets_.size(); ++i) {
-        if (targets_[i] == ins) {
-          cerr << COL_GREEN << "REC: Inner loop." << COL_RESET << endl;
-
-          // TODO: Truncate.
-          goto abort_recording;
+      
+        for (size_t i = 0; i < targets_.size(); ++i) {
+          if (targets_[i] == ins) {
+            cerr << COL_GREEN << "REC: Inner loop. " << buf_.pc_ << COL_RESET
+                 << "\n  Loop: " << startPc_ << endl;
+            for (size_t i = 0; i < targets_.size(); ++i) {
+              cerr << "    " << targets_[i] << endl;
+            }
+            cerr << "NYI: False loop filtering or trace truncation.\n";
+            // TODO: Truncate.
+            goto abort_recording;
+          }
         }
       }
 
@@ -224,14 +297,12 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     }
     buf_.emit(IR::kEQINFO, IRT_VOID | IRT_GUARD, fnode, iref);
 
-    if (ins->c() != ((FuncInfoTable *)info)->code()->arity) {
-      FuncInfoTable *itbl = ((FuncInfoTable *)info);
-      cerr << "NYI: Recording of non-exact applications (CALLT)";
-      cerr << "  args=" << (int)ins->c() << "  arity="
-           << (int)itbl->code()->arity << "  name="
-           << itbl->name() << endl;
+    buf_.slots_.debugPrint(cerr);
+    uint32_t call_info = (uint32_t)ins->c() | ((uint32_t)ins->b() << 8);
+    if (!recordGenericApply(call_info, base, fnode, clos, code))
       goto abort_recording;
-    }
+    buf_.slots_.debugPrint(cerr);
+
     flags_.set(kLastInsWasBranch);
     break;
   }
@@ -457,6 +528,32 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     break;
   }
 
+  case BcIns::kALLOCAP: {
+    uint32_t nfields = ins->c() + 1;
+    uint32_t pointer_mask = ins->b();
+    const uint8_t *args = (const uint8_t *)(ins + 1);
+
+    buf_.emitHeapCheck(1 + nfields);
+    
+    // Make sure we have a ref for each field before emitting the NEW.
+    // This may emit SLOAD instructions, so make sure those occur
+    // before the NEW.
+    for (int i = 0; i < nfields; ++i)
+      buf_.slot(*args++);
+
+    InfoTable *info = MiscClosures::getApInfo(ins->c(), pointer_mask);
+    TRef itbl = buf_.literal(IRT_INFO, (Word)info);
+    IRBuffer::HeapEntry entry = 0;
+    TRef clos = buf_.emitNEW(itbl, nfields, &entry);
+    args = (const uint8_t *)(ins + 1);
+    for (int i = 0; i < nfields; ++i) {
+      TRef field = buf_.slot(*args++);
+      buf_.setField(entry, i, field);
+    }
+    buf_.setSlot(ins->a(), clos);
+    break;
+  }
+
   case BcIns::kCASE: {
     Closure *cl = (Closure *)base[ins->a()];
     TRef clos = buf_.slot(ins->a());
@@ -473,6 +570,9 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     cerr << "NYI: Recording of " << ins->name() << endl;
     goto abort_recording;
   }
+
+  buf_.slots_.debugPrint(cerr);
+  // buf_.debugPrint(cerr, 0);
 
   return false;
 

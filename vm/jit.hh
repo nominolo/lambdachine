@@ -143,6 +143,9 @@ public:
 
   // Returns true if recording finished
   bool recordIns(BcIns *, Word *base, const Code *);
+  bool recordGenericApply(uint32_t call_info, Word *base,
+                          TRef fnode_ref, Closure *fnode,
+                          const Code *code);
 
   inline bool isRecording() const { return cap_ != NULL; }
 
