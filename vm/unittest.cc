@@ -1008,6 +1008,10 @@ TEST_F(RunFileTest, QuotRem) {
   run("Bc.QuotRem");
 }
 
+TEST_F(RunFileTest, SumEvalThunk) {
+  run("Bc.SumEvalThunk");
+}
+
 TEST(HotCounters, Simple) {
   HotCounters counters(5);
   BcIns pc[] = { BcIns::ad(BcIns::kFUNC, 3, 0) };
