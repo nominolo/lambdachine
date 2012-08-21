@@ -708,6 +708,8 @@ public:
   void setHeapOffsets();
   inline int numFields(HeapEntry entry);
   inline void setField(HeapEntry entry, int field, IRRef1 ref);
+  static const HeapEntry kInvalidHeapEntry = -1;
+  inline HeapEntry getHeapEntry(IRRef ref);
   inline IRRef1 getField(HeapEntry entry, int field);
 
   inline bool regsAllocated() { return flags_.get(kRegsAllocated); }
@@ -765,6 +767,14 @@ inline IRRef IRBuffer::nextLit() {
   if (LC_UNLIKELY(ref <= bufstart_)) growBottom();
   bufmin_ = --ref;
   return ref;
+}
+
+inline
+IRBuffer::HeapEntry IRBuffer::getHeapEntry(IRRef ref) {
+  IR *ins = ir(ref);
+  if (ins->opcode() != IR::kNEW)
+    return kInvalidHeapEntry;
+  return (HeapEntry)ins->op2();
 }
 
 inline

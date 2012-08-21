@@ -324,6 +324,25 @@ FOLDF(kfold_cmp) {
   }
 }
 
+// FLOAD (FREF (NEW k [x1 .. xN]) i) ==> x_i
+FOLDF(load_fwd) {
+  LC_ASSERT(fleft->opcode() == IR::kFREF);
+  IRBuffer::HeapEntry entry = buf->getHeapEntry(fleft->op1());
+  if (entry != IRBuffer::kInvalidHeapEntry) {
+    IRRef field = buf->getField(entry, fleft->op2() - 1);
+    return field;
+  }
+  return NEXTFOLD;
+}
+
+// info(NEW k1 [...]) == k2 ==> k1 == k2
+FOLDF(kfold_eqinfo_new) {
+  // fleft is NEW instruction.
+  fins->setOpcode(IR::kEQ);
+  fins->setOp1(fleft->op1());
+  return RETRYFOLD;
+}
+
 #undef fins
 #undef fleft
 #undef fright
@@ -408,7 +427,10 @@ retry:
     PATTERN(ADD, ADD, simplify_intsubaddadd_cancel);
     break;
   case IR::kEQINFO:
+    // Info table guard on a static closure.
     PATTERN(lit, lit, kfold_eqinfo);
+    // info(NEW k1 [...]) == k2 ==> k1 == k2
+    PATTERN(NEW, lit, kfold_eqinfo_new);
     break;
   case IR::kHEAPCHK:
     /// heapchk N, heapchk M ==> heapchk (N+M)
@@ -417,6 +439,9 @@ retry:
   case IR::kEQ:
   case IR::kNE:
     PATTERN(lit, lit, kfold_cmp);
+    break;
+  case IR::kFLOAD:
+    PATTERN(any, any, load_fwd);
     break;
   default:
     break;
