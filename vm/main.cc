@@ -22,6 +22,8 @@ int main(int argc, char *argv[]) {
   if (!opts.get())
     return 1;
 
+  initializeTimer();
+  Time startup_time = getProcessElapsedTime();
   MemoryManager mm;
   Loader loader(&mm, opts->basePath().c_str());
 
@@ -69,7 +71,9 @@ int main(int argc, char *argv[]) {
   Closure *result = (Closure*)T->slot(0);
   printClosure(cout, result, true);
 
-  Time run_time = getProcessElapsedTime() - start_time;
+  Time stop_time = getProcessElapsedTime();
+  Time run_time = stop_time - start_time;
+  Time total_time = stop_time - startup_time;
 
   delete T;
 
@@ -88,6 +92,9 @@ int main(int argc, char *argv[]) {
 
   formatWithThousands(buf, run_time - jit_time - gc_time);
   printf("  Mutator:  %20s ns\n", buf);
+
+  formatWithThousands(buf, total_time);
+  printf("  Total:    %20s ns\n", buf);
 
   return 0;
 }
