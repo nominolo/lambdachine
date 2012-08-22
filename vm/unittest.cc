@@ -1015,6 +1015,10 @@ TEST_F(RunFileTest, SumEvalThunk) {
   run("Bc.SumEvalThunk");
 }
 
+TEST_F(RunFileTest, SumDict) {
+  run("Bc.SumDict");
+}
+
 TEST(HotCounters, Simple) {
   HotCounters counters(5);
   BcIns pc[] = { BcIns::ad(BcIns::kFUNC, 3, 0) };
