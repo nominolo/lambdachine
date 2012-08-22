@@ -3,6 +3,7 @@
 #include "miscclosures.hh"
 #include "capability.hh"
 #include "thread.hh"
+#include "time.hh"
 
 #include <sys/mman.h>
 #include <stdio.h>
@@ -121,6 +122,8 @@ Block *Region::grabFreeBlock() {
 
   return b;
 }
+
+Time gc_time = 0;
 
 MemoryManager::MemoryManager()
   : free_(NULL), old_heap_(NULL), topOfStackMask_(kNoMask),
@@ -258,6 +261,7 @@ std::ostream &operator<<(std::ostream &out, const MemoryManager &mm) {
 //= Garbage Collection Stuff =========================================
 
 void MemoryManager::performGC(Capability *cap) {
+  Time gc_start = getProcessElapsedTime();
   Thread *T = cap->currentThread();
   BcIns *pc = T->pc();
   Word *base = T->base();
@@ -315,6 +319,8 @@ void MemoryManager::performGC(Capability *cap) {
 
   // TODO: Is this correct?
   nextGC_ = (fullBlocks > 2 ? fullBlocks : 2) + 1;
+
+  gc_time += getProcessElapsedTime() - gc_start;
 }
 
 static inline bool isForwardingPointer(const InfoTable *p) {

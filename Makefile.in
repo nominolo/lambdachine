@@ -12,6 +12,7 @@ HC ?= @HC@
 HC_PKG ?= @HC_PKG@
 CC ?= @CC@
 CXX ?= @CXX@
+LIBS ?= @LIBS@
 
 ifeq "$(strip $(PerformanceBuild))" "Yes"
 EXTRA_CFLAGS := $(EXTRA_CFLAGS) -DNDEBUG
@@ -170,17 +171,17 @@ TEST_FILES := tests/Bc/Bc0016.lcbc tests/Bc/Bc0014.lcbc \
 
 lcvm: $(VM_SRCS:.cc=.o) vm/main.o
 	@echo "LINK $(filter %.o %.a, $^) => $@"
-	@$(CXX) -o $@ $(filter %.o %.a, $^)
+	@$(CXX) -o $@ $(filter %.o %.a, $^) $(LIBS)
 
 unittest: $(TEST_FILES)
 
 unittest: vm/unittest.o $(GTEST_A) $(VM_SRCS:.cc=.o)
 	@echo "LINK $(filter %.o %.a, $^) => $@"
-	@$(CXX) -o $@ $(filter %.o %.a, $^)
+	$(CXX) -o $@ $(filter %.o %.a, $^) $(LIBS)
 
 bcdump: vm/bcdump.o $(VM_SRCS:.cc=.o)
 	@echo "LINK $^ => $@"
-	@$(CXX) -o $@ $^
+	@$(CXX) -o $@ $^ $(LIBS)
 
 .PHONY: test
 test: unittest

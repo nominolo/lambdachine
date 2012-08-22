@@ -4,6 +4,7 @@
 #include "thread.hh"
 #include "capability.hh"
 #include "miscclosures.hh"
+#include "time.hh"
 
 #include <iostream>
 #include <string.h>
@@ -22,6 +23,8 @@ HotCounters::HotCounters(HotCount threshold)
     counters_[i] = threshold;
   }
 }
+
+Time jit_time = 0;
 
 #if (DEBUG_COMPONENTS & DEBUG_TRACE_RECORDER) != 0
 #define DBG(stmt) do { stmt; } while(0)
@@ -593,9 +596,11 @@ inline void Jit::resetRecorderState() {
 }
 
 void Jit::finishRecording() {
+  Time compilestart = getProcessElapsedTime();
   DBG(cerr << "Recorded: " << endl);
   asm_.assemble(buffer(), mcode());
-  DBG(buf_.debugPrint(cerr, 1));
+  if (DEBUG_COMPONENTS & DEBUG_ASSEMBLER)
+    buf_.debugPrint(cerr, 1);
 
   int tno = fragments_.size();
 
@@ -615,6 +620,8 @@ void Jit::finishRecording() {
   registerFragment(startPc_, F);
   *startPc_ = BcIns::ad(BcIns::kJFUNC, 0, tno);
   resetRecorderState();
+
+  jit_time += getProcessElapsedTime() - compilestart;
 }
 
 Fragment::Fragment()

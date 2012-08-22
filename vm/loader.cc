@@ -1,6 +1,7 @@
 #include "loader.hh"
 #include "fileutils.hh"
 #include "miscclosures.hh"
+#include "time.hh"
 
 #include <iostream>
 #include <stdio.h>
@@ -15,6 +16,8 @@ using namespace std;
     fprintf(stderr, "LD: " __VA_ARGS__); }
 
 _START_LAMBDACHINE_NAMESPACE
+
+Time loader_time = 0;
 
 BytecodeFile::BytecodeFile(const char *filename)
   : name_(filename), f_(NULL) {
@@ -252,7 +255,10 @@ char *Loader::findModule(const char *moduleName) {
 }
 
 bool Loader::loadModule(const char *moduleName) {
-  return loadModule(moduleName, 0) && checkNoForwardRefs();
+  Time starttime = getProcessElapsedTime();
+  bool ans = loadModule(moduleName, 0) && checkNoForwardRefs();
+  loader_time += getProcessElapsedTime() - starttime;
+  return ans;
 }
 
 bool Loader::loadModule(const char *moduleName, int level) {

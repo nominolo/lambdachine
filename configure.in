@@ -21,4 +21,7 @@ fi
 AC_CHECK_PROGS([HC_PKG], [ghc-pkg-7.0.4 ghc-pkg-7.0.3 ghc-pkg-7.0.2 ghc-pkg-7.0.1], no)
 AC_SUBST(HC)
 
+AC_CHECK_LIB(rt, clock_gettime)
+AC_CHECK_FUNCS(clock_gettime)
+
 AC_OUTPUT
