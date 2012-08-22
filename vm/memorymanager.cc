@@ -62,7 +62,7 @@ Region *Region::newRegion(RegionType regionType) {
 
   for (;;) {
     ptr = static_cast<char *>(mmap(alloc_hint, size, kMMapProtection, kMMapFlags, -1, 0));
-    if (ptr != MAP_FAILED && isAlignedAtPowerOf2(kRegionSize, ptr)) {
+    if (ptr != MAP_FAILED && isAlignedAtPowerOf2(kRegionSizeLog2, ptr)) {
       // Success!
       alloc_hint += size;
       break;
