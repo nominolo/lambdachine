@@ -23,6 +23,12 @@ HotCounters::HotCounters(HotCount threshold)
   }
 }
 
+#if (DEBUG_COMPONENTS & DEBUG_TRACE_RECORDER) != 0
+#define DBG(stmt) do { stmt; } while(0)
+#else
+#define DBG(stmt) do {} while(0)
+#endif
+
 Jit::Jit()
   : cap_(NULL),
     startPc_(NULL), startBase_(NULL),
@@ -122,7 +128,7 @@ bool Jit::recordGenericApply(uint32_t call_info, Word *base,
     }
 
     // Overapplication.
-    cerr << "REC: overapplication" << endl;
+    DBG(cerr << "REC: overapplication" << endl);
 
     TRef scratch[BcIns::kMaxCallArgs];
     for (int i = 0; i < given_args; ++i) {
@@ -165,14 +171,14 @@ bool Jit::recordGenericApply(uint32_t call_info, Word *base,
 
 bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
   buf_.pc_ = ins;
-  cerr << "REC: " << ins << " " << ins->name() << endl;
+  DBG(cerr << "REC: " << ins << " " << ins->name() << endl);
   if (flags_.get(kLastInsWasBranch)) {
     if (ins == startPc_) {
-      cerr << "REC: Loop to entry detected." << endl
-           << "  Loop: " << startPc_ << endl;
-      for (size_t i = 0; i < targets_.size(); ++i) {
-        cerr << "    " << targets_[i] << endl;
-      }
+      DBG(cerr << "REC: Loop to entry detected." << endl
+          << "  Loop: " << startPc_ << endl);
+      DBG(for (size_t i = 0; i < targets_.size(); ++i) {
+          cerr << "    " << targets_[i] << endl;
+        });
       if (lastResult_.ref() != 0) {
         cerr << "NYI: Pending return result. Cannot compile trace." << endl;
         goto abort_recording;
@@ -188,11 +194,11 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
       
         for (size_t i = 0; i < targets_.size(); ++i) {
           if (targets_[i] == ins) {
-            cerr << COL_GREEN << "REC: Inner loop. " << buf_.pc_ << COL_RESET
-                 << "\n  Loop: " << startPc_ << endl;
-            for (size_t i = 0; i < targets_.size(); ++i) {
+            DBG(cerr << COL_GREEN << "REC: Inner loop. " << buf_.pc_ << COL_RESET
+                << "\n  Loop: " << startPc_ << endl);
+            DBG(for (size_t i = 0; i < targets_.size(); ++i) {
               cerr << "    " << targets_[i] << endl;
-            }
+              });
             cerr << "NYI: False loop filtering or trace truncation.\n";
             // TODO: Truncate.
             goto abort_recording;
@@ -297,11 +303,11 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     }
     buf_.emit(IR::kEQINFO, IRT_VOID | IRT_GUARD, fnode, iref);
 
-    buf_.slots_.debugPrint(cerr);
+    //    buf_.slots_.debugPrint(cerr);
     uint32_t call_info = (uint32_t)ins->c() | ((uint32_t)ins->b() << 8);
     if (!recordGenericApply(call_info, base, fnode, clos, code))
       goto abort_recording;
-    buf_.slots_.debugPrint(cerr);
+    //    buf_.slots_.debugPrint(cerr);
 
     flags_.set(kLastInsWasBranch);
     break;
@@ -377,7 +383,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
       // TODO: Check for stack overflow and abort recording?
       BcIns *returnPc = ins + 2;
 
-      buf_.slots_.debugPrint(cerr);
+      //      buf_.slots_.debugPrint(cerr);
 
       TRef upd_clos_lit =
         buf_.literal(IRT_CLOS, (Word)MiscClosures::stg_UPD_closure_addr);
@@ -397,7 +403,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
         buf_.setSlot(i, TRef());
       }
 
-      buf_.slots_.debugPrint(cerr);
+      //      buf_.slots_.debugPrint(cerr);
       flags_.set(kLastInsWasBranch);
 
     }
@@ -406,7 +412,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
 
   case BcIns::kIRET:
   case BcIns::kRET1: {
-    buf_.slots_.debugPrint(cerr);
+    //    buf_.slots_.debugPrint(cerr);
 
     TRef retref = buf_.slot(-2);
     TRef expectedReturnPc = buf_.literal(IRT_PC, base[-2]);
@@ -418,7 +424,6 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     for (int i = -3; i < (int)buf_.slots_.top(); ++i) {
       buf_.setSlot(i, TRef());
     }
-    cerr << endl;
 
     // Return address implies framesize, thus we don't need an extra
     // guard.  In fact, storing all these frame pointers on the stack
@@ -429,7 +434,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
       goto abort_recording;
     }
 
-    buf_.slots_.debugPrint(cerr);
+    //    buf_.slots_.debugPrint(cerr);
     flags_.set(kLastInsWasBranch);
     break;
   }
@@ -571,7 +576,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     goto abort_recording;
   }
 
-  buf_.slots_.debugPrint(cerr);
+  //  buf_.slots_.debugPrint(cerr);
   // buf_.debugPrint(cerr, 0);
 
   return false;
@@ -588,18 +593,20 @@ inline void Jit::resetRecorderState() {
 }
 
 void Jit::finishRecording() {
-  cerr << "Recorded: " << endl;
+  DBG(cerr << "Recorded: " << endl);
   asm_.assemble(buffer(), mcode());
-  buf_.debugPrint(cerr, 1);
+  DBG(buf_.debugPrint(cerr, 1));
 
   int tno = fragments_.size();
 
+  DBG({
   ofstream out;
   stringstream filename;
   filename << "dump_Trace_" << (int)tno << ".s";
   out.open(filename.str().c_str());
   mcode()->dumpAsm(out);
   out.close();
+    });
 
   //  exit(2);
 
@@ -681,6 +688,8 @@ Word *Jit::pushFrame(Word *base, BcIns *returnPc,
   return newbase;
 }
 
+#undef DBG
+
 #if (DEBUG_COMPONENTS & DEBUG_TRACE_ENTEREXIT) != 0
 #define DBG(stmt) do { stmt; } while(0)
 #else
@@ -706,12 +715,12 @@ static void printRegisters(ostream &out, Word *gpr) {
   for (RegSet work = kGPR; !work.isEmpty(); ) {
     Reg r = work.pickBot();
     work.clear(r);
-    cerr << "    " << setw(3) << left << IR::regName(r, IRT_I64)
-         << " = 0x"
-         << setw(16) << setfill('0') << right << hex << gpr[r]
-         << " / "
-         << setw(20) << setfill(' ') << right << dec << (WordInt)gpr[r]
-         << endl;
+    out << "    " << setw(3) << left << IR::regName(r, IRT_I64)
+        << " = 0x"
+        << setw(16) << setfill('0') << right << hex << gpr[r]
+        << " / "
+        << setw(20) << setfill(' ') << right << dec << (WordInt)gpr[r]
+        << endl;
   }
 }
 
@@ -723,7 +732,7 @@ static void printExitState(ostream &out, ExitState *ex) {
       << ", spill=" << ex->spill
       << " (delta=" << hex << (char *)ex->spill - (char *)base
       << endl;
-  printRegisters(cerr, &ex->gpr[0]);
+  printRegisters(out, &ex->gpr[0]);
 }
 
 Word *traceDebugLastHp = NULL;
@@ -781,7 +790,7 @@ void Fragment::restoreSnapshot(ExitNo exitno, ExitState *ex) {
   cap->traceExitHpLim_ = ex->hplim;
 
   if (snapins->opcode() == IR::kHEAPCHK) {
-    cerr << "Heap check failure" << endl;
+    // cerr << "Heap check failure" << endl;
     // We exited due to a heap overflow.
 
     // TODO: If we only reached the end of a block, then we only

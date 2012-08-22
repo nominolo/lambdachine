@@ -572,7 +572,6 @@ HeapSnapData::~HeapSnapData() {
 }
 
 void HeapSnapData::growTop() {
-  cerr << "snapdata growing top" << endl;
   if (LC_UNLIKELY(size_ > 50000)) {
     cerr << "FATAL: Heap snapshot too large." << endl;
     exit(2);
