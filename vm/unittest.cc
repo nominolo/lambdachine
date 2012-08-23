@@ -7,6 +7,7 @@
 #include "objects.hh"
 #include "miscclosures.hh"
 #include "jit.hh"
+#include "time.hh"
 
 #include <iostream>
 #include <sstream>
@@ -180,6 +181,23 @@ TEST(AllocMachineCode, Simple) {
   ptrdiff_t dist = (char*)to - (char*)&asmExit;
   if (dist < 0) dist = -dist;
   EXPECT_TRUE(dist < (ptrdiff_t)1 << 31);
+}
+
+TEST(Timer, PreciseResolution) {
+  // Check that timer resolution is at least 1us.
+  initializeTimer();
+  Time elapsed = getProcessElapsedTime();
+  Time total = 0;
+  Time min_nonzero_delta = SecondsToTime(1);
+  while (total < USToTime(3000)) {
+    Time delta = getProcessElapsedTime() - elapsed;
+    if (delta > 0 && delta < min_nonzero_delta) {
+      min_nonzero_delta = delta;
+    }
+    total += delta;
+    elapsed += delta;
+  }
+  EXPECT_TRUE(min_nonzero_delta <= 1000);
 }
 
 class AsmTest : public ::testing::Test {
