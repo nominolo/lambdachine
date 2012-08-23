@@ -207,6 +207,7 @@ public:
   friend std::ostream& operator<<(std::ostream& out, const MemoryManager&);
 
   inline uint64_t allocated() const { return allocated_; }
+  inline uint32_t numGCs() const { return num_gcs_; }
 
   static const u4 kNoMask = ~0;
 
@@ -286,6 +287,7 @@ private:
   // will overflow in 2^30 seconds, or about 34 years.  That appears
   // to be fine for now (it's for statistical purposes only).
   uint64_t allocated_;
+  uint64_t num_gcs_;
 };
 
 _END_LAMBDACHINE_NAMESPACE

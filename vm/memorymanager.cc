@@ -127,7 +127,7 @@ Time gc_time = 0;
 
 MemoryManager::MemoryManager()
   : free_(NULL), old_heap_(NULL), topOfStackMask_(kNoMask),
-    nextGC_(2), allocated_(0) {
+    nextGC_(2), allocated_(0), num_gcs_(0) {
   region_ = Region::newRegion(Region::kSmallObjectRegion);
   info_tables_ = grabFreeBlock(Block::kInfoTables);
   static_closures_ = grabFreeBlock(Block::kStaticClosures);
@@ -266,6 +266,8 @@ void MemoryManager::performGC(Capability *cap) {
   BcIns *pc = T->pc();
   Word *base = T->base();
   Word *top = T->top();
+
+  ++num_gcs_;
 
   LC_ASSERT(old_heap_ == NULL);
   old_heap_ = closures_;
