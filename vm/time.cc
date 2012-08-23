@@ -20,7 +20,7 @@ _START_LAMBDACHINE_NAMESPACE
 
 #if defined(__APPLE__)
 static uint64_t timer_scaling_factor_numer = 0;
-static uint64_t timer_scaling_factor_denom = 0;
+static uint64_t timer_scaling_factor_denom = 1;
 #endif
 
 void initializeTimer() {
