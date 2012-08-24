@@ -402,7 +402,7 @@ inline SnapEntry::SnapEntry(int s, IRRef1 r)
 class Snapshot {
 public:
   /// Default constructor.
-  Snapshot() : ref_(0), entries_(0) {}
+  Snapshot() : ref_(0), entries_(0), exitCounter_(HOT_SIDE_EXIT_THRESHOLD) {}
 
   /// Returns the snapshot reference.  The snapshot describes the
   /// state BEFORE the referenced instruction is executed.
@@ -435,6 +435,9 @@ public:
 
   BcIns *pc() const { return (BcIns*)pc_; }
 
+  // Returns true if the side exit become hot.
+  inline bool bumpExitCounter();
+
 private:
 
   IRRef1 ref_;
@@ -447,6 +450,12 @@ private:
   void *pc_;
   friend class AbstractStack;
 };
+
+inline bool Snapshot::bumpExitCounter() {
+  --exitCounter_;
+  return (exitCounter_ == 0);
+}
+
 
 class SnapshotData {
 public:

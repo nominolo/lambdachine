@@ -461,7 +461,7 @@ void AbstractStack::snapshot(Snapshot *snap, SnapshotData *snapmap,
   snap->relbase_ = base_ - kInitialBase;
   snap->entries_ = entries;
   snap->framesize_ = top_ - base_;
-  snap->exitCounter_ = 0;
+  snap->exitCounter_ = HOT_SIDE_EXIT_THRESHOLD;
   snap->pc_ = pc;
 
   snapmap->index_ = ofs;

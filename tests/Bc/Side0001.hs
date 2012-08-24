@@ -7,14 +7,14 @@ import GHC.Prim
 import GHC.Types
 import GHC.Base
 
--- import Debug.Trace
--- import Prelude
+--import Debug.Trace
+--import Prelude
 
 -- Test for side traces
 
 -- Emulates Bresenham line drawing without actually drawing any pixels.
 loop :: Int# -> Int# -> Int# -> Int# -> Int# -> Int
---loop x  y d _ _ | trace (show (I# x, I# y, I# d)) False = undefined
+-- loop x  y d _ _ | trace (show (I# x, I# y, I# d)) False = undefined
 loop 0# y d up down = I# y
 loop x  y d up down =
   if d <=# 0# then loop (x -# 1#) y        (d +# up)   up down

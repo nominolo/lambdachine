@@ -140,6 +140,7 @@ public:
 
   void beginRecording(Capability *, BcIns *startPc, Word *base,
                       bool isReturn);
+  void beginSideTrace(Capability *, Word *base, Fragment *parent, SnapNo);
 
   // Returns true if recording finished
   bool recordIns(BcIns *, Word *base, const Code *);

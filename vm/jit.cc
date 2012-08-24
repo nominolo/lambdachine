@@ -59,6 +59,44 @@ void Jit::beginRecording(Capability *cap, BcIns *startPc, Word *base, bool isRet
   lastResult_ = TRef();
 }
 
+void Jit::beginSideTrace(Capability *cap, Word *base, Fragment *parent, SnapNo snapno) {
+  LC_ASSERT(cap_ == NULL);
+  LC_ASSERT(targets_.size() == 0);
+  Snapshot &snap = parent->snap(snapno);
+  cap_ = cap;
+  startPc_ = snap.pc();
+  startBase_ = base;
+  buf_.reset(base, cap->currentThread()->top());
+  lastResult_ = TRef();
+
+  SnapshotData *snapmap = &parent->snapmap_;
+  int relbase = snap.relbase();
+  for (Snapshot::MapRef i = snap.begin(); i < snap.end(); ++i) {
+    int slot = snapmap->slotId(i) - relbase;
+    int ref = snapmap->slotRef(i);
+    IR *ins = parent->ir(ref);
+
+    if (irref_islit(ref)) {
+      uint64_t k = parent->literalValue(ref, base);
+      TRef tref;
+      if (ins->opcode() == IR::kKBASEO) {
+        tref = buf_.baseLiteral((Word*)k);
+      } else {
+        tref = buf_.literal(ins->type(), k);
+      }
+      buf_.setSlot(slot, tref);
+    } else {
+      //      exit(7);
+    }
+  }
+
+  buf_.debugPrint(cerr, 0);
+  buf_.slots_.debugPrint(cerr);
+
+  resetRecorderState();
+  //  exit(1);
+}
+
 static IRType littypeToIRType(uint8_t littype) {
   // TODO: Check that this gets compiled to range check + lookup
   // table.
@@ -790,6 +828,11 @@ void Fragment::restoreSnapshot(ExitNo exitno, ExitState *ex) {
   LC_ASSERT(cap != NULL);
   cap->traceExitHp_ = (Word *)ex->gpr[RID_HP];
   cap->traceExitHpLim_ = ex->hplim;
+
+  if (snapins->opcode() != IR::kHEAPCHK && sn.bumpExitCounter()) {
+    cerr << COL_RED "HOTSIDE" COL_RESET "\n";
+    cap->jit()->beginSideTrace(cap, base, this, exitno);
+  }
 
   if (snapins->opcode() == IR::kHEAPCHK) {
     // cerr << "Heap check failure" << endl;
