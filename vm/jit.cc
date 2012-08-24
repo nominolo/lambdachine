@@ -832,6 +832,7 @@ void Fragment::restoreSnapshot(ExitNo exitno, ExitState *ex) {
   if (snapins->opcode() != IR::kHEAPCHK && sn.bumpExitCounter()) {
     cerr << COL_RED "HOTSIDE" COL_RESET "\n";
     cap->jit()->beginSideTrace(cap, base, this, exitno);
+    cap->setState(Capability::STATE_RECORD);
   }
 
   if (snapins->opcode() == IR::kHEAPCHK) {

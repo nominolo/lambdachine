@@ -88,9 +88,8 @@ BcIns *Capability::interpBranch(BcIns *srcPc, BcIns *dstPc, Word *base,
           cerr << COL_RESET << endl;
         }
 
-        flags_.set(kRecording);
+        setState(STATE_RECORD);
         jit_.beginRecording(this, dstPc, base, branchType == kReturn);
-        dispatch_ = dispatch_record_;
 
         // We need to ensure that the interpreter reloads its state.
         // So we return a PC that points to the SYNC instruction.  This
@@ -103,10 +102,25 @@ BcIns *Capability::interpBranch(BcIns *srcPc, BcIns *dstPc, Word *base,
 #endif
 }
 
+void Capability::setState(int state) {
+  switch (state) {
+  case STATE_INTERP:
+    dispatch_ = dispatch_normal_;
+    flags_.clear(kRecording);
+    break;
+  case STATE_RECORD:
+    dispatch_ = dispatch_record_;
+    flags_.set(kRecording);
+    break;
+  default:
+    cerr << "FATAL: setState invalid state: " << state << endl;
+    exit(EXIT_FAILURE);
+  }
+}
+
 void Capability::finishRecording() {
   // TODO: Install recorded trace if successful.
-  dispatch_ = dispatch_normal_;
-  flags_.clear(kRecording);
+  setState(STATE_INTERP);
 }
 
 static inline

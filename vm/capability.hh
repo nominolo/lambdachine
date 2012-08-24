@@ -37,6 +37,15 @@ public:
   inline Word *traceExitHp() const { return traceExitHp_; }
   inline Word *traceExitHpLim() const { return traceExitHpLim_; }
 
+  enum {
+    STATE_INTERP,
+    STATE_RECORD
+  };
+
+  // Sets interpreter state. Requires executing a SYNC instruction to
+  // take effect.
+  void setState(int state);
+
 private:
   typedef enum {
     kModeInit,
