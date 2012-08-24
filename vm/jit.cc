@@ -334,15 +334,6 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
       argref[i] = buf_.slot(*arg);
     }
 
-    if (nargs != code->arity) {
-      FuncInfoTable *itbl = ((FuncInfoTable *)info);
-      cerr << "NYI: Recording of non-exact applications (CALL)";
-      cerr << "  args=" << (int)ins->c() << "  arity="
-           << (int)itbl->code()->arity << "  name="
-           << itbl->name() << endl;
-      goto abort_recording;
-    }
-
     // See interpreter implementation for details.
     BcIns *returnPc = ins + 1 + BC_ROUND(nargs) + 1;
 
@@ -352,6 +343,10 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     for (int i = 0; i < nargs; ++i) {
       buf_.setSlot(i, argref[i]);
     }
+
+    uint32_t call_info = (uint32_t)nargs | ((uint32_t)ins->b() << 8);
+    if (!recordGenericApply(call_info, newbase, fnode, clos, code))
+      goto abort_recording;
 
     flags_.set(kLastInsWasBranch);
     break;

@@ -1025,6 +1025,10 @@ TEST_F(RunFileTest, TraceCall) {
   run("Bc.TraceCall");
 }
 
+TEST_F(RunFileTest, SumCall1) {
+  run("Bc.SumCall1");
+}
+
 TEST_F(RunFileTest, QuotRem) {
   run("Bc.QuotRem");
 }
