@@ -34,7 +34,7 @@ Time jit_time = 0;
 
 Jit::Jit()
   : cap_(NULL),
-    startPc_(NULL), startBase_(NULL),
+    startPc_(NULL), startBase_(NULL), parent_(NULL),
     flags_(), targets_(), fragments_(),
     prng_(), mcode_(&prng_), asm_(this) {
   memset(exitStubGroup_, 0, sizeof(exitStubGroup_));
@@ -53,6 +53,7 @@ void Jit::beginRecording(Capability *cap, BcIns *startPc, Word *base, bool isRet
   cap_ = cap;
   startPc_ = startPc;
   startBase_ = base;
+  parent_ = NULL;
   flags_.clear(kLastInsWasBranch);
   flags_.set(kIsReturnTrace, isReturn);
   buf_.reset(base, cap->currentThread()->top());
@@ -66,6 +67,7 @@ void Jit::beginSideTrace(Capability *cap, Word *base, Fragment *parent, SnapNo s
   cap_ = cap;
   startPc_ = snap.pc();
   startBase_ = base;
+  parent_ = parent;
   buf_.reset(base, cap->currentThread()->top());
   lastResult_ = TRef();
 
@@ -607,6 +609,25 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     // Nothing to do here.
     break;
 
+  case BcIns::kJFUNC: {
+    Fragment *parent = parent_;
+    Fragment *F = lookupFragment(ins);
+    while (parent) {
+      if (F == parent) {
+        cerr << COL_RED "Loop-back to parent found." COL_RESET "\n";
+        cerr << parent->traceId();
+        buf_.debugPrint(cerr, 1);
+        exit(7);
+        goto abort_recording;
+      }
+      parent = parent->parent_;
+    }
+    if (!parent) {
+      cerr << "NYI: Trace through JFUNC?\n";
+      goto abort_recording;
+    }
+  }
+
   default:
     cerr << "NYI: Recording of " << ins->name() << endl;
     goto abort_recording;
@@ -681,6 +702,7 @@ Fragment *Jit::saveFragment() {
   Fragment *F = new Fragment();
   F->traceId_ = fragments_.size();
   F->startPc_ = startPc_;
+  F->parent_ = parent_;
 
   F->numTargets_ = targets_.size();
   F->targets_ = new BcIns*[F->numTargets_];

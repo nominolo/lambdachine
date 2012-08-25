@@ -184,6 +184,7 @@ private:
   Capability *cap_;
   BcIns *startPc_;
   Word *startBase_;
+  Fragment *parent_;
   Flags32 flags_;
   TRef lastResult_;
   std::vector<BcIns*> targets_;
@@ -241,6 +242,7 @@ private:
   Flags32 flags_;
   uint32_t traceId_;
   BcIns *startPc_;
+  Fragment *parent_;
 
   BcIns **targets_;
   uint32_t numTargets_;
