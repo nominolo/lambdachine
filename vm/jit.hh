@@ -152,7 +152,11 @@ public:
 
   Fragment *traceAt(BcIns *pc) {
     Word idx = reinterpret_cast<Word>(pc) >> 2;
-    return fragments_[idx];
+    FRAGMENT_MAP::const_iterator it = fragments_.find(idx);
+    if (it != fragments_.end())
+      return it->second;
+    else
+      return NULL;
   }
 
   inline MachineCode *mcode() { return &mcode_; }
