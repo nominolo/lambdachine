@@ -338,6 +338,24 @@ typedef struct {
   uint8_t scale;	/* Index scale (XM_SCALE1 .. XM_SCALE8). */
 } x86ModRM;
 
+typedef struct {
+  uint8_t reg;
+  uint8_t spill;
+} RegSpill;
+
+#define MAX_PAR_MOVE_SIZE 256
+
+typedef RegSpill Temp;
+
+typedef struct {
+  RegSpill dest[MAX_PAR_MOVE_SIZE];
+  RegSpill source[MAX_PAR_MOVE_SIZE];
+  uint8_t status[MAX_PAR_MOVE_SIZE];
+  Temp temp[2];  // Use these temporary registers.
+  uint32_t nfreeTemps;
+  uint32_t size;
+} ParAssign;
+
 class Assembler {
 public:
   Assembler(Jit *);
@@ -451,6 +469,10 @@ public:
   void assemble(IRBuffer *, MachineCode *);
 
   typedef uint32_t ExitNo;
+
+  void transfer(RegSpill dst, RegSpill src, ParAssign *assign);
+  void moveOne(uint32_t i, ParAssign *assign);
+  void parallelAssign(ParAssign *assign);
 
 private:
   inline int32_t spillOffset(uint8_t spillSlot) const;

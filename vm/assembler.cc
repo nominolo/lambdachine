@@ -972,6 +972,115 @@ void Assembler::memstore(Reg base, int32_t ofs, IRRef ref, RegSet allow) {
   }
 }
 
+//
+// Parallel Assignment
+// ===================
+//
+
+enum {
+  PA_STATUS_TODO = 0,
+  PA_STATUS_MOVING = 1,
+  PA_STATUS_DONE = 2
+};
+
+static inline
+bool needsMoving(RegSpill dst, RegSpill src) {
+  return !((isReg(dst.reg) && dst.reg == src.reg) || 
+           (dst.spill != 0 && dst.spill == src.spill));
+}
+
+static inline
+bool conflicts(RegSpill candidate, RegSpill src) {
+  return candidate.reg == src.reg;  // FIXME: what about spills
+}
+
+static
+Reg freeUpTemp(Assembler *as, ParAssign *assign) {
+  cerr << "NYI: freeing up temp register.\n";
+  exit(2);
+}
+
+static inline Reg getTemp(Assembler *as, ParAssign *assign) {
+  if (assign->nfreeTemps > 0) {
+    --assign->nfreeTemps;
+    Reg r = assign->temp[assign->nfreeTemps].reg;
+    return r;
+  } else {    
+    return freeUpTemp(as, assign);
+  }
+}
+
+inline
+void releaseTemp(ParAssign *assign, Reg r) {
+  LC_ASSERT(assign->nfreeTemps < 2);
+  assign->temp[assign->nfreeTemps].reg = r;
+  ++assign->nfreeTemps;
+}
+
+void Assembler::transfer(RegSpill dst, RegSpill src, ParAssign *assign) {
+  if (isReg(dst.reg)) {
+    if (isReg(src.reg)) {
+      move(dst.reg, src.reg);
+    } else {
+      load_u64(dst.reg, RID_BASE, sizeof(Word) * src.spill);
+    }
+  } else {
+    if (isReg(src.reg))
+      store_u64(RID_BASE, sizeof(Word) * dst.spill, src.reg);
+    else {
+      Reg tmp = getTemp(this, assign);
+      store_u64(RID_BASE, sizeof(Word) * dst.spill, tmp);
+      load_u64(tmp, RID_BASE, sizeof(Word) * src.spill);
+      releaseTemp(assign, tmp);
+    }
+  }
+}
+
+void Assembler::moveOne(uint32_t i, ParAssign *assign) {
+  RegSpill dst = assign->dest[i];
+  RegSpill src = assign->source[i];
+  if (needsMoving(dst, src)) {
+    assign->status[i] = PA_STATUS_MOVING;
+    // We're trying to emit a write from src to dst. We're generating
+    // code backwards, so if we have yet to emit a store to the source,
+    // then we have to emit that first.
+    for (uint32_t j = 0; j < assign->size; ++j) {
+      if (conflicts(assign->dest[j], src) &&
+          assign->status[j] != PA_STATUS_DONE) {
+        if (assign->status[j] == PA_STATUS_TODO) {
+          // Emit the move for that one first.
+          moveOne(j, assign);
+        } else { // (status[j] == PA_STATUS_MOVING)
+          // We found a cyclic dependency.  Use a temporary register
+          // to break the cycle.
+          Reg tmp = getTemp(this, assign);
+          dst = assign->dest[j];
+          if (isReg(dst.reg))
+            move(dst.reg, tmp);
+          else
+            store_u64(RID_BASE, sizeof(Word) * dst.spill, tmp);
+          assign->dest[j].reg = tmp;
+        }
+      }
+    }
+    transfer(assign->dest[i], assign->source[i], assign);
+    assign->status[i] = PA_STATUS_DONE;
+  }
+}
+
+void Assembler::parallelAssign(ParAssign *assign) {
+  memset(assign->status, 0, sizeof(assign->status[0]) * assign->size);
+  for (uint32_t i = 0; i < assign->size; ++i) {
+    if (assign->status[i] == PA_STATUS_TODO)
+      moveOne(i, assign);
+  }
+}
+
+//
+// Exit Stubs
+// ==========
+//
+
 #define EXITSTUBS_PER_GROUP 32
 #define EXITSTUB_SPACING    (2+2)
 

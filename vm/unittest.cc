@@ -1350,6 +1350,170 @@ TEST_F(RegAlloc, SnapTwice) {
   Dump();
 }
 
+class ParallelAssignTest : public ::testing::Test {
+protected:
+  Jit *jit;
+  Assembler *as;
+ 
+protected:
+  virtual void SetUp() {
+    jit = new Jit();
+    as = jit->assembler();
+    as->setupMachineCode(jit->mcode());
+  }
+  virtual void TearDown() {
+    if (jit != NULL) delete jit; jit = NULL;
+    as = NULL;
+  }
+  void Dump() {
+    const ::testing::TestInfo* const test_info =
+      ::testing::UnitTest::GetInstance()->current_test_info();
+    ofstream out;
+    string filename("dump_ParAssign_");
+    filename += test_info->name();
+    filename += ".s";
+    out.open(filename.c_str());
+    jit->mcode()->dumpAsm(out);
+    out.close();
+  }
+};
+
+#define ASM_REG_TEST NAME_PREFIX "asmRegTest"
+
+typedef void (*Callback)();
+
+// Sets general purpose registers according to the `regs` argument
+// (which must be an array of size RID_NUM_GPR), then runs the
+// callback, and finally sets the contents of `regs` according to the
+// register state.  The callback must not modify the stack pointer.
+extern "C" void asmRegTest(Word *regs, Callback f);
+
+#if LAMBDACHINE_TARGET == LAMBDACHINE_ARCH_X64
+
+static void LC_USED
+asmRegTestIsImplementedInAssembly(Word *regs, Callback f) {
+  asm volatile(
+    ".globl " ASM_REG_TEST "\n"
+    ASM_REG_TEST ":\n\t"
+
+    /* save %rbp and also makes %rsp 16-byte aligned */
+    "push %%rbp\n\t"
+    "subq $64, %%rsp\n\t"
+    "movq %%rsi, 8(%%rsp)\n\t"  // save callback address
+    "movq %%rdi, 0(%%rsp)\n\t"  // save register state pointer
+    "movq %%rdi, %%rax\n\t"
+
+    // Save callee saved regs
+    "movq %%rbx, 16(%%rsp)\n\t"
+    "movq %%r12, 24(%%rsp)\n\t"
+    "movq %%r13, 32(%%rsp)\n\t"
+    "movq %%r14, 40(%%rsp)\n\t"
+    "movq %%r15, 48(%%rsp)\n\t"
+    
+    "movq 8(%%rax), %%rcx\n\t"
+    "movq 16(%%rax), %%rdx\n\t"
+    "movq 24(%%rax), %%rbx\n\t"
+    //    "movq 32(%%rax), %%rsp\n\t"
+    "movq 40(%%rax), %%rbp\n\t"
+    "movq 48(%%rax), %%rsi\n\t"
+    "movq 56(%%rax), %%rdi\n\t"
+    "movq 64(%%rax), %%r8\n\t"
+    "movq 72(%%rax), %%r9\n\t"
+    "movq 80(%%rax), %%r10\n\t"
+    "movq 88(%%rax), %%r11\n\t"
+    "movq 96(%%rax), %%r12\n\t"
+    "movq 104(%%rax), %%r13\n\t"
+    "movq 112(%%rax), %%r14\n\t"
+    "movq 120(%%rax), %%r15\n\t"
+    "movq 0(%%rax), %%rax\n\t"
+
+    "callq *8(%%rsp)\n\t"
+
+    "movq %%rax, 8(%%rsp)\n\t"
+    "movq 0(%%rsp), %%rax\n\t"
+
+    "movq %%rcx, 8(%%rax)\n\t"
+    "movq %%rdx, 16(%%rax)\n\t"
+    "movq %%rbx, 24(%%rax)\n\t"
+    //    "movq %%rsp, 32(%%rax)\n\t"
+    "movq %%rbp, 40(%%rax)\n\t"
+    "movq %%rsi, 48(%%rax)\n\t"
+    "movq %%rdi, 56(%%rax)\n\t"
+    "movq %%r8, 64(%%rax)\n\t"
+    "movq %%r9, 72(%%rax)\n\t"
+    "movq %%r10, 80(%%rax)\n\t"
+    "movq %%r11, 88(%%rax)\n\t"
+    "movq %%r12, 96(%%rax)\n\t"
+    "movq %%r13, 104(%%rax)\n\t"
+    "movq %%r14, 112(%%rax)\n\t"
+    "movq %%r15, 120(%%rax)\n\t"
+    "movq 8(%%rsp), %%rcx\n\t"
+    "movq %%rcx, 0(%%rax)\n\t"
+
+    // Restore callee saved regs
+    "movq 16(%%rsp), %%rbx\n\t"
+    "movq 24(%%rsp), %%r12\n\t"
+    "movq 32(%%rsp), %%r13\n\t"
+    "movq 40(%%rsp), %%r14\n\t"
+    "movq 48(%%rsp), %%r15\n\t"
+
+    "addq $64, %%rsp\n\t"
+    "popq %%rbp\n\t"
+    "ret\n\t"
+    : : );
+}
+
+#else
+# error "asmRegTest not implemented for target architecture."
+#endif
+
+TEST_F(ParallelAssignTest, testRegTest) {
+  as->ret();
+  as->move(RID_EAX, RID_EDI);
+  MCode *code = as->finish();
+  Word regs[RID_NUM_GPR];
+  regs[RID_EAX] = 0;
+  regs[RID_EDI] = 5;
+  asmRegTest(regs, (Callback)code);
+  EXPECT_EQ(5, regs[RID_EAX]);
+}
+
+TEST_F(ParallelAssignTest, testRegTest2) {
+  as->ret();
+  MCode *code = as->finish();
+  Word regs[RID_NUM_GPR];
+  for (int i = 0; i < RID_NUM_GPR; ++i) {
+    regs[i] = (1 + i) * 34 - i;
+  }
+  asmRegTest(regs, (Callback)code);
+  for (int i = 0; i < RID_NUM_GPR; ++i) {
+    EXPECT_EQ((1 + i) * 34 - i, regs[i]);
+  }
+}
+
+TEST_F(ParallelAssignTest, SwapRegs1) {
+  ParAssign pa;
+  pa.size = 2;
+  pa.nfreeTemps = 1;
+  pa.temp[0].reg = RID_ECX;
+  pa.dest[0].reg = RID_EAX; pa.dest[0].spill = 0;
+  pa.dest[1].reg = RID_EBX; pa.dest[1].spill = 0;
+  pa.source[0].reg = RID_EBX; pa.source[0].spill = 0;
+  pa.source[1].reg = RID_EAX; pa.source[1].spill = 0;
+  as->ret();
+  as->parallelAssign(&pa);
+  MCode *code = as->finish();
+
+  Dump();
+
+  Word regs[RID_NUM_GPR];
+  regs[RID_EAX] = 5;
+  regs[RID_EBX] = 10;
+  asmRegTest(regs, (Callback)code);
+  EXPECT_EQ(10, regs[RID_EAX]);
+  EXPECT_EQ(5, regs[RID_EBX]);
+}
+
 class TestFragment : public ::testing::Test {
 protected:
   MemoryManager mm;
