@@ -136,6 +136,17 @@ void MachineCode::protect(int prot) {
   }
 }
 
+MCode *MachineCode::patchBegin(MCode *ptr) {
+  LC_ASSERT(area_ <= ptr && ptr < area_ + size_);
+  protect(MCPROT_GEN);
+  return area_;
+}
+
+void MachineCode::patchFinish(MCode *area) {
+  LC_ASSERT(area == area_);
+  protect(MCPROT_RUN);
+}
+
 void MachineCode::syncCache(void *start, void *end) {
 #ifdef LUAJIT_USE_VALGRIND
   VALGRIND_DISCARD_TRANSLATIONS(start, (char *)end - (char *)start);

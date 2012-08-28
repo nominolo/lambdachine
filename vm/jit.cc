@@ -32,19 +32,29 @@ Time jit_time = 0;
 #define DBG(stmt) do {} while(0)
 #endif
 
+FRAGMENT_MAP Jit::fragmentMap_;
+std::vector<Fragment *> Jit::fragments_;
+
+void Jit::resetFragments() {
+  for (size_t i = 0; i < fragments_.size(); ++i) {
+    delete fragments_[i];
+  }
+  fragments_.clear();
+  fragmentMap_.clear();
+}
+
 Jit::Jit()
   : cap_(NULL),
     startPc_(NULL), startBase_(NULL), parent_(NULL),
-    flags_(), targets_(), fragments_(),
+    flags_(), targets_(),
     prng_(), mcode_(&prng_), asm_(this) {
+  Jit::resetFragments();
   memset(exitStubGroup_, 0, sizeof(exitStubGroup_));
+  resetRecorderState();
 }
 
 Jit::~Jit() {
-  for (FRAGMENT_MAP::iterator it = fragments_.begin();
-       it != fragments_.end(); ++it) {
-    delete it->second;
-  }
+  Jit::resetFragments();
 }
 
 void Jit::beginRecording(Capability *cap, BcIns *startPc, Word *base, bool isReturn) {
@@ -54,6 +64,7 @@ void Jit::beginRecording(Capability *cap, BcIns *startPc, Word *base, bool isRet
   startPc_ = startPc;
   startBase_ = base;
   parent_ = NULL;
+  parentExitNo_ = ~0;
   flags_.clear(kLastInsWasBranch);
   flags_.set(kIsReturnTrace, isReturn);
   buf_.reset(base, cap->currentThread()->top());
@@ -63,16 +74,22 @@ void Jit::beginRecording(Capability *cap, BcIns *startPc, Word *base, bool isRet
 void Jit::beginSideTrace(Capability *cap, Word *base, Fragment *parent, SnapNo snapno) {
   LC_ASSERT(cap_ == NULL);
   LC_ASSERT(targets_.size() == 0);
+  LC_ASSERT(cap != NULL);
+  resetRecorderState();
   Snapshot &snap = parent->snap(snapno);
   cap_ = cap;
   startPc_ = snap.pc();
   startBase_ = base;
   parent_ = parent;
+  parentExitNo_ = snapno;
   buf_.reset(base, cap->currentThread()->top());
+  buf_.parent_ = parent;
   lastResult_ = TRef();
 
+  uint32_t numParentSlots = 0;
   SnapshotData *snapmap = &parent->snapmap_;
   int relbase = snap.relbase();
+
   for (Snapshot::MapRef i = snap.begin(); i < snap.end(); ++i) {
     int slot = snapmap->slotId(i) - relbase;
     int ref = snapmap->slotRef(i);
@@ -82,20 +99,26 @@ void Jit::beginSideTrace(Capability *cap, Word *base, Fragment *parent, SnapNo s
       uint64_t k = parent->literalValue(ref, base);
       TRef tref;
       if (ins->opcode() == IR::kKBASEO) {
-        tref = buf_.baseLiteral((Word*)k);
+        tref = buf_.baseLiteral((Word *)k);
       } else {
         tref = buf_.literal(ins->type(), k);
       }
       buf_.setSlot(slot, tref);
     } else {
-      //      exit(7);
+      buf_.parentmap_[numParentSlots++] =
+        (uint16_t)ins->prev(); // really: reg + spill
+      TRef tref = buf_.emitRaw(IRT(IR::kSLOAD, ins->type()),
+                               buf_.slots_.absolute(slot),
+                               IR_SLOAD_INHERIT);
+      buf_.setSlot(slot, tref);
     }
   }
+  buf_.stopins_ = REF_FIRST + numParentSlots;
+  buf_.entry_relbase_ = relbase;
 
   buf_.debugPrint(cerr, 0);
   buf_.slots_.debugPrint(cerr);
 
-  resetRecorderState();
   //  exit(1);
 }
 
@@ -220,8 +243,8 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
       DBG(cerr << "REC: Loop to entry detected." << endl
           << "  Loop: " << startPc_ << endl);
       DBG(for (size_t i = 0; i < targets_.size(); ++i) {
-          cerr << "    " << targets_[i] << endl;
-        });
+      cerr << "    " << targets_[i] << endl;
+      });
       if (lastResult_.ref() != 0) {
         cerr << "NYI: Pending return result. Cannot compile trace." << endl;
         goto abort_recording;
@@ -233,15 +256,15 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     } else if (targets_.size() <= 100) {
       // Really, we should do false loop filtering.
       if (ins != MiscClosures::stg_UPD_return_pc) {
-      // Try to find inner loop.
-      
+        // Try to find inner loop.
+
         for (size_t i = 0; i < targets_.size(); ++i) {
           if (targets_[i] == ins) {
             DBG(cerr << COL_GREEN << "REC: Inner loop. " << buf_.pc_ << COL_RESET
                 << "\n  Loop: " << startPc_ << endl);
             DBG(for (size_t i = 0; i < targets_.size(); ++i) {
-              cerr << "    " << targets_[i] << endl;
-              });
+            cerr << "    " << targets_[i] << endl;
+            });
             cerr << "NYI: False loop filtering or trace truncation.\n";
             // TODO: Truncate.
             goto abort_recording;
@@ -269,6 +292,8 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
 
   // This is overwritten by branch instructions.
   flags_.clear(kLastInsWasBranch);
+
+  LC_ASSERT(cap_ != NULL);
 
   switch (ins->opcode()) {
   case BcIns::kIFUNC:
@@ -577,7 +602,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     const uint8_t *args = (const uint8_t *)(ins + 1);
 
     buf_.emitHeapCheck(1 + nfields);
-    
+
     // Make sure we have a ref for each field before emitting the NEW.
     // This may emit SLOAD instructions, so make sure those occur
     // before the NEW.
@@ -614,9 +639,13 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     Fragment *F = lookupFragment(ins);
     while (parent) {
       if (F == parent) {
-        cerr << COL_RED "Loop-back to parent found." COL_RESET "\n";
-        cerr << parent->traceId();
+        cerr << COL_RED "Loop-back to parent ("
+             << parent->traceId() << ") found." COL_RESET "\n";
+        buf_.emit(IR::kSAVE, IRT_VOID | IRT_GUARD, IR_SAVE_LINK,
+                  parent->traceId());
         buf_.debugPrint(cerr, 1);
+        finishRecording();
+        return true;
         exit(7);
         goto abort_recording;
       }
@@ -658,22 +687,24 @@ void Jit::finishRecording() {
 
   int tno = fragments_.size();
 
-  DBG({
-  ofstream out;
-  stringstream filename;
-  filename << "dump_Trace_" << (int)tno << ".s";
-  out.open(filename.str().c_str());
-  mcode()->dumpAsm(out);
-  out.close();
-    });
-
-  //  exit(2);
-
   Fragment *F = saveFragment();
 
   registerFragment(startPc_, F);
   *startPc_ = BcIns::ad(BcIns::kJFUNC, 0, tno);
   resetRecorderState();
+
+  if (parent_ != NULL) {
+    asm_.patchGuard(parent_, parentExitNo_, F->entry());
+  }
+
+  DBG( {
+    ofstream out;
+    stringstream filename;
+    filename << "dump_Trace_" << (int)tno << ".s";
+    out.open(filename.str().c_str());
+    mcode()->dumpAsm(out);
+    out.close();
+  });
 
   jit_time += getProcessElapsedTime() - compilestart;
 }
@@ -802,7 +833,8 @@ Word *traceDebugLastHp = NULL;
 void Fragment::restoreSnapshot(ExitNo exitno, ExitState *ex) {
   Word *spill = ex->spill;
   LC_ASSERT(0 <= exitno && exitno < nsnaps_);
-  DBG(cerr << "Restoring from snapshot " << (int)exitno << endl);
+  DBG(cerr << "Restoring from snapshot " << (int)exitno
+      << " of Trace " << traceId() << endl);
   Snapshot &sn = snap(exitno);
   IR *snapins = ir(sn.ref());
   Word *base = (Word *)ex->gpr[RID_BASE];

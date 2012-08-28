@@ -1045,6 +1045,10 @@ TEST_F(RunFileTest, Side0001) {
   run("Bc.Side0001");
 }
 
+TEST_F(RunFileTest, Side0002) {
+  run("Bc.Side0002");
+}
+
 TEST(HotCounters, Simple) {
   HotCounters counters(5);
   BcIns pc[] = { BcIns::ad(BcIns::kFUNC, 3, 0) };
@@ -1106,7 +1110,7 @@ protected:
   }
   Word *RunAsm() {
     Word *base = T->base();
-    asmEnter(NULL, T, spill, NULL, NULL, T->stackLimit(), jit->mcode()->start());
+    asmEnter(TRACE_ID_NONE, T, spill, NULL, NULL, T->stackLimit(), jit->mcode()->start());
     return base;
   }
   virtual Word *Run(Word arg1, Word arg2) {
@@ -1538,8 +1542,9 @@ public:
 
   virtual void TearDown() {
     if (T) delete T; T = NULL;
-    if (F) delete F; F = NULL;
+    F = NULL;
     buf = NULL;
+    Jit::resetFragments();
   }
 
   void Assemble() {
@@ -1548,6 +1553,7 @@ public:
     as->assemble(buf, jit.mcode());
     buf->debugPrint(cerr, 1);
     F = jit.saveFragment();
+    Jit::registerFragment(NULL, F);
     Dump();
   }
 
@@ -1565,61 +1571,17 @@ public:
 
   void Run() {
     Word *base = T->base();
-    asmEnter(F, T, base + F->spillOffset(), NULL, NULL,
+    asmEnter(F->traceId(), T, base + F->spillOffset(), NULL, NULL,
              T->stackLimit(), F->entry());
   }
 
   void RunWithHeap(Word *hp, Word *hplim) {
     Word *base = T->base();
-    asmEnter(F, T, base + F->spillOffset(), hp, hplim,
+    asmEnter(F->traceId(), T, base + F->spillOffset(), hp, hplim,
              T->stackLimit(), F->entry());
   }
 };
 
-TEST(TestFragment2, TestFragment2) {
-  MemoryManager mm;
-  Loader loader(&mm, "tests");
-  Capability cap(&mm);
-  Thread *T = Thread::createThread(&cap, 1000);
-  Jit jit;
-  IRBuffer *buf = jit.buffer();
-  Word stack[200];
-  buf->reset(&stack[10], &stack[18]);
-  //  buf->disableOptimisation(IRBuffer::kOptFold);
-
-  TRef tr1 = buf->slot(0);
-  TRef tr2 = buf->literal(IRT_I64, 5);
-  TRef tr3 = buf->emit(IR::kADD, IRT_I64, tr1, tr2);
-  buf->setSlot(0, tr3);
-  buf->setSlot(1, tr2);
-  buf->emit(IR::kLT, IRT_VOID|IRT_GUARD, tr1, tr2);
-  TRef tr4 = buf->emit(IR::kADD, IRT_I64, tr3, tr2);
-  TRef tr5 = buf->baseLiteral(&stack[12]);
-  buf->setSlot(0, tr4);
-  buf->setSlot(1, tr5);
-  buf->emit(IR::kSAVE, IRT_VOID|IRT_GUARD, 0, 0);
-
-  buf->debugPrint(cerr, 1);
-  Assembler *as = jit.assembler();
-  as->assemble(buf, jit.mcode());
-  buf->debugPrint(cerr, 1);
-  Fragment *F = jit.saveFragment();
-
-  Word *base = T->base();
-  // Should abort at the first guard.
-  base[0] = 10;
-  base[1] = 0;
-  asmEnter(F, T, base + 10, NULL, NULL, T->stackLimit(), F->entry());
-  EXPECT_EQ(15, base[0]);
-  EXPECT_EQ(5, base[1]);
-
-  // Should run to the end.
-  base[0] = 4;
-  base[1] = 0;
-  asmEnter(F, T, base + 10, NULL, NULL, T->stackLimit(), F->entry());
-  EXPECT_EQ(14, base[0]);
-  EXPECT_EQ((Word)(base + 2), base[1]);
-}
 
 TEST_F(TestFragment, Test1) {
   TRef tr1 = buf->slot(0);

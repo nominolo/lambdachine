@@ -92,6 +92,16 @@ public:
   void commitStub(MCode *bot);
   void abort();
 
+  /// Reserves the machine code area containing the given pointer.
+  /// Used to modify existing machine code (e.g., for trace linking).
+  ///
+  /// Returns a pointer to the beginning of the reserved area.
+  MCode *patchBegin(MCode *ptr);
+
+  /// Finish patching machine code.  The pointer argument should be
+  /// the result of the matching patchBegin call.
+  void patchFinish(MCode *area);
+
   // Synchronise data and instruction cache.
   void syncCache(void *start, void *end);
 
@@ -131,7 +141,9 @@ class Capability;
 class Fragment;
 
 #define FRAGMENT_MAP \
-  HASH_NAMESPACE::HASH_MAP_CLASS<Word,Fragment*>
+  HASH_NAMESPACE::HASH_MAP_CLASS<Word,TraceId>
+
+#define TRACE_ID_NONE  (~0)
 
 class Jit {
 public:
@@ -150,13 +162,12 @@ public:
 
   inline bool isRecording() const { return cap_ != NULL; }
 
-  Fragment *traceAt(BcIns *pc) {
-    Word idx = reinterpret_cast<Word>(pc) >> 2;
-    FRAGMENT_MAP::const_iterator it = fragments_.find(idx);
-    if (it != fragments_.end())
-      return it->second;
-    else
-      return NULL;
+  // Returns the fragment starting at the given PC. NULL, otherwise.
+  inline Fragment *traceAt(BcIns *pc);
+
+  static inline Fragment *traceById(TraceId traceId) {
+    LC_ASSERT(traceId < fragments_.size());
+    return fragments_[traceId];
   }
 
   inline MachineCode *mcode() { return &mcode_; }
@@ -166,20 +177,18 @@ public:
   Fragment *saveFragment();
   Fragment *lookupFragment(BcIns *pc) {
     Word idx = reinterpret_cast<Word>(pc) >> 2;
-    return fragments_[idx];
+    return fragments_[fragmentMap_[idx]];
   }
 
   inline void setDebugTrace(bool val) { flags_.set(kDebugTrace, val); }
+  static inline void registerFragment(BcIns *startPc, Fragment *F);
+  static void resetFragments();
 
 private:
   Word *pushFrame(Word *base, BcIns *returnPc, TRef noderef,
                   uint32_t framesize);
   void finishRecording();
   void resetRecorderState();
-  void registerFragment(BcIns *startPc, Fragment *F) {
-    Word idx = reinterpret_cast<Word>(startPc) >> 2;
-    fragments_[idx] = F;
-  }
   
   static const int kLastInsWasBranch = 0;
   static const int kIsReturnTrace = 1;
@@ -189,15 +198,18 @@ private:
   BcIns *startPc_;
   Word *startBase_;
   Fragment *parent_;
+  ExitNo parentExitNo_;
   Flags32 flags_;
   TRef lastResult_;
   std::vector<BcIns*> targets_;
-  FRAGMENT_MAP fragments_;
   Prng prng_;
   MachineCode mcode_;
   IRBuffer buf_;
   Assembler asm_;
   MCode *exitStubGroup_[16];
+
+  static FRAGMENT_MAP fragmentMap_;
+  static std::vector<Fragment*> fragments_;
 
   void genCode(IRBuffer *buf);
   void genCode(IRBuffer *buf, IR *ir);
@@ -205,7 +217,15 @@ private:
   friend class Assembler;
 };
 
-typedef uint32_t ExitNo;
+inline Fragment *Jit::traceAt(BcIns *pc) {
+  Word idx = reinterpret_cast<Word>(pc) >> 2;
+  FRAGMENT_MAP::const_iterator it = fragmentMap_.find(idx);
+  if (it != fragmentMap_.end())
+    return fragments_[it->second];
+  else
+    return NULL;
+}
+
 typedef struct _ExitState ExitState; // architecture-specific.
 
 class Fragment {
@@ -232,14 +252,15 @@ public:
 
   ~Fragment();
 
-private:
-  Fragment();
-
-  inline IR *ir(IRRef ref) { return &buffer_[ref]; }
   inline Snapshot &snap(SnapNo n) {
     LC_ASSERT(n < nsnaps_);
     return snaps_[n];
   }
+
+private:
+  Fragment();
+
+  inline IR *ir(IRRef ref) { return &buffer_[ref]; }
 
   static const int kIsCompiled = 1;
 
@@ -267,6 +288,13 @@ private:
   friend class Jit;
 };
 
+inline void Jit::registerFragment(BcIns *startPc, Fragment *F) {
+  LC_ASSERT(F->traceId() == fragments_.size());
+  fragments_.push_back(F);
+  Word idx = reinterpret_cast<Word>(startPc) >> 2;
+  fragmentMap_[idx] = F->traceId();
+}
+
 /* This definition must match the asmEnter/asmExit functions */
 struct _ExitState {
   double   fpr[RID_NUM_FPR];    /* Floating-point registers. */
@@ -275,12 +303,14 @@ struct _ExitState {
   Word     *stacklim;           /* Stack Limit */
   Word     *spill;              /* Spill slots. */
   Thread   *T;                  /* Currently executing thread */
-  Fragment *F;                  /* Fragment under execution */
+  TraceId  F_id;                /* Fragment under execution */
+  uint32_t unused;              // Padding
 };
 
 #define HPLIM_SP_OFFS  0
+#define F_ID_OFFS  (4 * sizeof(Word))
 
-extern "C" void asmEnter(Fragment *F, Thread *T, Word *spillArea,
+extern "C" void asmEnter(TraceId F_id, Thread *T, Word *spillArea,
                          Word *hp, Word *hplim, Word *stacklim, MCode *code);
 
 extern "C" void asmExit(int);

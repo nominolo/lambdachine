@@ -11,7 +11,10 @@ typedef struct _Thread Thread;
 class Capability;
 class BcIns;
 class Jit;  // Forward decl.
+class Fragment;
 typedef char MCode;
+typedef uint32_t ExitNo;
+typedef uint32_t TraceId;
 
 _END_LAMBDACHINE_NAMESPACE
 

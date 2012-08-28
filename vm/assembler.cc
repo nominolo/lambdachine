@@ -69,6 +69,7 @@ void Assembler::setup(IRBuffer *buf) {
   spill_ = 1;
   curins_ = buf->bufmax_;
   nins_ = buf->bufmax_;
+  stopins_ = buf->stopins_;
 
   // Initialise reg/spill fields for constants.
   for (IRRef i = buf->bufmin_; i < REF_BIAS; ++i) {
@@ -80,8 +81,16 @@ void Assembler::setup(IRBuffer *buf) {
   // succeed.
   ir(REF_BASE)->setPrev(REGSP_HINT(RID_BASE));
 
+  // Initialise hints for loads from parent.
+  uint32_t p = 0;
+  uint16_t *parentmap = buf_->parentmap_;
+  for (IRRef i = REF_FIRST; i < stopins_; ++i, ++p) {
+    if (isReg(parentmap[p]))
+      setHint(ir(i), getHint(parentmap[p]));
+  }
+
   // Initialise ref/spill fields for regular instructions.
-  for (IRRef i = REF_FIRST; i < nins_; ++i) {
+  for (IRRef i = stopins_; i < nins_; ++i) {
     IR *ins = ir(i);
     // TODO: For bit shifting operations we have force non-constant
     // arguments to be allocated into ecx.
@@ -631,14 +640,99 @@ void Assembler::divmod(IR *ins, DivModOp op, bool useSigned) {
   allocLeft(RID_EAX, ins->op1());
 }
 
-void Assembler::prepareTail(IRBuffer *buf) {
+bool Assembler::mergeWithParent() {
+  // 1. Construct parallel assignment data.
+  uint32_t p;
+  uint16_t *parentmap = buf_->parentmap_;
+  RegSet parmoves = RegSet();
+  RegSet allow = kGPR.intersect(freeset_.complement());
+  ParAssign pa;
+  uint32_t moves = 0;
+  IRRef i;
+  for (i = REF_FIRST, p = 0; i < stopins_; ++i, ++p) {
+    IR *ins = ir(i);
+    if (!isReg(parentmap[p])) {
+      cerr << "NYI: spilled parent slot.\n";
+      return false;
+    }
+    Reg pr = parentmap[p] & RID_MASK;
+    LC_ASSERT(ins->opcode() == IR::kSLOAD);
+
+    Reg r = RID_NONE;
+    // a. Make sure we have a register allocated to the instruction.
+    if (isReg(ins->reg())) {
+      r = ins->reg();
+    } else {
+      if (allow.isEmpty()) {
+        cerr << "NYI: parent merge with too few registers.\n";
+        return false;
+      }
+      setHint(ins, pr);  // Ensure we have a hint.
+      r = allocRef(i, allow);
+      saveReg(ins, r);
+    }
+    allow.clear(r);
+    parmoves.set(r);
+    if (r != pr) {
+      pa.dest[moves].reg = r;
+      pa.dest[moves].spill = 0;
+      pa.source[moves].reg = pr;
+      pa.source[moves].spill = 0;
+      ++moves;
+    }
+  }
+
+  if (moves > 0) {
+    if (allow.isEmpty()) {
+      cerr << "NYI: Parallel move with no temporary available.\n";
+      return false;
+    }
+    pa.temp[0].reg = allocScratchReg(allow);
+    pa.temp[0].spill = 0;
+    pa.nfreeTemps = 1;
+    parallelAssign(&pa);
+  }
+
+  freeset_ = freeset_.setunion(parmoves);
+
+  return true;
+}
+
+// Adjust the Trace ID to the new target:
+//
+//     movl <TraceId>, <F_ID_OFFS>(%rsp)
+//
+// This requires 8 bytes:
+//
+//     c7 44 24 20 34 12 00 00     movl   $0x1234,0x20(%rsp)
+//
+// Note: It is NOT possible to use a 5 byte encoding if the trace
+// ID is < 128.  The opcode that takes an 8 bit immediate only
+// writes one byte, rather than four.
+//
+static inline
+MCode *emitSetTraceId(MCode *p, TraceId traceId) {
+  p[-8] = XI_MOVmi;
+  p[-7] = 0x44; // ModRM byte
+  p[-6] = 0x24; // SIB byte
+  p[-5] = (int8_t)F_ID_OFFS;
+  *(int32_t *)(p - 4) = (int32_t)traceId;
+  p -= 8;
+  return p;
+}
+
+void Assembler::prepareTail(IRBuffer *buf, IRRef saveref) {
   MCode *p = mctop;
-  IRRef saveref = buf->chain_[IR::kSAVE];
   if (saveref && ir(saveref)->op1()) {
     // The SAVE instruction loops back somewhere.  Reserve space for
     // the JMP instruction.
     p -= 5;
+    if (ir(saveref)->op1() == IR_SAVE_LINK) {
+      // We also need space for indicating that we're moving to a different trace.
+      p -= 8;
+    }
   }
+
   if (jit()->flags_.get(Jit::kDebugTrace)) {
     // Reserve space for CALL to asmTrace
     p -= 5;
@@ -646,12 +740,16 @@ void Assembler::prepareTail(IRBuffer *buf) {
   mcp = p;
 }
 
-void Assembler::fixupTail(MCode *target) {
+void Assembler::fixupTail(MCode *target, IRRef saveref) {
   MCode *p = mctop;
   if (target != NULL) {
     *(int32_t *)(p - 4) = jmprel(p, target);
     p[-5] = XI_JMP;
     p -= 5;
+  }
+  if (saveref && ir(saveref)->op1() == IR_SAVE_LINK) {
+    uint32_t traceId = ir(saveref)->op2();
+    p = emitSetTraceId(p, traceId);
   }
   if (jit()->flags_.get(Jit::kDebugTrace)) {
     *(int32_t *)(p - 4) = jmprel(p, (MCode *)(void *)&asmTrace);
@@ -662,17 +760,18 @@ void Assembler::fixupTail(MCode *target) {
 void Assembler::assemble(IRBuffer *buf, MachineCode *mcode) {
   RA_DBG_START();
 
+  IRRef saveref = buf->chain_[IR::kSAVE];
+
   setup(buf);
   setupMachineCode(mcode);
   setupExitStubs(buf->numSnapshots(), mcode);
 
   curins_ = nins_;
-  IRRef stopins = REF_BASE;
   snapno_ = buf->numSnapshots() - 1;
 
-  prepareTail(buf);
+  prepareTail(buf, saveref);
 
-  for (curins_--; curins_ > stopins; curins_--) {
+  for (curins_--; curins_ >= stopins_; curins_--) {
     IR *ins = ir(curins_);
     if (ins->isGuard()) {
       Snapshot &snap = buf->snap(snapno_);
@@ -691,12 +790,36 @@ void Assembler::assemble(IRBuffer *buf, MachineCode *mcode) {
 
   evictConstants();
 
-  MCode *target = NULL;
-  IRRef saveref = buf->chain_[IR::kSAVE];
-  if (saveref && ir(saveref)->op1()) {
-    target = mcp;
+  TraceId thisTraceId = Jit::fragments_.size();
+  if (stopins_ != REF_FIRST) {
+    buf->setRegsAllocated();
+    buf->debugPrint(cerr, thisTraceId);
+    if (!mergeWithParent()) {
+      exit(3);
+    }
   }
-  fixupTail(target);
+
+  if (buf_->parent_ != NULL) {
+    // If this is a side trace, update the trace id.
+    mcp = emitSetTraceId(mcp, thisTraceId);
+    if (buf_->entry_relbase_ != 0) {
+      adjustBase(buf_->entry_relbase_);
+    }
+  }
+
+
+  MCode *target = NULL;
+  if (saveref && ir(saveref)->op1() != IR_SAVE_FALLTHROUGH) {
+    int save_type = ir(saveref)->op1();
+    if (save_type == IR_SAVE_LOOP) {
+      target = mcp;
+    } else if (save_type == IR_SAVE_LINK) {
+      Fragment *parent = jit()->traceById(ir(saveref)->op2());
+      LC_ASSERT(parent != NULL);
+      target = parent->entry();
+    }
+  }
+  fixupTail(target, saveref);
 
   buf->setRegsAllocated();
   // TODO: Save to trace fragment
@@ -757,11 +880,24 @@ static const uint16_t asm_compmap[IR::kNE - IR::kLT + 1] = {
 
 void Assembler::guardcc(int cc) {
   MCode *target = exitstubAddr(snapno_);
+  Snapshot &snap = buf_->snap(snapno_);
   MCode *p = mcp;
   *(int32_t *)(p - 4) = jmprel(p, target);
   p[-5] = (MCode)(XI_JCCn + (cc & 15));
   p[-6] = 0x0f;
   mcp = p - 6;
+  snap.mcode_ = mcp;
+}
+
+void Assembler::patchGuard(Fragment *F, ExitNo exitno, MCode *target) {
+  Snapshot &snap = F->snap(exitno);
+  MCode *p = snap.mcode_;
+  MCode *area = jit()->mcode()->patchBegin(p);
+  LC_ASSERT(p[0] == (MCode)0x0f);
+  LC_ASSERT(p[1] >= (MCode)XI_JCCn);
+  LC_ASSERT(p[1] <= (MCode)(XI_JCCn + 15));
+  *(int32_t *)(p + 2) = jmprel(p + 6, target);
+  jit()->mcode()->patchFinish(area);
 }
 
 void Assembler::compare(IR *ins, int cc) {
@@ -920,15 +1056,21 @@ void Assembler::snapshotAlloc(Snapshot &snap, SnapshotData *snapmap) {
   }
 }
 
+void Assembler::adjustBase(int32_t relbase) {
+  RA_DBGX((this, "<<base += $x words>>", relbase));
+  // TODO: Use LEA?
+  emit_gri(XG_ARITHi(XOg_ADD), RID_BASE | REX_64, relbase * sizeof(Word));
+}
+
 void Assembler::save(IR *ins) {
   LC_ASSERT(ins->opcode() == IR::kSAVE);
   SnapNo snapno = snapno_;
-  int loop = ins->op1(); // A boolean really.
+  int loop = ins->op1();  // IR_SAVE_*
   Snapshot &snap = buf_->snap(snapno);
   SnapshotData *snapmap = buf_->snapmap();
   int relbase = snap.relbase();
 
-  if (!loop)
+  if (loop == IR_SAVE_FALLTHROUGH)
     exitTo(snapno);
 
   // Adjust base pointer if necessary.
@@ -936,9 +1078,7 @@ void Assembler::save(IR *ins) {
     if (relbase > 0) {
       // TODO: Stack check (done after adjusting BASE)
     }
-    RA_DBGX((this, "<<base += $x words>>", relbase));
-    // TODO: Use LEA?
-    emit_gri(XG_ARITHi(XOg_ADD), RID_BASE | REX_64, relbase * sizeof(Word));
+    adjustBase(relbase);
   }
 
   for (Snapshot::MapRef se = snap.begin(); se != snap.end(); ++se) {
@@ -985,7 +1125,7 @@ enum {
 
 static inline
 bool needsMoving(RegSpill dst, RegSpill src) {
-  return !((isReg(dst.reg) && dst.reg == src.reg) || 
+  return !((isReg(dst.reg) && dst.reg == src.reg) ||
            (dst.spill != 0 && dst.spill == src.spill));
 }
 
@@ -1005,7 +1145,7 @@ static inline Reg getTemp(Assembler *as, ParAssign *assign) {
     --assign->nfreeTemps;
     Reg r = assign->temp[assign->nfreeTemps].reg;
     return r;
-  } else {    
+  } else {
     return freeUpTemp(as, assign);
   }
 }

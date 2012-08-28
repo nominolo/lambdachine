@@ -178,7 +178,7 @@ void IRBuffer::debugPrint(ostream &out, int traceNo) {
 
 IRBuffer::IRBuffer()
   : realbuffer_(NULL), flags_(), size_(1024), slots_(),
-    snapmap_(), snaps_(), heap_() {
+    snapmap_(), snaps_(), heap_(), parent_(NULL) {
   reset(NULL, NULL);
 }
 
@@ -204,6 +204,9 @@ void IRBuffer::reset(Word *base, Word *top) {
   buffer_ = biasBuffer(realbuffer_, nliterals);
   bufmin_ = REF_BIAS;
   bufmax_ = REF_BASE;
+
+  stopins_ = REF_FIRST;
+  parent_ = NULL;
 
   flags_.clear();
   flags_.set(kOptCSE);
@@ -463,6 +466,7 @@ void AbstractStack::snapshot(Snapshot *snap, SnapshotData *snapmap,
   snap->framesize_ = top_ - base_;
   snap->exitCounter_ = HOT_SIDE_EXIT_THRESHOLD;
   snap->pc_ = pc;
+  snap->mcode_ = NULL;
 
   snapmap->index_ = ofs;
 }
@@ -507,6 +511,7 @@ void Snapshot::debugPrint(ostream &out, SnapshotData *snapmap, SnapNo snapno) {
       if (nl) out << "\n           ";
       if (printslotid)
         out << COL_BLUE << slotid << ':' << COL_RESET;
+      if (slotid == relbase_) out << '|';
       if (snapmap->slotId(ofs) == slotid) {
         IR::printIRRef(out, snapmap->slotRef(ofs));
         ++ofs;

@@ -8,7 +8,6 @@
 _START_LAMBDACHINE_NAMESPACE
 
 // Forward declarations.
-class Jit;
 class MachineCode;
 
 #define GPRDEF(_) \
@@ -465,14 +464,16 @@ public:
   void emit(IR *ins);
   void save(IR *ins);
   void memstore(Reg base, int32_t ofs, IRRef ref, RegSet allow);
+  void patchGuard(Fragment *, ExitNo, MCode *target);
+  void adjustBase(int32_t relbase);
 
   void assemble(IRBuffer *, MachineCode *);
-
-  typedef uint32_t ExitNo;
 
   void transfer(RegSpill dst, RegSpill src, ParAssign *assign);
   void moveOne(uint32_t i, ParAssign *assign);
   void parallelAssign(ParAssign *assign);
+
+  bool mergeWithParent();
 
 private:
   inline int32_t spillOffset(uint8_t spillSlot) const;
@@ -482,8 +483,8 @@ private:
   MCode *exitstubAddr(ExitNo);
   void emitSLOAD(IR *);
   void exitTo(SnapNo);
-  void prepareTail(IRBuffer *buf);
-  void fixupTail(MCode *target);
+  void prepareTail(IRBuffer *buf, IRRef saveref);
+  void fixupTail(MCode *target, IRRef saveref);
   /// Allocate a register for ref from the allowed set of registers.
   /// 
   /// Note: This function assumes that the ref does NOT have a
@@ -576,6 +577,7 @@ private:
   IRBuffer *buf_;
   IRRef nins_;
   IRRef curins_;
+  IRRef stopins_;
   SnapNo snapno_;
 
   RegSet freeset_;  // Free registers

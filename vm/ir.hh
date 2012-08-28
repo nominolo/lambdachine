@@ -82,7 +82,7 @@ typedef u4 IRRef;               /* Used to pass around references */
   _(NEW,     A,   ref, lit) \
   _(FSTORE,  S,   ref, ref) \
   _(UPDATE,  S,   ref, ref) \
-  _(SAVE,    S,   lit, ___)
+  _(SAVE,    S,   lit, lit)
 /*
  * LuaJIT IR
  *
@@ -307,7 +307,12 @@ private:
   IRIns data_;
 };
 
+#define IR_SAVE_FALLTHROUGH  0
 #define IR_SAVE_LOOP  1
+#define IR_SAVE_LINK  2
+
+#define IR_SLOAD_DEFAULT 0
+#define IR_SLOAD_INHERIT 1
 
 #define irmode_left(mode) ((uint8_t)(mode) & 3)
 #define irmode_right(mode) (((uint8_t)(mode) >> 2) & 3)
@@ -448,7 +453,9 @@ private:
   uint16_t exitCounter_;
   uint16_t unused;
   void *pc_;
+  MCode *mcode_;
   friend class AbstractStack;
+  friend class Assembler;  // Sets mcode_
 };
 
 inline bool Snapshot::bumpExitCounter() {
@@ -663,7 +670,8 @@ public:
   inline TRef slot(int n) {
     TRef s = slots_.get(n);
     if (s.isNone()) {
-      s = emitRaw(IRT(IR::kSLOAD, IRT_UNKNOWN), slots_.absolute(n), 0);
+      s = emitRaw(IRT(IR::kSLOAD, IRT_UNKNOWN), slots_.absolute(n),
+                  IR_SLOAD_DEFAULT);
       slots_.set(n, s);
     }
     return s;
@@ -760,6 +768,13 @@ private:
   SnapshotData snapmap_;
   std::vector<Snapshot> snaps_;
   AbstractHeap heap_;
+
+  IRRef stopins_;
+  typedef uint16_t InheritedSlotInfo;
+  InheritedSlotInfo parentmap_[200];
+  Fragment *parent_;
+  int32_t entry_relbase_;
+  // no. of inherited slots = stopins_ - REF_FIRST.
 
   friend class Jit;
   friend class Assembler;

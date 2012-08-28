@@ -720,7 +720,7 @@ op_JFUNC: {
     Fragment *F = jit_.lookupFragment(pc - 1);
     T->sync(pc - 1, base);
     //    traceDebugLastHp = (Word *)heap;
-    asmEnter(F, T, base + F->spillOffset(),
+    asmEnter(F->traceId(), T, base + F->spillOffset(),
              (Word *)heap, (Word *)heaplim,
              T->stackLimit(), F->entry());
     heap = (char *)traceExitHp_;

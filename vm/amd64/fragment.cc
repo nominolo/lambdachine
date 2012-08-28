@@ -12,10 +12,12 @@ _START_LAMBDACHINE_NAMESPACE
 
 extern "C" void LC_USED
 exitTrace(ExitNo n, ExitState *s) {
-  if (LC_UNLIKELY(s->F == NULL))
+  if (LC_UNLIKELY(s->F_id == TRACE_ID_NONE))
     cerr << "No fragment, skipping snapshot restore.\n";
-  else
-    s->F->restoreSnapshot(n, s);
+  else {
+    Fragment *F = Jit::traceById(s->F_id);
+    F->restoreSnapshot(n, s);
+  }
 }
 
 #define ASM_ENTER NAME_PREFIX "asmEnter"
@@ -25,7 +27,7 @@ exitTrace(ExitNo n, ExitState *s) {
 #define SAVE_SIZE 80
 
 static void LC_USED
-asmEnterIsImplementedInAssembly(Fragment *F, Thread *T, Word *spillArea,
+asmEnterIsImplementedInAssembly(TraceId F_id, Thread *T, Word *spillArea,
                                 Word *hp, Word *hplim, Word *stacklim,
                                 MCode *code) {
   asm volatile(
@@ -47,7 +49,7 @@ asmEnterIsImplementedInAssembly(Fragment *F, Thread *T, Word *spillArea,
     "movq %%r15,-40(%%rax)\n\t"
 
     /* store FTS */
-    "movq %%rdi,-48(%%rax)\n\t" /* F */
+    "movl %%edi,-48(%%rax)\n\t" /* F_id, NOTE: edi, not rdi */
     "movq %%rsi,-56(%%rax)\n\t" /* T */
     "movq %%rdx,-64(%%rax)\n\t" /* S */
     "movq %%r9,-72(%%rax)\n\t"  /* StackLim */
