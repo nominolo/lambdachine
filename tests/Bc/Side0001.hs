@@ -17,7 +17,8 @@ loop :: Int# -> Int# -> Int# -> Int# -> Int# -> Int
 -- loop x  y d _ _ | trace (show (I# x, I# y, I# d)) False = undefined
 loop 0# y d up down = I# y
 loop x  y d up down =
-  if d <=# 0# then loop (x -# 1#) y        (d +# up)   up down
-              else loop (x -# 1#) (y +# 1#) (d -# down) up down
+  let !x' = x -# 1# in
+  if d <=# 0# then loop x' y         (d +# up)   up down
+              else loop x' (y +# 1#) (d -# down) up down
 
 test = loop 500# 0# 1# 3# 4# == 214
