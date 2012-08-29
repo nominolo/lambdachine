@@ -7,6 +7,7 @@
 #include <iostream>
 #include <iomanip>
 
+#include <stdlib.h>
 #include <string.h>
 #include <limits.h>
 
@@ -660,6 +661,126 @@ const char *IR::regName(uint8_t r, IRType ty) {
     cerr << "\nFATAL: regName: Unknown type: " << (int)ty << endl;
     exit(44);
   }
+}
+
+CallStack::CallStack() : next_(0), size_(0), buf_(NULL) { }
+
+CallStack::~CallStack() {
+  if (buf_ != NULL)
+    free(buf_);
+  buf_ = NULL;
+}
+
+void CallStack::reset() {
+  if (buf_ != NULL)
+    free(buf_);
+  buf_ = NULL;
+  size_ = 0;
+  curr_ = createNode(STACK_NO_REF, 0);
+}
+
+void CallStack::growBuffer() {
+  if (size_ > 1024) {
+    cerr << "FATAL: Abstract call stack buffer too large.\n";
+    exit(EXIT_FAILURE);
+  }
+  size_ <<= 1;
+  if (size_ < 32) size_ = 32;
+  buf_ = (CallStackNode *)realloc(buf_, size_ * sizeof(CallStackNode));
+}
+
+void CallStack::returnTo(IRRef ret_addr) {
+  if (parent(curr_) == STACK_NO_REF) {
+    setAddress(curr_, ret_addr);
+    StackNodeRef newp = createNode(STACK_NO_REF, 0);
+    setParent(curr_, newp);
+  }
+  LC_ASSERT(address(curr_) == ret_addr);
+  curr_ = parent(curr_);
+}
+
+void CallStack::pushFrame(IRRef ret_addr) {
+  StackNodeRef newc = createNode(curr_, ret_addr);
+  curr_ = newc;
+}
+
+BranchTargetBuffer::BranchTargetBuffer(CallStack *stack)
+  : stack_(stack), next_(0), size_(0), buf_(NULL) {
+  LC_ASSERT(stack != NULL);
+}
+
+BranchTargetBuffer::~BranchTargetBuffer() {
+  if (buf_ != NULL)
+    free(buf_);
+  buf_ = NULL;
+}
+
+void BranchTargetBuffer::reset(BcIns *entryPc) {
+  if (buf_ != NULL)
+    free(buf_);
+  buf_ = NULL;
+  size_ = 0;
+  stack_->reset();
+  emit(entryPc);
+}
+
+void BranchTargetBuffer::growBuffer() {
+  if (size_ > 256) {
+    cerr << "FATAL: Branch target buffer too large.\n";
+    exit(EXIT_FAILURE);
+  }
+  size_ <<= 1;
+  if (size_ < 16) size_ = 16;
+  buf_ = (Entry *)realloc(buf_, size_ * sizeof(Entry));
+}
+
+void BranchTargetBuffer::emit(BcIns *pc) {
+  if (LC_UNLIKELY(next_ >= size_))
+    growBuffer();
+  // TODO: add pc to bloom filter.
+  buf_[next_].addr = pc;
+  buf_[next_].stack = stack_->current();
+  ++next_;
+}
+
+uint32_t CallStack::depth(StackNodeRef ref) const {
+  uint32_t d = 0;
+  while (ref != STACK_NO_REF) {
+    ref = parent(ref);
+    ++d;
+  }
+  return d;
+}
+
+// compare([], []) == -1
+// compare([A,B], [A,B]) == -1
+// compare([A], [A,B]) == 1
+// compare([A|_], [B|_]) == 0
+int CallStack::compare(StackNodeRef stack1, StackNodeRef stack2) const {
+  int d = 0;
+  for (;;) {
+    if (stack1 == stack2)
+      return -1;
+    if (stack1 == STACK_NO_REF || stack2 == STACK_NO_REF)
+      return d;
+    if (address(stack1) != address(stack2))
+      return d;
+    ++d;
+    stack1 = parent(stack1);
+    stack2 = parent(stack2);
+  }
+}
+
+// False loop filtering based on the paper: "Improving the Performance
+// of Trace-based Systems by False Loop Filtering" by H. Hayashizaki,
+// P. Wu, H. Inoue, M. J. Serrano, T. Nakatani in ASPLOS'11.
+uint32_t BranchTargetBuffer::isTrueLoop(BcIns *pc) {
+  for (uint32_t i = 0; i < next_; ++i) {
+    if (buf_[i].addr == pc) {
+      // TODO: actual filtering
+    }
+  }
+  return 0;
 }
 
 // Folding stuff is in ir_fold.cc

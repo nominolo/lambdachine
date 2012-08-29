@@ -2015,6 +2015,30 @@ TEST_F(TestFragment, Alloc3) {
   EXPECT_EQ(37 + 7, heap[5]);
 }
 
+TEST(CallStackTest, Simple1) {
+  CallStack cs;
+  cs.reset();
+  StackNodeRef s0 = cs.current();
+  cs.returnTo(1);
+  cs.returnTo(2);
+  StackNodeRef s1 = cs.current();
+  cs.pushFrame(2);
+  cs.pushFrame(1);
+  StackNodeRef s2 = cs.current();
+  cs.returnTo(1);
+  cs.returnTo(2);
+  cs.pushFrame(1);
+  StackNodeRef s3 = cs.current();
+  EXPECT_EQ(3, cs.depth(s0));
+  EXPECT_EQ(1, cs.depth(s1));
+  EXPECT_EQ(3, cs.depth(s2));
+  EXPECT_EQ(-1, cs.compare(s0, s2));
+  EXPECT_EQ(-1, cs.compare(s0, s0));
+  EXPECT_EQ(-1, cs.compare(s1, s1));
+  EXPECT_EQ(0, cs.compare(s1, s2));
+  EXPECT_EQ(1, cs.compare(s3, s2));
+}
+
 int main(int argc, char *argv[]) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

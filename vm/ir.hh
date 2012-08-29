@@ -628,6 +628,103 @@ private:
   Word *realOrigBase_;
 };
 
+typedef uint16_t StackNodeRef1;
+typedef uint32_t StackNodeRef;
+
+#define STACK_NO_REF  ((StackNodeRef1)~0)
+
+typedef struct {
+  StackNodeRef1 parent;
+  IRRef1 return_addr;
+} CallStackNode;
+
+/// The incrementally constructed call stack.  Used by for false loop filtering
+/// by the trace detector / recorder.
+class CallStack {
+public:
+  CallStack();
+  ~CallStack();
+  
+  void reset();
+
+  inline StackNodeRef parent(StackNodeRef node) const {
+    LC_ASSERT(node < next_);
+    return buf_[node].parent;
+  }
+  inline IRRef address(StackNodeRef node) const {
+    LC_ASSERT(node < next_);
+    return buf_[node].return_addr;
+  }
+  inline StackNodeRef current() const { return curr_; }
+  void returnTo(IRRef ret_addr);
+  void pushFrame(IRRef ret_addr);
+  uint32_t depth(StackNodeRef ref) const;
+
+  // Compare two call stacks.  Returns -1 if they are equal, or the
+  // index (0 = top of stack) of the first difference if they are not.
+  // For example:
+  // 
+  //     compare([], []) == -1
+  //     compare([A,B], [A,B]) == -1
+  //     compare([A], [A,B]) == 1
+  //     compare([A|_], [B|_]) == 0
+  //
+  int compare(StackNodeRef stack1, StackNodeRef stack2) const;
+
+private:
+  void growBuffer();
+  inline StackNodeRef createNode(StackNodeRef parent, IRRef addr);
+
+  inline void setParent(StackNodeRef node, StackNodeRef parent) {
+    LC_ASSERT(node < next_);
+    buf_[node].parent = parent;
+  }
+  inline void setAddress(StackNodeRef node, IRRef ref) {
+    LC_ASSERT(node < next_);
+    buf_[node].return_addr = ref;
+  }
+
+  StackNodeRef curr_;
+  StackNodeRef next_;
+  uint32_t size_;
+  CallStackNode *buf_;
+};
+
+inline StackNodeRef CallStack::createNode(StackNodeRef parent, IRRef addr) {
+  if (LC_UNLIKELY(next_ >= size_))
+    growBuffer();
+  StackNodeRef ref = next_++;
+  buf_[ref].parent = parent;
+  buf_[ref].return_addr = addr;
+  return ref;
+}
+
+/// The branch target buffer keeps a history of the possible
+/// trace-starting branches encountered during trace recording.
+class BranchTargetBuffer {
+public:
+  BranchTargetBuffer(CallStack *stack);
+  ~BranchTargetBuffer();
+
+  void reset(BcIns *startPc);
+  bool addCall(BcIns *entryPc, IRRef ret_addr);
+  bool addTailcall(BcIns *entryPc);
+  bool addReturn(BcIns *returnPc, IRRef ret_ref);
+private:
+  void emit(BcIns *pc);
+  void growBuffer();
+  uint32_t isTrueLoop(BcIns *pc);
+
+  typedef struct {
+    BcIns *addr;
+    StackNodeRef1 stack;
+  } Entry;
+
+  CallStack *stack_;
+  uint32_t next_;
+  uint32_t size_;
+  Entry *buf_;
+};
 
 typedef struct _FoldState {
   IR ins;
