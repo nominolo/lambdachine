@@ -774,13 +774,30 @@ int CallStack::compare(StackNodeRef stack1, StackNodeRef stack2) const {
 // False loop filtering based on the paper: "Improving the Performance
 // of Trace-based Systems by False Loop Filtering" by H. Hayashizaki,
 // P. Wu, H. Inoue, M. J. Serrano, T. Nakatani in ASPLOS'11.
-uint32_t BranchTargetBuffer::isTrueLoop(BcIns *pc) {
-  for (uint32_t i = 0; i < next_; ++i) {
+int BranchTargetBuffer::isTrueLoop(BcIns *pc) const {
+  StackNodeRef curr = stack_->current();
+  for (int i = 0; i < (int)next_; ++i) {
     if (buf_[i].addr == pc) {
-      // TODO: actual filtering
+      StackNodeRef start = buf_[i].stack;
+      int n = stack_->compare(start, curr);
+      if (n == -1)
+        return i;
+      uint32_t k1 = stack_->depth(start);
+      uint32_t k2 = stack_->depth(curr);
+      uint32_t m = k1;
+      for (int j = i; j < (int)next_; ++j) {
+        uint32_t d = stack_->depth(buf_[j].stack);
+        if (d < m) m = d;
+      }
+      k1 -= m;
+      k2 -= m;
+      int k = (int)MIN(k1, k2);
+      if (n >= k)
+        // The difference is beyond the k items we want to compare.
+        return i;
     }
   }
-  return 0;
+  return -1;
 }
 
 // Folding stuff is in ir_fold.cc

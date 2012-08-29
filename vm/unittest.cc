@@ -2039,6 +2039,48 @@ TEST(CallStackTest, Simple1) {
   EXPECT_EQ(1, cs.compare(s3, s2));
 }
 
+TEST(BranchTargetBufferTest, Loops1) {
+  CallStack cs;
+  BranchTargetBuffer btb(&cs);
+  BcIns code[10]; // Only used for generating pointers.
+  btb.reset(&code[0]);
+  EXPECT_EQ(0, btb.isTrueLoop(&code[0]));
+  EXPECT_EQ(-1, btb.isTrueLoop(&code[1]));
+  cs.pushFrame(33);
+  EXPECT_EQ(0, btb.isTrueLoop(&code[0]));
+  EXPECT_EQ(-1, btb.isTrueLoop(&code[1]));
+  btb.emit(&code[1]);
+  cs.returnTo(33);
+  btb.emit(&code[2]);
+  cs.pushFrame(44);
+  EXPECT_EQ(0, btb.isTrueLoop(&code[0]));
+  EXPECT_EQ(-1, btb.isTrueLoop(&code[1]));  // false loop
+  btb.emit(&code[1]);
+  cs.pushFrame(44);
+  EXPECT_EQ(3, btb.isTrueLoop(&code[1]));  // true inner loop
+  EXPECT_EQ(0, btb.isTrueLoop(&code[0]));  // true inner loop
+}
+
+TEST(BranchTargetBufferTest, Loops2) {
+  CallStack cs;
+  BranchTargetBuffer btb(&cs);
+  BcIns code[10]; // Only used for generating pointers.
+  btb.reset(&code[0]);
+  EXPECT_EQ(0, btb.isTrueLoop(&code[0]));
+  EXPECT_EQ(-1, btb.isTrueLoop(&code[1]));
+  cs.returnTo(55);
+  EXPECT_EQ(0, btb.isTrueLoop(&code[0]));
+  EXPECT_EQ(-1, btb.isTrueLoop(&code[1]));
+  btb.emit(&code[1]);
+  btb.emit(&code[2]);
+  EXPECT_EQ(2, btb.isTrueLoop(&code[2])); // inner loop.
+  cs.pushFrame(66);
+  EXPECT_EQ(-1, btb.isTrueLoop(&code[0])); // false loop
+  EXPECT_EQ(1, btb.isTrueLoop(&code[1]));
+  btb.emit(&code[0]);
+  EXPECT_EQ(3, btb.isTrueLoop(&code[0])); // true inner loop
+}
+
 int main(int argc, char *argv[]) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

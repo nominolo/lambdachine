@@ -707,13 +707,17 @@ public:
   ~BranchTargetBuffer();
 
   void reset(BcIns *startPc);
-  bool addCall(BcIns *entryPc, IRRef ret_addr);
-  bool addTailcall(BcIns *entryPc);
-  bool addReturn(BcIns *returnPc, IRRef ret_ref);
-private:
+
+  /// Returns >= 0 if the pc is a true loop (using the current stack
+  /// to filter out false loops).  Returns -1, otherwise.
+  int isTrueLoop(BcIns *pc) const;
+
+  /// Append the given pc to the end of the trace buffer.  Annotates
+  /// it with a reference to the current stack.
   void emit(BcIns *pc);
+
+private:
   void growBuffer();
-  uint32_t isTrueLoop(BcIns *pc);
 
   typedef struct {
     BcIns *addr;
