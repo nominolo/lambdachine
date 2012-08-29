@@ -27,4 +27,4 @@ root x = sum [ I# (a# *# b#)
              | a@(I# a#) <- enumFromTo'Int 1 x
              , I# b# <- enumFromTo'Int a x ] 
 
-test = root 10 == 1705
+test = root 20 == 23485

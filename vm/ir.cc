@@ -675,6 +675,7 @@ void CallStack::reset() {
   if (buf_ != NULL)
     free(buf_);
   buf_ = NULL;
+  next_ = 0;
   size_ = 0;
   curr_ = createNode(STACK_NO_REF, 0);
 }
@@ -704,9 +705,8 @@ void CallStack::pushFrame(IRRef ret_addr) {
   curr_ = newc;
 }
 
-BranchTargetBuffer::BranchTargetBuffer(CallStack *stack)
-  : stack_(stack), next_(0), size_(0), buf_(NULL) {
-  LC_ASSERT(stack != NULL);
+BranchTargetBuffer::BranchTargetBuffer()
+  : stack_(NULL), next_(0), size_(0), buf_(NULL) {
 }
 
 BranchTargetBuffer::~BranchTargetBuffer() {
@@ -715,12 +715,15 @@ BranchTargetBuffer::~BranchTargetBuffer() {
   buf_ = NULL;
 }
 
-void BranchTargetBuffer::reset(BcIns *entryPc) {
+void BranchTargetBuffer::reset(BcIns *entryPc, CallStack *stack) {
   if (buf_ != NULL)
     free(buf_);
   buf_ = NULL;
+  LC_ASSERT(stack != NULL);
+  LC_ASSERT(stack->current() == 0);
+  next_ = 0;
   size_ = 0;
-  stack_->reset();
+  stack_ = stack;
   emit(entryPc);
 }
 
@@ -752,6 +755,24 @@ uint32_t CallStack::depth(StackNodeRef ref) const {
   return d;
 }
 
+void CallStack::debugPrint(ostream &out, IRBuffer *buf, StackNodeRef node) const {
+  if (node == STACK_NO_REF)
+    node = curr_;
+  out << "CallStack: [" COL_BLUE;
+  for (StackNodeRef ref = node; ref != STACK_NO_REF;
+       ref = parent(ref)) {
+    IRRef addr_ref = address(ref);
+    if (addr_ref) {
+      IR::printIRRef(out, addr_ref);
+      if (buf) 
+        out << "/" << (Word*)buf->literalValue(addr_ref);
+      out << ", ";
+    } else
+      out << "...";
+  }
+  out << COL_RESET "]" << endl;
+}
+
 // compare([], []) == -1
 // compare([A,B], [A,B]) == -1
 // compare([A], [A,B]) == 1
@@ -771,6 +792,12 @@ int CallStack::compare(StackNodeRef stack1, StackNodeRef stack2) const {
   }
 }
 
+#if (DEBUG_COMPONENTS & DEBUG_FALSE_LOOP_FILT) != 0
+#define DBG(stmt) do { stmt; } while(0)
+#else
+#define DBG(stmt) do {} while(0)
+#endif
+
 // False loop filtering based on the paper: "Improving the Performance
 // of Trace-based Systems by False Loop Filtering" by H. Hayashizaki,
 // P. Wu, H. Inoue, M. J. Serrano, T. Nakatani in ASPLOS'11.
@@ -779,6 +806,12 @@ int BranchTargetBuffer::isTrueLoop(BcIns *pc) const {
   for (int i = 0; i < (int)next_; ++i) {
     if (buf_[i].addr == pc) {
       StackNodeRef start = buf_[i].stack;
+
+      DBG(cerr << ">> Loop candidate: ";
+          stack_->debugPrint(cerr, NULL, start);
+          cerr << "   Current: ";
+          stack_->debugPrint(cerr, NULL, curr));
+
       int n = stack_->compare(start, curr);
       if (n == -1)
         return i;
@@ -799,6 +832,8 @@ int BranchTargetBuffer::isTrueLoop(BcIns *pc) const {
   }
   return -1;
 }
+
+#undef DBG
 
 // Folding stuff is in ir_fold.cc
 

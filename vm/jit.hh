@@ -206,6 +206,8 @@ private:
   MachineCode mcode_;
   IRBuffer buf_;
   Assembler asm_;
+  CallStack callStack_;
+  BranchTargetBuffer btb_;
   MCode *exitStubGroup_[16];
 
   static FRAGMENT_MAP fragmentMap_;

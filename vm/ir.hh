@@ -671,6 +671,8 @@ public:
   //
   int compare(StackNodeRef stack1, StackNodeRef stack2) const;
 
+  void debugPrint(std::ostream &, IRBuffer *buf, StackNodeRef node) const;
+
 private:
   void growBuffer();
   inline StackNodeRef createNode(StackNodeRef parent, IRRef addr);
@@ -703,10 +705,10 @@ inline StackNodeRef CallStack::createNode(StackNodeRef parent, IRRef addr) {
 /// trace-starting branches encountered during trace recording.
 class BranchTargetBuffer {
 public:
-  BranchTargetBuffer(CallStack *stack);
+  BranchTargetBuffer();
   ~BranchTargetBuffer();
 
-  void reset(BcIns *startPc);
+  void reset(BcIns *startPc, CallStack *stack);
 
   /// Returns >= 0 if the pc is a true loop (using the current stack
   /// to filter out false loops).  Returns -1, otherwise.
@@ -715,6 +717,8 @@ public:
   /// Append the given pc to the end of the trace buffer.  Annotates
   /// it with a reference to the current stack.
   void emit(BcIns *pc);
+
+  inline uint32_t size() const { return next_; }
 
 private:
   void growBuffer();

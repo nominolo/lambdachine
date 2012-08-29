@@ -68,6 +68,8 @@ void Jit::beginRecording(Capability *cap, BcIns *startPc, Word *base, bool isRet
   flags_.clear(kLastInsWasBranch);
   flags_.set(kIsReturnTrace, isReturn);
   buf_.reset(base, cap->currentThread()->top());
+  callStack_.reset();
+  btb_.reset(startPc_, &callStack_);
   lastResult_ = TRef();
 }
 
@@ -84,6 +86,8 @@ void Jit::beginSideTrace(Capability *cap, Word *base, Fragment *parent, SnapNo s
   parentExitNo_ = snapno;
   buf_.reset(base, cap->currentThread()->top());
   buf_.parent_ = parent;
+  callStack_.reset();
+  btb_.reset(startPc_, &callStack_);
   lastResult_ = TRef();
 
   uint32_t numParentSlots = 0;
@@ -238,55 +242,38 @@ bool Jit::recordGenericApply(uint32_t call_info, Word *base,
 bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
   buf_.pc_ = ins;
   DBG(cerr << "REC: " << ins << " " << ins->name() << endl);
+
   if (flags_.get(kLastInsWasBranch)) {
-    if (ins == startPc_) {
-      DBG(cerr << "REC: Loop to entry detected." << endl
-          << "  Loop: " << startPc_ << endl);
-      DBG(for (size_t i = 0; i < targets_.size(); ++i) {
-      cerr << "    " << targets_[i] << endl;
-      });
-      if (lastResult_.ref() != 0) {
-        cerr << "NYI: Pending return result. Cannot compile trace." << endl;
+
+    // Check if we found a loop.
+    DBG(callStack_.debugPrint(cerr, &buf_, STACK_NO_REF));
+    DBG(cerr << "Entry "; callStack_.debugPrint(cerr, &buf_, 0));
+
+    int loopentry = -1;
+    if (ins != MiscClosures::stg_UPD_return_pc)  // HACK!
+      loopentry = btb_.isTrueLoop(ins);
+    if (LC_LIKELY(loopentry == -1)) {  // Not a loop.
+      btb_.emit(ins);
+      if (btb_.size() > 100) {
+        cerr << COL_RED << "TRACE TOO LONG (" << btb_.size()
+             << ")" << COL_RESET << endl;
         goto abort_recording;
       }
-
-      buf_.emit(IR::kSAVE, IRT_VOID | IRT_GUARD, IR_SAVE_LOOP, 0);
-      finishRecording();
-      return true;
-    } else if (targets_.size() <= 100) {
-      // Really, we should do false loop filtering.
-      if (ins != MiscClosures::stg_UPD_return_pc) {
-        // Try to find inner loop.
-
-        for (size_t i = 0; i < targets_.size(); ++i) {
-          if (targets_[i] == ins) {
-            DBG(cerr << COL_GREEN << "REC: Inner loop. " << buf_.pc_ << COL_RESET
-                << "\n  Loop: " << startPc_ << endl);
-            DBG(for (size_t i = 0; i < targets_.size(); ++i) {
-            cerr << "    " << targets_[i] << endl;
-            });
-            cerr << "NYI: False loop filtering or trace truncation.\n";
-            // TODO: Truncate.
-            goto abort_recording;
-          }
+    } else {  // We found a true loop.
+      if (loopentry == 0) {
+        DBG(cerr << "REC: Loop to entry detected." << endl);
+        if (lastResult_.ref() != 0) {
+          cerr << "NYI: Pending return result. Cannot compile trace." << endl;
+          goto abort_recording;
         }
+        buf_.emit(IR::kSAVE, IRT_VOID | IRT_GUARD, IR_SAVE_LOOP, 0);
+        finishRecording();
+        return true;
+      } else {  
+        DBG(cerr << COL_GREEN << "REC: Inner loop. " << buf_.pc_ << COL_RESET);
+        cerr << "NYI: Trace truncation due to inner loop.\n";
+        goto abort_recording;
       }
-
-      targets_.push_back(ins);
-    } else {
-      cerr << COL_RED << "TRACE TOO LONG (" << targets_.size()
-           << ")" << COL_RESET << endl;
-      cerr << "    " << startPc_ << endl;
-      for (size_t i = 0; i < targets_.size(); ++i) {
-        if ((i % 7) == 0) {
-          cerr << "   ";
-        }
-        cerr << ' ' << i << ':' << targets_[i];
-        if (((i + 1) % 7) == 0) cerr << endl;
-      }
-      cerr << endl;
-
-      goto abort_recording;
     }
   }
 
@@ -480,6 +467,9 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     TRef retref = buf_.slot(-2);
     TRef expectedReturnPc = buf_.literal(IRT_PC, base[-2]);
     buf_.emit(IR::kEQ, IRT_VOID | IRT_GUARD, retref, expectedReturnPc);
+
+    callStack_.returnTo(expectedReturnPc);
+
     TRef resultref = buf_.slot(ins->a());
     lastResult_ = resultref;
 
@@ -770,8 +760,12 @@ Word *Jit::pushFrame(Word *base, BcIns *returnPc,
                      TRef noderef, uint32_t framesize) {
   int topslot = buf_.slots_.top();
 
+  TRef ret_ref = buf_.literal(IRT_PC, (Word)returnPc);
+  
+  callStack_.pushFrame(ret_ref);
+
   buf_.setSlot(topslot + 0, buf_.baseLiteral(base));
-  buf_.setSlot(topslot + 1, buf_.literal(IRT_PC, (Word)returnPc));
+  buf_.setSlot(topslot + 1, ret_ref);
   buf_.setSlot(topslot + 2, noderef);
   Word *newbase = base + topslot + 3;
   if (!buf_.slots_.frame(newbase, newbase + framesize)) {

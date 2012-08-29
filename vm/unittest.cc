@@ -2041,9 +2041,10 @@ TEST(CallStackTest, Simple1) {
 
 TEST(BranchTargetBufferTest, Loops1) {
   CallStack cs;
-  BranchTargetBuffer btb(&cs);
+  BranchTargetBuffer btb;
   BcIns code[10]; // Only used for generating pointers.
-  btb.reset(&code[0]);
+  cs.reset();
+  btb.reset(&code[0], &cs);
   EXPECT_EQ(0, btb.isTrueLoop(&code[0]));
   EXPECT_EQ(-1, btb.isTrueLoop(&code[1]));
   cs.pushFrame(33);
@@ -2063,9 +2064,10 @@ TEST(BranchTargetBufferTest, Loops1) {
 
 TEST(BranchTargetBufferTest, Loops2) {
   CallStack cs;
-  BranchTargetBuffer btb(&cs);
+  BranchTargetBuffer btb;
   BcIns code[10]; // Only used for generating pointers.
-  btb.reset(&code[0]);
+  cs.reset();
+  btb.reset(&code[0], &cs);
   EXPECT_EQ(0, btb.isTrueLoop(&code[0]));
   EXPECT_EQ(-1, btb.isTrueLoop(&code[1]));
   cs.returnTo(55);
