@@ -458,6 +458,8 @@ private:
   friend class Assembler;  // Sets mcode_
 };
 
+typedef Snapshot::MapRef SnapmapRef;
+
 inline bool Snapshot::bumpExitCounter() {
   --exitCounter_;
   return (exitCounter_ == 0);

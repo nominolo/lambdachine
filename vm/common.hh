@@ -286,7 +286,8 @@ INLINE_HEADER void sayonara(const char *last_words) {
 #define checku32(x)	((x) == (uint32_t)(x))
 #define checkptr32(x)	((uintptr_t)(x) == (uint32_t)(uintptr_t)(x))
 #define UNUSED(x)  ((void)(x))  /* to avoid warnings */
-#define lc_ffs(x)  ((uint32_t)__builtin_ctz(x))       /* position of last bit */
+#define lc_ffs(x)  ((uint32_t)__builtin_ctz(x))   /* position of least significant bit */
+#define lc_ffsl(x) ((uint32_t)__builtin_ctzl(x))  /* same for longs */
 /* postion of first bit (most significant) set */
 static LC_AINLINE uint32_t lc_fls(uint32_t x)
 {

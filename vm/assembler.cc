@@ -13,6 +13,40 @@ _START_LAMBDACHINE_NAMESPACE
 
 using namespace std;
 
+void RegSet::debugPrint(ostream &out) {
+  RegSet work = RegSet(data_);
+  if (isEmpty()) {
+    out << "{}";
+  } else {
+    char sep = '{';
+    do {
+      Reg r = work.pickBot();
+      const char *rname = r < RID_MAX_GPR ? regNames64[r] : fpRegNames[r - RID_MIN_FPR];
+      out << sep << rname;
+      sep = ',';
+      work.clear(r);
+    } while (!work.isEmpty());
+    out << '}';
+  }
+}
+
+uint32_t
+SpillSet::allocSpillHigh()
+{
+  Word avail;
+  for (uint32_t i = 1; i < countof(data_); ++i) {
+    avail = data_[i];
+    if (avail != 0) {
+      uint32_t slot = lc_ffsl(avail);
+      data_[i] ^= (Word)1 << slot;
+      return (i * (sizeof(Word) * 8)) + slot;
+    }
+  }
+  cerr << "FATAL: No more spill slots available.\n";
+  exit(EXIT_FAILURE);
+}
+
+
 static inline int32_t jmprel(MCode *p, MCode *target) {
   ptrdiff_t delta = target - p;
   LC_ASSERT(delta == (int32_t)delta);
@@ -55,6 +89,9 @@ void Assembler::setupRegAlloc() {
 #define REGSP_HINT(r)   ((r)|RID_NONE)
 #define REGSP_INIT    REGSP(RID_INIT, 0)
 
+#define regsp_reg(rs)     ((rs) & 0xff)
+#define regsp_spill(rs)   ((rs) >> 8)
+
 // NOTE: This operation is NOT idempotent!  We assume that
 // the prev() fields of the input instructions are valid.
 // This won't be the case after this function finishes.
@@ -65,8 +102,7 @@ void Assembler::setup(IRBuffer *buf) {
   ir_ = buf->buffer_;  // REF-biased
   buf_ = buf; // For looking up constants.
 
-  spillOffset_ = buf->slots_.highestSlot();
-  spill_ = 1;
+  spills_.reset();
   curins_ = buf->bufmax_;
   nins_ = buf->bufmax_;
   stopins_ = buf->stopins_;
@@ -85,8 +121,16 @@ void Assembler::setup(IRBuffer *buf) {
   uint32_t p = 0;
   uint16_t *parentmap = buf_->parentmap_;
   for (IRRef i = REF_FIRST; i < stopins_; ++i, ++p) {
-    if (isReg(parentmap[p]))
-      setHint(ir(i), getHint(parentmap[p]));
+    // Use the same spill slots as parent.
+    uint32_t parent_spill = regsp_spill(parentmap[p]);
+    if (parent_spill != 0)
+      spills_.block(parent_spill);
+    Reg parent_reg = regsp_reg(parentmap[p]);
+    if (isReg(parent_reg)) {
+      ir(i)->setPrev(REGSP(REGSP_HINT(parent_reg), parent_spill));
+    } else {
+      ir(i)->setPrev(REGSP(RID_INIT, parent_spill));
+    }
   }
 
   // Initialise ref/spill fields for regular instructions.
@@ -319,22 +363,13 @@ found:
 }
 
 inline int32_t Assembler::spillOffset(uint8_t spillSlot) const {
-  // spillOffset_ points to the highest written slot.  Hence,
-  // spillOffset_[0] most not be written to.  However, spillSlots
-  // start at 1, not 0, so that's all fine.
-  return sizeof(Word) * (spillOffset_ + spillSlot);
+  return SPILL_SP_OFFS + sizeof(Word) * spillSlot;
 }
 
 int32_t Assembler::spill(IR *ins) {
   int32_t slot = ins->spill();
   if (slot == 0) {
-    slot = spill_;
-    ++spill_;
-
-    if (spill_ > 255) {
-      cerr << "Too many spills" << endl;
-      exit(14);
-    }
+    slot = spills_.alloc();
     ins->setSpill(slot);
   }
   return spillOffset(slot);
@@ -351,7 +386,7 @@ Reg Assembler::restoreReg(IRRef ref) {
     setHint(ins, r);  // Keep hint.
     freeReg(r);
     RA_DBGX((this, "restore   $i $r", ins, r));
-    load_u64(r, RID_BASE, ofs);
+    load_u64(r, RID_ESP, ofs);
     //    store_u64(RID_BASE, ofs, r);
     return r;
   }
@@ -432,14 +467,16 @@ Reg Assembler::destReg(IR *ins, RegSet allow) {
     ins->setReg(dest);
   }
   RA_DBGX((this, "dest           $r", dest));
-  if (LC_UNLIKELY(ins->spill() != 0))
+  if (LC_UNLIKELY(ins->spill() != 0)) {
     saveReg(ins, dest);
+    spills_.free(ins->spill());
+  }
   return dest;
 }
 
 void Assembler::saveReg(IR *ins, Reg r) {
   RA_DBGX((this, "save      $i $r", ins, r));
-  store_u64(RID_BASE, spillOffset(ins->spill()), r);
+  store_u64(RID_ESP, spillOffset(ins->spill()), r);
 }
 
 Reg Assembler::allocScratchReg(RegSet allow) {
@@ -645,52 +682,76 @@ bool Assembler::mergeWithParent() {
   uint32_t p;
   uint16_t *parentmap = buf_->parentmap_;
   RegSet parmoves = RegSet();
-  RegSet allow = kGPR.intersect(freeset_.complement());
+  RegSet allow = kGPR.intersect(freeset_);
   ParAssign pa;
   uint32_t moves = 0;
   IRRef i;
   for (i = REF_FIRST, p = 0; i < stopins_; ++i, ++p) {
     IR *ins = ir(i);
-    if (!isReg(parentmap[p])) {
-      cerr << "NYI: spilled parent slot.\n";
-      return false;
-    }
-    Reg pr = parentmap[p] & RID_MASK;
-    LC_ASSERT(ins->opcode() == IR::kSLOAD);
+    Reg parent_reg = regsp_reg(parentmap[p]);
+    Reg side_reg = ins->reg();
+    uint32_t parent_spill = regsp_spill(parentmap[p]);
+    uint32_t side_spill = ins->spill();
 
-    Reg r = RID_NONE;
-    // a. Make sure we have a register allocated to the instruction.
-    if (isReg(ins->reg())) {
-      r = ins->reg();
-    } else {
-      if (allow.isEmpty()) {
-        cerr << "NYI: parent merge with too few registers.\n";
-        return false;
+    LC_ASSERT(parent_spill == 0 || parent_spill == side_spill);
+
+    // We have these cases:
+    //
+    //    parent     side     do this:
+    //  A  reg1       reg2         pmove(reg1, reg2)
+    //  B  reg1+spill reg2         pmove(reg1, reg2)
+    //  C  spill      reg2         pmove(parent_spill, reg2)
+    //  D  reg1       reg2+spill   save(reg2, side_spill); pmove(reg1, reg2)
+    //  E  reg1+spill reg2+spill   pmove(reg1, reg2)
+    //  F  spill      reg2+spill   pmove(parent_spill, reg2)
+    //  G  reg1       spill        pmove(reg1, spill)
+    //  H  reg1+spill spill        -
+    //  I  spill      spill        -
+    //  J  *          -            -
+
+    if (!isReg(side_reg)) {   // cases G-J
+      if (isReg(parent_reg) && side_spill != 0 && parent_spill == 0) { // case G
+        pa.dest[moves].reg = RID_NONE;
+        pa.dest[moves].spill = side_spill;
+        pa.source[moves].reg = parent_reg;
+        pa.source[moves].spill = 0;
       }
-      setHint(ins, pr);  // Ensure we have a hint.
-      r = allocRef(i, allow);
-      saveReg(ins, r);
+      // Otherwise, nothing to do. (cases H-J)
+    } else {  // cases A-F
+      if (side_spill == 0) {  // cases A-C
+        pa.dest[moves].reg = side_reg;
+        pa.dest[moves].spill = 0;
+        if (isReg(parent_reg)) {   // cases A-B
+          pa.source[moves].reg = parent_reg;
+          pa.source[moves].spill = 0;
+        } else {  // case C
+          LC_ASSERT(parent_spill != 0);
+          pa.source[moves].reg = RID_NONE;
+          pa.source[moves].spill = parent_spill;
+        }
+      } else { // cases D-F
+        if (parent_spill == 0)   // case D
+          saveReg(ins, side_reg);
+        pa.dest[moves].reg = side_reg;
+        pa.dest[moves].spill = 0;
+        if (isReg(parent_reg)) {   // cases A-B
+          pa.source[moves].reg = parent_reg;
+          pa.source[moves].spill = 0;
+        } else {  // case C
+          LC_ASSERT(parent_spill != 0);
+          pa.source[moves].reg = RID_NONE;
+          pa.source[moves].spill = parent_spill;
+        }
+      }
     }
-    allow.clear(r);
-    parmoves.set(r);
-    if (r != pr) {
-      pa.dest[moves].reg = r;
-      pa.dest[moves].spill = 0;
-      pa.source[moves].reg = pr;
-      pa.source[moves].spill = 0;
-      ++moves;
-    }
+    allow.clear(side_reg);
+    parmoves.set(side_reg);
+    ++moves;
   }
 
   if (moves > 0) {
-    if (allow.isEmpty()) {
-      cerr << "NYI: Parallel move with no temporary available.\n";
-      return false;
-    }
-    pa.temp[0].reg = allocScratchReg(allow);
-    pa.temp[0].spill = 0;
-    pa.nfreeTemps = 1;
-    parallelAssign(&pa);
+    pa.size = moves;
+    parallelAssign(&pa, RID_NONE);
   }
 
   freeset_ = freeset_.setunion(parmoves);
@@ -1134,27 +1195,42 @@ bool conflicts(RegSpill candidate, RegSpill src) {
   return candidate.reg == src.reg;  // FIXME: what about spills
 }
 
-static
-Reg freeUpTemp(Assembler *as, ParAssign *assign) {
-  cerr << "NYI: freeing up temp register.\n";
-  exit(2);
-}
+/* Store heap pointer in spill slot 0, which is otherwise unused. */
+#define SAVE_HP_OFFS  SPILL_SP_OFFS
 
-static inline Reg getTemp(Assembler *as, ParAssign *assign) {
-  if (assign->nfreeTemps > 0) {
-    --assign->nfreeTemps;
-    Reg r = assign->temp[assign->nfreeTemps].reg;
-    return r;
-  } else {
-    return freeUpTemp(as, assign);
+static inline Reg
+getTemp(Assembler *as, ParAssign *assign)
+{
+  if (assign->totalTmps >= 1 && assign->tmpsInUse >= 1) {
+    cerr << "More than one temporary required for parallel assignment.\n";
+    exit(EXIT_FAILURE);
   }
+  if (assign->totalTmps == 0) {
+    Reg r;
+    if (as->hasFreeReg()) {
+      r = as->allocScratchReg(kGPR);
+    } else {
+      as->load_u64(RID_HP, RID_ESP, SAVE_HP_OFFS);
+      assign->usingHp = 1;
+      r = RID_HP;
+    }
+    assign->tmpReg = r;
+    assign->totalTmps = 1;
+  }
+  LC_ASSERT(assign->tmpsInUse == 0);
+  Reg r = assign->tmpReg;
+  assign->tmpReg |= RID_NONE;
+  assign->tmpsInUse = 1;
+  return r;
 }
 
-inline
-void releaseTemp(ParAssign *assign, Reg r) {
-  LC_ASSERT(assign->nfreeTemps < 2);
-  assign->temp[assign->nfreeTemps].reg = r;
-  ++assign->nfreeTemps;
+static inline void
+releaseTemp(ParAssign *assign, Reg r)
+{
+  LC_ASSERT(assign->tmpsInUse == 1);
+  assign->tmpReg &= RID_MASK;
+  LC_ASSERT(assign->tmpReg == r);
+  assign->tmpsInUse = 0;
 }
 
 void Assembler::transfer(RegSpill dst, RegSpill src, ParAssign *assign) {
@@ -1162,24 +1238,79 @@ void Assembler::transfer(RegSpill dst, RegSpill src, ParAssign *assign) {
     if (isReg(src.reg)) {
       move(dst.reg, src.reg);
     } else {
-      load_u64(dst.reg, RID_BASE, sizeof(Word) * src.spill);
+      load_u64(dst.reg, RID_ESP, spillOffset(src.spill));
     }
   } else {
     if (isReg(src.reg))
-      store_u64(RID_BASE, sizeof(Word) * dst.spill, src.reg);
+      store_u64(RID_ESP, spillOffset(dst.spill), src.reg);
     else {
-      Reg tmp = getTemp(this, assign);
-      store_u64(RID_BASE, sizeof(Word) * dst.spill, tmp);
-      load_u64(tmp, RID_BASE, sizeof(Word) * src.spill);
-      releaseTemp(assign, tmp);
+      cerr << "Memory-to-memory moves not supported.\n";
+      exit(EXIT_FAILURE);
     }
   }
 }
 
+/*
+
+  Breaking Cycles in Parallel Move
+  --------------------------------
+
+  If we have a parallel assignment with cyclic dependencies we usually
+  use a temporary variable to break the cycle.  E.g.:
+
+      (rax <- rbx) * (rbx <- rax)
+
+  is translated into the three moves:
+
+      mov rcx, rbx
+      mov rbx, rax
+      mov rax, rcx
+
+  This works fine if we have one spare register available (we only
+  ever need one extra register per cycle). What if we don't have a
+  spare register available?
+
+  If all assignments are from register to register, we can spill one
+  to memory:
+  
+      mov [rbp + N], rbx
+      mov rbx, rax
+      mov rax, [rbp + N]
+
+  We can only break the cycle this way for register-to-register
+  assignments.  If there is a cycle consisting only of assignments
+  where at least one argument is a memory operand then this won't
+  work.
+
+  One simple workaround is to rely on the fact that each of the
+  variables involved has a memory location assigned on the abstract
+  stack. We can just write each source register to all of its stack
+  location and then load all destination registers from their
+  respective stack locations. This is always possible--if we write
+  back all source registers first, then there will always be a
+  temporary register available for memory-to-memory stores. This
+  approach is also safe. It is also very slow.
+
+  If we don't have any memory-to-memory moves, then we only need one
+  extra register.  We also dedicate a register for the heap pointer.
+  The heap pointer is never involved in parallel moves, so we can
+  temporarily free it by pushing it onto the stack.  That is:
+
+      mov [rsp - SAVE_HP_OFFS], r12
+      ... perform assignments ...
+      mov r12, [rsp - SAVE_HP_OFFS]
+
+  We can avoid memory-to-memory moves by making sure that if any
+  spills are necessary, we use the same spill slots for inherited
+  variables.
+
+*/
+
 void Assembler::moveOne(uint32_t i, ParAssign *assign) {
   RegSpill dst = assign->dest[i];
   RegSpill src = assign->source[i];
-  if (needsMoving(dst, src)) {
+  LC_ASSERT(isReg(dst.reg) || isReg(src.reg));
+  if (dst.reg != src.reg) {
     assign->status[i] = PA_STATUS_MOVING;
     // We're trying to emit a write from src to dst. We're generating
     // code backwards, so if we have yet to emit a store to the source,
@@ -1194,12 +1325,14 @@ void Assembler::moveOne(uint32_t i, ParAssign *assign) {
           // We found a cyclic dependency.  Use a temporary register
           // to break the cycle.
           Reg tmp = getTemp(this, assign);
+          releaseTemp(assign, tmp); // TODO: explain this.
           dst = assign->dest[j];
           if (isReg(dst.reg))
             move(dst.reg, tmp);
           else
-            store_u64(RID_BASE, sizeof(Word) * dst.spill, tmp);
+            store_u64(RID_ESP, spillOffset(dst.spill), tmp);
           assign->dest[j].reg = tmp;
+          assign->dest[j].spill = 0;
         }
       }
     }
@@ -1208,12 +1341,43 @@ void Assembler::moveOne(uint32_t i, ParAssign *assign) {
   }
 }
 
-void Assembler::parallelAssign(ParAssign *assign) {
-  memset(assign->status, 0, sizeof(assign->status[0]) * assign->size);
+static void
+debugPrintParallelAssign(ostream &out, ParAssign *assign) {
   for (uint32_t i = 0; i < assign->size; ++i) {
+    RegSpill dst = assign->dest[i];
+    RegSpill src = assign->source[i];
+    const char *dreg = isReg(dst.reg) ? regNames64[dst.reg] : " - ";
+    const char *sreg = isReg(src.reg) ? regNames64[src.reg] : " - ";
+    out << "   " << dreg;
+    if (hasSpill(dst)) out << '[' << dst.spill << ']';
+    out << " <- " << sreg;
+    if (hasSpill(src)) out << '[' << src.spill << ']';
+    out << endl;
+  }
+}
+
+void
+Assembler::parallelAssign(ParAssign *assign, Reg optTmp)
+{
+  debugPrintParallelAssign(cerr, assign);
+
+  memset(assign->status, 0, sizeof(assign->status[0]) * assign->size);
+  assign->tmpsInUse = 0; 
+  assign->usingHp = 0;
+  if (optTmp != RID_NONE) {
+    assign->tmpReg = optTmp;
+    assign->totalTmps = 1;
+  } else {
+    assign->tmpReg = RID_NONE;
+    assign->totalTmps = 0;
+  }
+
+  for (uint32_t i = 0; i < assign->size; ++i)
     if (assign->status[i] == PA_STATUS_TODO)
       moveOne(i, assign);
-  }
+
+  if (assign->usingHp)
+    store_u64(RID_ESP, SPILL_SP_OFFS, RID_HP);
 }
 
 //

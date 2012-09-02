@@ -189,6 +189,7 @@ private:
                   uint32_t framesize);
   void finishRecording();
   void resetRecorderState();
+  void replaySnapshot(Fragment *parent, SnapNo snapno, Word *base);
   
   static const int kLastInsWasBranch = 0;
   static const int kIsReturnTrace = 1;
@@ -246,7 +247,6 @@ public:
   /// 
   /// TODO: What if a side trace needs to increase this value?
   inline uint16_t frameSize() const { return frameSize_; }
-  inline int32_t spillOffset() const { return spillOffset_; }
   
   inline MCode *entry() { return mcode_; }
   uint64_t literalValue(IRRef, Word* base);
@@ -280,7 +280,6 @@ private:
   
   uint16_t frameSize_;
   uint16_t nsnaps_;
-  int32_t spillOffset_;
   Snapshot *snaps_;      
   SnapshotData snapmap_;
   
@@ -303,16 +302,18 @@ struct _ExitState {
   Word     gpr[RID_NUM_GPR];    /* General-purpose registers. */
   Word     *hplim;              /* Heap Limit */
   Word     *stacklim;           /* Stack Limit */
-  Word     *spill;              /* Spill slots. */
+  Word     unused1;
   Thread   *T;                  /* Currently executing thread */
   TraceId  F_id;                /* Fragment under execution */
-  uint32_t unused;              // Padding
+  uint32_t unused2;             // Padding
+  Word     spill[256];
 };
 
 #define HPLIM_SP_OFFS  0
-#define F_ID_OFFS  (4 * sizeof(Word))
+#define SPILL_SP_OFFS  (offsetof(ExitState, spill) - offsetof(ExitState, hplim))
+#define F_ID_OFFS      (offsetof(ExitState, F_id) - offsetof(ExitState, hplim))
 
-extern "C" void asmEnter(TraceId F_id, Thread *T, Word *spillArea,
+extern "C" void asmEnter(TraceId F_id, Thread *T,
                          Word *hp, Word *hplim, Word *stacklim, MCode *code);
 
 extern "C" void asmExit(int);

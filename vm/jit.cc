@@ -73,6 +73,75 @@ void Jit::beginRecording(Capability *cap, BcIns *startPc, Word *base, bool isRet
   lastResult_ = TRef();
 }
 
+/*
+  Find a possible duplicate of the refence in the snapshot.
+  
+  Searches through the snapshot up until `searchLimit`.  If it finds a
+  duplicate returns the corresponding reference from `buf`s abstract
+  stack. Otherwise, returns 0;
+*/
+static TRef
+dedupSnapshotRef(IRBuffer *buf, Snapshot &snap, SnapshotData *snapmap,
+                 SnapmapRef searchLimit, IRRef ref)
+{
+  SnapmapRef j;
+  for (j = snap.begin(); j < searchLimit; ++j)
+    if (snapmap->slotRef(j) == ref)
+      return buf->slot(snapmap->slotId(j) - snap.relbase());
+  return TRef();
+}
+
+void Jit::replaySnapshot(Fragment *parent, SnapNo snapno, Word *base)
+{
+  Snapshot &snap = parent->snap(snapno);
+  SnapshotData *snapmap = &parent->snapmap_;
+  int relbase = snap.relbase();
+  BloomFilter seen = 0;
+  uint32_t numInheritedSlots = 0;
+  
+  for (SnapmapRef i = snap.begin(); i < snap.end(); ++i) {
+    int slot = snapmap->slotId(i) - relbase;
+    IRRef ref = snapmap->slotRef(i);
+    IR *ins = parent->ir(ref);
+    TRef tref;
+
+    // Check if we have seen this reference before.  Using a bloom
+    // filter we avoid O(N^2) complexity.
+    if (bloomtest(seen, ref)) { // We *may* have.
+      tref = dedupSnapshotRef(&buf_, snap, snapmap, i, ref);
+      if (tref != TRef())
+        goto setslot;
+    }
+    bloomset(seen, ref);
+
+    if (irref_islit(ref)) {
+      uint64_t k = parent->literalValue(ref, base);
+      if (ins->opcode() == IR::kKBASEO) {
+        tref = buf_.baseLiteral((Word *)k);
+      } else {
+        tref = buf_.literal(ins->type(), k);
+      }
+    } else {  // Not a literal.
+      IRType ty = ins->type();
+      tref = buf_.emitRaw(IRT(IR::kSLOAD, ty),
+                          buf_.slots_.absolute(slot),
+                          IR_SLOAD_INHERIT);
+      uint16_t inherit_info;
+      if (ins->spill() != 0) {
+        inherit_info = RID_INIT | ((uint16_t)ins->spill() << 8);
+      } else {
+        inherit_info = (uint16_t)ins->reg();
+      }
+      buf_.parentmap_[numInheritedSlots++] = inherit_info;
+    }
+  setslot:
+    buf_.setSlot(slot, tref);
+  }
+
+  buf_.stopins_ = REF_FIRST + numInheritedSlots;
+  buf_.entry_relbase_ = relbase;
+}
+
 void Jit::beginSideTrace(Capability *cap, Word *base, Fragment *parent, SnapNo snapno) {
   LC_ASSERT(cap_ == NULL);
   LC_ASSERT(targets_.size() == 0);
@@ -90,40 +159,12 @@ void Jit::beginSideTrace(Capability *cap, Word *base, Fragment *parent, SnapNo s
   btb_.reset(startPc_, &callStack_);
   lastResult_ = TRef();
 
-  uint32_t numParentSlots = 0;
-  SnapshotData *snapmap = &parent->snapmap_;
-  int relbase = snap.relbase();
-
-  for (Snapshot::MapRef i = snap.begin(); i < snap.end(); ++i) {
-    int slot = snapmap->slotId(i) - relbase;
-    int ref = snapmap->slotRef(i);
-    IR *ins = parent->ir(ref);
-
-    if (irref_islit(ref)) {
-      uint64_t k = parent->literalValue(ref, base);
-      TRef tref;
-      if (ins->opcode() == IR::kKBASEO) {
-        tref = buf_.baseLiteral((Word *)k);
-      } else {
-        tref = buf_.literal(ins->type(), k);
-      }
-      buf_.setSlot(slot, tref);
-    } else {
-      buf_.parentmap_[numParentSlots++] =
-        (uint16_t)ins->prev(); // really: reg + spill
-      TRef tref = buf_.emitRaw(IRT(IR::kSLOAD, ins->type()),
-                               buf_.slots_.absolute(slot),
-                               IR_SLOAD_INHERIT);
-      buf_.setSlot(slot, tref);
-    }
-  }
-  buf_.stopins_ = REF_FIRST + numParentSlots;
-  buf_.entry_relbase_ = relbase;
+  replaySnapshot(parent, snapno, base);
 
   buf_.debugPrint(cerr, 0);
   buf_.slots_.debugPrint(cerr);
 
-  //  exit(1);
+  // exit(1);
 }
 
 static IRType littypeToIRType(uint8_t littype) {
@@ -740,8 +781,7 @@ Fragment *Jit::saveFragment() {
   F->buffer_ = buffer;
 
   LC_ASSERT(buf->slots_.highestSlot() >= 0);
-  F->spillOffset_ = buf->slots_.highestSlot();
-  F->frameSize_ = buf->slots_.highestSlot() + as->spill_;
+  F->frameSize_ = buf->slots_.highestSlot();
 
   size_t nsnaps = buf->snaps_.size();
   F->nsnaps_ = nsnaps;

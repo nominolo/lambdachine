@@ -154,6 +154,22 @@ TEST(RegSetTest, pickBotTop) {
   ASSERT_EQ((Reg)15, rs.pickTop());
 }
 
+TEST(SpillSetTest, test) {
+  SpillSet s;
+  for (uint32_t i = 1; i < 100; ++i) {
+    EXPECT_EQ(i, s.alloc());
+  }
+  s.free(45);
+  EXPECT_EQ(45, s.alloc());
+  EXPECT_EQ(100, s.alloc());
+  s.block(101);
+  EXPECT_EQ(102, s.alloc());
+  s.reset();
+  for (uint32_t i = 1; i < 100; ++i) {
+    EXPECT_EQ(i, s.alloc());
+  }
+}
+
 TEST(Flags, setVal) {
   Flags32 f;
   for (int i = 0; i < 32; ++i) {
@@ -1049,6 +1065,10 @@ TEST_F(RunFileTest, Side0002) {
   run("Bc.Side0002");
 }
 
+TEST_F(RunFileTest, Side0003) {
+  run("Bc.Side0003");
+}
+
 TEST(HotCounters, Simple) {
   HotCounters counters(5);
   BcIns pc[] = { BcIns::ad(BcIns::kFUNC, 3, 0) };
@@ -1068,7 +1088,6 @@ protected:
   IRBuffer *buf;
   Jit *jit;
   Word *stack;
-  Word *spill;
   Assembler *as;
   MemoryManager *mm;
   Loader *loader;
@@ -1084,12 +1103,10 @@ protected:
     mm = NULL;
     loader = NULL;
     T = NULL;
-    spill = NULL;
   }
   virtual void TearDown() {
     buf = NULL;
     if (stack) delete[] stack;  stack = NULL;
-    if (spill) delete[] spill;  spill = NULL;
     if (jit) delete jit;  jit = NULL;
     if (as) delete as;  as = NULL;
     if (T) delete T;  T = NULL;
@@ -1102,7 +1119,6 @@ protected:
     as->assemble(jit->buffer(), jit->mcode());
   }
   Word *SetupThread() {
-    spill = new Word[255];
     mm = new MemoryManager();
     loader = new Loader(mm, "tests");
     T = Thread::createThread(NULL, 1000);
@@ -1110,7 +1126,7 @@ protected:
   }
   Word *RunAsm() {
     Word *base = T->base();
-    asmEnter(TRACE_ID_NONE, T, spill, NULL, NULL, T->stackLimit(), jit->mcode()->start());
+    asmEnter(TRACE_ID_NONE, T, NULL, NULL, T->stackLimit(), jit->mcode()->start());
     return base;
   }
   virtual Word *Run(Word arg1, Word arg2) {
@@ -1498,14 +1514,13 @@ TEST_F(ParallelAssignTest, testRegTest2) {
 TEST_F(ParallelAssignTest, SwapRegs1) {
   ParAssign pa;
   pa.size = 2;
-  pa.nfreeTemps = 1;
-  pa.temp[0].reg = RID_ECX;
+  
   pa.dest[0].reg = RID_EAX; pa.dest[0].spill = 0;
   pa.dest[1].reg = RID_EBX; pa.dest[1].spill = 0;
   pa.source[0].reg = RID_EBX; pa.source[0].spill = 0;
   pa.source[1].reg = RID_EAX; pa.source[1].spill = 0;
   as->ret();
-  as->parallelAssign(&pa);
+  as->parallelAssign(&pa, RID_ECX);
   MCode *code = as->finish();
 
   Dump();
@@ -1570,14 +1585,12 @@ public:
   }
 
   void Run() {
-    Word *base = T->base();
-    asmEnter(F->traceId(), T, base + F->spillOffset(), NULL, NULL,
+    asmEnter(F->traceId(), T, NULL, NULL,
              T->stackLimit(), F->entry());
   }
 
   void RunWithHeap(Word *hp, Word *hplim) {
-    Word *base = T->base();
-    asmEnter(F->traceId(), T, base + F->spillOffset(), hp, hplim,
+    asmEnter(F->traceId(), T, hp, hplim,
              T->stackLimit(), F->entry());
   }
 };

@@ -151,6 +151,8 @@ public:
   // If you need to explicitly violate abstraction (e.g., for
   // efficiency reasons).
   inline uint32_t raw() const { return data_; }
+
+  void debugPrint(std::ostream &);
 private:
   explicit RegSet(uint32_t raw) : data_(raw) {}
   static const uint32_t kOne = 1;
@@ -164,6 +166,67 @@ static const RegSet kGPR =
 
 LC_STATIC_ASSERT(sizeof(RegSet) == sizeof(uint32_t));
 
+class SpillSet {
+public:
+  // Creates a new empty spill set with all slots available.
+  inline SpillSet() { reset(); }
+
+  // Make all slots available.
+  inline void reset();
+
+  // Return a fresh spill slot.  Never returns 0;
+  inline uint32_t alloc();
+
+  // Make the given slot (> 0) unavailable.
+  inline void block(uint32_t slot);
+
+  // Make the given slot available again. Slot must not be 0;
+  inline void free(uint32_t slot);
+  
+private:
+  uint32_t allocSpillHigh();
+  // 1-bit means: slot is available
+  Word data_[(256 / 8) / sizeof(Word)];
+};
+
+inline void
+SpillSet::reset()
+{
+  data_[0] = ~(Word)1; /* never use slot 0 */ 
+  for (unsigned int i = 1; i < countof(data_); ++i)
+    data_[i] = ~(Word)0;
+}
+
+inline uint32_t
+SpillSet::alloc()
+{
+  Word avail = data_[0];
+  if (LC_UNLIKELY(avail == 0))
+    return allocSpillHigh();
+  uint32_t slot = lc_ffsl(avail);
+  data_[0] ^= (Word)1 << slot;
+  return slot;
+}
+
+inline void
+SpillSet::block(uint32_t slot)
+{
+  LC_ASSERT(slot > 0 && slot < 256);
+  uint32_t i = slot >> LC_ARCH_BITS_LOG2;
+  uint32_t bit = slot & ((1 << LC_ARCH_BITS_LOG2) - 1);
+  Word mask = ~((Word)1 << bit);
+  data_[i] &= mask;
+}
+
+inline void
+SpillSet::free(uint32_t slot)
+{
+  LC_ASSERT(slot > 0 && slot < 256);
+  uint32_t i = slot >> LC_ARCH_BITS_LOG2;
+  uint32_t bit = slot & ((1 << LC_ARCH_BITS_LOG2) - 1);
+  Word mask = ((Word)1 << bit);
+  data_[i] |= mask;
+}
 
 /* Macros to construct variable-length x86 opcodes. -(len+1) is in LSB. */
 #define XO_(o)		((uint32_t)(0x0000fe + (0x##o<<24)))
@@ -342,17 +405,21 @@ typedef struct {
   uint8_t spill;
 } RegSpill;
 
-#define MAX_PAR_MOVE_SIZE 256
+inline bool hasSpill(RegSpill regsp) {
+  return regsp.spill != 0;
+}
 
-typedef RegSpill Temp;
+#define MAX_PAR_MOVE_SIZE 256
 
 typedef struct {
   RegSpill dest[MAX_PAR_MOVE_SIZE];
   RegSpill source[MAX_PAR_MOVE_SIZE];
   uint8_t status[MAX_PAR_MOVE_SIZE];
-  Temp temp[2];  // Use these temporary registers.
-  uint32_t nfreeTemps;
   uint32_t size;
+  uint8_t tmpReg;
+  uint8_t tmpsInUse;
+  uint8_t totalTmps;
+  uint8_t usingHp;
 } ParAssign;
 
 class Assembler {
@@ -413,6 +480,8 @@ public:
   /// within a single IR instruction.  It is not marked as used.
   Reg allocScratchReg(RegSet allow);
 
+  inline bool hasFreeReg() const { return !freeset_.isEmpty(); }
+
   void snapshotAlloc1(IRRef ref);
   void snapshotAlloc(Snapshot &snap, SnapshotData *snapmap);
 
@@ -471,7 +540,7 @@ public:
 
   void transfer(RegSpill dst, RegSpill src, ParAssign *assign);
   void moveOne(uint32_t i, ParAssign *assign);
-  void parallelAssign(ParAssign *assign);
+  void parallelAssign(ParAssign *assign, Reg optTmp);
 
   bool mergeWithParent();
 
@@ -584,8 +653,7 @@ private:
   RegSet modset_;   // Registers modified inside the loop.
   RegSet phiset_;   // PHI registers.
   RegCost cost_[RID_MAX];  // References and spill cost for registers.
-  int32_t spill_;
-  int32_t spillOffset_;
+  SpillSet spills_;
   x86ModRM mrm_;
   //  RegSet weakset_;
 
