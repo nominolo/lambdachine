@@ -715,6 +715,7 @@ bool Assembler::mergeWithParent() {
         pa.dest[moves].spill = side_spill;
         pa.source[moves].reg = parent_reg;
         pa.source[moves].spill = 0;
+        ++moves;
       }
       // Otherwise, nothing to do. (cases H-J)
     } else {  // cases A-F
@@ -729,6 +730,7 @@ bool Assembler::mergeWithParent() {
           pa.source[moves].reg = RID_NONE;
           pa.source[moves].spill = parent_spill;
         }
+        ++moves;
       } else { // cases D-F
         if (parent_spill == 0)   // case D
           saveReg(ins, side_reg);
@@ -742,11 +744,11 @@ bool Assembler::mergeWithParent() {
           pa.source[moves].reg = RID_NONE;
           pa.source[moves].spill = parent_spill;
         }
+        ++moves;
       }
     }
     allow.clear(side_reg);
     parmoves.set(side_reg);
-    ++moves;
   }
 
   if (moves > 0) {
@@ -1346,12 +1348,16 @@ debugPrintParallelAssign(ostream &out, ParAssign *assign) {
   for (uint32_t i = 0; i < assign->size; ++i) {
     RegSpill dst = assign->dest[i];
     RegSpill src = assign->source[i];
+    out << "   [" << hex << (uint32_t)dst.reg
+        << '.' << (uint32_t)dst.spill
+        << ":" << (uint32_t)src.reg
+        << '.' << (uint32_t)src.spill << "] ";
     const char *dreg = isReg(dst.reg) ? regNames64[dst.reg] : " - ";
     const char *sreg = isReg(src.reg) ? regNames64[src.reg] : " - ";
     out << "   " << dreg;
-    if (hasSpill(dst)) out << '[' << dst.spill << ']';
+    if (hasSpill(dst)) out << '[' << (uint32_t)dst.spill << ']';
     out << " <- " << sreg;
-    if (hasSpill(src)) out << '[' << src.spill << ']';
+    if (hasSpill(src)) out << '[' << (uint32_t)src.spill << ']';
     out << endl;
   }
 }
