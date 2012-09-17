@@ -288,6 +288,7 @@ bool Jit::recordGenericApply(uint32_t call_info, Word *base,
 
 bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
   buf_.pc_ = ins;
+  buf_.steps_++;
   DBG(cerr << "REC: " << ins << " " << ins->name() << endl);
 
   if (flags_.get(kLastInsWasBranch)) {

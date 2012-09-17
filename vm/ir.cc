@@ -196,6 +196,7 @@ void IRBuffer::reset(Word *base, Word *top) {
   heap_.reset();
   snaps_.clear();
   snapmap_.reset();
+  steps_ = 0;
 
   size_t nliterals = size_ / 4;
 
@@ -366,6 +367,7 @@ TRef IRBuffer::optCSE() {
 void IRBuffer::snapshot(IRRef ref, void *pc) {
   Snapshot snap;
   slots_.snapshot(&snap, &snapmap_, ref, pc);
+  snap.steps_ = steps_ - 1;
   snaps_.push_back(snap);
 }
 
@@ -525,7 +527,7 @@ void Snapshot::debugPrint(ostream &out, SnapshotData *snapmap, SnapNo snapno) {
       //      nl = (slotid % 8) == 7;
     }
   }
-  out << "] pc=" << pc_ << endl;
+  out << "] pc=" << pc_ << " (" << dec << steps_ << ")" << endl;
 }
 
 IRRef1 Snapshot::slot(int n, SnapshotData *snapmap) {

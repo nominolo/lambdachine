@@ -443,6 +443,11 @@ public:
   // Returns true if the side exit become hot.
   inline bool bumpExitCounter();
 
+  // Returns the number of interpreter instructions executed since the
+  // start of the trace.  Each new loop iteration resets this number
+  // to zero.  It is used by the shadow interpreter.
+  inline uint16_t steps() const { return steps_; }
+
 private:
 
   IRRef1 ref_;
@@ -451,11 +456,12 @@ private:
   uint8_t entries_;
   uint8_t framesize_;
   uint16_t exitCounter_;
-  uint16_t unused;
+  uint16_t steps_;
   void *pc_;
   MCode *mcode_;
   friend class AbstractStack;
   friend class Assembler;  // Sets mcode_
+  friend class IRBuffer;  // Sets steps_
 };
 
 typedef Snapshot::MapRef SnapmapRef;
@@ -875,6 +881,7 @@ private:
   SnapshotData snapmap_;
   std::vector<Snapshot> snaps_;
   AbstractHeap heap_;
+  uint32_t steps_;
 
   IRRef stopins_;
   typedef uint16_t InheritedSlotInfo;
