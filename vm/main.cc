@@ -95,7 +95,8 @@ int main(int argc, char *argv[]) {
   formatTime(stdout, "    GC    ", gc_time);
   formatTime(stdout, "  Total   ", total_time);
   printf("\n" "    %%GC      %5.1f%%\n", percent(gc_time, run_time)); 
-  printf("    %%JIT     %5.1f%%\n\n", percent(jit_time, run_time)); 
+  printf("    %%JIT     %5.1f%%  (  # traces      %5d  )" "\n\n",
+         percent(jit_time, run_time), Jit::numFragments()); 
 
   //  cerr << mm << endl;
 

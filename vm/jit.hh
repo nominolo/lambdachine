@@ -183,6 +183,7 @@ public:
   inline void setDebugTrace(bool val) { flags_.set(kDebugTrace, val); }
   static inline void registerFragment(BcIns *startPc, Fragment *F);
   static void resetFragments();
+  static uint32_t numFragments();
 
 private:
   Word *pushFrame(Word *base, BcIns *returnPc, TRef noderef,

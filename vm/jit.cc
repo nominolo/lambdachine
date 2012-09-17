@@ -43,6 +43,12 @@ void Jit::resetFragments() {
   fragmentMap_.clear();
 }
 
+uint32_t
+Jit::numFragments()
+{
+  return (uint32_t)fragments_.size();
+}
+
 Jit::Jit()
   : cap_(NULL),
     startPc_(NULL), startBase_(NULL), parent_(NULL),
