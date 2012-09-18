@@ -121,7 +121,9 @@ void Jit::replaySnapshot(Fragment *parent, SnapNo snapno, Word *base)
     bloomset(seen, ref);
 
     if (irref_islit(ref)) {
-      uint64_t k = parent->literalValue(ref, base);
+      // Offsets from the base pointer are relative to the parent
+      // fragment's entry base.
+      uint64_t k = parent->literalValue(ref, base - relbase);
       if (ins->opcode() == IR::kKBASEO) {
         tref = buf_.baseLiteral((Word *)k);
       } else {
