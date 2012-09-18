@@ -248,6 +248,8 @@ public:
   /// 
   /// TODO: What if a side trace needs to increase this value?
   inline uint16_t frameSize() const { return frameSize_; }
+
+  inline BcIns *startPc() const { return startPc_; }
   
   inline MCode *entry() { return mcode_; }
   uint64_t literalValue(IRRef, Word* base);

@@ -692,6 +692,13 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
       parent = parent->parent_;
     }
     if (!parent) {
+      // For now we just use "stop-at-existing trace".
+      LC_ASSERT(F->startPc() == ins);
+      DBG(cerr << "Linking to existing trace: " << F->traceId() << endl);
+      buf_.emit(IR::kSAVE, IRT_VOID | IRT_GUARD, IR_SAVE_LINK,
+                F->traceId());
+      finishRecording();
+      return true;
       cerr << "NYI: Trace through JFUNC?\n";
       goto abort_recording;
     }
