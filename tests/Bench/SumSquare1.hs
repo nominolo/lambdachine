@@ -2,6 +2,7 @@
 -- RUN: %bc_vm_chk
 -- CHECK: @Result@ IND -> GHC.Bool.True`con_info
 module Bench.SumSquare1 where
+--import Prelude ( print )
 
 import GHC.Prim
 import GHC.List
@@ -16,7 +17,7 @@ enumFromTo'Int from@(I# m) to@(I# n) =
 sum :: [Int] -> Int
 sum l = sum_aux (I# 0#) l
 
-{-# NOINLINE sum_aux #-}
+{- # NOINLINE sum_aux #-}
 sum_aux :: Int -> [Int] -> Int
 sum_aux !acc [] = acc
 sum_aux !(I# a) (I# x:xs) = sum_aux (I# (a +# x)) xs
@@ -28,3 +29,7 @@ root x = sum [ I# (a# *# b#)
              , I# b# <- enumFromTo'Int a x ] 
 
 test = root 20 == 23485
+
+test2 = root 11000 == 1830679628709250
+
+--main = print test2
