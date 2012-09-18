@@ -730,11 +730,12 @@ void Jit::finishRecording() {
   Fragment *F = saveFragment();
 
   registerFragment(startPc_, F);
-  *startPc_ = BcIns::ad(BcIns::kJFUNC, 0, tno);
   resetRecorderState();
 
   if (parent_ != NULL) {
     asm_.patchGuard(parent_, parentExitNo_, F->entry());
+  } else {
+    *startPc_ = BcIns::ad(BcIns::kJFUNC, 0, tno);
   }
 
   DBG( {
