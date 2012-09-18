@@ -544,7 +544,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
 
   case BcIns::kMOV_RES: {
     if (!(IRRef)lastResult_) {
-      cerr << "NYI: MOV_RES with out-of trace input." << endl;
+      DBG(cerr << "NYI: MOV_RES with out-of trace input." << endl);
       goto abort_recording;
     }
     buf_.setSlot(ins->a(), lastResult_);
