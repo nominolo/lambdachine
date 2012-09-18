@@ -527,7 +527,8 @@ void Snapshot::debugPrint(ostream &out, SnapshotData *snapmap, SnapNo snapno) {
       //      nl = (slotid % 8) == 7;
     }
   }
-  out << "] pc=" << pc_ << " (" << dec << steps_ << ")" << endl;
+  out << "] pc=" << pc_ << " (" << dec << steps_ << ") "
+      << "base=" << relbase_ << endl;
 }
 
 IRRef1 Snapshot::slot(int n, SnapshotData *snapmap) {
