@@ -350,6 +350,10 @@ clean-bytecode:
 .PHONY: gtest
 gtest: $(GTEST_A)
 
+bench-ghc/%: tests/Bench/%.hs
+	@mkdir -p bench-ghc
+	$(HC) -O2 -fforce-recomp -DBENCH_GHC $(BENCH_HC_OPTS) -rtsopts -o $@ $<
+
 -include $(SRCS:%.c=$(DEPDIR)/%.P)
 -include $(UTILSRCS:%.cc=$(DEPDIR)/%.P)
 -include $(DEPDIR)/vm/unittest.P
