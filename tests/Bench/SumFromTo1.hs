@@ -45,3 +45,5 @@ root upper =
   (l `plusInt` l) `eqInt` (upper `timesInt` (succInt upper))
 
 test = root (I# 100#)
+
+bench = root (I# 200000000#)
