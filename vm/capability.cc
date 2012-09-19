@@ -711,7 +711,8 @@ op_SYNC:
   // Synchronises the interpreter state from the capability.
   // Does NOT update the memory manager state!
   LOAD_STATE_FROM_CAP;
-  if (isEnabledBytecodeTracing())
+  if (isEnabledBytecodeTracing() ||
+      ((DEBUG_COMPONENTS & DEBUG_TRACE_RECORDER) && isRecording()))
     dispatch = dispatch_debug;
   // TODO: this is hacky.
   DISPATCH_NEXT;
@@ -727,7 +728,8 @@ op_JFUNC: {
     heaplim = (char *)traceExitHpLim_;
 
     LOAD_STATE_FROM_CAP;
-    if (isEnabledBytecodeTracing())
+    if (isEnabledBytecodeTracing() ||
+        ((DEBUG_COMPONENTS & DEBUG_TRACE_RECORDER) && isRecording()))
       dispatch = dispatch_debug;
 
     // Reload code/KBASE
