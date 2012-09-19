@@ -1368,7 +1368,8 @@ debugPrintParallelAssign(ostream &out, ParAssign *assign) {
 void
 Assembler::parallelAssign(ParAssign *assign, Reg optTmp)
 {
-  debugPrintParallelAssign(cerr, assign);
+  if (DEBUG_COMPONENTS & DEBUG_ASSEMBLER)
+    debugPrintParallelAssign(cerr, assign);
 
   memset(assign->status, 0, sizeof(assign->status[0]) * assign->size);
   assign->tmpsInUse = 0; 

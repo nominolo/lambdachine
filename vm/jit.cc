@@ -938,7 +938,7 @@ void Fragment::restoreSnapshot(ExitNo exitno, ExitState *ex) {
   cap->traceExitHpLim_ = ex->hplim;
 
   if (snapins->opcode() != IR::kHEAPCHK && sn.bumpExitCounter()) {
-    cerr << COL_RED "HOTSIDE" COL_RESET "\n";
+    DBG(cerr << COL_RED "HOTSIDE" COL_RESET "\n");
     cap->jit()->beginSideTrace(cap, base, this, exitno);
     cap->setState(Capability::STATE_RECORD);
   }
