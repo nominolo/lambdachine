@@ -4,6 +4,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <string.h>
 
 #define MCLIM_REDZONE 64
 
