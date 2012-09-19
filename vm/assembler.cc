@@ -857,9 +857,11 @@ void Assembler::assemble(IRBuffer *buf, MachineCode *mcode) {
   TraceId thisTraceId = Jit::fragments_.size();
   if (stopins_ != REF_FIRST) {
     buf->setRegsAllocated();
-    buf->debugPrint(cerr, thisTraceId);
+    if (DEBUG_COMPONENTS & DEBUG_ASSEMBLER)
+      buf->debugPrint(cerr, thisTraceId);
     if (!mergeWithParent()) {
-      exit(3);
+      cerr << "NYI: merge with parent failed\n";
+      exit(EXIT_FAILURE);
     }
   }
 

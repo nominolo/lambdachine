@@ -26,7 +26,7 @@ enumFromTo'Int from@(I# m) to@(I# n) =
 sum :: [Int] -> Int
 sum l = sum_aux (I# 0#) l
 
-{-# NOINLINE sum_aux #-}
+{- # NOINLINE sum_aux #-}
 sum_aux :: Int -> [Int] -> Int
 sum_aux !acc [] = acc
 sum_aux !(I# a) (I# x:xs) = sum_aux (I# (a +# x)) xs
@@ -39,7 +39,7 @@ root x = sum [ I# (a# *# b#)
 
 test = root 20 == 23485
 
-bench = root 15000
+bench = root 15000 == 6329531334376250
 
 #ifdef BENCH_GHC
 main = print bench

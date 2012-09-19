@@ -169,8 +169,10 @@ void Jit::beginSideTrace(Capability *cap, Word *base, Fragment *parent, SnapNo s
 
   replaySnapshot(parent, snapno, base);
 
-  buf_.debugPrint(cerr, 0);
-  buf_.slots_.debugPrint(cerr);
+  if (DEBUG_COMPONENTS & DEBUG_ASSEMBLER) {
+    buf_.debugPrint(cerr, ~0);
+    buf_.slots_.debugPrint(cerr);
+  }
 
   // exit(1);
 }
@@ -685,7 +687,6 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
              << parent->traceId() << ") found." COL_RESET "\n";
         buf_.emit(IR::kSAVE, IRT_VOID | IRT_GUARD, IR_SAVE_LINK,
                   parent->traceId());
-        buf_.debugPrint(cerr, 1);
         finishRecording();
         return true;
         exit(7);
@@ -732,7 +733,7 @@ void Jit::finishRecording() {
   DBG(cerr << "Recorded: " << endl);
   asm_.assemble(buffer(), mcode());
   if (DEBUG_COMPONENTS & DEBUG_ASSEMBLER)
-    buf_.debugPrint(cerr, 1);
+    buf_.debugPrint(cerr, Jit::numFragments());
 
   int tno = fragments_.size();
 

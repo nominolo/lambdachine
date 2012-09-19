@@ -34,7 +34,8 @@ main = do
   opts <- Cli.getOptions
   runGhc (Just libdir) $ do
     dflags0 <- getSessionDynFlags
-    let dflags1 = dflags0{ ghcLink = NoLink }
+    let dflags1 = dflags0{ ghcLink = NoLink
+                         , optLevel = Cli.optLevel opts }
         dflags2 | Cli.package_name opts /= ""
                 = setPackageName (Cli.package_name opts) dflags1
                 | otherwise = dflags1
