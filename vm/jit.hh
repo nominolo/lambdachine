@@ -162,6 +162,8 @@ public:
 
   inline bool isRecording() const { return cap_ != NULL; }
 
+  inline void requestAbort() { shouldAbort_ = true; }
+
   // Returns the fragment starting at the given PC. NULL, otherwise.
   inline Fragment *traceAt(BcIns *pc);
 
@@ -211,6 +213,7 @@ private:
   CallStack callStack_;
   BranchTargetBuffer btb_;
   MCode *exitStubGroup_[16];
+  bool shouldAbort_;
 
   static FRAGMENT_MAP fragmentMap_;
   static std::vector<Fragment*> fragments_;

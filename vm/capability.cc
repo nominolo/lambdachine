@@ -440,6 +440,7 @@ op_ALLOCAP:
   }
 
 heapOverflow:
+  if (isRecording()) jit_.requestAbort();
   --pc;
   // Convention: If GC is needed, T->pc points to the instruction that
   // tried to allocate.
@@ -911,6 +912,7 @@ generic_apply: {
         heap += (wordsof(PapClosure) + pap_size) * sizeof(Word);
         while (LC_UNLIKELY(heap > heaplim)) {
           heap -= (wordsof(PapClosure) + pap_size) * sizeof(Word);
+          if (isRecording()) jit_.requestAbort();
           // PC points after the CALL/CALLT/EVAL. We're setting the
           // top of stack pointer mask, though, so the GC really only
           // needs the correct base pointer.

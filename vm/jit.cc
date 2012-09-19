@@ -291,6 +291,8 @@ bool Jit::recordGenericApply(uint32_t call_info, Word *base,
 }
 
 bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
+  if (LC_UNLIKELY(shouldAbort_))
+    goto abort_recording;
   buf_.pc_ = ins;
   buf_.steps_++;
   DBG(cerr << "REC: " << ins << " " << ins->name() << endl);
@@ -726,6 +728,7 @@ inline void Jit::resetRecorderState() {
   flags_.clear();
   targets_.clear();
   cap_ = NULL;
+  shouldAbort_ = false;
 }
 
 void Jit::finishRecording() {
