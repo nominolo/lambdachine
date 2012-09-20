@@ -104,6 +104,13 @@ typedef int64_t  i8;
 #define wordsof(x)  ((sizeof(x) + sizeof(Word)-1) / sizeof(Word))
 #define countof(x)  (sizeof(x) / sizeof(*x))
 
+// Computes ceil(x / y) using only integer division.
+#define idivCeil(x, y) \
+  ({ typeof(x) _idivCeilX = (x); \
+     typeof(y) _idivCeilY = (y); \
+     (void) (&_idivCeilX == &_idivCeilY); /* type check */ \
+     (_idivCeilX + (_idivCeilY - 1)) / _idivCeilY; })
+
 #define byte_offset(from, to)  (cast(u1*, (to)) - cast(u1*, (from)))
 
 static inline int32_t byteOffset32(void *from, void *to) {

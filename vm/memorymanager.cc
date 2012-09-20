@@ -127,7 +127,8 @@ Time gc_time = 0;
 
 MemoryManager::MemoryManager()
   : free_(NULL), old_heap_(NULL), topOfStackMask_(kNoMask),
-    nextGC_(2), allocated_(0), num_gcs_(0) {
+    nextGC_(idivCeil(LC_DEFAULT_HEAP_SIZE, Block::kBlockSize)),
+    allocated_(0), num_gcs_(0) {
   region_ = Region::newRegion(Region::kSmallObjectRegion);
   info_tables_ = grabFreeBlock(Block::kInfoTables);
   static_closures_ = grabFreeBlock(Block::kStaticClosures);
@@ -320,7 +321,8 @@ void MemoryManager::performGC(Capability *cap) {
 
 
   // TODO: Is this correct?
-  nextGC_ = (fullBlocks > 2 ? fullBlocks : 2) + 1;
+  uint32_t minHeapBlocks = idivCeil(LC_DEFAULT_HEAP_SIZE, Block::kBlockSize);
+  nextGC_ = (fullBlocks > minHeapBlocks ? fullBlocks : minHeapBlocks) + 1;
 
   gc_time += getProcessElapsedTime() - gc_start;
 }
