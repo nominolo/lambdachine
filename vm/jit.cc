@@ -12,6 +12,8 @@
 #include <sstream>
 #include <iomanip>
 
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
 
 _START_LAMBDACHINE_NAMESPACE
 
@@ -1054,7 +1056,7 @@ printLoggedNYIs(FILE *out)
 {
   for (uint32_t i = 0; i < NYI__MAX; ++i) {
     if (nyiCount[i] > 0)
-      fprintf(out, "%3lu x NYI: %s\n", nyiCount[i], nyiDescription[i]);
+      fprintf(out, "%"PRIu64" x NYI: %s\n", nyiCount[i], nyiDescription[i]);
   }
 }
 
