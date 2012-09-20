@@ -268,6 +268,8 @@ public:
     return snaps_[n];
   }
 
+  inline uint32_t numExits() const { return nsnaps_; }
+
 #ifdef LC_TRACE_STATS
   inline uint64_t traceCompletions() const { return stats_[0]; }
   inline uint64_t traceExitsAt(ExitNo n) const {

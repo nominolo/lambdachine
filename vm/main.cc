@@ -154,16 +154,31 @@ void
 printTraceStats(FILE *out)
 {
 #ifdef LC_TRACE_STATS
-  fprintf(out, "Trace Statistics:\n");
+  fprintf(out, "Trace Statistics:\n"
+          " TRACE     Completions  C.Rate          Exits"
+          "  Exit Points\n");
   for (uint32_t traceId = 0; traceId < Jit::numFragments(); ++traceId) {
     Fragment *F = Jit::traceById(traceId);
     uint64_t completions = F->traceCompletions();
     uint64_t exits = F->traceExits();
+    uint64_t entries = completions + exits;
     char completionsString[30];
     char exitsString[30];
     formatWithThousands(completionsString, completions);
     formatWithThousands(exitsString, exits);
-    fprintf(out, "  %04d: %20s %20s\n", traceId, completionsString, exitsString);
+    fprintf(out, "  %04d %15s  %5.1f%% %14s ",
+            traceId, completionsString, exitsString,
+            100 * (double)completions / (double)entries);
+    if (exits > 0) {
+      for (uint32_t e = 0; e < F->numExits(); ++e) {
+        uint64_t snapExits = F->traceExitsAt(e);
+        if (snapExits > 0) {
+          fprintf(out, " #%d " COL_GREY "%3.1f%%" COL_RESET, e,
+                  100 * (double)snapExits / (double)exits);
+        }
+      }
+    }
+    fprintf(out, "\n");
   }
   fprintf(out, "\n");
 #else
