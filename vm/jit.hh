@@ -214,6 +214,9 @@ private:
   BranchTargetBuffer btb_;
   MCode *exitStubGroup_[16];
   bool shouldAbort_;
+#ifdef LC_TRACE_STATS
+  uint64_t *stats_;
+#endif
 
   static FRAGMENT_MAP fragmentMap_;
   static std::vector<Fragment*> fragments_;
@@ -265,6 +268,19 @@ public:
     return snaps_[n];
   }
 
+#ifdef LC_TRACE_STATS
+  inline uint64_t traceCompletions() const { return stats_[0]; }
+  inline uint64_t traceExitsAt(ExitNo n) const {
+    LC_ASSERT(n < nsnaps_);
+    return stats_[1 + n];
+  }
+  uint64_t traceExits() const;
+
+private:
+  void bumpExitCount(ExitNo n) { ++stats_[1 + n]; }
+  uint64_t *exitCounterAddress(ExitNo n) const { return &stats_[1 + n]; }
+#endif
+
 private:
   Fragment();
 
@@ -292,7 +308,12 @@ private:
   MCode *mcode_;
   //  size_t sizemcode_;
 
+#ifdef LC_TRACE_STATS
+  uint64_t *stats_;
+#endif
+
   friend class Jit;
+  friend class Assembler;
 };
 
 inline void Jit::registerFragment(BcIns *startPc, Fragment *F) {

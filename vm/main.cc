@@ -15,6 +15,7 @@ using namespace lambdachine;
 void formatTime(FILE *out, const char *label, Time time);
 void formatWithThousands(char *str, uint64_t n);
 void printGCStats(FILE *out, MemoryManager *mm, Time mut_time);
+void printTraceStats(FILE *out);
 
 inline double percent(double num, double denom) {
   return (num * 100) / denom;
@@ -90,6 +91,11 @@ int main(int argc, char *argv[]) {
   printf("\n\n");
   printGCStats(stdout, &mm, mut_time);
 
+#ifdef LC_TRACE_STATS
+  printf("\n\n");
+  printTraceStats(stdout);
+#endif
+
   formatTime(stdout, "  Startup ", start_time - startup_time);
   formatTime(stdout, "    LOAD  ", loader_time);
   formatTime(stdout, "  Runtime ", run_time);
@@ -141,4 +147,25 @@ void printGCStats(FILE *out, MemoryManager *mm, Time mut_time) {
   formatWithThousands(buf, alloc_rate);
   fprintf(out, "   (%18s bytes per MUT second)\n", buf);
   fprintf(out, "    %18d collections\n\n", mm->numGCs());
+}
+
+void
+printTraceStats(FILE *out)
+{
+#ifdef LC_TRACE_STATS
+  fprintf(out, "Trace Statistics:\n");
+  for (uint32_t traceId = 0; traceId < Jit::numFragments(); ++traceId) {
+    Fragment *F = Jit::traceById(traceId);
+    uint64_t completions = F->traceCompletions();
+    uint64_t exits = F->traceExits();
+    char completionsString[30];
+    char exitsString[30];
+    formatWithThousands(completionsString, completions);
+    formatWithThousands(exitsString, exits);
+    fprintf(out, "  %04d: %20s %20s\n", traceId, completionsString, exitsString);
+  }
+  fprintf(out, "\n");
+#else
+  UNUSED(out);
+#endif
 }

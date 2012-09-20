@@ -77,6 +77,9 @@ void Jit::beginRecording(Capability *cap, BcIns *startPc, Word *base, bool isRet
   callStack_.reset();
   btb_.reset(startPc_, &callStack_);
   lastResult_ = TRef();
+#ifdef LC_TRACE_STATS
+  stats_ = NULL;
+#endif
 }
 
 /*
@@ -174,7 +177,9 @@ void Jit::beginSideTrace(Capability *cap, Word *base, Fragment *parent, SnapNo s
     buf_.slots_.debugPrint(cerr);
   }
 
-  // exit(1);
+#ifdef LC_TRACE_STATS
+  stats_ = NULL;
+#endif
 }
 
 static IRType littypeToIRType(uint8_t littype) {
@@ -731,6 +736,11 @@ inline void Jit::resetRecorderState() {
 void Jit::finishRecording() {
   Time compilestart = getProcessElapsedTime();
   DBG(cerr << "Recorded: " << endl);
+#ifdef LC_TRACE_STATS
+  uint32_t nStatCounters = 1 + buffer()->snaps_.size();
+  stats_ = new uint64_t[nStatCounters];
+  memset(stats_, 0, sizeof(uint64_t) * nStatCounters);
+#endif
   asm_.assemble(buffer(), mcode());
   if (DEBUG_COMPONENTS & DEBUG_ASSEMBLER)
     buf_.debugPrint(cerr, Jit::numFragments());
@@ -762,11 +772,18 @@ void Jit::finishRecording() {
 
 Fragment::Fragment()
   : flags_(0), traceId_(0), startPc_(NULL), targets_(NULL) {
+#ifdef LC_TRACE_STATS
+  stats_ = NULL;
+#endif
 }
 
 Fragment::~Fragment() {
   if (targets_ != NULL)
     delete[] targets_;
+#ifdef LC_TRACE_STATS
+  if (stats_ != NULL)
+    delete[] stats_;
+#endif
 }
 
 void Jit::genCode(IRBuffer *buf) {
@@ -812,6 +829,10 @@ Fragment *Jit::saveFragment() {
   F->snapmap_.index_ = buf->snapmap_.data_.size();
 
   F->mcode_ = as->mcp;
+#ifdef LC_TRACE_STATS
+  F->stats_ = stats_;  // Transfers ownership.
+  stats_ = NULL;
+#endif
 
   return F;
 }
@@ -889,6 +910,9 @@ void Fragment::restoreSnapshot(ExitNo exitno, ExitState *ex) {
   LC_ASSERT(0 <= exitno && exitno < nsnaps_);
   DBG(cerr << "Restoring from snapshot " << (int)exitno
       << " of Trace " << traceId() << endl);
+#ifdef LC_TRACE_STATS
+  bumpExitCount(exitno);
+#endif
   Snapshot &sn = snap(exitno);
   IR *snapins = ir(sn.ref());
   Word *base = (Word *)ex->gpr[RID_BASE];
@@ -1033,5 +1057,17 @@ printLoggedNYIs(FILE *out)
       fprintf(out, "%3lu x NYI: %s\n", nyiCount[i], nyiDescription[i]);
   }
 }
+
+#ifdef LC_TRACE_STATS
+uint64_t
+Fragment::traceExits() const
+{
+  uint64_t exits = 0;
+  for (uint32_t e = 0; e < nsnaps_; ++e) {
+    exits += traceExitsAt(e);
+  }
+  return exits;
+}
+#endif
 
 _END_LAMBDACHINE_NAMESPACE

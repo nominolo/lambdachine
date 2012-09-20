@@ -835,6 +835,10 @@ void Assembler::assemble(IRBuffer *buf, MachineCode *mcode) {
 
   prepareTail(buf, saveref);
 
+#ifdef LC_TRACE_STATS
+  incrementCounter(&jit()->stats_[0]);
+#endif
+
   for (curins_--; curins_ >= stopins_; curins_--) {
     IR *ins = ir(curins_);
     if (ins->isGuard()) {
@@ -871,6 +875,11 @@ void Assembler::assemble(IRBuffer *buf, MachineCode *mcode) {
     if (buf_->entry_relbase_ != 0) {
       adjustBase(buf_->entry_relbase_);
     }
+
+#ifdef LC_TRACE_STATS
+    // Bump the parent trace's exit counter.
+    incrementCounter(buf_->parent_->exitCounterAddress(jit()->parentExitNo_));
+#endif
   }
 
 
@@ -893,6 +902,21 @@ void Assembler::assemble(IRBuffer *buf, MachineCode *mcode) {
   mcode->commit(mcp);
 
   RA_DBG_FLUSH();
+}
+
+void
+Assembler::incrementCounter(uint64_t *counterAddr)
+{
+  // We emit a PC-relative INC.  For example:
+  //
+  //     incq 0x200b31(%rip)  =  48 ff 05 [31 0b 20 00]
+  //   
+  MCode *p = mcp;
+  *(int32_t *)(p - 4) = jmprel(p, (MCode *)(void *)counterAddr);
+  p[-5] = 0x05;
+  p[-6] = 0xff;
+  p[-7] = 0x48;
+  mcp = p - 7;
 }
 
 void Assembler::emitSLOAD(IR *ins) {

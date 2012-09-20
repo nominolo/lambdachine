@@ -536,6 +536,9 @@ public:
   void patchGuard(Fragment *, ExitNo, MCode *target);
   void adjustBase(int32_t relbase);
 
+  // Emits code to increment the value of the value at the target
+  // address.
+  void incrementCounter(uint64_t *counterAddr);
   void assemble(IRBuffer *, MachineCode *);
 
   void transfer(RegSpill dst, RegSpill src, ParAssign *assign);

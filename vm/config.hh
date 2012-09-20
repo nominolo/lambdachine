@@ -28,6 +28,8 @@
 
 #define LC_JIT   1
 
+// #define LC_TRACE_STATS
+
 #define MAX_HEAP_ENTRIES      300
 
 #define HOT_SIDE_EXIT_THRESHOLD  7
