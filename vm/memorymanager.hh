@@ -225,6 +225,11 @@ public:
     nextGC_ = blocks;
   }
 
+  inline void setMinHeapSize(size_t bytes) {
+    minHeapSize_ = idivCeil(bytes, Block::kBlockSize);
+    if (minHeapSize_ < 2) minHeapSize_ = 2;
+  }
+
 private:
   inline void *allocInto(Block **block, size_t bytes) {
     char *ptr = (*block)->alloc(bytes);
@@ -281,6 +286,7 @@ private:
   Block *old_heap_; // Only non-NULL during GC
   u4 topOfStackMask_;
 
+  uint64_t minHeapSize_;  // in blocks
   u4 nextGC_;  // if zero, a GC gets triggered.
 
   // Assuming an allocation rate of 16GB/s (pretty high), this counter

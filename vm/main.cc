@@ -32,6 +32,7 @@ int main(int argc, char *argv[]) {
   initializeTimer();
   Time startup_time = getProcessElapsedTime();
   MemoryManager mm;
+  mm.setMinHeapSize(1UL * 1024 * 1024);
   Loader loader(&mm, opts->basePath().c_str());
 
   if (!loader.loadWiredInModules())

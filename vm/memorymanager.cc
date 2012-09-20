@@ -127,7 +127,7 @@ Time gc_time = 0;
 
 MemoryManager::MemoryManager()
   : free_(NULL), old_heap_(NULL), topOfStackMask_(kNoMask),
-    nextGC_(idivCeil(LC_DEFAULT_HEAP_SIZE, Block::kBlockSize)),
+    minHeapSize_(2), nextGC_(minHeapSize_),
     allocated_(0), num_gcs_(0) {
   region_ = Region::newRegion(Region::kSmallObjectRegion);
   info_tables_ = grabFreeBlock(Block::kInfoTables);
@@ -318,11 +318,8 @@ void MemoryManager::performGC(Capability *cap) {
   // TODO: Add sanity check.  Everything reachable from the roots must
   // be in a k[Static]Closures block now.
 
-
-
   // TODO: Is this correct?
-  uint32_t minHeapBlocks = idivCeil(LC_DEFAULT_HEAP_SIZE, Block::kBlockSize);
-  nextGC_ = (fullBlocks > minHeapBlocks ? fullBlocks : minHeapBlocks) + 1;
+  nextGC_ = (fullBlocks > minHeapSize_ ? fullBlocks : minHeapSize_) + 1;
 
   gc_time += getProcessElapsedTime() - gc_start;
 }
