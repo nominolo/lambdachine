@@ -232,11 +232,11 @@ bool Jit::recordGenericApply(uint32_t call_info, Word *base,
   uint32_t pointer_mask = call_info >> 8;
   switch (fnode->info()->type()) {
   case PAP:
-    cerr << "NYI: Calling of PAPs." << endl;
+    logNYI(NYI_RECORD_CALL_PAP);
     return false;
   case THUNK:
   case CAF:
-    cerr << "NYI: Calling of THUNK/CAFs." << endl;
+    logNYI(NYI_RECORD_CALL_THUNK);
     return false;
   case FUN: {
     const CodeInfoTable *info = (CodeInfoTable *)fnode->info();
@@ -244,7 +244,7 @@ bool Jit::recordGenericApply(uint32_t call_info, Word *base,
     if (arity == given_args)
       return true;
     if (arity > given_args) {
-      cerr << "NYI: Partial applications." << endl;
+      logNYI(NYI_RECORD_CREATE_PAP);
       return false;
     }
 
@@ -325,7 +325,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
         return true;
       } else {  
         DBG(cerr << COL_GREEN << "REC: Inner loop. " << buf_.pc_ << COL_RESET);
-        cerr << "NYI: Trace truncation due to inner loop.\n";
+        logNYI(NYI_TRACE_TRUNCATE);
         goto abort_recording;
       }
     }
@@ -469,7 +469,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
   case BcIns::kEVAL: {
     Closure *tnode = (Closure *)base[ins->a()];
     if (tnode->isIndirection()) {
-      cerr << "NYI: EVAL of indirections" << endl;
+      logNYI(NYI_RECORD_EVAL_IND);
       goto abort_recording;
     }
     TRef noderef = buf_.slot(ins->a());
@@ -549,7 +549,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
   case BcIns::kMOV_RES: {
     if (!(IRRef)lastResult_) {
 #if !defined(NDEBUG)
-      cerr << "NYI: MOV_RES with out-of trace input." << endl;
+      logNYI(NYI_RECORD_MOV_RES_EXT);
 #endif
       goto abort_recording;
     }
@@ -566,10 +566,9 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     InfoTable *info = oldnode->info();
 
     if (info->type() == CAF) {
-      cerr << "NYI: UPDATE of a CAF." << endl;
+      logNYI(NYI_RECORD_UPDATE_CAF);
       goto abort_recording;
     }
-
 
     TRef oldref = buf_.slot(ins->a());
     TRef newref = buf_.slot(ins->d());
@@ -704,8 +703,6 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
                 F->traceId());
       finishRecording();
       return true;
-      cerr << "NYI: Trace through JFUNC?\n";
-      goto abort_recording;
     }
   }
 
@@ -1007,6 +1004,34 @@ debugTrace(ExitState *ex) {
     cerr << endl;
   }
   traceDebugLastHp = (Word *)ex->gpr[RID_HP];
+}
+
+static const char *nyiDescription[NYI__MAX] = {
+#define NYIDESCR(name, descr) descr,
+  NYIDEF(NYIDESCR)
+#undef NYIDESCR
+};
+
+static uint64_t nyiCount[NYI__MAX] = {
+#define NYICOUNT(name, descr) 0,
+  NYIDEF(NYICOUNT)
+#undef NYICOUNT
+};
+
+void
+logNYI(uint32_t nyi_id)
+{
+  LC_ASSERT(nyi_id < NYI__MAX);
+  ++nyiCount[nyi_id];
+}
+
+void
+printLoggedNYIs(FILE *out)
+{
+  for (uint32_t i = 0; i < NYI__MAX; ++i) {
+    if (nyiCount[i] > 0)
+      fprintf(out, "%3lu x NYI: %s\n", nyiCount[i], nyiDescription[i]);
+  }
 }
 
 _END_LAMBDACHINE_NAMESPACE

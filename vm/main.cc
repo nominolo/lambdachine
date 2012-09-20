@@ -85,6 +85,9 @@ int main(int argc, char *argv[]) {
   delete T;
 
   printf("\n\n");
+  printLoggedNYIs(stdout);
+
+  printf("\n\n");
   printGCStats(stdout, &mm, mut_time);
 
   formatTime(stdout, "  Startup ", start_time - startup_time);

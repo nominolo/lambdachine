@@ -332,6 +332,29 @@ typedef Word BloomFilter;
 #define bloomset(b, x)	((b) |= bloombit((x)))
 #define bloomtest(b, x)	((b) & bloombit((x)))
 
+/*
+ * Features not yet implemented.
+ */
+#define NYIDEF(_) \
+  _(GROW_IRBUFFER, "Growing IR Buffer") \
+  _(RECORD_MOV_RES_EXT, "Recording of MOV_RES with out-of-trace input.") \
+  _(RECORD_UPDATE_CAF, "Recording of UPDATE with a CAF argument.") \
+  _(RECORD_EVAL_IND, "Recording of EVAL of an indirection.") \
+  _(TRACE_TRUNCATE, "Trace truncation due to inner loop.") \
+  _(RECORD_CREATE_PAP, "Recording of call which creates a PAP.") \
+  _(RECORD_CALL_PAP, "Recording of a call of a PAP.") \
+  _(RECORD_CALL_THUNK, "Recording of call of a thunk/CAF.")
+
+enum {
+#define NYIENUM(name, descr) NYI_##name,
+  NYIDEF(NYIENUM)
+#undef NYIENUM
+  NYI__MAX
+};
+
+void logNYI(uint32_t nyi_id);
+void printLoggedNYIs(FILE *);
+
 _END_LAMBDACHINE_NAMESPACE
 
 #endif /* LAMBDACHINE_COMMON_H */
