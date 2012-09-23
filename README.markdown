@@ -2,31 +2,40 @@
 
 You need:
 
-  - A recent [Haskell Platform][hp].
+  - GHC 7.0.* (newer versions not yet supported)
   - A C compiler, either `gcc` or `clang`
   
-[hp]: http://hackage.haskell.org/platform/
-
-Most dependencies are on Hackage and can be installed via `cabal`,
-however, Hoopl's version on Hackage currently doesn't build with
-GHC 7, so you have to build that by hand:
-
-    $ cd some/temporary/directory
-    $ git clone http://ghc.cs.tufts.edu/hoopl/hoopl.git
-    $ cd hoopl
-    $ cabal install
-    
-Now go back to the `lambdachine` directory and run:
+All dependencies are on Hackage and can be installed via `cabal`,
+  
+Installation steps:
 
     $ ./boot
+    $ ./configure
     $ make install-deps
     $ make boot
     $ make
 
-This should build the bytecode compiler `lcc` and the runtime
-executable, currently called `interp`.  To run a benchmark use
+This should build the bytecode compiler `lcc`, the test suite and the
+actual VM, called `lcvm`.  To run the test suite use:
 
-    $ make bench2
+    $ make test
 
-See the `Makefile` for more targets.  The benchmarks are in directory
-`tests/Bench/`.
+See `Makefile.in` for more targets.  The benchmarks are in directory
+`tests/Bench/`.  Benchmarks use the C preprocessor to compile a
+version for GHC and another for Lambdachine.  For example, to build
+the benchmark `SumFromTo1` use:
+
+    $ make bench-ghc/SumFromTo1
+    $ ./bench-ghc/SumFromTo1 +RTS -s -A1m    # run it
+    $ make tests/Bench/SumFromTo1.lcbc     # also built by "test" target
+    $ ./lcvm -e bench Bench.SumFromTo1
+
+For benchmarking, make sure to build `lcvm` with full optimisations.
+To do so, edit your `mk/build.mk` file to contain the following line:
+
+    EXTRA_CXXFLAGS=-O3 -DNDEBUG
+
+Each benchmark has code for two versions: a test version and a
+benchmark version. By default, the `test` target is used.  To run a
+benchmark, you have to explicitly specify to use `bench` as the entry
+point.  This is what the `-e` option does.
