@@ -105,7 +105,7 @@ GTEST_DIR=utils/gtest-$(GTEST_VERSION)
 GTEST_A=$(GTEST_DIR)/libgtest.a
 
 $(GTEST_DIR): $(GTEST_DIR).zip
-	cd `dirname $(GTEST_DIR)` && $(UNZIP) `basename $<`
+	cd `dirname $(GTEST_DIR)` && $(UNZIP) -f `basename $<`
 
 ${GTEST_DIR}/src/gtest-all.cc: ${GTEST_DIR} 
 
@@ -176,7 +176,7 @@ lcvm: $(VM_SRCS:.cc=.o) vm/main.o
 	@echo "LINK $(filter %.o %.a, $^) => $@"
 	@$(CXX) -o $@ $(filter %.o %.a, $^) $(LIBS)
 
-unittest: $(TEST_FILES)
+unittest: lcc $(TEST_FILES)
 
 unittest: vm/unittest.o $(GTEST_A) $(VM_SRCS:.cc=.o)
 	@echo "LINK $(filter %.o %.a, $^) => $@"
