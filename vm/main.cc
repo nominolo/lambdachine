@@ -169,8 +169,9 @@ printTraceStats(FILE *out)
     formatWithThousands(completionsString, completions);
     formatWithThousands(exitsString, exits);
     fprintf(out, "  %04d %15s  %5.1f%% %14s ",
-            traceId, completionsString, exitsString,
-            100 * (double)completions / (double)entries);
+            traceId, completionsString,
+            100 * (double)completions / (double)entries,
+            exitsString);
     if (exits > 0) {
       for (uint32_t e = 0; e < F->numExits(); ++e) {
         uint64_t snapExits = F->traceExitsAt(e);
