@@ -385,16 +385,18 @@ TRef IRBuffer::emitNEW(IRRef1 itblref, int nfields, HeapEntry *out) {
   return tref;
 }
 
-void IRBuffer::setHeapOffsets() {
+uint32_t IRBuffer::setHeapOffsets() {
   int offset = 0;
   IRRef href = chain_[IR::kNEW];
   IRRef chkref = chain_[IR::kHEAPCHK];
   IRRef cur = href;
+  uint32_t heapchecks = 0;
   for (;;) {
     while (chkref > cur) {
       // Check that we've reserved exactly the amount needed.
       LC_ASSERT((int)ir(chkref)->op1() == -offset);
       offset = 0;
+      ++heapchecks;
       chkref = ir(chkref)->prev();
     }
     if (!cur)
@@ -407,6 +409,7 @@ void IRBuffer::setHeapOffsets() {
   }
   // Non-zero offset indicates missing heap check.
   LC_ASSERT(offset == 0);
+  return heapchecks;
 }
 
 AbstractStack::AbstractStack()

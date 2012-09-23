@@ -65,6 +65,8 @@ int main(int argc, char *argv[]) {
   Capability cap(&mm);
   Thread *T = Thread::createThread(&cap, opts->stackSize() / sizeof(Word));
 
+  cap.jit()->setOption(Jit::kOptFastHeapCheckFail, true);
+
   if (opts->traceInterpreter()) {
     cap.enableBytecodeTracing();
   }

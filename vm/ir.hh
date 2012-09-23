@@ -836,7 +836,40 @@ public:
 
   typedef int HeapEntry;
   TRef emitNEW(IRRef1 itblref, int nfields, HeapEntry *entry1);
-  void setHeapOffsets();
+
+  // Recalculates the offsets of allocations.  Returns the number of
+  // heap checks.
+  //
+  // If we performed a heap check before each allocation the generated
+  // code would look something like this:
+  //
+  //         HEAPCHECK #3            Hp += 3
+  //                                 if (Hp > HpLim) goto _exit
+  //     D = NEW A [B C]             Hp[-3] = A
+  //                                 Hp[-2] = B
+  //                                 Hp[-1] = C
+  //                                 D = &Hp[-3]
+  //
+  // The offset for instruction D is -3 in this example.
+  //
+  // Instead of performing a new heap check for each instruction, we
+  // merge heap checks for multiple allocations into one.  We have to
+  // adjust the offsets accordingly:
+  //
+  //         HEAPCHECK #5            Hp += 5
+  //                                 if (Hp > HpLim) goto _exit
+  //     D = NEW A [B C]             Hp[-5] = A
+  //                                 Hp[-4] = B
+  //                                 Hp[-3] = C
+  //                                 D = &Hp[-5]
+  //     F = NEW E [D]               Hp[-2] = E
+  //                                 Hp[-1] = D
+  //                                 F = &Hp[-2]
+  //
+  // This function makes sure that all offsets are correct and that each
+  // allocation is preceded by a heap check of the right size.
+  uint32_t setHeapOffsets();
+
   inline int numFields(HeapEntry entry);
   inline void setField(HeapEntry entry, int field, IRRef1 ref);
   static const HeapEntry kInvalidHeapEntry = -1;

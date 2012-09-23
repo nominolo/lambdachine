@@ -266,6 +266,10 @@ private:
 
   void bumpAllocatorFull(char **heap, char **heaplim, Capability *cap);
 
+  // Returns non-zero if GC is necessary.  If result is 0, then *heap
+  // and *heaplim point to a new block.
+  int bumpAllocatorFullNoGC(char **heap, char **heaplim);
+
   Block *grabFreeBlock(Block::Flags);
   void blockFull(Block **);
   void performGC(Capability *cap);

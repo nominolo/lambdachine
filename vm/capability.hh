@@ -46,6 +46,8 @@ public:
   // take effect.
   void setState(int state);
 
+  inline int heapCheckFailQuick(char **heap, char **hplim);
+
 private:
   typedef enum {
     kModeInit,
@@ -87,6 +89,12 @@ private:
   Word *traceExitHpLim_;
   friend class Fragment;
 };
+
+inline int
+Capability::heapCheckFailQuick(char **heap, char **hplim)
+{
+  return mm_->bumpAllocatorFullNoGC(heap, hplim);
+}
 
 _END_LAMBDACHINE_NAMESPACE
 

@@ -97,7 +97,9 @@ void Assembler::setupRegAlloc() {
 // the prev() fields of the input instructions are valid.
 // This won't be the case after this function finishes.
 void Assembler::setup(IRBuffer *buf) {
-  buf->setHeapOffsets();
+  numHeapChecks_ = buf->setHeapOffsets();
+  mcQuickHeapCheck_ = NULL;
+
   setupRegAlloc();
 
   ir_ = buf->buffer_;  // REF-biased
@@ -762,6 +764,46 @@ bool Assembler::mergeWithParent() {
   return true;
 }
 
+#define QUICK_HEAP_CHECK_FAIL_SIZE  24
+
+void
+Assembler::heapCheckFailure(SnapNo snapno, MCode *retryAddress, MCode *p, int32_t bytes)
+{
+  // We generate the following code (25 bytes):
+  //
+  //      0: 57             push   %rdi
+  //      1: 56             push   %rsi
+  //      2: bf <exitno>    mov    $<exitno>,%edi
+  //      7: be <bytes>     mov    $<bytes>,%rdi 
+  //     12: e8 00 00 00 00 callq  asmHeapOverflow
+  //     17: 5e             pop    %rsi
+  //     18: 5f             pop    %rdi
+  //     19: e9 00 00 00 00       jmpq   <retaddr>
+
+  *p++ = XI_PUSH + RID_EDI;
+  *p++ = XI_PUSH + RID_ESI;
+
+  *p++ = XI_MOVri + RID_EDI;
+  *(int32_t *)p = (int32_t)snapno;
+  p += 4;
+  
+  *p++ = XI_MOVri + RID_ESI;
+  *(int32_t *)p = bytes;
+  p += 4;
+
+  *p++ = XI_CALL;
+  p += 4;
+  *(int32_t *)(p - 4) = jmprel(p, (MCode *)(void *)asmHeapOverflow);
+
+  *p++ = XI_POP + RID_ESI;
+  *p++ = XI_POP + RID_EDI;
+  
+  *p++ = XI_JMP;
+  p += 4;
+  *(int32_t *)(p - 4) = jmprel(p, retryAddress);
+}
+
+
 // Adjust the Trace ID to the new target:
 //
 //     movl <TraceId>, <F_ID_OFFS>(%rsp)
@@ -786,6 +828,12 @@ MCode *emitSetTraceId(MCode *p, TraceId traceId) {
 }
 
 void Assembler::prepareTail(IRBuffer *buf, IRRef saveref) {
+  if (jit()->getOption(Jit::kOptFastHeapCheckFail) &&
+      numHeapChecks_ > 0) {
+    mctop -= QUICK_HEAP_CHECK_FAIL_SIZE;
+    mcQuickHeapCheck_ = mctop;
+  }
+
   MCode *p = mctop;
   if (saveref && ir(saveref)->op1()) {
     // The SAVE instruction loops back somewhere.  Reserve space for
@@ -1020,13 +1068,35 @@ void Assembler::fieldLoad(IR *ins) {
 
 void Assembler::heapCheck(IR *ins) {
   int32_t bytes = sizeof(Word) * ins->op1();
-  if (bytes != 0) {
+
+  if (bytes == 0)
+    return;
+
+  if (mcQuickHeapCheck_ != NULL) {
+
+    MCode *p = mcp;
+    Snapshot &snap = buf_->snap(snapno_);
+    *(int32_t *)(p - 4) = jmprel(p, mcQuickHeapCheck_);
+    p[-5] = (MCode)(XI_JCCn + (CC_A & 15));
+    p[-6] = 0x0f;
+    mcp = p - 6;
+    snap.mcode_ = NULL;  // just in case
+
+    emit_rmro(XO_CMP, RID_HP | REX_64, RID_ESP | REX_64, HPLIM_SP_OFFS);
+    emit_rmro(XO_LEA, RID_HP | REX_64, RID_HP | REX_64, bytes);
+
+    MCode *retryAddr = mcp;
+    heapCheckFailure(snapno_, retryAddr, mcQuickHeapCheck_, bytes);
+    mcQuickHeapCheck_ = NULL;
+
+  } else {
+    
     guardcc(CC_A);
 
     // HpLim == [rsp + HPLIM_SP_OFFS]
     emit_rmro(XO_CMP, RID_HP | REX_64, RID_ESP | REX_64, HPLIM_SP_OFFS);
 
-    // TODO: Emit guard
+    // HpLim = HpLim + bytes
     emit_rmro(XO_LEA, RID_HP | REX_64, RID_HP | REX_64, bytes);
   }
 }

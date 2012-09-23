@@ -2,6 +2,7 @@
 #include "jit.hh"
 #include "thread.hh"
 #include "assembler.hh"
+#include "capability.hh"
 
 #include <iostream>
 
@@ -20,9 +21,29 @@ exitTrace(ExitNo n, ExitState *s) {
   }
 }
 
+extern "C" int LC_USED
+heapCheckFail(ExitState *s)
+{
+  Capability *cap = s->T->owner();
+  Word *hpold = (Word*)s->gpr[RID_HP];
+  Word *hplim = s->hplim;
+  int ok = cap->heapCheckFailQuick((char **)&s->gpr[RID_HP], (char **)&s->hplim);
+#if (DEBUG_COMPONENTS & DEBUG_TRACE_ENTEREXIT)
+  cerr << "HeapCheckFail ";
+  if (ok == 0) {
+    cerr << "QUICK hp/lim = " << hpold << '/' << hplim << " => "
+         << (Word*)s->gpr[RID_HP] << '/' << s->hplim << endl;
+  } else {
+    cerr << "SLOW (GC necessary)" << endl;
+  }
+#endif
+  return ok;
+}
+
 #define ASM_ENTER NAME_PREFIX "asmEnter"
 #define ASM_EXIT  NAME_PREFIX "asmExit"
 #define ASM_TRACE NAME_PREFIX "asmTrace"
+#define ASM_HEAP_OVERFLOW NAME_PREFIX "asmHeapOverflow"
 
 #define SAVE_SIZE (80 + 256 * sizeof(Word))
 
@@ -64,7 +85,7 @@ Finding such bugs must be extremely tricky (although Valgrind may
 help.)  I found it because I read an [article on the x86-64 ABI][1].
 
  [1]: http://eli.thegreenplace.net/2011/09/06/stack-frame-layout-on-x86-64/
-  
+
 */
 
 static void LC_USED
@@ -73,7 +94,7 @@ asmEnterIsImplementedInAssembly(TraceId F_id, Thread *T,
                                 Word *stacklim, MCode *code) {
   /* rdi = F_id,  rsi = T,  rdx = hp,  rcx = hplim,
      r8 = stacklim,  r9 = code */
-  
+
   asm volatile(
     ".globl " ASM_ENTER "\n"
     ASM_ENTER ":\n\t"
@@ -261,13 +282,13 @@ asmTraceIsImplementedInAssembly(void) {
     "call " NAME_PREFIX "debugTrace\n\t"
 
     "addq $128, %%rsp\n\t"  /* deallocate space for xmm registers */
-    
+
     /* r12-r15 are guarenteed to be the same. r14 contains the return
        address. */
     "movq 0(%%rsp), %%rax\n\t"
     "movq 8(%%rsp), %%rcx\n\t"
     "movq 16(%%rsp), %%rdx\n\t"
-    /*    "movq 24(%rsp), %%rbx\n\t" // callee-save */ 
+    /*    "movq 24(%rsp), %%rbx\n\t" // callee-save */
     /* "movq 32(%rsp), %%rsp\n\t" */
     "movq 40(%%rsp), %%rbp\n\t"
     "movq 48(%%rsp), %%rsi\n\t"
@@ -286,6 +307,130 @@ asmTraceIsImplementedInAssembly(void) {
     "ret\n\t"
 
     : : );
+}
+
+static void LC_USED
+asmHeapBufOverflowDummy(void) {
+  asm volatile(
+    ".globl " ASM_HEAP_OVERFLOW "\n"
+    ASM_HEAP_OVERFLOW ":\n\t"
+
+    /* We're calling into C code, so let's save callee-save registers
+       first.  Depending on the result of the C function we then have to
+       save all the ExitState or we just return.
+    */
+
+    /* Frame:
+
+                +----------------+
+       rsp + 16 | saved  rdi     |   becomes:   r15
+                +----------------+
+       rsp + 8  | saved  rsi     |              r14
+                +----------------+
+       rsp + 0  | return address |              r13
+                +----------------+
+
+    */
+    "subq %%rsi, %%r12\n\t"
+    "pushq %%r12\n\t"
+    "pushq %%r11\n\t"
+    "pushq %%r10\n\t"
+    "pushq %%r9\n\t"
+    "pushq %%r8\n\t"
+    "pushq %%rdi\n\t"       // the exit number
+    "pushq %%rsi\n\t"       // bytes
+    "pushq %%rbp\n\t"
+
+    "lea  88(%%rsp), %%rbp\n\t"
+    "pushq %%rbp\n\t"
+
+    "pushq %%rbx\n\t"
+    "pushq %%rdx\n\t"
+    "pushq %%rcx\n\t"
+    "pushq %%rax\n\t"
+
+    /* make room for XMM registers */
+    "sub   $128, %%rsp\n\t"  /* make room for them on the stack */
+    "sub   $128, %%rbp\n\t"  /* skip past the int regs */
+
+    /* TODO: Are XMM registers caller-save? */
+
+    /* call heap overflow handler: rdi = ExitState*  */
+    "movq %%rsp, %%rdi\n\t"
+    "call " NAME_PREFIX "heapCheckFail\n\t"
+
+    "test %%eax, %%eax\n\t"
+    "jnz .L1\n\t"
+
+    /* Common case: we jump back to the trace code. */
+    "addq   $128, %%rsp\n\t"   /* deallocate XMM registers */
+
+    "movq   0(%%rsp), %%rax\n\t"
+    "movq   8(%%rsp), %%rcx\n\t"
+    "movq  16(%%rsp), %%rdx\n\t"
+    "movq  24(%%rsp), %%rbx\n\t"
+    //    rsp
+    "movq  40(%%rsp), %%rbp\n\t"
+    "movq  48(%%rsp), %%rsi\n\t"
+    // Don't need to restore %rdi
+    "movq  64(%%rsp), %%r8\n\t"
+    "movq  72(%%rsp), %%r9\n\t"
+    "movq  80(%%rsp), %%r10\n\t"
+    "movq  88(%%rsp), %%r11\n\t"
+    "movq  96(%%rsp), %%r12\n\t"  // new Heap pointer
+    "addq  $104, %%rsp\n\t"       // Top of stack = return address
+    "ret\n"                       // Jump back to trace.
+
+    ".L1:\n\t"
+    /* Uncommon case: we need to do GC and fall back to the
+       interpreter. */
+
+    /* TODO: Save XMM registers. */
+
+    /* Save r13-r15 and get exit number. */
+    /* [rsp + 0] = xmm15; [rsp + 32 * 8] = trace rsp;
+       [rsp + 31 * 8] = saved rdi          = rsp + 248
+       [rsp + 30 * 8] = saved rsi          = rsp + 240
+       [rsp + 29 * 8] = return address     = rsp + 232
+
+       [rsp + (16 + 7) * 8] = exit no      = rsp + 184
+       [rsp + (16 + 6) * 8] = bytes        = rsp + 176
+    */
+
+    "movl   184(%%rsp), %%edi\n\t"  // exit no.
+    "movq   248(%%rsp), %%rax\n\t"  // saved rdi
+    "movq   %%rax, 184(%%rsp)\n\t"  // expected saved location for rdi
+
+    "movl   176(%%rsp), %%esi\n\t"  // bytes
+    "addq   %%rsi, 224(%%rsp)\n\t"  // re-increment r12 (yes, messy)
+    "movq   240(%%rsp), %%rax\n\t"  // saved rsi
+    "movq   %%rax, 176(%%rsp)\n\t"  // expected save location for rsi
+
+    "mov    %%r15, 248(%%rsp)\n\t"
+    "mov    %%r14, 240(%%rsp)\n\t"
+    "mov    %%r13, 232(%%rsp)\n\t"
+    "mov    %%rsp, %%rsi\n\t"
+
+    "call " NAME_PREFIX "exitTrace\n\t"
+
+    /* We can't increment the stack pointer just yet. */
+    "leaq %c0(%%rsp), %%rax\n\t"
+
+    /* restore callee saved registers */
+    "movq -8(%%rax),%%rbx\n\t"
+    "movq -16(%%rax),%%r12\n\t"
+    "movq -24(%%rax),%%r13\n\t"
+    "movq -32(%%rax),%%r14\n\t"
+    "movq -40(%%rax),%%r15\n\t"
+
+    /* deallocate the stack used */
+    "addq %0, %%rsp\n\t"
+
+    /* return to original caller */
+    "pop %%rbp\n\t"
+    "ret\n\t"
+
+    : : "i"(SAVE_SIZE + 256));
 }
 
 _END_LAMBDACHINE_NAMESPACE

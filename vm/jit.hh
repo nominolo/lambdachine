@@ -361,6 +361,7 @@ extern "C" void asmEnter(TraceId F_id, Thread *T,
 
 extern "C" void asmExit(int);
 
+extern "C" void asmHeapOverflow(void);
 extern "C" void asmTrace(void);
 extern "C" void debugTrace(ExitState *);
 

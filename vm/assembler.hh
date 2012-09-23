@@ -249,6 +249,7 @@ typedef enum {
   XI_JMP =	0xe9,
   XI_JMPs =	0xeb,
   XI_PUSH =	0x50, /* Really 50+r. */
+  XI_POP =	0x58, /* Really 58+r. */
   XI_JCCs =	0x70, /* Really 7x. */
   XI_JCCn =	0x80, /* Really 0f8x. */
   XI_LEA =	0x8d,
@@ -539,6 +540,9 @@ public:
   // Emits code to increment the value of the value at the target
   // address.
   void incrementCounter(uint64_t *counterAddr);
+
+  void heapCheckFailure(SnapNo snapno, MCode *retaddr, MCode *p, int32_t bytes);
+
   void assemble(IRBuffer *, MachineCode *);
 
   void transfer(RegSpill dst, RegSpill src, ParAssign *assign);
@@ -643,6 +647,9 @@ private:
 
   MCode *mcbot; // Bottom of reserved MCode
   MCode *mctop; // Top of generated MCode
+
+  MCode *mcQuickHeapCheck_;
+  uint32_t numHeapChecks_;
 
   Jit *jit_;
   IR *ir_;

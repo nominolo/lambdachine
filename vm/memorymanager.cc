@@ -182,6 +182,22 @@ void MemoryManager::blockFull(Block **block) {
   *block = emptyBlock;
 }
 
+// Returns non-zero if GC is necessary.
+int
+MemoryManager::bumpAllocatorFullNoGC(char **heap, char **heaplim)
+{
+  sync(*heap, *heaplim);
+  --nextGC_;
+  if (LC_UNLIKELY(nextGC_ == 0)) {
+    ++nextGC_;
+    return 1;
+  }
+  
+  blockFull(&closures_);
+  getBumpAllocatorBounds(heap, heaplim);
+  return 0;
+}
+
 void MemoryManager::bumpAllocatorFull(char **heap, char **heaplim,
                                       Capability *cap) {
   sync(*heap, *heaplim);
