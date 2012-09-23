@@ -46,7 +46,7 @@ DEPDIR = $(DIST)/.deps
 DEPDIRS = $(DEPDIR) $(DEPDIR)/rts
 
 .PHONY: all
-all: interp compiler/Opcodes.h $(LCC) lcc
+all: lcvm lcc unittest
 
 ifeq "$(strip $(AutoConfigure))" "yes"
 Makefile: Makefile.in
