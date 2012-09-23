@@ -797,10 +797,11 @@ void Assembler::prepareTail(IRBuffer *buf, IRRef saveref) {
     }
   }
 
-  if (jit()->flags_.get(Jit::kDebugTrace)) {
+  if (jit()->getOption(Jit::kOptDebugTrace)) {
     // Reserve space for CALL to asmTrace
     p -= 5;
   }
+
   mcp = p;
 }
 
@@ -815,7 +816,7 @@ void Assembler::fixupTail(MCode *target, IRRef saveref) {
     uint32_t traceId = ir(saveref)->op2();
     p = emitSetTraceId(p, traceId);
   }
-  if (jit()->flags_.get(Jit::kDebugTrace)) {
+  if (jit()->getOption(Jit::kOptDebugTrace)) {
     *(int32_t *)(p - 4) = jmprel(p, (MCode *)(void *)&asmTrace);
     p[-5] = XI_CALL;
   }

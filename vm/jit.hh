@@ -172,6 +172,19 @@ public:
     return fragments_[traceId];
   }
 
+  typedef enum {
+    kOptDebugTrace,
+    kOptFastHeapCheckFail
+  } JitOption;
+
+  inline void setOption(JitOption option, bool value) {
+    options_.set((int)option, value);
+  }
+
+  inline bool getOption(JitOption option) const {
+    return options_.get((int)option);
+  }
+
   inline MachineCode *mcode() { return &mcode_; }
   inline IRBuffer *buffer() { return &buf_; }
   inline Assembler *assembler() { return &asm_; }
@@ -182,12 +195,13 @@ public:
     return fragments_[fragmentMap_[idx]];
   }
 
-  inline void setDebugTrace(bool val) { flags_.set(kDebugTrace, val); }
+  inline void setDebugTrace(bool val) { options_.set(kOptDebugTrace, val); }
   static inline void registerFragment(BcIns *startPc, Fragment *F);
   static void resetFragments();
   static uint32_t numFragments();
 
 private:
+  void initRecording(Capability *cap, Word *base, BcIns *startPc);
   Word *pushFrame(Word *base, BcIns *returnPc, TRef noderef,
                   uint32_t framesize);
   void finishRecording();
@@ -196,14 +210,14 @@ private:
   
   static const int kLastInsWasBranch = 0;
   static const int kIsReturnTrace = 1;
-  static const int kDebugTrace = 2;
 
   Capability *cap_;
   BcIns *startPc_;
   Word *startBase_;
   Fragment *parent_;
   ExitNo parentExitNo_;
-  Flags32 flags_;
+  Flags32 flags_;   // reset each time
+  Flags32 options_; // configuration options
   TRef lastResult_;
   std::vector<BcIns*> targets_;
   Prng prng_;

@@ -54,7 +54,7 @@ Jit::numFragments()
 Jit::Jit()
   : cap_(NULL),
     startPc_(NULL), startBase_(NULL), parent_(NULL),
-    flags_(), targets_(),
+    flags_(), options_(), targets_(),
     prng_(), mcode_(&prng_), asm_(this) {
   Jit::resetFragments();
   memset(exitStubGroup_, 0, sizeof(exitStubGroup_));
@@ -65,16 +65,23 @@ Jit::~Jit() {
   Jit::resetFragments();
 }
 
-void Jit::beginRecording(Capability *cap, BcIns *startPc, Word *base, bool isReturn) {
+void Jit::beginRecording(Capability *cap, BcIns *startPc, Word *base, bool isReturn)
+{
   LC_ASSERT(cap_ == NULL);
   LC_ASSERT(targets_.size() == 0);
+  initRecording(cap, base, startPc);
+  flags_.set(kIsReturnTrace, isReturn);
+}
+
+void Jit::initRecording(Capability *cap, Word *base, BcIns *startPc)
+{
+  resetRecorderState();
   cap_ = cap;
   startPc_ = startPc;
   startBase_ = base;
   parent_ = NULL;
   parentExitNo_ = ~0;
-  flags_.clear(kLastInsWasBranch);
-  flags_.set(kIsReturnTrace, isReturn);
+  flags_.clear();
   buf_.reset(base, cap->currentThread()->top());
   callStack_.reset();
   btb_.reset(startPc_, &callStack_);
@@ -159,18 +166,13 @@ void Jit::beginSideTrace(Capability *cap, Word *base, Fragment *parent, SnapNo s
   LC_ASSERT(cap_ == NULL);
   LC_ASSERT(targets_.size() == 0);
   LC_ASSERT(cap != NULL);
-  resetRecorderState();
+  
   Snapshot &snap = parent->snap(snapno);
-  cap_ = cap;
-  startPc_ = snap.pc();
-  startBase_ = base;
+  initRecording(cap, base, snap.pc());
+
   parent_ = parent;
   parentExitNo_ = snapno;
-  buf_.reset(base, cap->currentThread()->top());
   buf_.parent_ = parent;
-  callStack_.reset();
-  btb_.reset(startPc_, &callStack_);
-  lastResult_ = TRef();
 
   replaySnapshot(parent, snapno, base);
 
@@ -178,10 +180,6 @@ void Jit::beginSideTrace(Capability *cap, Word *base, Fragment *parent, SnapNo s
     buf_.debugPrint(cerr, ~0);
     buf_.slots_.debugPrint(cerr);
   }
-
-#ifdef LC_TRACE_STATS
-  stats_ = NULL;
-#endif
 }
 
 static IRType littypeToIRType(uint8_t littype) {
