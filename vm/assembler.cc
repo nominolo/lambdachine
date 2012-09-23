@@ -836,7 +836,8 @@ void Assembler::assemble(IRBuffer *buf, MachineCode *mcode) {
   prepareTail(buf, saveref);
 
 #ifdef LC_TRACE_STATS
-  incrementCounter(&jit()->stats_[0]);
+  if (jit()->stats_ != NULL)
+    incrementCounter(&jit()->stats_[0]);
 #endif
 
   for (curins_--; curins_ >= stopins_; curins_--) {

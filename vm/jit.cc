@@ -913,7 +913,8 @@ void Fragment::restoreSnapshot(ExitNo exitno, ExitState *ex) {
   DBG(cerr << "Restoring from snapshot " << (int)exitno
       << " of Trace " << traceId() << endl);
 #ifdef LC_TRACE_STATS
-  bumpExitCount(exitno);
+  if (stats_ != NULL)
+    bumpExitCount(exitno);
 #endif
   Snapshot &sn = snap(exitno);
   IR *snapins = ir(sn.ref());
