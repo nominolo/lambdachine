@@ -65,6 +65,7 @@ import qualified TysPrim as Ghc
 import qualified TyCon as Ghc
 import qualified TypeRep as Ghc
 import qualified Outputable as Ghc
+import qualified MkId as Ghc ( realWorldPrimId )
 import TyCon ( TyCon )
 import Outputable ( Outputable, showPpr, alwaysQualify, showSDocForUser )
 import CoreSyn ( CoreBind, CoreBndr, CoreExpr, CoreArg, CoreAlt,
@@ -416,6 +417,10 @@ transBind x (viewGhcLam -> (bndrs, body)) env0 = do
   let locs0 = mkLocs $ (x, Self) : [ (b, InReg n t) |
                                      (b, n) <- zip bndrs [0..],
                                      let t = Ghc.repType (Ghc.varType b) ]
+      -- The new local environment does *not* include env0, because
+      -- elements of env0 are no longer local in the body of the
+      -- lambda.  They must be accessed explicitly via the free
+      -- variable environment:
       env = fold2l' extendLocalEnv env0 bndrs (repeat undefined)
 
   -- Here comes the magic:
@@ -557,6 +562,8 @@ data ValueLocation
     -- ^ The value is the contents of the @Node@ pointer.
   | Global Id
     -- ^ The value is a top-level ID.
+  | Void
+    -- ^ The value does not have a representation.
   deriving Show
 
 -- | Maps GHC Ids to their (current) location in bytecode.
@@ -586,8 +593,10 @@ extendLocs (KnownLocs env) xls =
 noLocs :: KnownLocs
 noLocs = KnownLocs Ghc.emptyVarEnv
 
+-- The local environment always includes `realWorld#`.  It doesn't
+-- actually have a runtime representation.
 mkLocs :: [(Ghc.Id, ValueLocation)] -> KnownLocs
-mkLocs l = KnownLocs (Ghc.mkVarEnv l)
+mkLocs l = KnownLocs (Ghc.extendVarEnv (Ghc.mkVarEnv l) Ghc.realWorldPrimId Void)
 
 instance Monoid KnownLocs where
   mempty = noLocs
@@ -859,6 +868,9 @@ transVar x env fvi locs0 mr =
       -- pointer so (Any :: *) should be fine for now.
       r <- mbFreshLocal ghcAnyType mr
       return (insLoadSelf r, r, True, locs0, mempty)
+    Just Void -> do
+      r <- mbFreshLocal Ghc.realWorldStatePrimTy mr
+      return (emptyGraph, r, True, locs0, mempty)
     Nothing
       | Just x' <- lookupLocalEnv env x -> do
           -- Note: To avoid keeping track of two environments we must
