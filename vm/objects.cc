@@ -107,12 +107,20 @@ void Code::printLiteral(std::ostream &out, u4 litid) const {
     break;
   case LIT_INFO: {
     const InfoTable *i = (const InfoTable *)lit;
-    out << "info " << i << " (" << i->name() << ")";
+    if (i != NULL) {
+      out << "info " << i << " (" << i->name() << ")";
+    } else {
+      out << "info (unresolved)";
+    }
     break;
   }
   case LIT_CLOSURE: {
     const Closure *cl = (const Closure *)lit;
-    out << "clos " << cl << " (" << cl->info()->name() << ")";
+    if (cl != NULL) {
+      out << "clos " << cl << " (" << cl->info()->name() << ")";
+    } else {
+      out << "clos (unresolved)";
+    }
     break;
   }
   default:
