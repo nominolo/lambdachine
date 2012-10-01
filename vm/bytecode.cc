@@ -73,8 +73,10 @@ static ostream &printInlineBitmaps(ostream &out, const BcIns *ins) {
       break;
     if (ptrs != 0)
       ptrs = *(++ptr_bitmap);
-    if (lives != 0)
+    if (lives != 0) {
       lives = *(++lives_bitmap);
+      reg += 15;
+    }
   }
   if (sep == '{') out << '{';
   out << '}' << endl;
