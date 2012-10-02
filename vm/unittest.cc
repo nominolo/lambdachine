@@ -1069,6 +1069,14 @@ TEST_F(RunFileTest, Side0003) {
   run("Bc.Side0003");
 }
 
+TEST_F(RunFileTest, RealWorld) {
+  run("Bc.RealWorld");
+}
+
+TEST_F(RunFileTest, SharedFail) {
+  run("Bc.SharedFail");
+}
+
 TEST(HotCounters, Simple) {
   HotCounters counters(5);
   BcIns pc[] = { BcIns::ad(BcIns::kFUNC, 3, 0) };

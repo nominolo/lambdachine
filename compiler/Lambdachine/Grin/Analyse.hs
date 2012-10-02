@@ -5,6 +5,9 @@ module Lambdachine.Grin.Analyse
     analyseAndRewriteBCOBwd,
     -- * Liveness Analysis
     livenessAnalysis2, LiveVars, live, insDefines,
+
+    -- * Utils
+    isVoid,
 {-
     -- * Liveness Analysis with Symbolic Live Ranges
     SymLives(..), SymRange(..), symLivenessLattice,
@@ -12,6 +15,7 @@ module Lambdachine.Grin.Analyse
   )
 where
 
+import Lambdachine.Ghc.Utils ( transType )
 import Lambdachine.Grin.Bytecode
 import Lambdachine.Utils.Pretty
 import Lambdachine.Utils ( thd3 )
@@ -42,7 +46,7 @@ instance Pretty a => Pretty (LabelMap a) where
 type M = SimpleFuelMonad
 
 runM :: M a -> a
-runM m = runSimpleUniqueMonad $ runWithFuel 0 m
+runM m = runSimpleUniqueMonad $ runWithFuel infiniteFuel m
 
 -- | Run a backward pass on a 'BytecodeObject'.
 analyseAndRewriteBCOBwd :: (CheckpointMonad m) =>
@@ -60,7 +64,8 @@ livenessAnalysis2 :: FuelMonad m => BwdPass m BcIns LiveVars
 livenessAnalysis2 = --debugBwdJoins trace (const True) $
   BwdPass { bp_lattice = livenessLattice
           , bp_transfer = liveness
-          , bp_rewrite = deadAssignmentElim
+          , bp_rewrite = voidAssignmentElim
+          -- noBwdRewrite --deadAssignmentElim
           }
 
 type LiveVars = S.Set BcVar
@@ -87,21 +92,30 @@ live :: BcIns e x -> Fact x LiveVars -> LiveVars
 live ins f = case ins of
   Label _     -> f
   Assign x r  -> addLives (S.delete x f) (universeBi r)
-  Store b _ v -> S.insert b (S.insert v f)
-  Eval l _ r  -> S.insert r (fact f l)
+  Store b _ v -> addOne b (addOne v f)
+  Eval l _ r  -> addOne r (fact f l)
   Goto l      -> fact f l
-  Ret1 r      -> S.insert r (fact_bot livenessLattice)
+  Ret1 r      -> addOne r (fact_bot livenessLattice)
   CondBranch _ _ r1 r2 tl fl ->
     addLives (fact f tl `S.union` fact f fl) [r1, r2]
   Case _ r targets ->
-    S.insert r (S.unions (map (fact f . thd3) targets))
-  Call Nothing fn args -> S.fromList (fn:args)
+    addOne r (S.unions (map (fact f . thd3) targets))
+  Call Nothing fn args -> addLives S.empty (fn:args)
   Call (Just (r, l, _)) fn args ->
     addLives (S.delete r (fromMaybe S.empty (lookupFact l f)))
              (fn:args)
  where
    fact :: FactBase (S.Set a) -> Label -> S.Set a
    fact f l = fromMaybe S.empty (lookupFact l f)
+
+   addLives :: LiveVars -> [BcVar] -> LiveVars
+   addLives !l [] = l
+   addLives !l (r:rs) --  isVoid r  = addLives l rs
+                      | otherwise = addLives (S.insert r l) rs
+
+   addOne :: BcVar -> LiveVars -> LiveVars
+   addOne var lives --  isVoid var = lives
+                    | otherwise  = S.insert var lives
 
 insDefines :: BcIns e x -> S.Set BcVar
 insDefines ins = case ins of
@@ -120,9 +134,20 @@ insUses (Case _ x _)     = [x]
 insUses (Call _ fn args) = fn : args
 insUses _                = []
 
-addLives :: (Ord t) => S.Set t -> [t] -> S.Set t
-addLives !l [] = l
-addLives !l (r:rs) = addLives (S.insert r l) rs
+
+voidAssignmentElim ::
+  forall m. FuelMonad m =>
+    BwdRewrite m BcIns LiveVars
+voidAssignmentElim = mkBRewrite rewrite
+ where
+   rewrite :: BcIns e x -> Fact x LiveVars -> m (Maybe (Graph BcIns e x))
+   rewrite (Assign dst (Move src)) _fact
+     | isVoid dst = return (Just emptyGraph)
+   rewrite _ins _fact = return Nothing
+
+isVoid :: BcVar -> Bool
+isVoid (BcVar _ ty) = transType ty == VoidTy
+isVoid (BcReg _ ty) = ty == VoidTy
 
 deadAssignmentElim :: 
   forall m. FuelMonad m => 

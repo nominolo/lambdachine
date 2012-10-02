@@ -159,14 +159,19 @@ lineariseBlock live_facts blk = entry_ins (map Mid middles ++ tail_ins)
    tail_ins = case tail of
                 JustC (Case ct x targets) ->
                   [Lst (Case ct x $ map (\(tag, _, lbl) -> 
-                                         (tag, fromMaybe S.empty (lookupFact lbl live_facts), lbl))
+                                         (tag, livesAt lbl, lbl))
                                       targets)]
                 JustC (Eval l _ r) ->
-                  [Lst (Eval l (fromMaybe S.empty (lookupFact l live_facts)) r)]
+                  [Lst (Eval l (livesAt l) r)]
                 JustC (Call (Just (var, l, _)) fun args) ->
-                  [Lst (Call (Just (var, l, fromMaybe S.empty (lookupFact l live_facts))) fun args)]
+                  [Lst (Call (Just (var, l, livesAt l)) fun args)]
                 JustC x -> [Lst x]
                 NothingC -> []
+
+   livesAt label = nonVoid $ fromMaybe S.empty (lookupFact label live_facts)
+
+nonVoid :: LiveVars -> LiveVars
+nonVoid lives = S.filter (not . isVoid) lives
 
 -- | Calculate the live-in variables at each instruction.
 liveIns :: FactBase LiveVars -> Vector LinearIns -> Vector LiveVars
@@ -190,9 +195,9 @@ annotateWithLiveouts lives inss = Vec.imap annotate inss
  where
    annotate :: Int -> LinearIns -> LinearIns
    annotate n (Mid (Assign d (Alloc t args _))) =
-     Mid (Assign d (Alloc t args (lives Vec.! n)))
+     Mid (Assign d (Alloc t args (nonVoid $ lives Vec.! n)))
    annotate n (Mid (Assign d (AllocAp args _))) =
-     Mid (Assign d (AllocAp args (lives Vec.! n)))
+     Mid (Assign d (AllocAp args (nonVoid $ lives Vec.! n)))
    annotate n i = i
 
 allRegs :: S.Set BcVar
