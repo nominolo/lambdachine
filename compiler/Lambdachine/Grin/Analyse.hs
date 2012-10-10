@@ -96,6 +96,7 @@ live ins f = case ins of
   Eval l _ r  -> addOne r (fact f l)
   Goto l      -> fact f l
   Ret1 r      -> addOne r (fact_bot livenessLattice)
+  RetN rs     -> addLives (fact_bot livenessLattice) rs
   CondBranch _ _ r1 r2 tl fl ->
     addLives (fact f tl `S.union` fact f fl) [r1, r2]
   Case _ r targets ->
@@ -129,6 +130,7 @@ insUses (Assign _ rhs)   = universeBi rhs
 insUses (Eval _ _ x)     = [x]
 insUses (Store _ _ x)    = [x]
 insUses (Ret1 x)         = [x]
+insUses (RetN xs)        = xs
 insUses (CondBranch _ _ x y _ _) = [x, y]
 insUses (Case _ x _)     = [x]
 insUses (Call _ fn args) = fn : args

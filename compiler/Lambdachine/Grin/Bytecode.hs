@@ -53,6 +53,7 @@ data BcIns' b e x where
   Call :: Maybe (BcVar, b, LiveSet)
        -> BcVar -> [BcVar]        -> BcIns' b O C
   Ret1 :: BcVar                   -> BcIns' b O C
+  RetN :: [BcVar]                 -> BcIns' b O C
   Eval   :: b -> LiveSet -> BcVar -> BcIns' b O C
   -- only used by the interpreter / RTS
   Update ::                          BcIns' b O C
@@ -90,6 +91,7 @@ data BcTag
 
 data BcRhs
   = Move BcVar
+  | HiResult Int   -- for loading results of a multi-result return
   | Load BcLoadOperand
   | BinOp BinOp OpTy BcVar BcVar
   | Fetch BcVar Int
@@ -158,6 +160,7 @@ instance NonLocal (BcIns' Label) where
   successors (Case _ _ targets) = map (\(_,_,t) -> t) targets
   successors (Call mb_l _ _) = maybeToList (snd3 `fmap` mb_l)
   successors (Ret1 _) = []
+  successors (RetN _) = []
   successors (Eval l _ _) = [l]
 
 instance HooplNode BcIns where
@@ -221,6 +224,8 @@ instance Pretty b => Pretty (BcIns' b e x) where
          Just (r,_,_) -> ppr r <+> char '=') <+>
       ppr f <> parens (hsep (commaSep (map ppr args)))
   ppr (Ret1 r) = text "return" <+> ppr r
+  ppr (RetN rs) =
+    text "return" <+> parens (hsep (commaSep (map ppr rs)))
   ppr Update = text "update"
   ppr Stop = text "stop"
 
@@ -237,6 +242,8 @@ instance Pretty BcRhs where
   ppr (AllocAp args lives) =
     text "alloc_ap(" <> hsep (commaSep (map ppr args)) <> char ')'
       <+> pprLives lives
+  ppr (HiResult n) =
+    text "result(" <> ppr n <> char ')'
 
 instance Pretty OpTy where
   ppr VoidTy = text "v"
@@ -280,6 +287,7 @@ mapLabels f ins = case ins of
   Eval l lv x     -> Eval (f l) lv x
   Store x n y  -> Store x n y
   Ret1 x       -> Ret1 x
+  RetN xs      -> RetN xs
   Goto l       -> Goto (f l)
   CondBranch op ty x y l1 l2 ->
     CondBranch op ty x y (f l1) (f l2)
@@ -366,6 +374,9 @@ insMkAp r args = mkMiddle $ Assign r (AllocAp args S.empty)
 insMove :: BcVar -> BcVar -> BcGraph O O
 insMove dst src = mkMiddle $ Assign dst (Move src)
 
+insLoadExtraResult :: BcVar -> Int -> BcGraph O O
+insLoadExtraResult dst n = mkMiddle $ Assign dst (HiResult n)
+
 insAlloc :: BcVar -> BcVar -> [BcVar] -> BcGraph O O
 insAlloc r dcon args = mkMiddle $ Assign r (Alloc dcon args S.empty)
 
@@ -380,6 +391,9 @@ insEval b r = mkLast $ Eval b S.empty r
 
 insRet1 :: BcVar -> BcGraph O C
 insRet1 r = mkLast $ Ret1 r
+
+insRetN :: [BcVar] -> BcGraph O C
+insRetN results = mkLast (RetN results)
 
 insCase :: CaseType -> BcVar -> [(BcTag, BlockId)] -> BcGraph O C
 insCase cty r targets =
@@ -628,6 +642,7 @@ instance Biplate (BcIns' b e x) BcVar where
   biplate (Call (Just (x,y,lives)) f args) =
     plate (\x' lives' -> Call (Just (x', y, lives'))) |* x |+ lives |* f ||* args
   biplate (Ret1 r) = plate Ret1 |* r
+  biplate (RetN rs) = plate RetN ||* rs
   biplate l = plate l
 
 instance Biplate (S.Set BcVar) BcVar where

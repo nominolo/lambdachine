@@ -19,7 +19,7 @@ _START_LAMBDACHINE_NAMESPACE
   _(NEG,     RR) \
   /* Updates */ \
   _(MOV,     RR) \
-  _(MOV_RES, R) \
+  _(MOV_RES, RN) \
   _(UPDATE,  RR) \
   _(LOADF,   RRN) \
   _(LOADFV,  RN) \
@@ -44,6 +44,7 @@ _START_LAMBDACHINE_NAMESPACE
   _(CALL,    ___) \
   _(CALLT,   ___) \
   _(RET1,    R) \
+  _(RETN,    R) \
   _(JMP,     J) \
   _(EVAL,    ___) \
   _(CASE,    ___) \

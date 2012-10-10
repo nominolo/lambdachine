@@ -389,6 +389,7 @@ insLength' :: FinalIns -> Int
 insLength' ins = case ins of
   Lst Stop -> 1
   Lst (Ret1 _) -> 1
+  Lst (RetN _) -> 1
   Lst (Eval _ _ _) -> 3
   Lst (Call Nothing _ (_:args)) -> 1
   Lst (Call (Just _) _ (_:args)) -> 3 + arg_len args
@@ -463,6 +464,8 @@ putLinearIns lit_ids new_addrs ins_id ins = case ins of
     putIns (insAD opc_STOP 0 0)
   Lst (Ret1 (BcReg x _)) ->
     putIns (insAD opc_RET1 (i2b x) 0)
+  Lst (RetN regs) ->
+    putIns (insAD opc_RETN (i2b (length (regs))) 0)
   Lst (Eval _ lives (BcReg r _))
     | Just bitset <- regsToBits (S.delete (BcReg r VoidTy) lives) -> do
     putIns (insAD opc_EVAL (i2b r) 0)
@@ -537,7 +540,9 @@ putLinearIns lit_ids new_addrs ins_id ins = case ins of
     putIns $ insABC opc_LOADF (i2b d) (i2b n) (i2b fld)
   Mid (Store (BcReg ptr _) offs (BcReg src _)) | offs <= 255 ->
     putIns $ insABC opc_INITF (i2b ptr) (i2b src) (i2b offs)
-  Mid m -> error $ pretty m
+  Mid (Assign (BcReg dst _) (HiResult n)) ->
+    putIns $ insABC opc_MOV_RES (i2b dst) 0 (i2b n)
+  Mid m -> error $ "Cannot serialise: " ++ pretty m
 
  where
    binOpOpcode :: OpTy -> BinOp -> Word8
@@ -911,6 +916,8 @@ emitLinearIns bit_r lit_ids tgt_labels r ins_id ins = do
       emitInsAD r opc_STOP 0 0
     Lst (Ret1 (BcReg x _)) ->
       emitInsAD r opc_RET1 (i2b x) 0
+    Lst (RetN regs) ->
+      emitInsAD r opc_RETN (i2b (length regs)) 0
     Lst (Eval _ lives (BcReg reg _)) -> do
       emitInsAD r opc_EVAL (i2b reg) 0
       emitBitSets bit_r (S.delete (BcReg reg VoidTy) lives) r
@@ -986,6 +993,8 @@ emitLinearIns bit_r lit_ids tgt_labels r ins_id ins = do
       emitBitSets bit_r lives r
     Mid (Assign (BcReg d _) (Fetch (BcReg n _) fld)) ->
       emitInsABC r opc_LOADF (i2b d) (i2b n) (i2b fld)
+    Mid (Assign (BcReg dst _) (HiResult n)) ->
+      emitInsAD r opc_MOV_RES (i2b dst) (i2h n)
     Mid (Store (BcReg ptr _) offs (BcReg src _)) | offs <= 255 ->
       emitInsABC r opc_INITF (i2b ptr) (i2b src) (i2b offs)
     Mid m -> error $ pretty m

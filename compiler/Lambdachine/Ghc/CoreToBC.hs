@@ -43,6 +43,7 @@ module Lambdachine.Ghc.CoreToBC where
 import Lambdachine.Builtin
 import Lambdachine.Ghc.Utils
 import Lambdachine.Grin.Bytecode as Grin
+import Lambdachine.Grin.Analyse ( isVoid )
 import Lambdachine.Id as N
 import Lambdachine.Utils hiding ( Uniquable(..) )
 import Lambdachine.Utils.Unique ( mkBuiltinUnique )
@@ -940,6 +941,7 @@ transApp f args env fvi locs0 ctxt
 
   | isGhcConWorkId f  -- allocation
   = transStore f args env fvi locs0 ctxt
+
   | otherwise
   = do (is0, locs1, fvs0, regs) <- transArgs args env fvi locs0
        (is1, fr, _, locs2, fvs1)
@@ -961,13 +963,14 @@ transApp f args env fvi locs0 ctxt
          BindC mr ->  do
            -- need to ensure that x = O, so we need to emit
            -- a fresh label after the call
-           let rslt_ty =
+           let rslt_ty0 =
                  case splitFunTysN (length args) $
                         Ghc.repType (Ghc.varType f) of
                    Just (_arg_tys, rslt_ty_) -> rslt_ty_
                    Nothing -> error $ "Result type for: " ++
                                 ghcPretty (f, Ghc.repType (Ghc.varType f),
                                            Ghc.varType f, length args)
+               rslt_ty:_ = splitUnboxedTuples rslt_ty0
            r <- mbFreshLocal rslt_ty mr
            let ins = withFresh $ \l ->
                        is2 <*> insCall (Just (r, l)) fr regs |*><*| mkLabel l
@@ -1005,6 +1008,27 @@ transStore dcon [] env fvi locs0 ctxt = -- bloody hack Since we only
   -- constructor (e.g., Nil).  These don't require any allocation,
   -- they're basically distinguished pointers.
   transBody (Ghc.Var dcon) env fvi locs0 ctxt
+
+transStore dcon0 args env fvi locs0 ctxt
+ | dcon <- ghcIdDataCon dcon0, Ghc.isUnboxedTupleCon dcon
+ = do
+    case ctxt of
+      BindC _ -> error "Trying to bind an unboxed tuple to a variable"
+      RetC -> do
+        (bcis, locs, fvs, vars0) <- transArgs args env fvi locs0
+        let vars = filter (not . isVoid) vars0
+        case vars of
+          [res] -> 
+            return (bcis <*> insRet1 res, locs, fvs, Nothing)
+          (_:_:_) -> do
+            let
+              resultRegs =
+                [ BcReg n (transType (bcVarType var))
+                | (n, var) <- zip [0..] vars ]
+              bcis' =
+                bcis <*> catGraphs [ insMove reg var
+                                   | (reg, var) <- zip resultRegs vars ]
+            return (bcis' <*> insRetN resultRegs, locs, fvs, Nothing)
 
 transStore dcon args env fvi locs0 ctxt = do
   (bcis0, locs1, fvs, regs) <- transArgs args env fvi locs0
@@ -1062,7 +1086,40 @@ transCase :: forall x.
 
 -- Only a single case alternative.  This is just EVAL(bndr) and
 -- possibly matching on the result.
-transCase scrut bndr alt_ty [(altcon, vars, body)] env0 fvi locs0 ctxt = do
+transCase scrut bndr alt_ty [(altcon, vars, body)] env0 fvi locs0 ctxt 
+ | DataAlt con <- altcon, Ghc.isUnboxedTupleCon con
+ = do
+  let nonVoidVars = filter (not . isGhcVoid) vars
+  (bcis, locs1, fvs0, Just result0) <- transBody scrut env0 fvi locs0 (BindC Nothing)
+
+  case nonVoidVars of
+    [var] -> do  -- effectively only one value is actually returned
+      let locs2 = updateLoc locs1 bndr (InVar result0)
+          env = extendLocalEnv env0 bndr undefined
+      let locs3 = addMatchLocs locs2 result0 altcon vars
+          env' = extendLocalEnvList env vars
+      (bcis', locs4, fvs1, mb_r) <- transBody body env' fvi locs3 ctxt
+      return (bcis <*> bcis', locs4, fvs0 `mappend` fvs1, mb_r)
+
+    resultVar0:(otherResultVars@(_:_)) -> do
+      -- Leave `bndr` undefined.  It should always be a wildcard.
+      let env' = extendLocalEnvList env0 nonVoidVars
+
+      -- Result variables don't survive across multiple CALL instructions
+      -- so we load them all into fresh variables.
+      regs <- mapM (\x -> mbFreshLocal (Ghc.repType (Ghc.varType x)) Nothing)
+                   otherResultVars
+      let bcis1 = [ insLoadExtraResult r n | (r, n) <- zip regs [1..] ]
+      let locs2 = extendLocs locs1 [(resultVar0,  (InVar result0))]
+      let locs3 = extendLocs locs2
+                    [ (x, InVar r) | (x, r) <- zip otherResultVars regs ]
+
+      (bcis', locs4, fvs1, mb_r) <- transBody body env' fvi locs3 ctxt
+      return (bcis <*> catGraphs bcis1 <*> bcis', locs4,
+              fvs0 `mappend` fvs1, mb_r)
+      
+ | otherwise
+ = do
   (bcis, locs1, fvs0, Just r) <- transBody scrut env0 fvi locs0 (BindC Nothing)
   let locs2 = updateLoc locs1 bndr (InVar r)
       env = extendLocalEnv env0 bndr undefined
@@ -1333,6 +1390,9 @@ isGhcPrimOpId :: CoreBndr -> Maybe Ghc.PrimOp
 isGhcPrimOpId x
   | Ghc.PrimOpId p <- Ghc.idDetails x = Just p
   | otherwise                         = Nothing
+
+isGhcVoid :: CoreBndr -> Bool
+isGhcVoid x = transType (Ghc.repType (Ghc.varType x)) == VoidTy
 
 -- TODO: This needs more thought.
 primOpToBinOp :: Ghc.PrimOp -> Maybe (BinOp, OpTy)

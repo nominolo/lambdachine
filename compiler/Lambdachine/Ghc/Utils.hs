@@ -55,6 +55,18 @@ splitFunTysN n ty = split n ty []
        Nothing         -> Nothing
        Just (arg, ty') -> split (n - 1) ty' (arg:acc)
 
+-- | Split unboxed tuples into their components.  Leave everything
+-- else untouched.
+--
+-- > { (# a, b, c #) }  ~~>  [{ a }, { b }, { c }]
+-- > { Maybe Int }  ~~>  [{ Maybe Int }]
+-- > { Char }  ~~>  [{ Char }]
+splitUnboxedTuples :: Ghc.Type -> [Ghc.Type]
+splitUnboxedTuples ty = case Ghc.splitTyConApp_maybe ty of
+  Just (tc, args)
+    | Ghc.isUnboxedTupleTyCon tc -> args
+  _ -> [ty]
+
 tyConId :: Ghc.Name -> Id
 tyConId x =
   mkTopLevelId $

@@ -740,6 +740,7 @@ op_JFUNC: {
     DISPATCH_NEXT;
   }
 
+op_RETN:
 op_LOADBH:
 op_INITF:
 op_KINT:
