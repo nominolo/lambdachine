@@ -30,8 +30,6 @@ public:
     base_[n] = value;
   }
 
-  inline Word lastResult() const { return lastResult_; }
-  inline void setLastResult(Word value) { lastResult_ = value; }
   inline void setPC(BcIns *pc) { pc_ = pc; }
 
   //  Thread() {}
@@ -53,7 +51,6 @@ public:
   Word stackSize_;
   Word *base_;
   Word *top_;
-  Word lastResult_;
   Word *stack_;
   Capability *owner_;
 };

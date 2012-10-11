@@ -1077,6 +1077,10 @@ TEST_F(RunFileTest, SharedFail) {
   run("Bc.SharedFail");
 }
 
+TEST_F(RunFileTest, MultiReturn) {
+  run("Bc.MultiReturn");
+}
+
 TEST(HotCounters, Simple) {
   HotCounters counters(5);
   BcIns pc[] = { BcIns::ad(BcIns::kFUNC, 3, 0) };

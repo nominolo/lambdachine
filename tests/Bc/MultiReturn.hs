@@ -49,4 +49,4 @@ k2 n = let a = A n in 42
 
 test = case f 4 5 of
          (# (I# n), (I# m) #) ->
-           if n ==# 4# then m ==# 5# else False
+           if n ==# 5# then m ==# 8# else False

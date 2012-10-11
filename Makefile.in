@@ -171,7 +171,8 @@ TEST_FILES := tests/Bc/Bc0016.lcbc tests/Bc/Bc0014.lcbc \
 	tests/Bc/SumDict.lcbc tests/Bc/SumCall1.lcbc \
 	tests/Bc/Side0001.lcbc tests/Bc/Side0002.lcbc \
 	tests/Bc/Side0003.lcbc \
-	tests/Bc/RealWorld.lcbc tests/Bc/SharedFail.lcbc
+	tests/Bc/RealWorld.lcbc tests/Bc/SharedFail.lcbc \
+	tests/Bc/MultiReturn.lcbc
 
 lcvm: $(VM_SRCS:.cc=.o) vm/main.o
 	@echo "LINK $(filter %.o %.a, $^) => $@"

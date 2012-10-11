@@ -24,7 +24,6 @@ void Thread::initialize(Word stackSizeInWords) {
   base_ = NULL;
   top_ = NULL;
   owner_ = NULL;
-  lastResult_ = 0;
   stack_ = NULL;
   if (stackSizeInWords < kMinStackWords) {
     stackSizeInWords = kMinStackWords;

@@ -19,6 +19,8 @@ _START_LAMBDACHINE_NAMESPACE
 #define dout 0 && cerr
 #endif
 
+#define FRAME_SIZE  3
+
 using namespace std;
 
 static BcIns reload_state_code[1] = { BcIns::ad(BcIns::kSYNC, 0, 0) };
@@ -125,7 +127,13 @@ void Capability::finishRecording() {
 
 static inline
 bool stackOverflow(Thread *T, Word *top, u4 increment) {
-  return T->stackLimit() < (top + increment);
+  // The implementation of EVAL currently needs to simulate a return
+  // from a function.  Since we store return results inside the frame
+  // the returned function (i.e., the frame is now unused), we need to
+  // make sure this stack space is valid even if we did not just
+  // return from a function.
+  u4 headroom = FRAME_SIZE + 1;
+  return T->stackLimit() < (top + increment + headroom);
 }
 
 // NOTE: Does not check for stack overflow.
@@ -477,7 +485,7 @@ op_EVAL:
     }
 
     if (tnode->isHNF()) {
-      T->setLastResult((Word)tnode);
+      T->top_[FRAME_SIZE] = (Word)tnode;
       ++pc;  // skip live-out info
       DISPATCH_NEXT;
     } else {
@@ -517,7 +525,13 @@ op_LOADK: {
 
 op_RET1:
   DECODE_AD;
-  T->setLastResult(base[opA]);
+  base[0] = base[opA];
+
+op_RETN:
+  // Arguments are already in place.  We only add some sanity checks
+  // here.
+  DECODE_AD;
+  LC_ASSERT(&base[opA] <= T->top_);
 
 do_return: {
     T->top_ = base - 3;
@@ -536,7 +550,7 @@ do_return: {
   }
 
 op_IRET:
-  T->setLastResult(base[opA]);
+  base[0] = base[opA];
   goto do_return;
 
 op_UPDATE: {
@@ -559,7 +573,7 @@ op_UPDATE: {
 
 op_MOV_RES:
   DECODE_AD;
-  base[opA] = T->lastResult();
+  base[opA] = T->top_[FRAME_SIZE + opC];
   DISPATCH_NEXT;
 
 op_CALL: {
@@ -740,7 +754,6 @@ op_JFUNC: {
     DISPATCH_NEXT;
   }
 
-op_RETN:
 op_LOADBH:
 op_INITF:
 op_KINT:
@@ -933,7 +946,7 @@ generic_apply: {
           pap->setPayload(i, base[i]);
         }
 
-        T->setLastResult((Word)pap);
+        base[0] = (Word)pap;
         goto do_return;
       }
 
