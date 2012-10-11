@@ -1081,6 +1081,10 @@ TEST_F(RunFileTest, MultiReturn) {
   run("Bc.MultiReturn");
 }
 
+TEST_F(RunFileTest, MultiReturn2) {
+  run("Bc.MultiReturn2");
+}
+
 TEST(HotCounters, Simple) {
   HotCounters counters(5);
   BcIns pc[] = { BcIns::ad(BcIns::kFUNC, 3, 0) };

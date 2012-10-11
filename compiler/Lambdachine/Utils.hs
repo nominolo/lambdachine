@@ -7,7 +7,7 @@ module Lambdachine.Utils
   , modify'
   , assert
   -- * List Utilities
-  , fold2l', isLength, collect'
+  , fold2l', isLength, collect', removeIf
   -- * Tuple Utilities
   , fst3, snd3, thd3,
   )
@@ -61,6 +61,14 @@ fold2l' f a0 bs0 cs0 = go a0 bs0 cs0
 -- same as the order of the first two parameters.
 collect' :: b -> [a] -> (b -> a -> b) -> b
 collect' z xs f = foldl' f z xs
+
+-- | Remove all elements matching the predicate.  It is really just a
+-- variant of 'filter' with a name that should prevent some silly
+-- mistakes.
+--
+-- > removeIf odd [1..5]
+removeIf :: (a -> Bool) -> [a] -> [a]
+removeIf pred = filter (\x -> not (pred x))
 
 -- | @isLength n xs@ is a lazy equivalent of @length xs == n@.  It
 -- is lazy in the sense that it evaluates at most @n@ elements of the

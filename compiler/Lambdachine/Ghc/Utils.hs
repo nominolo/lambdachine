@@ -2,7 +2,7 @@
 module Lambdachine.Ghc.Utils where
 
 import Lambdachine.Id as N
-import Lambdachine.Utils.Unique hiding ( Uniquable(..) )
+import Lambdachine.Utils hiding ( Uniquable(..) )
 import Lambdachine.Grin.Bytecode as Grin
 import Lambdachine.Utils.Pretty
 
@@ -16,6 +16,10 @@ import qualified Module as Ghc
 import qualified Outputable as Ghc
 import qualified Type as Ghc
 import qualified DataCon as Ghc
+import qualified CoreSyn as Ghc
+import qualified CoreFVs as Ghc
+import qualified Var as Ghc
+import qualified VarSet as Ghc
 import Outputable ( Outputable, showPpr, alwaysQualify, showSDocForUser )
 import Unique ( Uniquable(..), getKey )
 
@@ -55,17 +59,33 @@ splitFunTysN n ty = split n ty []
        Nothing         -> Nothing
        Just (arg, ty') -> split (n - 1) ty' (arg:acc)
 
--- | Split unboxed tuples into their components.  Leave everything
--- else untouched.
+isGhcVoid :: Ghc.CoreBndr -> Bool
+isGhcVoid x = isGhcVoidType (Ghc.varType x)
+
+isGhcVoidType :: Ghc.Type -> Bool
+isGhcVoidType ty = transType (Ghc.repType ty) == VoidTy
+
+-- | Split unboxed tuples into their non-void components.  Leave
+-- everything else untouched.
 --
 -- > { (# a, b, c #) }  ~~>  [{ a }, { b }, { c }]
+-- > { (# State# s, Int #) }  ~~>  [{ Int }]
+-- > { State# s }  ~~>  [{ State# s #}]
 -- > { Maybe Int }  ~~>  [{ Maybe Int }]
 -- > { Char }  ~~>  [{ Char }]
 splitUnboxedTuples :: Ghc.Type -> [Ghc.Type]
 splitUnboxedTuples ty = case Ghc.splitTyConApp_maybe ty of
   Just (tc, args)
-    | Ghc.isUnboxedTupleTyCon tc -> args
+    | Ghc.isUnboxedTupleTyCon tc -> removeIf isGhcVoidType args
   _ -> [ty]
+
+isFreeExprVarIn :: Ghc.Id -> Ghc.CoreExpr -> Bool
+isFreeExprVarIn x expr =
+  Ghc.elemVarSet x (ghcFreeExprVars expr)
+
+-- | Return all free variables of the expression (excluding free type variables).
+ghcFreeExprVars :: Ghc.CoreExpr -> Ghc.IdSet
+ghcFreeExprVars = Ghc.exprFreeIds
 
 tyConId :: Ghc.Name -> Id
 tyConId x =

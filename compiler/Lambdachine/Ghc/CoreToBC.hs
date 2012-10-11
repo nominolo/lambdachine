@@ -1016,7 +1016,7 @@ transStore dcon0 args env fvi locs0 ctxt
       BindC _ -> error "Trying to bind an unboxed tuple to a variable"
       RetC -> do
         (bcis, locs, fvs, vars0) <- transArgs args env fvi locs0
-        let vars = filter (not . isVoid) vars0
+        let vars = removeIf isVoid vars0
         case vars of
           [res] -> 
             return (bcis <*> insRet1 res, locs, fvs, Nothing)
@@ -1089,17 +1089,17 @@ transCase :: forall x.
 transCase scrut bndr alt_ty [(altcon, vars, body)] env0 fvi locs0 ctxt 
  | DataAlt con <- altcon, Ghc.isUnboxedTupleCon con
  = do
-  let nonVoidVars = filter (not . isGhcVoid) vars
+  let nonVoidVars = removeIf isGhcVoid vars
   (bcis, locs1, fvs0, Just result0) <- transBody scrut env0 fvi locs0 (BindC Nothing)
 
-  case nonVoidVars of
+  if (bndr `isFreeExprVarIn` body) then
+    error "transCase: Binder in unboxed tuple is not a wildcard."
+   else case nonVoidVars of
     [var] -> do  -- effectively only one value is actually returned
-      let locs2 = updateLoc locs1 bndr (InVar result0)
-          env = extendLocalEnv env0 bndr undefined
-      let locs3 = addMatchLocs locs2 result0 altcon vars
-          env' = extendLocalEnvList env vars
-      (bcis', locs4, fvs1, mb_r) <- transBody body env' fvi locs3 ctxt
-      return (bcis <*> bcis', locs4, fvs0 `mappend` fvs1, mb_r)
+      let locs2 = updateLoc locs1 var (InVar result0)
+          env' = extendLocalEnv env0 var undefined
+      (bcis', locs3, fvs1, mb_r) <- transBody body env' fvi locs2 ctxt
+      return (bcis <*> bcis', locs3, fvs0 `mappend` fvs1, mb_r)
 
     resultVar0:(otherResultVars@(_:_)) -> do
       -- Leave `bndr` undefined.  It should always be a wildcard.
@@ -1110,7 +1110,7 @@ transCase scrut bndr alt_ty [(altcon, vars, body)] env0 fvi locs0 ctxt
       regs <- mapM (\x -> mbFreshLocal (Ghc.repType (Ghc.varType x)) Nothing)
                    otherResultVars
       let bcis1 = [ insLoadExtraResult r n | (r, n) <- zip regs [1..] ]
-      let locs2 = extendLocs locs1 [(resultVar0,  (InVar result0))]
+      let locs2 = extendLocs locs1 [(resultVar0, InVar result0)]
       let locs3 = extendLocs locs2
                     [ (x, InVar r) | (x, r) <- zip otherResultVars regs ]
 
@@ -1390,9 +1390,6 @@ isGhcPrimOpId :: CoreBndr -> Maybe Ghc.PrimOp
 isGhcPrimOpId x
   | Ghc.PrimOpId p <- Ghc.idDetails x = Just p
   | otherwise                         = Nothing
-
-isGhcVoid :: CoreBndr -> Bool
-isGhcVoid x = transType (Ghc.repType (Ghc.varType x)) == VoidTy
 
 -- TODO: This needs more thought.
 primOpToBinOp :: Ghc.PrimOp -> Maybe (BinOp, OpTy)
