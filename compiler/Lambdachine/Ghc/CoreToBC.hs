@@ -877,11 +877,14 @@ transVar x env fvi locs0 mr =
           -- Note: To avoid keeping track of two environments we must
           -- only reach this case if the variable is bound outside the
           -- current closure.
-          r <- mbFreshLocal (Ghc.repType (Ghc.varType x)) mr
-          -- Do not force @i@ -- must remain a thunk
-          let i = expectJust "transVar" (Ghc.lookupVarEnv fvi x)
-          return (insLoadFV r i, r, in_whnf,
-                  updateLoc locs0 x (InVar r), closureVar x)
+          if isGhcVoid x then
+            error "Free variables of type void not yet supported."
+           else do
+            r <- mbFreshLocal (Ghc.repType (Ghc.varType x)) mr
+            -- Do not force @i@ -- must remain a thunk
+            let i = expectJust "transVar" (Ghc.lookupVarEnv fvi x)
+            return (insLoadFV r i, r, in_whnf,
+                    updateLoc locs0 x (InVar r), closureVar x)
 
       | otherwise -> do  -- global variable
           this_mdl <- getThisModule
