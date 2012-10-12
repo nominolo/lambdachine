@@ -59,6 +59,9 @@ Jit::Jit()
   Jit::resetFragments();
   memset(exitStubGroup_, 0, sizeof(exitStubGroup_));
   resetRecorderState();
+#ifdef LC_TRACE_STATS
+  stats_ = NULL;
+#endif
 }
 
 Jit::~Jit() {
