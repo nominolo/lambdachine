@@ -8,6 +8,8 @@
 
 _START_LAMBDACHINE_NAMESPACE
 
+#define FRAME_SIZE 3
+
 typedef enum {
   kCall,
   kReturn
@@ -61,10 +63,20 @@ private:
     kInterpUnimplemented
   } InterpExitCode;
 
+  typedef void *AsmFunction;
+
   InterpExitCode interpMsg(InterpMode mode);
+  inline BcIns *interpBranch(BcIns *srcPc, BcIns *dstPc,
+                             Word *&base,
+                             BranchType branchType,
+                             Thread *&T,
+                             char *&heap, char *&heaplim,
+                             const AsmFunction *&dispatch,
+                             const AsmFunction *&dispatch2,
+                             const AsmFunction *dispatch_debug,
+                             const Code *&code);
   BcIns *interpBranch(BcIns *srcPc, BcIns *dst_pc, Word *base, BranchType);
   void finishRecording();
-  typedef void *AsmFunction;
 
   MemoryManager *mm_;
   Thread *currentThread_;

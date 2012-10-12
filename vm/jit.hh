@@ -218,7 +218,6 @@ private:
   ExitNo parentExitNo_;
   Flags32 flags_;   // reset each time
   Flags32 options_; // configuration options
-  TRef lastResult_;
   std::vector<BcIns*> targets_;
   Prng prng_;
   MachineCode mcode_;

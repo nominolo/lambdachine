@@ -88,7 +88,6 @@ void Jit::initRecording(Capability *cap, Word *base, BcIns *startPc)
   buf_.reset(base, cap->currentThread()->top());
   callStack_.reset();
   btb_.reset(startPc_, &callStack_);
-  lastResult_ = TRef();
 #ifdef LC_TRACE_STATS
   stats_ = NULL;
 #endif
@@ -324,10 +323,6 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     } else {  // We found a true loop.
       if (loopentry == 0) {
         DBG(cerr << "REC: Loop to entry detected." << endl);
-        if (lastResult_.ref() != 0) {
-          cerr << "NYI: Pending return result. Cannot compile trace." << endl;
-          goto abort_recording;
-        }
         buf_.emit(IR::kSAVE, IRT_VOID | IRT_GUARD, IR_SAVE_LOOP, 0);
         finishRecording();
         return true;
@@ -413,12 +408,13 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     Closure *clos = (Closure *)base[ins->a()];
     InfoTable *info = clos->info();
     TRef iref = buf_.literal(IRT_INFO, (Word)info);
-    buf_.setSlot(-1, fnode);  // Write to slot before the guard.
+    buf_.emit(IR::kEQINFO, IRT_VOID | IRT_GUARD, fnode, iref);
+
     // Clear all non-argument registers.
     for (int i = ins->c(); i < code->framesize; ++i) {
       buf_.setSlot(i, TRef());
     }
-    buf_.emit(IR::kEQINFO, IRT_VOID | IRT_GUARD, fnode, iref);
+    buf_.setSlot(-1, fnode);  // TODO: Can't write to slot before the guard?
 
     //    buf_.slots_.debugPrint(cerr);
     uint32_t call_info = (uint32_t)ins->c() | ((uint32_t)ins->b() << 8);
@@ -484,7 +480,9 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     TRef inforef = buf_.literal(IRT_INFO, (Word)tnode->info());
     buf_.emit(IR::kEQINFO, IRT_VOID | IRT_GUARD, noderef, inforef);
     if (tnode->isHNF()) {
-      lastResult_ = noderef;
+      Word *top = cap_->currentThread()->top();
+      int topslot = top - base;
+      buf_.setSlot(topslot + FRAME_SIZE, noderef);
       // TODO: Clear dead registers.
     } else {
       Word *top = cap_->currentThread()->top();
@@ -533,12 +531,13 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     callStack_.returnTo(expectedReturnPc);
 
     TRef resultref = buf_.slot(ins->a());
-    lastResult_ = resultref;
 
     // Clear current frame.
     for (int i = -3; i < (int)buf_.slots_.top(); ++i) {
       buf_.setSlot(i, TRef());
     }
+    // Put return result back into frame.
+    buf_.setSlot(0, resultref);
 
     // Return address implies framesize, thus we don't need an extra
     // guard.  In fact, storing all these frame pointers on the stack
@@ -554,18 +553,45 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     break;
   }
 
-  case BcIns::kMOV_RES: {
-    if (!(IRRef)lastResult_) {
-#if !defined(NDEBUG)
-      logNYI(NYI_RECORD_MOV_RES_EXT);
-#endif
+  case BcIns::kRETN: {
+    TRef retref = buf_.slot(-2);
+    TRef expectedReturnPc = buf_.literal(IRT_PC, base[-2]);
+    buf_.emit(IR::kEQ, IRT_VOID | IRT_GUARD, retref, expectedReturnPc);
+
+    callStack_.returnTo(expectedReturnPc);
+
+    // Clear current frame, except for the return results.
+    for (int i = -3; i < 0; ++i) {
+      buf_.setSlot(i, TRef());
+    }
+
+    for (int i = ins->a(); i < (int)buf_.slots_.top(); ++i) {
+      buf_.setSlot(i, TRef());
+    }
+
+    // Return address implies framesize, thus we don't need an extra
+    // guard.  In fact, storing all these frame pointers on the stack
+    // is quite wasteful.
+    Word *newbase = (Word *)base[-3];
+    if (!buf_.slots_.frame(newbase, base - 3)) {
+      cerr << "Abstract stack overflow/underflow" << endl;
       goto abort_recording;
     }
-    buf_.setSlot(ins->a(), lastResult_);
-    // Clear lastResult_.  If lastResult_ is not cleared at the end of
-    // a trace we have a pending return result and cannot compile the
-    // trace (ATM).
-    lastResult_ = TRef();
+
+    flags_.set(kLastInsWasBranch);
+    break;
+  }
+
+  case BcIns::kMOV_RES: {
+    // NOTE: We rely on the top pointer to be correct.
+    int topslot = buf_.slots_.top();
+    int resultslot = topslot + FRAME_SIZE + ins->d();
+    TRef result = buf_.slot(resultslot);
+    // Clear old value to avoid unnecessarily creating a snapshot
+    // entry for it.  The bytecode compiler never emits a MOV_RES
+    // twice for the same input.
+    buf_.setSlot(resultslot, TRef());
+    buf_.setSlot(ins->a(), result);
     break;
   }
 
@@ -753,13 +779,15 @@ void Jit::finishRecording() {
   Fragment *F = saveFragment();
 
   registerFragment(startPc_, F);
-  resetRecorderState();
 
   if (parent_ != NULL) {
     asm_.patchGuard(parent_, parentExitNo_, F->entry());
-  } else {
+  } else if (!flags_.get(kIsReturnTrace)) {
+    cerr << "Writing JFUNC (" << flags_.get(kIsReturnTrace) << ")\n";
     *startPc_ = BcIns::ad(BcIns::kJFUNC, 0, tno);
   }
+
+  resetRecorderState();
 
   DBG( {
     ofstream out;

@@ -19,8 +19,6 @@ _START_LAMBDACHINE_NAMESPACE
 #define dout 0 && cerr
 #endif
 
-#define FRAME_SIZE  3
-
 using namespace std;
 
 static BcIns reload_state_code[1] = { BcIns::ad(BcIns::kSYNC, 0, 0) };
@@ -56,9 +54,19 @@ bool isStartOfTrace(BcIns *srcPc, BcIns *dstPc,
                            branchType == kReturn);
 }
 
-inline
-BcIns *Capability::interpBranch(BcIns *srcPc, BcIns *dstPc, Word *base,
-                                BranchType branchType) {
+// It's very important that we inline this because it takes so many
+// arguments.
+inline BcIns *
+Capability::interpBranch(BcIns *srcPc, BcIns *dstPc,
+                         Word *&base,
+                         BranchType branchType,
+                         Thread *&T,
+                         char *&heap, char *&heaplim,
+                         const AsmFunction *&dispatch,
+                         const AsmFunction *&dispatch2,
+                         const AsmFunction *dispatch_debug,
+                         const Code *&code)
+{
 #if !LC_JIT
   return dstPc;
 #else
@@ -69,11 +77,31 @@ BcIns *Capability::interpBranch(BcIns *srcPc, BcIns *dstPc, Word *base,
       Fragment *F = jit_.traceAt(dstPc);
       if (F != NULL) {
 
+        // Enter the trace.
         if (DEBUG_COMPONENTS & DEBUG_TRACE_RECORDER) {
           cerr << COL_YELLOW << "TRACE: " << dstPc << COL_RESET << endl;
         }
 
-        // TODO: transfer control to the trace.
+        T->sync(dstPc, base);
+        asmEnter(F->traceId(), T, (Word *)heap, (Word*)heaplim,
+                 T->stackLimit(), F->entry());
+        heap = (char *)traceExitHp_;
+        heaplim = (char *)traceExitHpLim_;
+
+        BcIns *pc = NULL;
+        T = currentThread_;
+        dispatch = dispatch_; dispatch2 = dispatch_;
+        base = T->base(); pc = T->pc();
+
+        if (isEnabledBytecodeTracing() ||
+            ((DEBUG_COMPONENTS & DEBUG_TRACE_RECORDER) && isRecording()))
+          dispatch = dispatch_debug;
+
+        // Reload code/KBASE
+        Closure *cl = (Closure *)base[-1];
+        code = ((CodeInfoTable *)cl->info())->code();
+
+        return pc;
 
       } else if (counters_.tick(dstPc)) {
         currentThread_->sync(dstPc, base);
@@ -209,7 +237,8 @@ Capability::InterpExitCode Capability::interpMsg(InterpMode mode) {
   goto *dispatch[opcode]
 
 # define BRANCH_TO(dst_pc, branch_type) \
-  pc = interpBranch(pc, (dst_pc), base, (branch_type)); \
+  pc = interpBranch(pc, (dst_pc), base, (branch_type), \
+                    T, heap, heaplim, dispatch, dispatch2, dispatch_debug, code); \
   DISPATCH_NEXT;
 
 # define DECODE_BC \
