@@ -99,7 +99,9 @@ private:
 
   Word *traceExitHp_;
   Word *traceExitHpLim_;
+
   friend class Fragment;
+  friend class BranchTargetBuffer;  // For resetting hot counters.
 };
 
 inline int

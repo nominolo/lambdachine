@@ -728,6 +728,10 @@ public:
 
   inline uint32_t size() const { return next_; }
 
+  /// Resets the hot counters for all targets included in the branch
+  /// target buffer.
+  void resetDominatedCounters(Capability *cap);
+
 private:
   void growBuffer();
 

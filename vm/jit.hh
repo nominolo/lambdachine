@@ -29,6 +29,10 @@ public:
     counters_[hotCountHash(pc)] = value;
   }
 
+  inline void reset(void *pc) {
+    counters_[hotCountHash(pc)] = threshold_;
+  }
+
   /// Decrement the hot counter.
   ///
   /// @return true if the counter reached the hotness threshold.

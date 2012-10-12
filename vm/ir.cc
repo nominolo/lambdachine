@@ -3,6 +3,7 @@
 #include "assembler.hh"
 #include "objects.hh"
 #include "miscclosures.hh"
+#include "capability.hh"
 
 #include <iostream>
 #include <iomanip>
@@ -750,6 +751,18 @@ void BranchTargetBuffer::emit(BcIns *pc) {
   buf_[next_].addr = pc;
   buf_[next_].stack = stack_->current();
   ++next_;
+}
+
+void
+BranchTargetBuffer::resetDominatedCounters(Capability *cap)
+{
+  void *tgt = NULL;
+  for (uint32_t i = 0; i < next_; ++i) {
+    void *new_tgt = buf_[i].addr;
+    if (new_tgt < tgt)
+      cap->counters_.reset(new_tgt);
+    tgt = new_tgt;
+  }
 }
 
 uint32_t CallStack::depth(StackNodeRef ref) const {

@@ -787,6 +787,11 @@ void Jit::finishRecording() {
     *startPc_ = BcIns::ad(BcIns::kJFUNC, 0, tno);
   }
 
+#ifdef LC_CLEAR_DOM_COUNTERS
+  // See Note "Reset Dominated Counters" below.
+  btb_.resetDominatedCounters(cap_);
+#endif
+  
   resetRecorderState();
 
   DBG( {
@@ -800,6 +805,38 @@ void Jit::finishRecording() {
 
   jit_time += getProcessElapsedTime() - compilestart;
 }
+
+/*
+
+Note: Reset Dominated Conters
+-----------------------------
+
+If the recorded trace contained several possible trace roots they most
+likely all have similar hot counters.  Let's call the trace we've just
+compiled T and E1 its entry point (startPc).  Assume there is another
+potential trace head E2 inside T.  Since E1 reached the hotness
+threshold it is quite likely that E2 is very close to the hotness
+threshold as well, most likely it is only one tick away from the
+hotness threshold.
+
+Let's now consider the case that T executes and exits.  It is quite
+likely that E2 is reached again and a new trace T2 is created.  That
+is problematic.  If the same execution path is taken more frequently
+we will eventually create a side trace that also reaches E2.  There
+are now two possibilities:
+
+  - if we stop recording at an existing trace we link with T2.  This
+    may mean loss of optimisation potential.
+
+  - if we keep recording despite existing traces, then we create a
+    new trace that includes T2.  The trace T2 is now essentially
+    dead code.
+
+We thus reset all counters for potential trace heads inside T to
+increase the likelyhood that a side trace of T is created before T2 is
+created.  It is not a 100% solution, but it shouldn't hurt either.
+
+*/
 
 Fragment::Fragment()
   : flags_(0), traceId_(0), startPc_(NULL), targets_(NULL) {

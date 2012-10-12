@@ -29,6 +29,7 @@
 #define LC_JIT   1
 
 // #define LC_TRACE_STATS
+#define LC_CLEAR_DOM_COUNTERS
 
 #define MAX_HEAP_ENTRIES      300
 
