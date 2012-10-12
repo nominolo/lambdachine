@@ -50,7 +50,13 @@ SpillSet::allocSpillHigh()
 
 static inline int32_t jmprel(MCode *p, MCode *target) {
   ptrdiff_t delta = target - p;
-  LC_ASSERT(delta == (int32_t)delta);
+  if (!(delta == (int32_t)delta)) {
+    cerr << "FATAL: jmprel: Target out of range p="
+         << (void*)p << " target=" << (void*)target
+         << " delta=" << delta << endl;
+    LC_ASSERT(0 && "jmprel target out of range");
+    exit(1);
+  }
   return (int32_t)delta;
 }
 
