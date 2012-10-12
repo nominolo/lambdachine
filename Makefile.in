@@ -156,6 +156,8 @@ VM_SRCS = vm/thread.cc vm/capability.cc vm/memorymanager.cc \
 	  vm/machinecode.cc vm/assembler.cc vm/ir.cc vm/ir_fold.cc \
 	  vm/time.cc
 
+VM_SRCS_ALL = $(VM_SRCS) vm/main.cc
+
 TEST_FILES := tests/Bc/Bc0016.lcbc tests/Bc/Bc0014.lcbc \
 	tests/Bc/Bc0017.lcbc \
 	tests/Bc/TailCallExact.lcbc tests/Bc/TailCallOverapply.lcbc \
@@ -357,7 +359,7 @@ bench-ghc/%: tests/Bench/%.hs
 	@mkdir -p bench-ghc
 	$(HC) -O2 -fforce-recomp -DBENCH_GHC $(BENCH_HC_OPTS) -rtsopts -o $@ $<
 
--include $(SRCS:%.c=$(DEPDIR)/%.P)
+# -include $(SRCS:%.c=$(DEPDIR)/%.P)
 -include $(UTILSRCS:%.cc=$(DEPDIR)/%.P)
 -include $(DEPDIR)/vm/unittest.P
--include $(VM_SRCS:%.cc=$(DEPDIR)/%.P)
+-include $(VM_SRCS_ALL:%.cc=$(DEPDIR)/%.P)
