@@ -995,9 +995,12 @@ emitLinearIns bit_r lit_ids tgt_labels r ins_id ins = do
       emitInsABC r opc_LOADF (i2b d) (i2b n) (i2b fld)
     Mid (Assign (BcReg dst _) (HiResult n)) ->
       emitInsAD r opc_MOV_RES (i2b dst) (i2h n)
+    Mid (Assign (BcReg dst _)
+        (PrimOp OpIndexOffAddrChar _ty [BcReg ptr _, BcReg ofs _])) ->
+      emitInsABC r opc_PTROFSC (i2b dst) (i2b ptr) (i2b ofs)
     Mid (Store (BcReg ptr _) offs (BcReg src _)) | offs <= 255 ->
       emitInsABC r opc_INITF (i2b ptr) (i2b src) (i2b offs)
-    Mid m -> error $ pretty m
+    Mid m -> error $ "Don't know how to serialise " ++ pretty m
 
  where
    binOpOpcode :: OpTy -> BinOp -> Word8

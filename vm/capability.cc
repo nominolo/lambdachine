@@ -404,6 +404,11 @@ op_REMRR:
   base[opA] = (WordInt)base[opB] % (WordInt)base[opC];
   DISPATCH_NEXT;
 
+op_PTROFSC:
+  DECODE_BC;
+  base[opA] = ((char*)base[opB])[(WordInt)base[opC]];
+  DISPATCH_NEXT;
+
 # define BUMP_HEAP(payloadWords) \
   heap += (1 + (payloadWords)) * sizeof(Word); \
   if (LC_UNLIKELY(heap > heaplim)) { \

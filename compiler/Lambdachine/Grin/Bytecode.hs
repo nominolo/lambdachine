@@ -97,6 +97,7 @@ data BcRhs
   | Fetch BcVar Int
   | Alloc BcVar [BcVar] LiveSet
   | AllocAp [BcVar] LiveSet
+  | PrimOp PrimOp OpTy [BcVar]
   deriving (Eq, Ord)
 
 data BcLoadOperand
@@ -117,6 +118,10 @@ data BinOp
   deriving (Eq, Ord, Show)
 
 type CmpOp = BinOp
+
+data PrimOp
+  = OpIndexOffAddrChar
+  deriving (Eq, Ord, Show)
 
 data OpTy = IntTy
           | WordTy
@@ -244,6 +249,11 @@ instance Pretty BcRhs where
       <+> pprLives lives
   ppr (HiResult n) =
     text "result(" <> ppr n <> char ')'
+  ppr (PrimOp op _ty args) =
+    ppr op <> char '(' <> hsep (commaSep (map ppr args)) <> char ')'
+
+instance Pretty PrimOp where
+  ppr OpIndexOffAddrChar = text "indexCharOffAddr#"
 
 instance Pretty OpTy where
   ppr VoidTy = text "v"
@@ -352,6 +362,10 @@ mkLabel l = mkFirst $ Label l
 insBinOp :: BinOp -> OpTy -> BcVar -> BcVar -> BcVar -> BcGraph O O
 insBinOp op ty rslt src1 src2 =
   mkMiddle $ Assign rslt (BinOp op ty src1 src2)
+
+insPrimOp :: PrimOp -> OpTy -> BcVar -> [BcVar] -> BcGraph O O
+insPrimOp op ty rslt args =
+  mkMiddle $ Assign rslt (PrimOp op ty args)
 
 insLoadLit :: BcVar -> BcConst -> BcGraph O O
 insLoadLit r lit = mkMiddle $ Assign r (Load (LoadLit lit))
@@ -658,7 +672,9 @@ instance Biplate BcRhs BcVar where
   biplate (Fetch r n) = plate Fetch |* r |- n
   biplate (Alloc rt rs lv) = plate Alloc |* rt ||* rs |+ lv
   biplate (AllocAp rs lv) = plate AllocAp ||* rs |+ lv
-  biplate rhs = plate rhs
+  biplate (PrimOp op ty vars) = plate (PrimOp op ty) ||* vars
+  biplate rhs@(Load _) = plate rhs
+  biplate rhs@(HiResult _) = plate rhs
 
 invertCondition :: CmpOp -> CmpOp
 invertCondition cond = case cond of

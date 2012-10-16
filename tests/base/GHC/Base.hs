@@ -154,3 +154,33 @@ build :: (forall b. (a -> b -> b) -> b -> b) -> [a]
 build g = g k []
  where k x xs = x : xs
        {-# NOINLINE k #-}
+
+
+-- This code is needed for virtually all programs, since it's used for
+-- unpacking the strings of error messages.
+
+unpackCString# :: Addr# -> [Char]
+{-# NOINLINE unpackCString# #-}
+    -- There's really no point in inlining this, ever, cos
+    -- the loop doesn't specialise in an interesting
+    -- But it's pretty small, so there's a danger that
+    -- it'll be inlined at every literal, which is a waste
+unpackCString# addr = unpack 0#
+ where
+   unpack nh
+     | ch `eqChar#` '\0'# = []
+     | otherwise          = C# ch : unpack (nh +# 1#)
+     where
+       !ch = indexCharOffAddr# addr nh
+
+unpackAppendCString# :: Addr# -> [Char] -> [Char]
+{-# NOINLINE unpackAppendCString# #-}
+     -- See the NOINLINE note on unpackCString# 
+unpackAppendCString# addr rest
+  = unpack 0#
+  where
+    unpack nh
+      | ch `eqChar#` '\0'# = rest
+      | otherwise          = C# ch : unpack (nh +# 1#)
+      where
+        !ch = indexCharOffAddr# addr nh

@@ -908,17 +908,17 @@ transApp :: CoreBndr -> [CoreArg] -> LocalEnv -> FreeVarsIndex
          -> Trans (Bcis x, KnownLocs, FreeVars, Maybe BcVar)
 transApp f [] env fvi locs ctxt = transBody (Ghc.Var f) env fvi locs ctxt
 transApp f args env fvi locs0 ctxt
-  | Just p <- isGhcPrimOpId f, isLength 2 args 
-  = do (is0, locs1, fvs, [r1, r2]) <- transArgs args env fvi locs0
+  | Just p <- isGhcPrimOpId f
+  = do (is0, locs1, fvs, regs) <- transArgs args env fvi locs0
        case () of
-         _ | Just (op, ty) <- primOpToBinOp p
+         _ | Just (op, ty) <- primOpToBinOp p, [r1, r2] <- regs
            -> do
              let Just (_arg_tys, rslt_ty) =
                    splitFunTysN 2 $ Ghc.repType (Ghc.varType f)
              rslt <- mbFreshLocal rslt_ty (contextVar ctxt)
              maybeAddRet ctxt (is0 <*> insBinOp op ty rslt r1 r2)
                          locs1 fvs rslt
-         _ | Just (cond, ty) <- isCondPrimOp p
+         _ | Just (cond, ty) <- isCondPrimOp p, [r1, r2] <- regs
            -> do
              -- A comparison op that does not appear within a 'case'.
              -- We must now fabricate a 'Bool' into the result.
@@ -939,6 +939,21 @@ transApp f args env fvi locs0 ctxt
                                   <*> insGoto l3]
                    |*><*| mkLabel l3
              maybeAddRet ctxt is1 locs1 fvs rslt
+
+         _ | Just (op, arg_tys, res_ty) <- primOpOther p
+           -> do
+             let arity = length arg_tys
+             when (arity /= length regs) $
+               error $ "Wrong number of primitive args.  Got = "
+                     ++ show (length regs) ++ " expected = " ++ show arity
+             -- TODO: We could type check the arguments as an extra assertion.
+             -- That's a bit tricky given the current setup, though.
+             let Just(_argument_types, result_type) =
+                   splitFunTysN arity (Ghc.repType (Ghc.varType f))
+             result <- mbFreshLocal result_type (contextVar ctxt)
+             maybeAddRet ctxt (is0 <*> insPrimOp op res_ty result regs)
+                         locs1 fvs result
+
          _ | otherwise ->
              error $ "Unknown primop: " ++ showPpr p
 
@@ -1403,6 +1418,12 @@ primOpToBinOp primop =
     Ghc.IntMulOp -> Just (OpMul, IntTy)
     Ghc.IntQuotOp -> Just (OpDiv, IntTy)
     Ghc.IntRemOp  -> Just (OpRem, IntTy)
+    _ -> Nothing
+
+primOpOther :: Ghc.PrimOp -> Maybe (PrimOp, [OpTy], OpTy)
+primOpOther primop =
+  case primop of
+    Ghc.IndexOffAddrOp_Char -> Just (OpIndexOffAddrChar, [AddrTy, IntTy], CharTy)
     _ -> Nothing
 
 isCondPrimOp :: Ghc.PrimOp -> Maybe (BinOp, OpTy)

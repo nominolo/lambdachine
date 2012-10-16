@@ -32,6 +32,8 @@ _START_LAMBDACHINE_NAMESPACE
   _(MULRR,   RRR) \
   _(DIVRR,   RRR) \
   _(REMRR,   RRR) \
+  /* Primops */ \
+  _(PTROFSC, RRR) /* indexCharOffAddr# :: Addr# -> Int# -> Char# */ \
   /* Constants */ \
   _(LOADK,   RN) \
   _(KINT,    RS) \

@@ -1093,6 +1093,10 @@ TEST_F(RunFileTest, MultiReturnJit) {
   run("Bc.MultiReturnJit");
 }
 
+TEST_F(RunFileTest, UnpackCString) {
+  run("Bc.UnpackCString");
+}
+
 TEST(HotCounters, Simple) {
   HotCounters counters(5);
   BcIns pc[] = { BcIns::ad(BcIns::kFUNC, 3, 0) };

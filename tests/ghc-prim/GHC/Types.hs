@@ -8,3 +8,5 @@ data Int = I# Int#
 
 infixr 5 :
 data [] a = [] | a : [a]
+
+data Char = C# Char#
