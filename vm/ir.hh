@@ -79,6 +79,7 @@ typedef u4 IRRef;               /* Used to pass around references */
   _(SLOAD,   L,   lit, lit) \
   _(ILOAD,   L,   ref, ___) \
   _(RLOAD,   L,   ___, ___) \
+  _(PLOAD,   L,   ref, ref) \
   _(NEW,     A,   ref, lit) \
   _(FSTORE,  S,   ref, ref) \
   _(UPDATE,  S,   ref, ref) \

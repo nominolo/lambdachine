@@ -536,6 +536,7 @@ public:
   void memstore(Reg base, int32_t ofs, IRRef ref, RegSet allow);
   void patchGuard(Fragment *, ExitNo, MCode *target);
   void adjustBase(int32_t relbase);
+  void insPLOAD(IR *ins);
 
   // Emits code to increment the value of the value at the target
   // address.
@@ -617,6 +618,9 @@ private:
 
   // op r, [base + offset]
   void emit_rmro(x86Op xo, Reg rr, Reg rb, int32_t offset);
+
+  // op r, [base+idx*scale+ofs]
+  void emit_rmrxo(x86Op xo, Reg rr, Reg rb, Reg rx, x86Mode scale, int32_t ofs);
 
   // Opcode + ModRM encoding
   inline MCode *emit_opm(x86Op xo, x86Mode mode, Reg rr, Reg rb, MCode *p, int delta) {

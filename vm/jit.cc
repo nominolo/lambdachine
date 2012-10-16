@@ -402,6 +402,17 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     buf_.setSlot(ins->a(), aref);
     break;
   }
+  case BcIns::kPTROFSC: {
+    TRef ptrref = buf_.slot(ins->b());
+    TRef ofsref = buf_.slot(ins->c());
+    // TODO: At some point in the future we might want to split this
+    // into a xREF and a load to make CSE on pointer references
+    // easier.  We also currently assume that the pointed-to data is
+    // constant (as is the case for string literals).
+    TRef aref = buf_.emit(IR::kPLOAD, IRT_I64, ptrref, ofsref);
+    buf_.setSlot(ins->a(), aref);
+    break;
+  }
   case BcIns::kCALLT: {
     // TODO: Detect and optimise recursive calls into trace specially?
     TRef fnode = buf_.slot(ins->a());

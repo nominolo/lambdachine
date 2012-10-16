@@ -197,6 +197,32 @@ void Assembler::emit_rmro(x86Op xo, Reg rr, Reg rb, int32_t offset) {
   mcp = emit_opm(xo, mode, rr, rb, p, 0);
 }
 
+/* op + modrm + sib */
+#define emit_opmx(xo, mode, scale, rr, rb, rx, p) \
+  (p[-1] = MODRM((scale), (rx), (rb)), \
+   p[-2] = MODRM((mode), (rr), RID_ESP), \
+   emit_op((xo), (rr), (rb), (rx), (p), -1))
+
+// op r, [base+idx*scale+ofs]
+void
+Assembler::emit_rmrxo(x86Op xo, Reg rr, Reg rb, Reg rx, x86Mode scale,
+                      int32_t ofs)
+{
+  MCode *p = mcp;
+  x86Mode mode;
+  if (ofs == 0 && (rb&7) != RID_EBP) {
+    mode = XM_OFS0;
+  } else if (checki8(ofs)) {
+    mode = XM_OFS8;
+    *--p = (MCode)ofs;
+  } else {
+    mode = XM_OFS32;
+    p -= 4;
+    *(int32_t *)p = ofs;
+  }
+  mcp = emit_opmx(xo, mode, scale, rr, rb, rx, p);
+}
+
 void Assembler::emit_mrm(x86Op xo, Reg rr, Reg rb) {
   MCode *p = mcp;
   x86Mode mode = XM_REG;
@@ -1072,6 +1098,19 @@ void Assembler::fieldLoad(IR *ins) {
   load_u64(dst, basereg, sizeof(Word) * fieldid);
 }
 
+void Assembler::insPLOAD(IR *ins) {
+  IRRef ptrref = ins->op1();
+  IRRef ofsref = ins->op2();
+  Reg dst = destReg(ins, kGPR);
+  Reg ptr = alloc1(ptrref, kGPR);
+  Reg ofs = alloc1(ofsref, kGPR);
+
+  // movzbl dst, [ptr + ofs * 1]
+  emit_rmrxo(XO_MOVZXb, dst, ptr, ofs, XM_SCALE1, 0);
+
+  // TODO: add special case for irref_islit(ofsref)?
+}
+
 void Assembler::heapCheck(IR *ins) {
   int32_t bytes = sizeof(Word) * ins->op1();
 
@@ -1190,6 +1229,9 @@ void Assembler::emit(IR *ins) {
     break;
   case IR::kUPDATE:
     insUpdate(ins);
+    break;
+  case IR::kPLOAD:
+    insPLOAD(ins);
     break;
   default:
     cerr << "NYI: codegen for ";
