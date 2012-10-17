@@ -1,18 +1,19 @@
-{-# LANGUAGE NoImplicitPrelude, BangPatterns, MagicHash #-}
-{-# OPTIONS_GHC -O0 #-}
+{-# LANGUAGE NoImplicitPrelude, BangPatterns, MagicHash, CPP #-}
 -- RUN: %bc_vm_chk
 -- CHECK: @Result@ IND -> GHC.Bool.True`con_info 
+#ifdef BENCH_GHC
+import Prelude ( print )
+#else
 module Bench.Append where
+#endif
 
 import GHC.Types
 import GHC.Integer
 import GHC.Num
 import GHC.Base
 
-root xs ys zs = (xs ++ ys) ++ zs
-
 {- # NOINLINE replicate #-}
-replicate :: Int -> Int -> [Int]
+replicate :: Int -> a -> [a]
 replicate n x =
   if n == 0 then [] else x : replicate (n - 1) x
 
@@ -23,9 +24,15 @@ length l = len l 0#
     len []     a# = I# a#
     len (_:xs) a# = len xs (a# +# 1#)
 
-{- # NOINLINE test1 #-}
-test1 n =
-  length (root (replicate n 1) (replicate n 2) (replicate n 3))
-    == (n + n + n)
+append3 xs ys zs = (xs ++ ys) ++ zs
 
-test = test1 200 -- max: 1820
+root n = length (append3 (replicate n 1) (replicate n 2) (replicate n 3))
+           == 3 * n
+
+test = root 200 -- max: 1820
+
+bench = root 30000000
+
+#ifdef BENCH_GHC
+main = print bench
+#endif
