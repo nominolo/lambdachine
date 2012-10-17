@@ -440,10 +440,10 @@ bool AbstractStack::frame(Word *base, Word *top) {
   int delta = base - realOrigBase_;
   base_ = kInitialBase + delta;
   low_ = MIN(low_, base_);
-  if (base_ < 1) return false;  // underflow
+  if (base_ < 3) return false;  // underflow
   top_ = base_ + (top - base);
   high_ = MAX(high_, top_ - 1);
-  if (top_ >= kSlots) return false; // overflow
+  if (top_ >= kSlots - 4) return false; // overflow
   return true;
 }
 

@@ -794,7 +794,7 @@ op_KINT:
 op_NEW_INT:
 op_CASE_S:
 op_JRET:
-  cerr << "Unimplemented instruction: " << (pc - 1)->name() << endl;
+  cerr << "\nERROR: Unimplemented instruction: " << (pc - 1)->name() << endl;
   // not_yet_implemented:
   T->sync(pc, base);
   mm_->sync(heap, heaplim);
@@ -808,6 +808,7 @@ op_STOP:
 stack_overflow:
   T->sync(pc, base);
   mm_->sync(heap, heaplim);
+  cerr << "\nERROR: Stack overflow.\n";
   return kInterpStackOverflow;
 
 generic_apply: {
