@@ -1097,6 +1097,10 @@ TEST_F(RunFileTest, UnpackCString) {
   run("Bc.UnpackCString");
 }
 
+TEST_F(RunFileTest, Monoid) {
+  run("Bc.Monoid");
+}
+
 TEST(HotCounters, Simple) {
   HotCounters counters(5);
   BcIns pc[] = { BcIns::ad(BcIns::kFUNC, 3, 0) };
