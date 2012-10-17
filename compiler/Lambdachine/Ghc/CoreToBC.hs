@@ -464,6 +464,7 @@ transFields :: (Ghc.Id -> a) -> [CoreArg] -> [Either BcConst a]
 transFields f args = map to_field args
  where
    to_field (Ghc.Lit (Ghc.MachInt n)) = Left (CInt n)
+   to_field (Ghc.Lit (Ghc.MachChar c)) = Left (CChar c)
    to_field (Ghc.Var x)               = Right (f x)
    to_field (Ghc.App x (Ghc.Type _))  = to_field x
    to_field (Lam a x) | isTyVar a     = to_field x
