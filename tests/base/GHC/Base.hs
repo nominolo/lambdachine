@@ -4,6 +4,8 @@ module GHC.Base
   , module GHC.Bool
   , module GHC.Types
   , module GHC.Classes
+  , module GHC.Ordering
+  , module GHC.Prim
   )
 where
 
@@ -13,12 +15,58 @@ import GHC.Bool
 import GHC.Classes
 import GHC.Ordering
 
+import GHC.Tuple ()
+import GHC.Unit ()
+
+infixr 9  .
 infixr 5  ++
+infixl 4  <$
 infixl 1  >>, >>=
+infixr 0  $
 
 -- | Identity function.
 id                      :: a -> a
 id x                    =  x
+
+-- | Function composition.
+{-# INLINE (.) #-}
+-- Make sure it has TWO args only on the left, so that it inlines
+-- when applied to two functions, even if there is no final argument
+(.)    :: (b -> c) -> (a -> b) -> a -> c
+(.) f g = \x -> f (g x)
+
+-- | Application operator.  This operator is redundant, since ordinary
+-- application @(f x)@ means the same as @(f '$' x)@. However, '$' has
+-- low, right-associative binding precedence, so it sometimes allows
+-- parentheses to be omitted; for example:
+--
+-- >     f $ g $ h x  =  f (g (h x))
+--
+-- It is also useful in higher-order situations, such as @'map' ('$' 0) xs@,
+-- or @'Data.List.zipWith' ('$') fs xs@.
+{-# INLINE ($) #-}
+($)                     :: (a -> b) -> a -> b
+f $ x                   =  f x
+
+-- | Constant function.
+const                   :: a -> b -> a
+const x _               =  x
+
+-- | 'asTypeOf' is a type-restricted version of 'const'.  It is usually
+-- used as an infix operator, and its typing forces its first argument
+-- (which is usually overloaded) to have the same type as the second.
+asTypeOf                :: a -> a -> a
+asTypeOf                =  const
+
+
+class  Functor f  where
+    fmap        :: (a -> b) -> f a -> f b
+
+    -- | Replace all locations in the input with the same value.
+    -- The default definition is @'fmap' . 'const'@, but this may be
+    -- overridden with a more efficient version.
+    (<$)        :: a -> f b -> f a
+    (<$)        =  fmap . const
 
 class  Monad m  where
     -- | Sequentially compose two actions, passing any value produced
@@ -72,7 +120,7 @@ instance Ord Int where
     (<=)    = leInt
     (>=)    = geInt
     (>)     = gtInt
-  
+
 compareInt :: Int -> Int -> Ordering
 (I# x#) `compareInt` (I# y#) = compareInt# x# y#
 
@@ -155,6 +203,11 @@ build g = g k []
  where k x xs = x : xs
        {-# NOINLINE k #-}
 
+-- chr :: Int -> Char
+-- chr i@(I# i#)
+--  | int2Word# i# `leWord#` int2Word# 0x10FFFF# = C# (chr# i#)
+--  | otherwise
+--     = error ("Prelude.chr: bad argument: " ++ showSignedInt (I# 9#) i "")
 
 -- This code is needed for virtually all programs, since it's used for
 -- unpacking the strings of error messages.
@@ -184,3 +237,13 @@ unpackAppendCString# addr rest
       | otherwise          = C# ch : unpack (nh +# 1#)
       where
         !ch = indexCharOffAddr# addr nh
+
+
+{- Seems clumsy. Should perhaps put minInt and MaxInt directly into MachDeps.h -}
+minInt  = I# (-0x8000000000000000#)
+maxInt  = I# 0x7FFFFFFFFFFFFFFF#
+
+zeroInt, oneInt, twoInt, maxInt, minInt :: Int
+zeroInt = I# 0#
+oneInt  = I# 1#
+twoInt  = I# 2#
