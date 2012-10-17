@@ -1101,6 +1101,10 @@ TEST_F(RunFileTest, Monoid) {
   run("Bc.Monoid");
 }
 
+TEST_F(RunFileTest, NopPrims) {
+  run("Bc.NopPrims");
+}
+
 TEST(HotCounters, Simple) {
   HotCounters counters(5);
   BcIns pc[] = { BcIns::ad(BcIns::kFUNC, 3, 0) };

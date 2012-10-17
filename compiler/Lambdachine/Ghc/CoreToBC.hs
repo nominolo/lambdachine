@@ -941,6 +941,17 @@ transApp f args env fvi locs0 ctxt
                    |*><*| mkLabel l3
              maybeAddRet ctxt is1 locs1 fvs rslt
 
+         _ | Just (OpNop, [arg_ty], res_ty) <- primOpOther p
+           -> do
+             -- Nop-like-primitives translate into a Move which gets
+             -- optimised away by the register allocator (most
+             -- likely).
+             let [reg] = regs
+             let Just(_argument_types, result_type) =
+                   splitFunTysN 1 (Ghc.repType (Ghc.varType f))
+             result <- mbFreshLocal result_type (contextVar ctxt)
+             maybeAddRet ctxt (is0 <*> insMove result reg) locs1 fvs result
+             
          _ | Just (op, arg_tys, res_ty) <- primOpOther p
            -> do
              let arity = length arg_tys
@@ -1425,6 +1436,13 @@ primOpOther :: Ghc.PrimOp -> Maybe (PrimOp, [OpTy], OpTy)
 primOpOther primop =
   case primop of
     Ghc.IndexOffAddrOp_Char -> Just (OpIndexOffAddrChar, [AddrTy, IntTy], CharTy)
+    -- these are all NOPs
+    Ghc.OrdOp -> Just (OpNop, [CharTy], IntTy)
+    Ghc.ChrOp -> Just (OpNop, [IntTy], CharTy)
+    Ghc.Addr2IntOp -> Just (OpNop, [AddrTy], IntTy)
+    Ghc.Int2AddrOp -> Just (OpNop, [IntTy], AddrTy)
+    Ghc.Word2IntOp -> Just (OpNop, [WordTy], IntTy)
+    Ghc.Int2WordOp -> Just (OpNop, [IntTy], WordTy)
     _ -> Nothing
 
 isCondPrimOp :: Ghc.PrimOp -> Maybe (BinOp, OpTy)

@@ -121,7 +121,21 @@ type CmpOp = BinOp
 
 data PrimOp
   = OpIndexOffAddrChar
+  | OpNop  -- See Note "Primitive Nops"
   deriving (Eq, Ord, Show)
+
+-- Note: Primitive Nops
+-- --------------------
+--
+-- Some type changing primitive operations are actually a no-op at
+-- runtime.  For example, ord#, chr#, int2word#, etc. fall into this
+-- category because Char# and Int# and Word# are all represented as
+-- machine words.  Converting one into the other only requires
+-- re-interpreting the same bits.  We currently map them all into the
+-- single `OpNop` prim-op.  At some point in the future we may want to
+-- do some type checking to verify the compiler's doings.  At that
+-- point, having more type information may be useful.
+
 
 data OpTy = IntTy
           | WordTy
@@ -140,6 +154,7 @@ data OpTy = IntTy
 data BcVar = BcVar !Id Ghc.Type
            | BcReg {-# UNPACK #-} !Int OpTy
 
+-- | Comparison of 'BcVar' ignores type differences.
 compareBcVar :: BcVar -> BcVar -> Ordering
 compareBcVar (BcVar n _) (BcVar m _) = compare n m
 compareBcVar (BcVar _ _) _           = LT
@@ -254,6 +269,7 @@ instance Pretty BcRhs where
 
 instance Pretty PrimOp where
   ppr OpIndexOffAddrChar = text "indexCharOffAddr#"
+  ppr OpNop = text "nop"
 
 instance Pretty OpTy where
   ppr VoidTy = text "v"
