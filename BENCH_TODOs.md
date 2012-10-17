@@ -68,3 +68,40 @@ Other Benchmarks
   - Safe random number splitter (from HIW)
 
   - SipHash
+
+
+Nofib (Max's subset)
+--------------------
+
+  - bernouilli: YES - uses Integer
+
+  - digitsofe2: YES - uses Integer, really slow when using integer-simple
+
+  - exp3_8: YES (BROKEN) - very simple (and also quite useless)
+
+  - primes: YES - very simple (and deeply flawed)
+
+  - rfib: YES - uses Double, 
+
+  - tak: YES - probably difficult for tracing JIT
+
+  - x2n1: MAYBE - needs Double and Complex
+
+  - queens: YES - nice and simple
+
+  - append: YES (SLOW)
+
+  - factorial: YES (non-tail-recursive)
+
+  - raytracer: YES - it's just: sum'Int (zipWith (*) xs ys)
+
+  - sumtree: YES (GC Crash)
+
+  - treeflip: YES
+
+  - sumsquare: YES: 
+
+      sum'Int [ k * m | k <- enumFromTo'Int 1 n, m <- enumFromTo'Int 1 k ]
+      root 10000 == 1400446540
+
+  
