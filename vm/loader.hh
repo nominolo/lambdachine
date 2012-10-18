@@ -154,7 +154,8 @@ private:
   void loadClosure(BytecodeFile &, const StringTabEntry *strings);
   void loadClosureReference(const char *name, Word *literal /* out */);
   void fixClosureForwardReference(const char *name, Closure *cl);
-  void loadInfoTableReference(const char *name, Word *literal /* out */);
+  inline bool isFullyLoadedInfoTable(InfoTable *);
+  void loadInfoTableReference(const char *name, InfoTable **dest /* out */);
   void fixInfoTableForwardReference(const char *name, InfoTable *info);
   bool checkNoForwardRefs();
 
@@ -164,6 +165,10 @@ private:
   STRING_MAP(Closure*) closures_;
   BasePathEntry *basepaths_;
 };
+
+inline bool Loader::isFullyLoadedInfoTable(InfoTable *info) {
+  return (info != NULL) && (info->type() != INVALID_OBJECT);
+}
 
 _END_LAMBDACHINE_NAMESPACE
 

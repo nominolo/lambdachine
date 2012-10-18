@@ -465,7 +465,7 @@ InfoTable *Loader::loadInfoTable(BytecodeFile &f,
   FwdRefInfoTable *old_itbl =
     static_cast<FwdRefInfoTable *>(infoTables_[itbl_name]);
 
-  if (old_itbl && old_itbl->type() != INVALID_OBJECT) {
+  if (isFullyLoadedInfoTable(old_itbl)) {
     fprintf(stderr, "ERROR: Duplicate info table: %s\n", itbl_name);
     exit(1);
   }
@@ -575,7 +575,7 @@ void Loader::loadLiteral(BytecodeFile &f,
   break;
   case LIT_INFO: {
     const char *infoname = loadId(f, strings, ".");
-    loadInfoTableReference(infoname, literal);
+    loadInfoTableReference(infoname, (InfoTable **)literal);
   }
   break;
   default:
@@ -688,23 +688,23 @@ void Loader::fixClosureForwardReference(const char *name, Closure *cl) {
   }
 }
 
-void Loader::loadInfoTableReference(const char *name, Word *literal) {
+void Loader::loadInfoTableReference(const char *name, InfoTable **dest) {
   InfoTable *info = infoTables_[name];
   FwdRefInfoTable *info2;
   if (info == NULL) {
     // 1st forward ref
     info2 = new FwdRefInfoTable();
     info2->type_ = INVALID_OBJECT;
-    info2->next = (void **)literal;
-    *literal = (Word)NULL;
+    info2->next = (void **)dest;
+    *dest = (InfoTable *)NULL;
     infoTables_[name] = info2;
   } else if (info->type() == INVALID_OBJECT) {
     // subsequent forward ref
     info2 = (FwdRefInfoTable *)info;
-    *literal = (Word)info2->next;
-    info2->next = (void **)literal;
+    *dest = (InfoTable *)info2->next;
+    info2->next = (void **)dest;
   } else {
-    *literal = (Word)info;
+    *dest = info;
   }
 }
 
@@ -738,16 +738,20 @@ void Loader::loadClosure(BytecodeFile &f,
   const char *itbl_name = loadId(f, strings, ".");
   InfoTable *info = infoTables_[itbl_name];
 
-  // Info tables must all be fully loaded by now.
-  LC_ASSERT(info != NULL && info->type() != INVALID_OBJECT);
-  LC_ASSERT((info->type() != CAF && payloadsize == info->size()) ||
-            (info->type() == CAF && payloadsize == 2));
+  if (isFullyLoadedInfoTable(info)) {
+    // If we haven't loaded the info table yet we cannot check this.
+    // This can happen when loading recursive groups of modules.
+    LC_ASSERT((info->type() != CAF && payloadsize == info->size()) ||
+              (info->type() == CAF && payloadsize == 2));
+  }
 
   Closure *cl = mm_->allocStaticClosure(payloadsize);
 
+  loadInfoTableReference(itbl_name, &cl->header_.info_);
+
   // Fill in closure payload.  May create forward references to the
   // current closure.
-  cl->setInfo(info);
+
   for (u4 i = 0; i < payloadsize; i++) {
     DLOG("Loading payload for: %s [%d]\n", clos_name, i);
     u1 dummy;
