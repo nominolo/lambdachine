@@ -14,6 +14,7 @@ import GHC.Types
 import GHC.Bool
 import GHC.Classes
 import GHC.Ordering
+import {-# SOURCE #-} GHC.Show
 
 import GHC.Tuple ()
 import GHC.Unit ()
@@ -203,11 +204,20 @@ build g = g k []
  where k x xs = x : xs
        {-# NOINLINE k #-}
 
--- chr :: Int -> Char
--- chr i@(I# i#)
---  | int2Word# i# `leWord#` int2Word# 0x10FFFF# = C# (chr# i#)
---  | otherwise
---     = error ("Prelude.chr: bad argument: " ++ showSignedInt (I# 9#) i "")
+
+chr :: Int -> Char
+chr i@(I# i#)
+ | int2Word# i# `leWord#` int2Word# 0x10FFFF# = C# (chr# i#)
+ | otherwise
+    = error ("Prelude.chr: bad argument: " ++ showSignedInt (I# 9#) i "")
+
+
+unsafeChr :: Int -> Char
+unsafeChr (I# i#) = C# (chr# i#)
+
+-- | The 'Prelude.fromEnum' method restricted to the type 'Data.Char.Char'.
+ord :: Char -> Int
+ord (C# c#) = I# (ord# c#)
 
 -- This code is needed for virtually all programs, since it's used for
 -- unpacking the strings of error messages.

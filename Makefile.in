@@ -178,7 +178,7 @@ TEST_FILES := tests/Bc/Bc0016.lcbc tests/Bc/Bc0014.lcbc \
 	tests/Bc/MultiReturn3.lcbc tests/Bc/MultiReturnJit.lcbc \
 	tests/Bc/UnpackCString.lcbc tests/Bc/Monoid.lcbc \
 	tests/Bc/NopPrims.lcbc tests/Bc/NegateInt.lcbc \
-	tests/Bc/WordCompare.lcbc
+	tests/Bc/WordCompare.lcbc tests/Bc/TestShow.lcbc
 
 lcvm: $(VM_SRCS:.cc=.o) vm/main.o
 	@echo "LINK $(filter %.o %.a, $^) => $@"
@@ -330,7 +330,7 @@ tests/%.lcbc: tests/%.hs
 PRIM_MODULES_ghc-prim = GHC/Bool GHC/Types GHC/Ordering GHC/Tuple GHC/Unit
 PRIM_MODULES_integer-gmp = GHC/Integer/Type GHC/Integer
 PRIM_MODULES_base = GHC/Base GHC/Classes GHC/Num GHC/List \
-	Control/Exception/Base GHC/Enum Data/Maybe Data/Monoid
+	Control/Exception/Base GHC/Enum Data/Maybe Data/Monoid GHC/Show
 
 PRIM_MODULES = \
 	$(patsubst %,tests/ghc-prim/%.lcbc,$(PRIM_MODULES_ghc-prim)) \
