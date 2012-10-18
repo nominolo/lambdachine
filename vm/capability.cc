@@ -655,6 +655,10 @@ op_CALL: {
     fnode = (Closure *)base[opA];
     top = T->top();
 
+    while (fnode->isIndirection()) {
+      fnode = (Closure *)fnode->payload(0);
+    }
+
     LC_ASSERT(fnode != NULL);
     LC_ASSERT(mm_->looksLikeClosure(fnode));
     LC_ASSERT(callargs < BcIns::kMaxCallArgs);
@@ -707,6 +711,11 @@ op_CALLT: {
     LC_ASSERT(fnode != NULL);
     LC_ASSERT(mm_->looksLikeClosure(fnode));
     LC_ASSERT(callargs < BcIns::kMaxCallArgs);
+
+    while (fnode->isIndirection()) {
+      fnode = (Closure *)fnode->payload(0);
+    }
+
     LC_ASSERT(fnode->info()->type() == FUN ||
               fnode->info()->type() == CAF ||
               fnode->info()->type() == THUNK ||

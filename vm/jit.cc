@@ -249,6 +249,9 @@ bool Jit::recordGenericApply(uint32_t call_info, Word *base,
   case PAP:
     logNYI(NYI_RECORD_CALL_PAP);
     return false;
+  case IND:
+    logNYI(NYI_RECORD_CALL_IND);
+    return false;
   case THUNK:
   case CAF:
     logNYI(NYI_RECORD_CALL_THUNK);
