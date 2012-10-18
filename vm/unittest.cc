@@ -1105,6 +1105,10 @@ TEST_F(RunFileTest, NopPrims) {
   run("Bc.NopPrims");
 }
 
+TEST_F(RunFileTest, NegateInt) {
+  run("Bc.NegateInt");
+}
+
 TEST(HotCounters, Simple) {
   HotCounters counters(5);
   BcIns pc[] = { BcIns::ad(BcIns::kFUNC, 3, 0) };

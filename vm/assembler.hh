@@ -517,6 +517,7 @@ public:
 
   bool is32BitLiteral(IRRef ref, int32_t *k);
   void intArith(IR *ins, x86Arith xa);
+  void intNegNot(IR *ins, x86Group3 xg);
 
   typedef uint32_t DivModOp;
   enum {

@@ -660,6 +660,12 @@ void Assembler::intArith(IR *ins, x86Arith xa) {
   allocLeft(dest, lref);
 }
 
+void Assembler::intNegNot(IR *ins, x86Group3 xg) {
+  Reg dest = destReg(ins, kGPR);
+  emit_rr(XO_GROUP3, REX_64 | xg, dest);
+  allocLeft(dest, ins->op1());
+}
+
 void Assembler::divmod(IR *ins, DivModOp op, bool useSigned) {
   if (!useSigned) {
     cerr << "NYI: Unsigned DIV/MOD." << endl;
@@ -1195,6 +1201,10 @@ void Assembler::emit(IR *ins) {
   case IR::kREM:
     LC_ASSERT(isIntegerType(ins->type()));
     divmod(ins, DIVMOD_MOD, isSigned(ins->type()));
+    break;
+  case IR::kNEG:
+    LC_ASSERT(isIntegerType(ins->type()));
+    intNegNot(ins, XOg_NEG);
     break;
   case IR::kSAVE:
     save(ins);

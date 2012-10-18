@@ -144,7 +144,7 @@ plusInt, minusInt, timesInt, modInt :: Int -> Int -> Int
 
 -- XXX: Not quite correct, might overflow
 negateInt :: Int -> Int
-negateInt (I# n) = I# (0# -# n)
+negateInt (I# n) = I# (negateInt# n)
 
 modInt# :: Int# -> Int# -> Int#
 x# `modInt#` y#

@@ -402,6 +402,12 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     buf_.setSlot(ins->a(), aref);
     break;
   }
+  case BcIns::kNEG: {
+    TRef dref = buf_.slot(ins->d());
+    TRef aref = buf_.emit(IR::kNEG, IRT_I64, dref, TRef());
+    buf_.setSlot(ins->a(), aref);
+    break;
+  }
   case BcIns::kPTROFSC: {
     TRef ptrref = buf_.slot(ins->b());
     TRef ofsref = buf_.slot(ins->c());

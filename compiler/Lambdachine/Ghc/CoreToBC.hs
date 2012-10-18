@@ -1436,6 +1436,7 @@ primOpOther :: Ghc.PrimOp -> Maybe (PrimOp, [OpTy], OpTy)
 primOpOther primop =
   case primop of
     Ghc.IndexOffAddrOp_Char -> Just (OpIndexOffAddrChar, [AddrTy, IntTy], CharTy)
+    Ghc.IntNegOp -> Just (OpNegateInt, [IntTy], IntTy)
     -- these are all NOPs
     Ghc.OrdOp -> Just (OpNop, [CharTy], IntTy)
     Ghc.ChrOp -> Just (OpNop, [IntTy], CharTy)
