@@ -321,6 +321,34 @@ op_ISGT:
     pc += (pc - 1)->j();
   DISPATCH_NEXT;
 
+op_ISLTU:
+  DECODE_AD;
+  ++pc;
+  if ((Word)base[opA] < (Word)base[opC])
+    pc += (pc - 1)->j();
+  DISPATCH_NEXT;
+
+op_ISGEU:
+  DECODE_AD;
+  ++pc;
+  if ((Word)base[opA] >= (Word)base[opC])
+    pc += (pc - 1)->j();
+  DISPATCH_NEXT;
+
+op_ISLEU:
+  DECODE_AD;
+  ++pc;
+  if ((Word)base[opA] <= (Word)base[opC])
+    pc += (pc - 1)->j();
+  DISPATCH_NEXT;
+
+op_ISGTU:
+  DECODE_AD;
+  ++pc;
+  if ((Word)base[opA] > (Word)base[opC])
+    pc += (pc - 1)->j();
+  DISPATCH_NEXT;
+
 op_ISEQ:
   DECODE_AD;
   ++pc;

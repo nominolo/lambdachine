@@ -40,6 +40,10 @@ typedef u4 IRRef;               /* Used to pass around references */
   _(GT,      G,   ref, ref) \
   _(EQ,      G,   ref, ref) \
   _(NE,      G,   ref, ref) \
+  _(LTU,     G,   ref, ref) \
+  _(GEU,     G,   ref, ref) \
+  _(LEU,     G,   ref, ref) \
+  _(GTU,     G,   ref, ref) \
   _(EQRET,   G,   ref, ref) \
   _(EQINFO,  G,   ref, ref) \
   _(HEAPCHK, S,   lit, ___) \
@@ -970,11 +974,15 @@ inline int IRBuffer::numFields(HeapEntry entry) {
 // Can invert condition by toggling lowest bit.
 LC_STATIC_ASSERT((IR::kLT ^ 1) == IR::kGE);
 LC_STATIC_ASSERT((IR::kGT ^ 1) == IR::kLE);
+LC_STATIC_ASSERT((IR::kLTU ^ 1) == IR::kGEU);
+LC_STATIC_ASSERT((IR::kGTU ^ 1) == IR::kLEU);
 LC_STATIC_ASSERT((IR::kEQ ^ 1) == IR::kNE);
 // Order of comparison operations matters.  Same is enforced for bytecode.
 LC_STATIC_ASSERT((IR::kLT & 1) == 0);
 LC_STATIC_ASSERT((IR::kLT + 2) == IR::kLE);
 LC_STATIC_ASSERT((IR::kLE + 2) == IR::kEQ);
+LC_STATIC_ASSERT((IR::kLTU & 1) == 0);
+LC_STATIC_ASSERT((IR::kLTU + 2) == IR::kLEU);
 
 _END_LAMBDACHINE_NAMESPACE
 

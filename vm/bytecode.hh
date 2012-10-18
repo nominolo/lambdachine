@@ -14,6 +14,11 @@ _START_LAMBDACHINE_NAMESPACE
   _(ISGT,    RRJ) \
   _(ISEQ,    RRJ) \
   _(ISNE,    RRJ) \
+  /* Unsigned comparisons, order significant */ \
+  _(ISLTU,   RRJ) \
+  _(ISGEU,   RRJ) \
+  _(ISLEU,   RRJ) \
+  _(ISGTU,   RRJ) \
   /* Unary ops */ \
   _(NOT,     RR) \
   _(NEG,     RR) \

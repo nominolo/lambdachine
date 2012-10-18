@@ -1463,6 +1463,13 @@ isCondPrimOp primop =
     Ghc.CharLtOp -> Just (CmpLt, CharTy)
     Ghc.CharLeOp -> Just (CmpLe, CharTy)
 
+    Ghc.WordGtOp -> Just (CmpGt, WordTy)
+    Ghc.WordGeOp -> Just (CmpGe, WordTy)
+    Ghc.WordEqOp -> Just (CmpEq, WordTy)
+    Ghc.WordNeOp -> Just (CmpNe, WordTy)
+    Ghc.WordLtOp -> Just (CmpLt, WordTy)
+    Ghc.WordLeOp -> Just (CmpLe, WordTy)
+
     _ -> Nothing
 
 -- | View expression as n-ary application.  The expression in function

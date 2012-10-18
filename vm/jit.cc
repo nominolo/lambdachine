@@ -226,6 +226,14 @@ static bool evalCond(BcIns::Opcode opc, Word left, Word right) {
     return (WordInt)left == (WordInt)right;
   case BcIns::kISNE:
     return (WordInt)left != (WordInt)right;
+  case BcIns::kISLTU:
+    return (Word)left < (Word)right;
+  case BcIns::kISGEU:
+    return (Word)left >= (Word)right;
+  case BcIns::kISLEU:
+    return (Word)left <= (Word)right;
+  case BcIns::kISGTU:
+    return (Word)left > (Word)right;
   default:
     cerr << "FATAL: (REC) Cannot evaluate condition: " << (int)opc;
     exit(2);
@@ -356,6 +364,10 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
   case BcIns::kISLT:
   case BcIns::kISGE:
   case BcIns::kISLE:
+  case BcIns::kISGTU:
+  case BcIns::kISLTU:
+  case BcIns::kISGEU:
+  case BcIns::kISLEU:
   case BcIns::kISEQ:
   case BcIns::kISNE: {
     bool taken = evalCond(ins->opcode(), base[ins->a()], base[ins->d()]);

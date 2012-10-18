@@ -1222,6 +1222,17 @@ void Assembler::emit(IR *ins) {
     compare(ins, asm_compmap[idx] & 15);
     break;
   }
+  case IR::kLTU:
+  case IR::kGEU:
+  case IR::kLEU:
+  case IR::kGTU: {
+    int idx = (int)ins->opcode() - (int)IR::kLTU;
+    LC_ASSERT(idx >= 0 && idx < countof(asm_compmap));
+    LC_ASSERT(buf_->snap(snapno_).ref() == curins_);
+    LC_ASSERT(ir(curins_) == ins);
+    compare(ins, (asm_compmap[idx] >> 4) & 15);
+    break;
+  }
   case IR::kEQINFO:
     itblGuard(ins);
     break;

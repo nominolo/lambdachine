@@ -487,7 +487,7 @@ putLinearIns lit_ids new_addrs ins_id ins = case ins of
   Lst Update ->
     putIns (insAD opc_UPDATE 0 1)
   Lst (CondBranch cond ty (BcReg r1 _) (BcReg r2 _) t1 t2)
-   | ty == IntTy || ty == CharTy
+   | ty == IntTy || ty == CharTy || ty == WordTy
    -> do
     let (swap_targets, target)
            | t1 == ins_id + 1 = (True, t2)
@@ -495,16 +495,9 @@ putLinearIns lit_ids new_addrs ins_id ins = case ins of
            | otherwise = error "putLinearIns: CondBranch: No branch target adjacent"
         cond' | swap_targets = invertCondition cond
               | otherwise    = cond
-        condOpcode c = case c of
-          CmpGt -> opc_ISGT
-          CmpLe -> opc_ISLE
-          CmpGe -> opc_ISGE
-          CmpLt -> opc_ISLT
-          CmpEq -> opc_ISEQ
-          CmpNe -> opc_ISNE
         next_ins_addr = (new_addrs IM.! ins_id) + 2
         offs = (new_addrs IM.! target) - next_ins_addr
-    putIns $ insAD (condOpcode cond') (i2b r1) (i2h r2)
+    putIns $ insAD (condOpcode ty cond') (i2b r1) (i2h r2)
     putIns $ insAJ opc_JMP 0 offs
   Mid (Assign (BcReg d _) (Move (BcReg s _))) | d == s ->
     return () -- redundant move instruction
@@ -551,6 +544,27 @@ putLinearIns lit_ids new_addrs ins_id ins = case ins of
    binOpOpcode IntTy OpMul = opc_MULRR
    binOpOpcode IntTy OpDiv = opc_DIVRR
    binOpOpcode IntTy OpRem = opc_REMRR
+
+   isSigned :: OpTy -> Bool
+   isSigned IntTy = True
+   isSigned CharTy = True
+   isSigned WordTy = False
+
+   condOpcode :: OpTy -> CmpOp -> Word8
+   condOpcode ty c | isSigned ty = case c of
+     CmpGt -> opc_ISGT
+     CmpLe -> opc_ISLE
+     CmpGe -> opc_ISGE
+     CmpLt -> opc_ISLT
+     CmpEq -> opc_ISEQ
+     CmpNe -> opc_ISNE
+   condOpcode ty c | otherwise = case c of
+     CmpGt -> opc_ISGTU
+     CmpLe -> opc_ISLEU
+     CmpGe -> opc_ISGEU
+     CmpLt -> opc_ISLTU
+     CmpEq -> opc_ISEQ
+     CmpNe -> opc_ISNE
 
 -- | Encode a case instruction.
 --
@@ -941,7 +955,7 @@ emitLinearIns bit_r lit_ids tgt_labels r ins_id ins = do
     Lst Update ->
       emitInsAD r opc_UPDATE 0 1
     Lst (CondBranch cond ty (BcReg r1 _) (BcReg r2 _) t1 t2)
-     | ty == IntTy || ty == CharTy
+     | ty == IntTy || ty == CharTy || ty == WordTy
      -> do
       let (swap_targets, target)
              | t1 == ins_id + 1 = (True, t2)
@@ -950,14 +964,7 @@ emitLinearIns bit_r lit_ids tgt_labels r ins_id ins = do
                error "emitLinearIns: CondBranch: No branch target adjacent"
           cond' | swap_targets = invertCondition cond
                 | otherwise    = cond
-          condOpcode c = case c of
-            CmpGt -> opc_ISGT
-            CmpLe -> opc_ISLE
-            CmpGe -> opc_ISGE
-            CmpLt -> opc_ISLT
-            CmpEq -> opc_ISEQ
-            CmpNe -> opc_ISNE
-      emitInsAD r (condOpcode cond') (i2b r1) (i2h r2)
+      emitInsAD r (condOpcode ty cond') (i2b r1) (i2h r2)
       emitInsAJ r opc_JMP 0 (tgt_labels IM.! target)
     Mid (Assign (BcReg d _) (Move (BcReg s _))) | d == s ->
       return () -- redundant move instruction
@@ -1011,6 +1018,27 @@ emitLinearIns bit_r lit_ids tgt_labels r ins_id ins = do
    binOpOpcode IntTy OpMul = opc_MULRR
    binOpOpcode IntTy OpDiv = opc_DIVRR
    binOpOpcode IntTy OpRem = opc_REMRR
+
+   isSigned :: OpTy -> Bool
+   isSigned IntTy = True
+   isSigned CharTy = True
+   isSigned WordTy = False
+
+   condOpcode :: OpTy -> CmpOp -> Word8
+   condOpcode ty c | isSigned ty = case c of
+     CmpGt -> opc_ISGT
+     CmpLe -> opc_ISLE
+     CmpGe -> opc_ISGE
+     CmpLt -> opc_ISLT
+     CmpEq -> opc_ISEQ
+     CmpNe -> opc_ISNE
+   condOpcode ty c | otherwise = case c of
+     CmpGt -> opc_ISGTU
+     CmpLe -> opc_ISLEU
+     CmpGe -> opc_ISGEU
+     CmpLt -> opc_ISLTU
+     CmpEq -> opc_ISEQ
+     CmpNe -> opc_ISNE
 
 -- | A call like
 --
