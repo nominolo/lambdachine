@@ -382,47 +382,40 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     //    flags_.set(kLastInsWasBranch);
     break;
   }
-  case BcIns::kSUBRR: {
-    TRef bref = buf_.slot(ins->b());
-    TRef cref = buf_.slot(ins->c());
-    TRef aref = buf_.emit(IR::kSUB, IRT_I64, bref, cref);
-    buf_.setSlot(ins->a(), aref);
-    break;
+
+#define ARITH_OP_RRR(bcop, irop, irtype) \
+  case BcIns::bcop: { \
+    TRef bref = buf_.slot(ins->b()); \
+    TRef cref = buf_.slot(ins->c()); \
+    TRef aref = buf_.emit(IR::irop, irtype, bref, cref); \
+    buf_.setSlot(ins->a(), aref); \
+    break; \
   }
-  case BcIns::kADDRR: {
-    TRef bref = buf_.slot(ins->b());
-    TRef cref = buf_.slot(ins->c());
-    TRef aref = buf_.emit(IR::kADD, IRT_I64, bref, cref);
-    buf_.setSlot(ins->a(), aref);
-    break;
+
+#define ARITH_OP_RR(bcop, irop, irtype) \
+  case BcIns::bcop: { \
+    TRef dref = buf_.slot(ins->d()); \
+    TRef aref = buf_.emit(IR::irop, irtype, dref, TRef()); \
+    buf_.setSlot(ins->a(), aref); \
+    break; \
   }
-  case BcIns::kMULRR: {
-    TRef bref = buf_.slot(ins->b());
-    TRef cref = buf_.slot(ins->c());
-    TRef aref = buf_.emit(IR::kMUL, IRT_I64, bref, cref);
-    buf_.setSlot(ins->a(), aref);
-    break;
-  }
-  case BcIns::kREMRR: {
-    TRef bref = buf_.slot(ins->b());
-    TRef cref = buf_.slot(ins->c());
-    TRef aref = buf_.emit(IR::kREM, IRT_I64, bref, cref);
-    buf_.setSlot(ins->a(), aref);
-    break;
-  }
-  case BcIns::kDIVRR: {
-    TRef bref = buf_.slot(ins->b());
-    TRef cref = buf_.slot(ins->c());
-    TRef aref = buf_.emit(IR::kDIV, IRT_I64, bref, cref);
-    buf_.setSlot(ins->a(), aref);
-    break;
-  }
-  case BcIns::kNEG: {
-    TRef dref = buf_.slot(ins->d());
-    TRef aref = buf_.emit(IR::kNEG, IRT_I64, dref, TRef());
-    buf_.setSlot(ins->a(), aref);
-    break;
-  }
+      
+
+    ARITH_OP_RRR(kADDRR, kADD, IRT_I64);
+    ARITH_OP_RRR(kSUBRR, kSUB, IRT_I64);
+    ARITH_OP_RRR(kMULRR, kMUL, IRT_I64);
+    ARITH_OP_RRR(kREMRR, kREM, IRT_I64);
+    ARITH_OP_RRR(kDIVRR, kDIV, IRT_I64);
+    ARITH_OP_RR(kNEG, kNEG, IRT_I64);
+
+    ARITH_OP_RR(kBNOT, kBNOT, IRT_I64);
+    ARITH_OP_RRR(kBAND, kBAND, IRT_I64);
+    ARITH_OP_RRR(kBXOR, kBXOR, IRT_I64);
+    ARITH_OP_RRR(kBOR, kBOR, IRT_I64);
+
+#undef ARITH_OP_RR
+#undef ARITH_OP_RRR
+
   case BcIns::kPTROFSC: {
     TRef ptrref = buf_.slot(ins->b());
     TRef ofsref = buf_.slot(ins->c());

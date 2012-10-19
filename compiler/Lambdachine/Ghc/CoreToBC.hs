@@ -1437,6 +1437,12 @@ primOpOther primop =
   case primop of
     Ghc.IndexOffAddrOp_Char -> Just (OpIndexOffAddrChar, [AddrTy, IntTy], CharTy)
     Ghc.IntNegOp -> Just (OpNegateInt, [IntTy], IntTy)
+
+    Ghc.AndOp -> Just (OpBitAnd, [WordTy, WordTy], WordTy)
+    Ghc.OrOp  -> Just (OpBitOr,  [WordTy, WordTy], WordTy)
+    Ghc.XorOp -> Just (OpBitXor, [WordTy, WordTy], WordTy)
+    Ghc.NotOp -> Just (OpBitNot, [WordTy], WordTy)
+
     -- these are all NOPs
     Ghc.OrdOp -> Just (OpNop, [CharTy], IntTy)
     Ghc.ChrOp -> Just (OpNop, [IntTy], CharTy)
@@ -1444,6 +1450,7 @@ primOpOther primop =
     Ghc.Int2AddrOp -> Just (OpNop, [IntTy], AddrTy)
     Ghc.Word2IntOp -> Just (OpNop, [WordTy], IntTy)
     Ghc.Int2WordOp -> Just (OpNop, [IntTy], WordTy)
+
     _ -> Nothing
 
 isCondPrimOp :: Ghc.PrimOp -> Maybe (BinOp, OpTy)

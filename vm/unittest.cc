@@ -786,7 +786,7 @@ TEST_F(ArithTest, Neg) {
 }
 
 TEST_F(ArithTest, Not) {
-  ASSERT_EQ(~(Word)0x123456, arithAD(BcIns::ad(BcIns::kNOT, 0, 1), 0x123456));
+  ASSERT_EQ(~(Word)0x123456, arithAD(BcIns::ad(BcIns::kBNOT, 0, 1), 0x123456));
 }
 
 TEST_F(ArithTest, BranchLt) {
@@ -1115,6 +1115,10 @@ TEST_F(RunFileTest, WordCompare) {
 
 TEST_F(RunFileTest, TestShow) {
   run("Bc.TestShow");
+}
+
+TEST_F(RunFileTest, BitOps) {
+  run("Bc.BitOps");
 }
 
 TEST(HotCounters, Simple) {

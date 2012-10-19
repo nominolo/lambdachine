@@ -1007,6 +1007,17 @@ emitLinearIns bit_r lit_ids tgt_labels r ins_id ins = do
       emitInsABC r opc_PTROFSC (i2b dst) (i2b ptr) (i2b ofs)
     Mid (Assign (BcReg dst _) (PrimOp OpNegateInt _ty [BcReg src _])) ->
       emitInsAD r opc_NEG (i2b dst) (i2h src)
+    Mid (Assign (BcReg dst _) (PrimOp OpBitNot _ty [BcReg src _])) ->
+      emitInsAD r opc_BNOT (i2b dst) (i2h src)
+    Mid (Assign (BcReg dst _)
+        (PrimOp OpBitAnd _ty [BcReg src1 _, BcReg src2 _])) ->
+      emitInsABC r opc_BAND (i2b dst) (i2b src1) (i2b src2)
+    Mid (Assign (BcReg dst _)
+        (PrimOp OpBitOr _ty [BcReg src1 _, BcReg src2 _])) ->
+      emitInsABC r opc_BOR (i2b dst) (i2b src1) (i2b src2)
+    Mid (Assign (BcReg dst _)
+        (PrimOp OpBitXor _ty [BcReg src1 _, BcReg src2 _])) ->
+      emitInsABC r opc_BXOR (i2b dst) (i2b src1) (i2b src2)
     Mid (Store (BcReg ptr _) offs (BcReg src _)) | offs <= 255 ->
       emitInsABC r opc_INITF (i2b ptr) (i2b src) (i2b offs)
     Mid m -> error $ "Don't know how to serialise " ++ pretty m

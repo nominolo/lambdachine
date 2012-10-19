@@ -1206,6 +1206,19 @@ void Assembler::emit(IR *ins) {
     LC_ASSERT(isIntegerType(ins->type()));
     intNegNot(ins, XOg_NEG);
     break;
+  case IR::kBNOT:
+    LC_ASSERT(isIntegerType(ins->type()));
+    intNegNot(ins, XOg_NOT);
+    break;
+  case IR::kBAND:
+    intArith(ins, XOg_AND);
+    break;
+  case IR::kBOR:
+    intArith(ins, XOg_OR);
+    break;
+  case IR::kBXOR:
+    intArith(ins, XOg_XOR);
+    break;
   case IR::kSAVE:
     save(ins);
     break;

@@ -122,6 +122,10 @@ type CmpOp = BinOp
 data PrimOp
   = OpIndexOffAddrChar
   | OpNegateInt
+  | OpBitNot
+  | OpBitAnd
+  | OpBitOr
+  | OpBitXor
   | OpNop  -- See Note "Primitive Nops"
   deriving (Eq, Ord, Show)
 
@@ -271,6 +275,10 @@ instance Pretty BcRhs where
 instance Pretty PrimOp where
   ppr OpIndexOffAddrChar = text "indexCharOffAddr#"
   ppr OpNegateInt = text "negateInt#"
+  ppr OpBitNot = text "not#"
+  ppr OpBitAnd = text "and#"
+  ppr OpBitOr = text "or#"
+  ppr OpBitXor = text "xor#"
   ppr OpNop = text "nop"
 
 instance Pretty OpTy where

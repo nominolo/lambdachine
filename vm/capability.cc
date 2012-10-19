@@ -363,11 +363,6 @@ op_ISNE:
     pc += (pc - 1)->j();
   DISPATCH_NEXT;
 
-op_NOT:
-  DECODE_AD;
-  base[opA] = ~base[opC];
-  DISPATCH_NEXT;
-
 op_NEG:
   DECODE_AD;
   base[opA] = -(WordInt)base[opC];
@@ -431,6 +426,57 @@ op_REMRR:
   DECODE_BC;
   base[opA] = (WordInt)base[opB] % (WordInt)base[opC];
   DISPATCH_NEXT;
+
+op_BNOT:
+  DECODE_AD;
+  base[opA] = ~base[opC];
+  DISPATCH_NEXT;
+
+op_BAND:
+  DECODE_BC;
+  base[opA] = base[opB] & base[opC];
+  DISPATCH_NEXT;
+
+op_BOR:
+  DECODE_BC;
+  base[opA] = base[opB] | base[opC];
+  DISPATCH_NEXT;
+
+op_BXOR:
+  DECODE_BC;
+  base[opA] = base[opB] ^ base[opC];
+  DISPATCH_NEXT;
+
+op_BSHL:
+  DECODE_BC;
+  base[opA] = base[opB] << (int)base[opC];
+  DISPATCH_NEXT;
+
+op_BSHR:
+  DECODE_BC;
+  base[opA] = base[opB] >> (int)base[opC];
+  DISPATCH_NEXT;
+
+op_BSAR:
+  DECODE_BC;
+  base[opA] = (WordInt)base[opB] >> (int)base[opC];
+  DISPATCH_NEXT;
+
+op_BROL: {
+    DECODE_BC;
+    Word x = base[opB];
+    int shift = (int)base[opC];
+    base[opA] = (x << shift) | (x >> (sizeof(Word) * 8 - shift));
+    DISPATCH_NEXT;
+  }
+
+op_BROR: {
+    DECODE_BC;
+    Word x = base[opB];
+    int shift = (int)base[opC];
+    base[opA] = (x >> shift) | (x << (sizeof(Word) * 8 - shift));
+    DISPATCH_NEXT;
+  }
 
 op_PTROFSC:
   DECODE_BC;

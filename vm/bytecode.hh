@@ -20,7 +20,6 @@ _START_LAMBDACHINE_NAMESPACE
   _(ISLEU,   RRJ) \
   _(ISGTU,   RRJ) \
   /* Unary ops */ \
-  _(NOT,     RR) \
   _(NEG,     RR) \
   /* Updates */ \
   _(MOV,     RR) \
@@ -37,6 +36,16 @@ _START_LAMBDACHINE_NAMESPACE
   _(MULRR,   RRR) \
   _(DIVRR,   RRR) \
   _(REMRR,   RRR) \
+  /* Bitwise ops */ \
+  _(BNOT,    RR) \
+  _(BAND,    RRR) \
+  _(BOR,     RRR) \
+  _(BXOR,    RRR) \
+  _(BSHL,    RRR) \
+  _(BSHR,    RRR) \
+  _(BSAR,    RRR) \
+  _(BROL,    RRR) \
+  _(BROR,    RRR) \
   /* Primops */ \
   _(PTROFSC, RRR) /* indexCharOffAddr# :: Addr# -> Int# -> Char# */ \
   /* Constants */ \
