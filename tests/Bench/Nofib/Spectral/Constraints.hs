@@ -1,11 +1,26 @@
+{-# LANGUAGE NoImplicitPrelude, CPP #-}
 {- Andrew Tolmach and Thomas Nordin's contraint solver
 
 	See Proceedings of WAAAPL '99
 -}
 
-import Prelude hiding (Maybe(Just,Nothing))
+
+#ifdef BENCH_GHC
+import Prelude hiding ( Maybe(..) )
 import Data.List
 import System.Environment
+import GHC.Base ( divInt, remInt )
+#else
+module Bench.Nofib.Spectral.Constraints where
+
+import Data.List
+import Data.Tuple
+--import GHC.Real
+import GHC.Base
+import GHC.List
+import GHC.Num
+import GHC.Show
+#endif
 
 -----------------------------
 -- The main program
@@ -15,10 +30,18 @@ run n expected =
   let try algorithm = length (search algorithm (queens n)) in
   all (==expected) (map try [bt, bm, bjbt, bjbt', fc])
 
+run1 n = 
+  let try algorithm = length (search algorithm (queens n)) in
+  map try [bt, bm, bjbt, bjbt', fc]
+
 bench = run 10 724
 
+test = run 4 2
+
+#ifdef BENCH_GHC
 main = print bench
 --main = main2
+
 
 main2 = do
  [arg] <- getArgs
@@ -26,6 +49,8 @@ main2 = do
 	n = read arg :: Int
    	try algorithm = print (length (search algorithm (queens n)))
  sequence_ (map try [bt, bm, bjbt, bjbt', fc])
+#endif
+
 
 -----------------------------
 -- Figure 1. CSPs in Haskell.
@@ -66,11 +91,11 @@ inconsistencies CSP{rel=rel} as =  [ (level a, level b) | a <- as, b <- reverse 
 consistent :: CSP -> State -> Bool
 consistent csp = null . (inconsistencies csp)
 
-test :: CSP -> [State] -> [State]
-test csp = filter (consistent csp)
+testCSP :: CSP -> [State] -> [State]
+testCSP csp = filter (consistent csp)
 
 solver :: CSP -> [State]
-solver csp  = test csp candidates
+solver csp  = testCSP csp candidates
   where candidates = generate csp
 
 queens :: Int -> CSP
@@ -185,8 +210,8 @@ btr seed csp = bt csp . hrandom seed
 random2 :: Int -> Int
 random2 n = if test > 0 then test else test + 2147483647
   where test = 16807 * lo - 2836 * hi
-        hi   = n `div` 127773
-        lo   = n `rem` 127773
+        hi   = n `divInt` 127773
+        lo   = n `remInt` 127773
 
 randoms :: Int -> [Int]
 randoms = iterate random2

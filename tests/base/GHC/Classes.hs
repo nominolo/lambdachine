@@ -5,7 +5,9 @@ import GHC.Bool
 import GHC.Integer
 import GHC.Prim
 import GHC.Types
+import GHC.Tuple
 import GHC.Ordering
+import GHC.Unit
 
 infix  4  ==, /=, <, <=, >=, >
 infixr 3  &&
@@ -25,6 +27,19 @@ class  Eq a  where
     {-# INLINE (==) #-}
     x /= y               = not (x == y)
     x == y               = not (x /= y)
+
+deriving instance Eq ()
+deriving instance (Eq  a, Eq  b) => Eq  (a, b)
+deriving instance (Eq  a, Eq  b, Eq  c) => Eq  (a, b, c)
+deriving instance (Eq  a, Eq  b, Eq  c, Eq  d) => Eq  (a, b, c, d)
+deriving instance (Eq  a, Eq  b, Eq  c, Eq  d, Eq  e) => Eq  (a, b, c, d, e)
+deriving instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f)
+               => Eq (a, b, c, d, e, f)
+deriving instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f, Eq g)
+               => Eq (a, b, c, d, e, f, g)
+deriving instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f, Eq g,
+                   Eq h)
+               => Eq (a, b, c, d, e, f, g, h)
 
 instance Eq a => Eq [a] where
     {-# SPECIALISE instance Eq [Char] #-}

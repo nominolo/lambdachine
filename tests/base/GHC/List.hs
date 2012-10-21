@@ -1,12 +1,28 @@
 {-# LANGUAGE NoImplicitPrelude, BangPatterns, MagicHash #-}
-module GHC.List where
+module GHC.List (
+
+   map, (++), filter, concat,
+   head, last, tail, init, null, length, (!!),
+   foldl, scanl, scanl1, foldr, foldr1, scanr, scanr1,
+   iterate, repeat, replicate, cycle,
+   take, drop, splitAt, takeWhile, dropWhile, span, break,
+   reverse, and, or,
+   any, all, elem, notElem, lookup,
+   concatMap,
+   zip, zip3, zipWith, zipWith3, unzip, unzip3,
+-- errorEmptyList,
+
+
+) where
 
 import GHC.Prim
 import GHC.Tuple
 import GHC.Base
+import Data.Maybe
 import Control.Exception.Base
 
 infixl 9  !!
+infix  4 `elem`, `notElem`
 
 head                    :: [a] -> a
 head (x:_)              =  x
@@ -128,14 +144,14 @@ drop (I# n#) ls
         drop# 0# xs      = xs
         drop# _  xs@[]   = xs
         drop# m# (_:xs)  = drop# (m# -# 1#) xs
-{-
+
 splitAt                :: Int -> [a] -> ([a],[a])
+{-
 splitAt (I# n#) ls@(x:xs)
   | n# <=# 0# = ([], ls)
   | otherwise = let (xs', xs'') = splitAt (I# (n# -# 1#)) xs in
                 (x:xs', xs'')
 -}
-{-
 splitAt (I# n#) ls
   | n# <# 0#    = ([], ls)
   | otherwise   = splitAt# n# ls
@@ -146,14 +162,13 @@ splitAt (I# n#) ls
         splitAt# m# (x:xs) = (x:xs', xs'')
           where
             (xs', xs'') = splitAt# (m# -# 1#) xs
--}
-{-
+
 span                    :: (a -> Bool) -> [a] -> ([a],[a])
 span _ xs@[]            =  (xs, xs)
 span p xs@(x:xs')
          | p x          =  let (ys,zs) = span p xs' in (x:ys,zs)
          | otherwise    =  ([],xs)
--}
+
 (!!)                    :: [a] -> Int -> a
 xs !! (I# n0)
   | n0 <# 0# = undef
@@ -164,3 +179,131 @@ xs !! (I# n0)
        sub (y:ys) n = if n ==# 0#
                       then y
                       else sub ys (n -# 1#)
+
+-- | Applied to a predicate and a list, 'any' determines if any element
+-- of the list satisfies the predicate.  For the result to be
+-- 'False', the list must be finite; 'True', however, results from a 'True'
+-- value for the predicate applied to an element at a finite index of a finite or infinite list.
+any                     :: (a -> Bool) -> [a] -> Bool
+any _ []        = False
+any p (x:xs)    = p x || any p xs
+
+
+-- | Applied to a predicate and a list, 'all' determines if all elements
+-- of the list satisfy the predicate. For the result to be
+-- 'True', the list must be finite; 'False', however, results from a 'False'
+-- value for the predicate applied to an element at a finite index of a finite or infinite list.
+all                     :: (a -> Bool) -> [a] -> Bool
+all _ []        =  True
+all p (x:xs)    =  p x && all p xs
+
+-- | 'reverse' @xs@ returns the elements of @xs@ in reverse order.
+-- @xs@ must be finite.
+reverse                 :: [a] -> [a]
+reverse l =  rev l []
+  where
+    rev []     a = a
+    rev (x:xs) a = rev xs (x:a)
+
+-- | 'elem' is the list membership predicate, usually written in infix form,
+-- e.g., @x \`elem\` xs@.  For the result to be
+-- 'False', the list must be finite; 'True', however, results from an element equal to @x@ found at a finite index of a finite or infinite list.
+elem                    :: (Eq a) => a -> [a] -> Bool
+elem _ []       = False
+elem x (y:ys)   = x==y || elem x ys
+
+
+-- | 'notElem' is the negation of 'elem'.
+notElem                 :: (Eq a) => a -> [a] -> Bool
+notElem _ []    =  True
+notElem x (y:ys)=  x /= y && notElem x ys
+
+-- | Map a function over a list and concatenate the results.
+concatMap               :: (a -> [b]) -> [a] -> [b]
+concatMap f             =  foldr ((++) . f) []
+
+-- | Concatenate a list of lists.
+concat :: [[a]] -> [a]
+concat = foldr (++) []
+
+-- | 'break', applied to a predicate @p@ and a list @xs@, returns a tuple where
+-- first element is longest prefix (possibly empty) of @xs@ of elements that
+-- /do not satisfy/ @p@ and second element is the remainder of the list:
+-- 
+-- > break (> 3) [1,2,3,4,1,2,3,4] == ([1,2,3],[4,1,2,3,4])
+-- > break (< 9) [1,2,3] == ([],[1,2,3])
+-- > break (> 9) [1,2,3] == ([1,2,3],[])
+--
+-- 'break' @p@ is equivalent to @'span' ('not' . p)@.
+
+break                   :: (a -> Bool) -> [a] -> ([a],[a])
+-- HBC version (stolen)
+break _ xs@[]           =  (xs, xs)
+break p xs@(x:xs')
+           | p x        =  ([],xs)
+           | otherwise  =  let (ys,zs) = break p xs' in (x:ys,zs)
+
+-- | 'and' returns the conjunction of a Boolean list.  For the result to be
+-- 'True', the list must be finite; 'False', however, results from a 'False'
+-- value at a finite index of a finite or infinite list.
+and                     :: [Bool] -> Bool
+and []          =  True
+and (x:xs)      =  x && and xs
+
+-- | 'or' returns the disjunction of a Boolean list.  For the result to be
+-- 'False', the list must be finite; 'True', however, results from a 'True'
+-- value at a finite index of a finite or infinite list.
+or                      :: [Bool] -> Bool
+or []           =  False
+or (x:xs)       =  x || or xs
+
+-- | 'lookup' @key assocs@ looks up a key in an association list.
+lookup                  :: (Eq a) => a -> [(a,b)] -> Maybe b
+lookup _key []          =  Nothing
+lookup  key ((x,y):xys)
+    | key == x          =  Just y
+    | otherwise         =  lookup key xys
+
+-- | 'zip' takes two lists and returns a list of corresponding pairs.
+-- If one input list is short, excess elements of the longer list are
+-- discarded.
+zip :: [a] -> [b] -> [(a,b)]
+zip (a:as) (b:bs) = (a,b) : zip as bs
+zip _      _      = []
+
+-- | 'zip3' takes three lists and returns a list of triples, analogous to
+-- 'zip'.
+zip3 :: [a] -> [b] -> [c] -> [(a,b,c)]
+-- Specification
+-- zip3 =  zipWith3 (,,)
+zip3 (a:as) (b:bs) (c:cs) = (a,b,c) : zip3 as bs cs
+zip3 _      _      _      = []
+
+-- | 'zipWith' generalises 'zip' by zipping with the function given
+-- as the first argument, instead of a tupling function.
+-- For example, @'zipWith' (+)@ is applied to two lists to produce the
+-- list of corresponding sums.
+zipWith :: (a->b->c) -> [a]->[b]->[c]
+zipWith f (a:as) (b:bs) = f a b : zipWith f as bs
+zipWith _ _      _      = []
+
+-- | The 'zipWith3' function takes a function which combines three
+-- elements, as well as three lists and returns a list of their point-wise
+-- combination, analogous to 'zipWith'.
+zipWith3                :: (a->b->c->d) -> [a]->[b]->[c]->[d]
+zipWith3 z (a:as) (b:bs) (c:cs)
+                        =  z a b c : zipWith3 z as bs cs
+zipWith3 _ _ _ _        =  []
+
+-- | 'unzip' transforms a list of pairs into a list of first components
+-- and a list of second components.
+unzip    :: [(a,b)] -> ([a],[b])
+{-# INLINE unzip #-}
+unzip    =  foldr (\(a,b) ~(as,bs) -> (a:as,b:bs)) ([],[])
+
+-- | The 'unzip3' function takes a list of triples and returns three
+-- lists, analogous to 'unzip'.
+unzip3   :: [(a,b,c)] -> ([a],[b],[c])
+{-# INLINE unzip3 #-}
+unzip3   =  foldr (\(a,b,c) ~(as,bs,cs) -> (a:as,b:bs,c:cs))
+                  ([],[],[])

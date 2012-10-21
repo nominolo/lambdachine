@@ -53,6 +53,11 @@ f $ x                   =  f x
 const                   :: a -> b -> a
 const x _               =  x
 
+-- | @'flip' f@ takes its (first) two arguments in the reverse order of @f@.
+flip                    :: (a -> b -> c) -> b -> a -> c
+flip f x y              =  f y x
+
+
 -- | 'asTypeOf' is a type-restricted version of 'const'.  It is usually
 -- used as an infix operator, and its typing forces its first argument
 -- (which is usually overloaded) to have the same type as the second.
@@ -142,6 +147,9 @@ plusInt, minusInt, timesInt, modInt :: Int -> Int -> Int
 (I# x) `minusInt` (I# y) = I# (x -# y)
 (I# x) `timesInt` (I# y) = I# (x *# y)
 (I# x) `modInt`   (I# y) = I# (x `modInt#` y)
+(I# x) `quotInt`  (I# y) = I# (x `quotInt#` y)
+(I# x) `remInt`   (I# y) = I# (x `remInt#`  y)
+(I# x) `divInt`   (I# y) = I# (x `divInt#`  y)
 
 -- XXX: Not quite correct, might overflow
 negateInt :: Int -> Int
@@ -154,9 +162,6 @@ x# `modInt#` y#
   | otherwise                   = r#
  where
    !r# = x# `remInt#` y#
-
-divInt :: Int -> Int -> Int
-(I# x) `divInt`   (I# y) = I# (x `divInt#`  y)
 
 divInt# :: Int# -> Int# -> Int#
 x# `divInt#` y#
