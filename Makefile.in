@@ -283,7 +283,7 @@ clean-interp:
 	rm -f $(SRCS:%.c=%.o) utils/*.o interp
 
 .PHONY: clean cleanvm
-clean:
+clean: clean-bytecode
 	rm -f $(SRCS:%.c=%.o) utils/*.o interp compiler/.depend \
 		compiler/lcc lcc $(DIST)/setup-config vm/*.o \
 		unittest lcvm bcdump \
