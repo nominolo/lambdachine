@@ -979,7 +979,7 @@ generic_apply: {
         goto stack_overflow;
 
       pushFrame(&top, &base, apk_return_addr,
-                MiscClosures::stg_UPD_closure_addr, kUpdateFrameWords);
+                MiscClosures::stg_UPD_closure_addr, 2);
       // 2. Setup update frame.
       base[0] = (Word)fnode;
       base[1] = 0xbadbadff;
