@@ -1,7 +1,11 @@
-{-# LANGUAGE NoImplicitPrelude, BangPatterns, MagicHash #-}
+{-# LANGUAGE NoImplicitPrelude, BangPatterns, MagicHash, CPP #-}
 -- RUN: %bc_vm_chk
 -- CHECK: @Result@ IND -> GHC.Bool.True`con_info 
+#ifdef BENCH_GHC
+import Prelude ( print )
+#else
 module Bench.Primes where
+#endif
 
 import GHC.Prim
 import GHC.Bool
@@ -9,6 +13,10 @@ import GHC.Types
 import GHC.Base
 import GHC.Num
 import GHC.List
+
+#ifdef BENCH_GHC
+main = print bench
+#endif
 
 isdivs :: Int -> Int -> Bool
 isdivs n x = modInt x n /= 0
@@ -28,7 +36,9 @@ root n = primes !! n
 
 test = 
   root 25 == 101
-  --(root 1500 == 12569)
+
+bench =
+  root 1500 == 12569
 
 {-
 Example Trace:
