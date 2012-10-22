@@ -163,7 +163,7 @@ void IR::debugPrint(ostream &out, IRRef self, IRBuffer *buf, bool regs) {
 
 void IRBuffer::debugPrint(ostream &out, int traceNo) {
   SnapNo snapno = 0;
-  out << "---- TRACE " << right << setw(4) << setfill('0') << traceNo
+  out << "---- TRACE " << dec << right << setw(4) << setfill('0') << traceNo
       << " IR -----------" << endl;
   for (IRRef ref = bufmin_; ref < bufmax_; ++ref) {
     IR *ins = ir(ref);
