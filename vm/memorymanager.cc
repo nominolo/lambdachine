@@ -59,25 +59,39 @@ Region *Region::newRegion(RegionType regionType) {
   static char *alloc_hint = alignToRegionBoundary(kMMapRegionStart);
   size_t size = kRegionSize;
   char *ptr;
+  uint32_t attempts = 0;
 
   for (;;) {
+    // fprintf(stderr, "Trying mmap(%p, %ld, ...)\n", alloc_hint, size);
     ptr = static_cast<char *>(mmap(alloc_hint, size, kMMapProtection, kMMapFlags, -1, 0));
     if (ptr != MAP_FAILED && isAlignedAtPowerOf2(kRegionSizeLog2, ptr)) {
       // Success!
       alloc_hint += size;
       break;
     }
-    if (ptr == MAP_FAILED) {
+    // fprintf(stderr, "fail: mmap (%p) %s\n", ptr,
+    //         ptr == MAP_FAILED ? "failed" : "not aligned");
+
+    if (ptr != MAP_FAILED) {
       munmap(ptr, size);
-      if (alloc_hint >= kMMapRegionEnd) {
-        outOfMemory();
-      }
+      alloc_hint = alignToRegionBoundary(ptr);
+    }
+    
+    ++attempts;
+    if (attempts > 32) {
+      fprintf(stderr, "FATAL: mmap failed after %u attempts.\n", attempts);
+      exit(1);
+    }
+
+    if (alloc_hint >= kMMapRegionEnd) {
+      outOfMemory();
     }
   }
 
   DLOG("Allocated region %p-%p\n", ptr, ptr + size);
 
   Region *region = reinterpret_cast<Region *>(ptr);
+  region->magic_ = REGION_MAGIC;
   region->region_info_ = regionType;
   region->region_link_ = NULL;
   region->initBlocks();

@@ -156,6 +156,9 @@ private:
   Region() {}  // Hidden
   void initBlocks();
 
+#define REGION_MAGIC 0x7413828213897431UL
+
+  Word magic_;
   Word region_info_;
   Block blocks_[kBlocksPerRegion];
   Region *region_link_;
