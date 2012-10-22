@@ -298,6 +298,13 @@ void MemoryManager::performGC(Capability *cap) {
   Word *base = T->base();
   Word *top = T->top();
 
+  if (DEBUG_COMPONENTS & DEBUG_SANITY_CHECK_GC) {
+    cerr << ">>> GC " << num_gcs_ << endl;
+    // This ensures that the mutator hasn't introduced any corrupt
+    // state.
+    sanityCheckHeap(cap);
+  }
+
   ++num_gcs_;
 
   LC_ASSERT(old_heap_ == NULL);
@@ -362,6 +369,14 @@ void MemoryManager::performGC(Capability *cap) {
 
   // TODO: Is this correct?
   nextGC_ = (fullBlocks > minHeapSize_ ? fullBlocks : minHeapSize_) + 1;
+
+  if (DEBUG_COMPONENTS & DEBUG_SANITY_CHECK_GC) {
+    cerr << ">>> GC " << num_gcs_ - 1 << " DONE (full blocks = "
+         << fullBlocks << ")\n";
+    // This ensures that the collector itself hasn't introduced any
+    // corrupt state.
+    sanityCheckHeap(cap);
+  }
 
   gc_time += getProcessElapsedTime() - gc_start;
 }
@@ -589,6 +604,203 @@ void MemoryManager::scavengeBlock(Block *block) {
   block->setFlag(Block::kScavenged);
   dout << "MM: DONE Scavenging block: " << (void *)block->start()
        << '-' << (void *)block->end() << endl;
+}
+
+// --- Sanity Checking ----------------------------------------
+//
+// This checks the heap for basic properties.  It should help us
+// detect any problems in the garbage collector or allocator.  Sanity
+// checking traverses the whole heap, so it is very slow.
+
+bool MemoryManager::sanityCheckClosure(SEEN_SET_TYPE &seen, Closure *cl) {
+  void *p = (void *)cl;
+  if (seen.count(p) > 0)
+    return true;
+
+  if (!looksLikeClosure(p)) {
+    cerr << "Not a closure: " << p << endl;
+    return false;
+  }
+
+  seen.insert((void *)cl);
+  InfoTable *info = cl->info();
+
+  if (isForwardingPointer(info)) {
+    cerr << "Info table of " << p << " is a forwarding pointer: "
+         << (void *)info << endl;
+    return false;
+  }
+
+  switch (info->type()) {
+    case CONSTR:
+    case THUNK:
+    case CAF:
+    case FUN: {
+      u4 bitmap = info->layout().bitmap;
+      u4 size = info->size();
+      
+      if (!(bitmap < (1UL << size))) {
+        cerr << "Bitmap " << hex << bitmap << " inconsistent with size "
+             << dec << size << " in closure " << p << endl;
+        return false;
+      }
+      for (u4 i = 0; bitmap != 0 && i < size; ++i, bitmap >>= 1) {
+        if (bitmap & 1) {
+          if (!sanityCheckClosure(seen, (Closure *)cl->payload_[i])) {
+            cerr << ".. " << p << '[' << i << "] " << info->name() << endl;
+            return false;
+          }
+        }
+      }
+      break;
+    }
+
+  case IND: {
+    if (!sanityCheckClosure(seen, (Closure *)cl->payload(0))) {
+      cerr << ".. IND " << p << endl;
+      return false;
+    }
+    break;
+  }
+
+  case UPDATE_FRAME:
+  case AP_CONT:
+    break;
+
+    case PAP: {
+      PapClosure *pap = (PapClosure *)cl;
+      // In principle we could get the bitmap from the function
+      // argument itself.  That would require following a few more
+      // pointers, though, so let's not do that if we can avoid it.
+      u4 bitmap = pap->pointerMask_;
+      u4 size = pap->nargs_;
+
+      if (!sanityCheckClosure(seen, pap->fun_)) {
+        cerr << ".. " << p << " pap function\n";
+        return false;
+      }
+
+      if (!(bitmap < (1UL << size))) {
+        cerr << "Bitmap " << hex << bitmap << " inconsistent with size "
+             << dec << size << " in PAP closure " << p << endl;
+        return false;
+      }
+
+      for (u4 i = 0; bitmap != 0 && i < size; ++i, bitmap >>= 1) {
+        if (bitmap & 1) {
+          if (!sanityCheckClosure(seen, (Closure *)pap->payload_[i])) {
+            cerr << ".. " << p << '[' << i << "] PAP payload" << endl;
+            return false;
+          }
+        }
+      }
+    }
+    break;
+
+  default:
+    cerr << "Unknown closure type: " << (int)info->type() << " at "
+         << p << endl;
+    return false;
+  }
+  return true;
+}
+
+bool MemoryManager::sanityCheckFrame(SEEN_SET_TYPE &seen, Word *base, Word *top,
+                                     const u2 *bitmaps) {
+  if (!sanityCheckClosure(seen, (Closure *)base[-1])) {
+    cerr << ".. frame node of frame " << base << '-' << top << endl;
+    return false;
+  }
+
+  if (bitmaps == NULL) {
+    cerr << "Frame bitmaps are NULL, in frame " << base << '-' << top << endl;
+    return false;
+  }
+
+  u2 bitmap;
+  int slot = 0;
+  ptrdiff_t slots = top - base;
+  do {
+    bitmap = *bitmaps;
+    ++bitmaps;
+    for (int i = 0; i < 15 && bitmap != 0; ++i, bitmap >>= 1, ++slot) {
+      if (bitmap & 1) {
+        if (!(slot < slots)) {
+          cerr << "Frame bitmaps larger than frame size (" << slots
+               << " in frame " << base << '-' << top << endl;
+          return false;
+        }
+
+        if (!(sanityCheckClosure(seen, (Closure *)base[slot]))) {
+          cerr << ".. slot " << slot << " of frame "
+               << base << '-' << top << endl;
+          return false;
+        }
+      }
+    }
+  } while (bitmap != 0);
+
+  return true;
+}
+
+bool MemoryManager::sanityCheckStack(SEEN_SET_TYPE &seen, Word *base, Word *top,
+                                     const BcIns *pc)
+{
+    u2 dummy_mask[3];
+  const u2 *bitmask;
+  if (topOfStackMask_ != kNoMask) {
+    // Translate the topOfStackMask into our standard format.  We're
+    // starting a full GC anyway, so it doesn't matter if this is a
+    // little bit inefficient.
+    dummy_mask[0] = topOfStackMask_ & 0x7fff;
+    dummy_mask[1] = (topOfStackMask_ >> 15) & 0x7fff;
+    dummy_mask[2] = (topOfStackMask_ >> 30);
+    if (dummy_mask[2] != 0) dummy_mask[1] |= 0x8000;
+    if (dummy_mask[1] != 0) dummy_mask[0] |= 0x8000;
+    bitmask = &dummy_mask[0];
+  } else {
+    bitmask = topFrameBitmask(pc);
+  }
+  if (!sanityCheckFrame(seen, base, top, bitmask))
+    return false;
+  
+  top = base - 3;
+  pc = (BcIns *)base[-2];
+  base = (Word *)base[-3];
+
+  while (base) {
+    if (!sanityCheckFrame(seen, base, top, BcIns::offsetToBitmask(pc - 1)))
+      return false;
+    top = base - 3;
+    pc = (BcIns *)base[-2];
+    base = (Word *)base[-3];
+  }
+  
+  return true;
+}
+
+bool MemoryManager::sanityCheckStaticRoots(SEEN_SET_TYPE &seen, Closure *cl) {
+  while (cl) {
+    if (!sanityCheckClosure(seen, (Closure *)cl->payload_[0])) {
+      cerr << ".. static root " << (void *)cl;
+      return false;
+    }
+    cl = (Closure *)cl->payload_[1];
+  }
+  return true;
+}
+
+void MemoryManager::sanityCheckHeap(Capability *cap) {
+  SEEN_SET_TYPE seen;
+
+  Thread *T = cap->currentThread();
+  BcIns *pc = T->pc();
+  Word *base = T->base();
+  Word *top = T->top();
+
+  if (!(sanityCheckStack(seen, base, top, pc) &&
+        sanityCheckStaticRoots(seen, cap->staticRoots())))
+    exit(42);
 }
 
 _END_LAMBDACHINE_NAMESPACE

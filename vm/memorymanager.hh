@@ -6,6 +6,8 @@
 #include "objects.hh"
 #include <iostream>
 #include <string.h>
+// TODO: Add autoconf check for module name
+#include <tr1/unordered_set>
 
 _START_LAMBDACHINE_NAMESPACE
 
@@ -282,6 +284,17 @@ private:
   void scavengeStaticRoots(Closure *);
 
   void evacuate(Closure **);
+
+  // Sanity check stuff
+# define SEEN_SET_TYPE std::tr1::unordered_set<void*>
+
+  bool sanityCheckClosure(SEEN_SET_TYPE &seen, Closure *cl);
+  bool sanityCheckFrame(SEEN_SET_TYPE &seen, Word *base, Word *top,
+                        const u2 *bitmask);
+  bool sanityCheckStack(SEEN_SET_TYPE &seen, Word *base, Word *top,
+                        const BcIns *pc);
+  bool sanityCheckStaticRoots(SEEN_SET_TYPE &seen, Closure *cl);
+  void sanityCheckHeap(Capability *cap);
 
   Region *region_;
   Block *free_;
