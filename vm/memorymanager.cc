@@ -320,6 +320,18 @@ void MemoryManager::performGC(Capability *cap) {
     if (block == NULL || block->getFlag(Block::kScavenged)) {
       break;  // we're done
     } else {
+      // If the block we are evacuating into and the block we're
+      // scavanging is the same then it definitely must be the last
+      // block.  Otherwise, we may finish scavenging the block
+      // and then continue to evacuate into it again.  Those newly
+      // evacuated objects will then never get scavenged.  Ouch!
+      //
+      // To avoid this problem, we only scavenge the first block if
+      // there is no second block.
+      if (block == closures_ && block->link_ &&
+          !block->link_->getFlag(Block::kScavenged))
+        block = block->link_;
+
       while (block != NULL && !block->getFlag(Block::kScavenged)) {
         scavengeBlock(block);
         block = block->link_;
