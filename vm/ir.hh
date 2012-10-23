@@ -202,6 +202,11 @@ inline bool isFloatType(IRType t) {
 
 #define IRT(o, t)      (cast(u4, ((o) << 8) | (t)))
 
+// Exception error codes
+enum {
+  IROPTERR_FAILING_GUARD = 1
+};
+
 class IRBuffer; // Defined below.
 
 class IR {

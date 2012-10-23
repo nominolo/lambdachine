@@ -370,8 +370,7 @@ TRef IRBuffer::optFold() {
   if (ref == KLITFOLD)
     return literal(fold_.ins.type(), fold_.literal);
   if (ref == FAILFOLD) {
-    cerr << "NYI: Recover from FAILFOLD\n";
-    exit(EXIT_FAILURE);
+    throw (int)IROPTERR_FAILING_GUARD;
   }
   LC_ASSERT(ref == DROPFOLD);
   return TRef();

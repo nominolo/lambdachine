@@ -309,6 +309,8 @@ bool Jit::recordGenericApply(uint32_t call_info, Word *base,
 }
 
 bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
+  try {
+
   if (LC_UNLIKELY(shouldAbort_))
     goto abort_recording;
   buf_.pc_ = ins;
@@ -778,6 +780,19 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
 abort_recording:
   resetRecorderState();
   return true;
+
+
+  } catch (int err) {
+    switch (err) {
+    case IROPTERR_FAILING_GUARD:
+      DBG(cerr << "Aborting due to permanently failing guard.\n");
+      resetRecorderState();
+      return true;
+    default:
+      cerr << "Unknown error condition.\n";
+      throw err;
+    }
+  }
 }
 
 inline void Jit::resetRecorderState() {
