@@ -1156,6 +1156,9 @@ logNYI(uint32_t nyi_id)
 {
   LC_ASSERT(nyi_id < NYI__MAX);
   ++nyiCount[nyi_id];
+#ifndef NDEBUG
+  fprintf(stderr, "%s\n", nyiDescription[nyi_id]);
+#endif
 }
 
 void
