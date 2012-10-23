@@ -27,7 +27,7 @@ Capability::Capability(MemoryManager *mm)
   : mm_(mm), currentThread_(NULL),
     static_roots_(NULL),
     reload_state_pc_(&reload_state_code[0]),
-    counters_(7), // TODO: initialise from Options
+    counters_(HOT_THRESHOLD), // TODO: initialise from Options
     flags_() {
   interpMsg(kModeInit);
 }

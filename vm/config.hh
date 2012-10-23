@@ -33,6 +33,7 @@
 
 #define MAX_HEAP_ENTRIES      300
 
+#define HOT_THRESHOLD            53
 #define HOT_SIDE_EXIT_THRESHOLD  7
 
 #define LC_DEFAULT_HEAP_SIZE  (1UL * 1024 * 1024)
