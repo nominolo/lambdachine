@@ -788,8 +788,10 @@ bool Assembler::mergeWithParent() {
         ++moves;
       }
     }
-    allow.clear(side_reg);
-    parmoves.set(side_reg);
+    if (isReg(side_reg)) {
+      allow.clear(side_reg);
+      parmoves.set(side_reg);
+    }
   }
 
   if (moves > 0) {
