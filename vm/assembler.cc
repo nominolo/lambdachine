@@ -986,7 +986,8 @@ void Assembler::assemble(IRBuffer *buf, MachineCode *mcode) {
 
   buf->setRegsAllocated();
   // TODO: Save to trace fragment
-  LC_ASSERT(freeset_.raw() == kGPR.raw());
+  LC_ASSERT_MSG(freeset_.raw() == kGPR.raw(),
+                "free = %x, gpr = %x\n", freeset_.raw(), kGPR.raw());
   mcode->commit(mcp);
 
   RA_DBG_FLUSH();

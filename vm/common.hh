@@ -28,6 +28,13 @@ _START_LAMBDACHINE_NAMESPACE
 /*   extern void LC_ASSERT_NAME(__LINE__)(int STATIC_ASSERTION_FAILED[(cond)?1:-1]) */
 
 #define LC_ASSERT(expr)                assert(expr)
+#ifndef NDEBUG
+# define LC_ASSERT_MSG(expr, ...) \
+    while (!(expr)) { fprintf(stderr, __VA_ARGS__); assert(expr); }
+#else
+# define LC_ASSERT_MSG(expr, ...)
+#endif
+
 
 #if LC_ARCH_BITS == 32
 
