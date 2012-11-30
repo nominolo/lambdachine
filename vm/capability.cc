@@ -103,7 +103,8 @@ Capability::interpBranch(BcIns *srcPc, BcIns *dstPc,
 
         return pc;
 
-      } else if (counters_.tick(dstPc)) {
+      } else if (counters_.tick(dstPc) &&
+                 dstPc != MiscClosures::stg_UPD_return_pc) {
         currentThread_->sync(dstPc, base);
 
         if (DEBUG_COMPONENTS & DEBUG_TRACE_RECORDER) {
