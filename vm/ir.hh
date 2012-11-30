@@ -591,14 +591,17 @@ public:
   void reset(Word *base, Word *top);
 
   inline TRef get(int n) const {
+    LC_ASSERT(inRange(n));
     return slots_[base_ + n];
   }
 
   inline void clear(int n) {
+    LC_ASSERT(inRange(n));
     slots_[base_ + n] = TRef();
   }
 
   inline void set(int n, TRef value) {
+    LC_ASSERT_MSG(inRange(n), "Not in range %d (base=%d)", n, base_);
     unsigned int slot = base_ + n;
     slots_[slot] = value;
     if (slot < low_) low_ = slot;
@@ -635,6 +638,11 @@ public:
   void debugPrint(std::ostream &);
 
 private:
+  inline bool inRange(int n) const {
+    return
+      ((int)base_ + n >= 0) && (base_ + n < kSlots);
+  }
+
   static const unsigned int kSlots = 500;
   static const unsigned int kInitialBase = 250;
 

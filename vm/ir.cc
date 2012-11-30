@@ -437,10 +437,11 @@ void AbstractStack::reset(Word *base, Word *top) {
 }
 
 bool AbstractStack::frame(Word *base, Word *top) {
-  int delta = base - realOrigBase_;
-  base_ = kInitialBase + delta;
+  ptrdiff_t delta = base - realOrigBase_;
+  ptrdiff_t new_base = kInitialBase + delta;
+  if (new_base < 3) return false;  // underflow
+  base_ = (unsigned int)new_base;
   low_ = MIN(low_, base_);
-  if (base_ < 3) return false;  // underflow
   top_ = base_ + (top - base);
   high_ = MAX(high_, top_ - 1);
   if (top_ >= kSlots - 4) return false; // overflow
