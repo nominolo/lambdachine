@@ -445,6 +445,11 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     // TODO: Detect and optimise recursive calls into trace specially?
     TRef fnode = buf_.slot(ins->a());
     Closure *clos = (Closure *)base[ins->a()];
+
+    while (clos->isIndirection()) {
+      clos = followIndirection(buf_, ins->a(), clos);
+    }
+
     InfoTable *info = clos->info();
     TRef iref = buf_.literal(IRT_INFO, (Word)info);
     buf_.emit(IR::kEQINFO, IRT_VOID | IRT_GUARD, fnode, iref);
@@ -468,6 +473,11 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
   case BcIns::kCALL: {
     TRef fnode = buf_.slot(ins->a());
     Closure *clos = (Closure *)base[ins->a()];
+
+    while (clos->isIndirection()) {
+      clos = followIndirection(buf_, ins->a(), clos);
+    }
+
     InfoTable *info = clos->info();
     TRef iref = buf_.literal(IRT_INFO, (Word)info);
     buf_.emit(IR::kEQINFO, IRT_VOID | IRT_GUARD, fnode, iref);
