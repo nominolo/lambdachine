@@ -240,12 +240,20 @@ static bool evalCond(BcIns::Opcode opc, Word left, Word right) {
   }
 }
 
+static inline TRef
+specialiseOnInfoTable(IRBuffer &buf_, int slot, Closure *node)
+{
+  TRef noderef = buf_.slot(slot);
+  InfoTable *info = node->info();
+  TRef inforef = buf_.literal(IRT_INFO, (Word)info);
+  buf_.emit(IR::kEQINFO, IRT_VOID | IRT_GUARD, noderef, inforef);
+  return noderef;
+}
+
 static inline Closure *
 followIndirection(IRBuffer &buf_, int slot, Closure *tnode)
 {
-  TRef noderef = buf_.slot(slot);
-  TRef inforef = buf_.literal(IRT_INFO, (Word)tnode->info());
-  buf_.emit(IR::kEQINFO, IRT_VOID | IRT_GUARD, noderef, inforef);
+  TRef noderef = specialiseOnInfoTable(buf_, slot, tnode);
   TRef fwdref = buf_.emit(IR::kFREF, IRT_PTR, noderef, 1);
   TRef newnoderef = buf_.emit(IR::kFLOAD, IRT_CLOS, fwdref, 0);
   buf_.setSlot(slot, newnoderef);
@@ -443,16 +451,13 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
   }
   case BcIns::kCALLT: {
     // TODO: Detect and optimise recursive calls into trace specially?
-    TRef fnode = buf_.slot(ins->a());
     Closure *clos = (Closure *)base[ins->a()];
 
     while (clos->isIndirection()) {
       clos = followIndirection(buf_, ins->a(), clos);
     }
 
-    InfoTable *info = clos->info();
-    TRef iref = buf_.literal(IRT_INFO, (Word)info);
-    buf_.emit(IR::kEQINFO, IRT_VOID | IRT_GUARD, fnode, iref);
+    TRef fnode = specialiseOnInfoTable(buf_, ins->a(), clos);
 
     // Clear all non-argument registers.
     for (int i = ins->c(); i < code->framesize; ++i) {
@@ -471,17 +476,15 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
   }
 
   case BcIns::kCALL: {
-    TRef fnode = buf_.slot(ins->a());
     Closure *clos = (Closure *)base[ins->a()];
+    uint32_t nargs = ins->c();
 
     while (clos->isIndirection()) {
       clos = followIndirection(buf_, ins->a(), clos);
     }
 
+    TRef fnode = specialiseOnInfoTable(buf_, ins->a(), clos);
     InfoTable *info = clos->info();
-    TRef iref = buf_.literal(IRT_INFO, (Word)info);
-    buf_.emit(IR::kEQINFO, IRT_VOID | IRT_GUARD, fnode, iref);
-    uint32_t nargs = ins->c();
 
     const Code *code = ((FuncInfoTable *)info)->code();
     TRef argref[32];
