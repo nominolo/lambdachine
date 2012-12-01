@@ -266,16 +266,47 @@ bool Jit::recordGenericApply(uint32_t call_info, Word *base,
   uint32_t given_args = call_info & 0xff;
   uint32_t pointer_mask = call_info >> 8;
   switch (fnode->info()->type()) {
+
   case PAP:
     logNYI(NYI_RECORD_CALL_PAP);
     return false;
-  case IND:
-    logNYI(NYI_RECORD_CALL_IND);
-    return false;
+
   case THUNK:
-  case CAF:
-    logNYI(NYI_RECORD_CALL_THUNK);
-    return false;
+  case CAF: {
+    // Turn current frame into an App continuation.
+    BcIns *apk_return_addr = NULL;
+    Closure *apk_closure = NULL;
+    MiscClosures::getApCont(&apk_closure, &apk_return_addr,
+                            given_args, pointer_mask);
+    uint32_t apk_framesize = MiscClosures::apContFrameSize(given_args);
+    TRef apknoderef = buf_.literal(IRT_CLOS, (Word)apk_closure);
+    buf_.setSlot(-1, apknoderef);
+    int topslot = apk_framesize;
+    // Adjust size of current frame.
+    if (!buf_.slots_.frame(base, base + topslot)) {
+      cerr << "Abstract stack overflow." << endl;
+      return false;
+    }
+
+    // Push update frame.
+    TRef upd_clos_lit =
+      buf_.literal(IRT_CLOS, (Word)MiscClosures::stg_UPD_closure_addr);
+    Word *newbase = pushFrame(base, apk_return_addr, upd_clos_lit,
+                              MiscClosures::UPD_frame_size);
+    if (!newbase) return false;
+    buf_.setSlot(0, fnode_ref);
+    buf_.setSlot(1, TRef());
+
+    // Push thunk frame
+    const CodeInfoTable *info = (CodeInfoTable *)fnode->info();
+    newbase = pushFrame(newbase, MiscClosures::stg_UPD_return_pc,
+                        fnode_ref, info->code()->framesize);
+    if (!newbase) return false;
+
+    return true;
+  }
+    //logNYI(NYI_RECORD_CALL_THUNK);
+    //return false;
   case FUN: {
     const CodeInfoTable *info = (CodeInfoTable *)fnode->info();
     uint32_t arity = info->code()->arity;
