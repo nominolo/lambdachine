@@ -124,10 +124,11 @@ private:
 
 typedef struct _Closure Closure;
 
-class ClosureHeader {
+struct ClosureHeader {
 public:
   inline InfoTable *info() const { return info_; }
-private:
+  // private: <-- cannot use this, otherwise we get "not POD" warnings
+  // when using offsetof(). Rather annoying.
   InfoTable *info_;
   friend struct _Closure;
   friend struct _PapClosure;
@@ -158,23 +159,37 @@ public:
   }
 };
 
+typedef union {
+  uint64_t combined;
+  struct {
+    uint32_t nargs_;
+    uint32_t pointerMask_;
+  };
+} PapInfo;
+
 typedef struct _PapClosure {
 public:
   ClosureHeader header_;
-  u2 pointerMask_;
-  u2 nargs_;
+  PapInfo info_;
   Closure *fun_;
   Word payload_[];
   inline void init(InfoTable *info, u4 ptrMask, u4 nargs, Closure *fun) {
     header_.info_ = info;
-    pointerMask_ = ptrMask;
-    nargs_ = nargs;
+    info_.pointerMask_ = ptrMask;
+    info_.nargs_ = nargs;
     fun_ = fun;
   }
   inline void setPayload(u4 i, Word value) { payload_[i] = value; }
   inline InfoTable *info() const { return header_.info(); }
   inline Word payload(u4 i) const { return payload_[i]; }
 } PapClosure;
+
+#define PAP_PAYLOAD_OFFSET   (offsetof(PapClosure, payload_))
+#define PAP_FUNCTION_OFFSET  (offsetof(PapClosure, fun_))
+#define PAP_INFO_OFFSET      (offsetof(PapClosure, info_))
+LC_STATIC_ASSERT(is_word_aligned(PAP_PAYLOAD_OFFSET));
+LC_STATIC_ASSERT(is_word_aligned(PAP_FUNCTION_OFFSET));
+LC_STATIC_ASSERT(is_word_aligned(PAP_INFO_OFFSET));
 
 void printClosure(std::ostream &out, Closure *cl, bool oneline);
 

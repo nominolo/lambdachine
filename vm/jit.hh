@@ -9,6 +9,7 @@
 #include "objects.hh"
 
 #include <vector>
+#include <iostream>
 #include HASH_MAP_H
 
 _START_LAMBDACHINE_NAMESPACE
@@ -79,7 +80,7 @@ public:
   MachineCode(Prng *);
   ~MachineCode();
 
-  static const size_t kAreaSize = (size_t)1 << 19; // 512KB
+  static const size_t kAreaSize = (size_t)1 << 22; // 512KB
 
   /// Reserve the whole machine code area.  No code from the machine
   /// code area may be running at the same time.  (It will trigger a
@@ -160,9 +161,12 @@ public:
 
   // Returns true if recording finished
   bool recordIns(BcIns *, Word *base, const Code *);
-  bool recordGenericApply(uint32_t call_info, Word *base,
-                          TRef fnode_ref, Closure *fnode,
-                          const Code *code);
+  // bool recordGenericApply(uint32_t call_info, Word *base,
+  //                         TRef fnode_ref, Closure *fnode,
+  //                         const Code *code);
+  bool recordGenericApply2(uint32_t call_info, Word *base,
+                           TRef fnode_ref, Closure *fnode,
+                           TRef *args, BcIns *returnPc);
 
   inline bool isRecording() const { return cap_ != NULL; }
 
@@ -203,6 +207,7 @@ public:
   static inline void registerFragment(BcIns *startPc, Fragment *F);
   static void resetFragments();
   static uint32_t numFragments();
+
 
 private:
   void initRecording(Capability *cap, Word *base, BcIns *startPc);
@@ -294,6 +299,7 @@ public:
     return stats_[1 + n];
   }
   uint64_t traceExits() const;
+  inline Fragment *parent() const { return parent_; }
 
 private:
   void bumpExitCount(ExitNo n) { ++stats_[1 + n]; }
@@ -311,6 +317,7 @@ private:
   uint32_t traceId_;
   BcIns *startPc_;
   Fragment *parent_;
+  // ExitNo parentExit_;
 
   BcIns **targets_;
   uint32_t numTargets_;
@@ -339,7 +346,19 @@ inline void Jit::registerFragment(BcIns *startPc, Fragment *F) {
   LC_ASSERT(F->traceId() == fragments_.size());
   fragments_.push_back(F);
   Word idx = reinterpret_cast<Word>(startPc) >> 2;
-  fragmentMap_[idx] = F->traceId();
+  if (F->parent_ == NULL) {
+    fragmentMap_[idx] = F->traceId();
+  }
+#ifndef NDEBUG
+  std::cerr << "ADD TRACE " << F->traceId() << " pc=" << startPc;
+  if (F->parent_ != NULL) {
+    std::cerr << " parent=" << F->parent_->traceId()
+      // << " @ exit " << F->parentExitNo()
+              << std::endl;
+  } else {
+    std::cerr << " (root trace)\n";
+  }
+#endif
 }
 
 /* This definition must match the asmEnter/asmExit functions */

@@ -451,9 +451,9 @@ loop:
 
   case PAP: {
     PapClosure *pap = (PapClosure *)q;
-    u4 size = pap->nargs_ + wordsof(PapClosure)
+    u4 size = pap->info_.nargs_ + wordsof(PapClosure)
               - wordsof(ClosureHeader);
-    dout << " -PAP(" << pap->nargs_ << ")-> " << pap;
+    dout << " -PAP(" << pap->info_.nargs_ << ")-> " << pap;
     copy(this, p, info, size);
   }
   break;
@@ -576,8 +576,8 @@ void MemoryManager::scavengeBlock(Block *block) {
       // In principle we could get the bitmap from the function
       // argument itself.  That would require following a few more
       // pointers, though, so let's not do that if we can avoid it.
-      u4 bitmap = pap->pointerMask_;
-      u4 size = pap->nargs_;
+      u4 bitmap = pap->info_.pointerMask_;
+      u4 size = pap->info_.nargs_;
       dout << "MM: * Scav " << (void *)cl << " PAP";
       IFDBG(InfoTable::printPayload(dout, bitmap, size));
       dout << endl;
@@ -672,8 +672,8 @@ bool MemoryManager::sanityCheckClosure(SEEN_SET_TYPE &seen, Closure *cl) {
       // In principle we could get the bitmap from the function
       // argument itself.  That would require following a few more
       // pointers, though, so let's not do that if we can avoid it.
-      u4 bitmap = pap->pointerMask_;
-      u4 size = pap->nargs_;
+      u4 bitmap = pap->info_.pointerMask_;
+      u4 size = pap->info_.nargs_;
 
       if (!sanityCheckClosure(seen, pap->fun_)) {
         cerr << ".. " << p << " pap function\n";

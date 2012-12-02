@@ -930,14 +930,14 @@ generic_apply: {
       // And then retry.
       PapClosure *pap = (PapClosure *)fnode;
       LC_ASSERT(pap->info()->type() == PAP);
-      u4 papArgs = pap->nargs_;
+      u4 papArgs = pap->info_.nargs_;
 
       dout << "FUNCPAP (args=" << given_args
            << ", ptrs=" << hex << pointer_mask << dec
            << ") PAP=(args=" << papArgs << ")"
            << endl;
 
-      u4 framesize = pap->nargs_ + given_args;
+      u4 framesize = papArgs + given_args;
       if (stackOverflow(T, base, framesize)) {
         goto stack_overflow;
       }
@@ -954,7 +954,7 @@ generic_apply: {
       fnode = pap->fun_;
       base[-1] = (Word)fnode;
       pointer_mask <<= papArgs;
-      pointer_mask |= pap->pointerMask_;
+      pointer_mask |= pap->info_.pointerMask_;
       given_args += papArgs;
 
       const CodeInfoTable *info = (CodeInfoTable *)fnode->info();

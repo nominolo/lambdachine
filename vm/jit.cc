@@ -241,35 +241,331 @@ static bool evalCond(BcIns::Opcode opc, Word left, Word right) {
 }
 
 static inline TRef
-specialiseOnInfoTable(IRBuffer &buf_, int slot, Closure *node)
+loadField(IRBuffer &buf_, TRef noderef, int offset, uint8_t type)
 {
-  TRef noderef = buf_.slot(slot);
+  TRef refref = buf_.emit(IR::kFREF, IRT_PTR, noderef, offset);
+  return buf_.emit(IR::kFLOAD, type, refref, 0);
+}
+
+static inline TRef
+specialiseOnInfoTable(IRBuffer &buf_, TRef noderef, Closure *node)
+{
   InfoTable *info = node->info();
   TRef inforef = buf_.literal(IRT_INFO, (Word)info);
   buf_.emit(IR::kEQINFO, IRT_VOID | IRT_GUARD, noderef, inforef);
   return noderef;
 }
 
+static inline void
+specialiseOnPapShape(IRBuffer &buf_, TRef papref, PapClosure *pap)
+{
+  // We need to have a guard for the expected size and bitmask of
+  // the PAP since all PAPs share the same info table.
+  TRef papinforef = loadField(buf_, papref, PAP_INFO_OFFSET / sizeof(Word),
+                              IRT_I64);
+  TRef papinfo_expected = buf_.literal(IRT_I64, pap->info_.combined);
+  buf_.emit(IR::kEQ, IRT_VOID | IRT_GUARD, papinforef, papinfo_expected);
+}
+
 static inline Closure *
 followIndirection(IRBuffer &buf_, int slot, Closure *tnode)
 {
-  TRef noderef = specialiseOnInfoTable(buf_, slot, tnode);
-  TRef fwdref = buf_.emit(IR::kFREF, IRT_PTR, noderef, 1);
-  TRef newnoderef = buf_.emit(IR::kFLOAD, IRT_CLOS, fwdref, 0);
+  TRef noderef = specialiseOnInfoTable(buf_, buf_.slot(slot), tnode);
+  TRef newnoderef = loadField(buf_, noderef, 1, IRT_CLOS);
   buf_.setSlot(slot, newnoderef);
   return (Closure *)tnode->payload(0);
 }
 
+static inline void
+clearSlots(IRBuffer &buf_, int start, int end)
+{
+  for (int i = start; i < end; ++i)
+    buf_.setSlot(i, TRef());
+}
+
+static inline TRef
+papOrDirectArg(IRBuffer &buf_, int arg, int pap_args, TRef *args, TRef pap_ref)
+{
+  if (arg >= pap_args)
+    return args[arg - pap_args];
+  else
+    return loadField(buf_, pap_ref, (PAP_PAYLOAD_OFFSET / sizeof(Word)),
+                     IRT_UNKNOWN);
+}
+
+bool
+Jit::recordGenericApply2(uint32_t call_info, Word *base,
+                         TRef fnode_ref, Closure *fnode, TRef *args,
+                         BcIns *returnPc)
+{
+  uint32_t direct_args = call_info & 0xff;
+  uint32_t pointer_mask = call_info >> 8;
+  PapClosure *pap = NULL;
+  uint32_t pap_args = 0;
+
+  // NOTE: The tricky bit here is that all the guards must occur
+  // before any state changes.  If any of the guards fails, we need to
+  // be exactly in the state we were when the CALL/CALLT happened.
+  // There are many kinds of guards that may be necessary: info table
+  // check, PAP shape check, heap check (for partial applications),
+  // return address check (also partial applications).
+
+  ClosureType type = fnode->info()->type();
+
+  // Check if it's a PAP and emit the necessary guards.  Later parts
+  // of the code then check whether there was a PAP later by comparing
+  // `pap` to NULL.  Fortunately, the function part of a PAP can never
+  // be another PAP (this is also needed for the GC).
+  
+  if (type == PAP) {
+    pap = (PapClosure *)fnode;
+    pap_args = pap->info_.nargs_;
+
+    specialiseOnInfoTable(buf_, fnode_ref, fnode);
+    specialiseOnPapShape(buf_, fnode_ref, pap);
+    fnode = pap->fun_;
+    type = fnode->info()->type();
+    LC_ASSERT(type == FUN);
+  }
+
+  if (type == THUNK || type == CAF) {
+
+    specialiseOnInfoTable(buf_, fnode_ref, fnode);
+
+    LC_ASSERT(pap == NULL);
+
+    if (returnPc != NULL) {  // Create new frame first.
+      base = pushFrame(base, returnPc, fnode_ref, direct_args);
+      if (!base)
+        return false;
+    }
+
+    // Turn current frame into application continuation.
+    BcIns *apk_return_addr = NULL;
+    Closure *apk_closure = NULL;
+    MiscClosures::getApCont(&apk_closure, &apk_return_addr,
+                            direct_args, pointer_mask);
+    u4 apk_framesize = MiscClosures::apContFrameSize(direct_args);
+    TRef apk_closure_ref = buf_.literal(IRT_CLOS, (Word)(apk_closure));
+    
+    // Create new frame (if CALL) or adjust size of current frame (if
+    // CALLT).
+    if (returnPc != NULL) { // CALL
+      base = pushFrame(base, returnPc, apk_closure_ref, apk_framesize);
+      if (!base) return false;
+    } else {
+      // Adjust size of current frame.
+      if (!buf_.slots_.frame(base, base + apk_framesize)) {
+        cerr << "Abstract stack overflow." << endl;
+        return false;
+      }
+      buf_.setSlot(-1, apk_closure_ref);
+    }
+    
+    // Put arguments into place.
+    for (uint32_t i = 0; i < direct_args; ++i) {
+      buf_.setSlot(i, args[i]);
+    }
+    // Clear undefined slots in this frame.
+    for (uint32_t i = direct_args; i < apk_framesize; ++i) {
+      buf_.setSlot(i, TRef());
+    }
+
+    TRef upd_clos_lit =
+      buf_.literal(IRT_CLOS, (Word)MiscClosures::stg_UPD_closure_addr);
+    Word *newbase = pushFrame(base, apk_return_addr, upd_clos_lit,
+                              MiscClosures::UPD_frame_size);
+    if (!newbase) return false;
+    buf_.setSlot(0, fnode_ref);
+    buf_.setSlot(1, TRef());
+
+        // Push thunk frame
+    const CodeInfoTable *info = (CodeInfoTable *)fnode->info();
+    newbase = pushFrame(newbase, MiscClosures::stg_UPD_return_pc,
+                        fnode_ref, info->code()->framesize);
+    if (!newbase) return false;
+
+    return true;
+  }
+
+  LC_ASSERT(type == FUN);
+
+  uint32_t total_args = direct_args + pap_args;
+  
+  const CodeInfoTable *info = (CodeInfoTable *)fnode->info();
+  uint32_t arity = info->code()->arity;
+
+  if (arity == total_args) {  // Exact application.
+    // We need a guard for the info table of the called function.
+    // Again, this guard must occur before any slot writes.
+
+    TRef funref = pap == NULL ? fnode_ref : 
+      loadField(buf_, fnode_ref, PAP_FUNCTION_OFFSET / sizeof(Word), IRT_CLOS);
+    specialiseOnInfoTable(buf_, funref, fnode);
+
+    uint32_t framesize = ((CodeInfoTable *)fnode->info())->code()->framesize;
+    if (returnPc) {
+      base = pushFrame(base, returnPc, funref, framesize);
+      if (!base) return false;
+    } else {
+      buf_.setSlot(-1, funref);
+      if (!buf_.slots_.frame(base, base + framesize))
+        return false;
+    }
+
+    // Move arguments into place.
+    if (pap) {
+      for (uint32_t i = 0; i < pap_args; ++i) {
+        buf_.setSlot(i, loadField(buf_, fnode_ref,
+                                  (PAP_PAYLOAD_OFFSET / sizeof(Word)) + i,
+                                  IRT_UNKNOWN));
+      }
+    }
+    for (uint32_t i = 0; i < direct_args; ++i) {
+      buf_.setSlot(pap_args + i, args[i]);
+    }
+
+    clearSlots(buf_, total_args, framesize);
+
+    // if (pap) {
+    //   buf_.debugPrint(cerr, -1);
+    //   buf_.slots_.debugPrint(cerr);
+    //   cerr << "pap_payload_offset = " << (int)PAP_PAYLOAD_OFFSET
+    //        << " pap_function_offset = " << (int)PAP_FUNCTION_OFFSET
+    //        << " given args = " << direct_args
+    //        << " pap args = " << pap_args
+    //        << " total = " << total_args
+    //        << " framesize = " << framesize
+    //        << endl;
+    //   // exit(1);
+    // }
+
+    return true;
+
+  } else if (arity < total_args) { // Overapplication.
+
+    TRef funref = pap == NULL ? fnode_ref : 
+      loadField(buf_, fnode_ref, PAP_FUNCTION_OFFSET / sizeof(Word), IRT_CLOS);
+    specialiseOnInfoTable(buf_, funref, fnode);
+
+    uint32_t extra_args = total_args - arity;
+    uint32_t apk_framesize = MiscClosures::apContFrameSize(extra_args);
+    BcIns *apk_return_addr = NULL;
+    Closure *apk_closure = NULL;
+    MiscClosures::getApCont(&apk_closure, &apk_return_addr,
+                            extra_args, pointer_mask >> arity);
+    TRef apk_closure_ref = buf_.literal(IRT_CLOS, (Word)(apk_closure));
+
+    if (returnPc != NULL) { // CALL
+      base = pushFrame(base, returnPc, apk_closure_ref, apk_framesize);
+      if (!base) return false;
+    } else {
+      // Adjust size of current frame.
+      if (!buf_.slots_.frame(base, base + apk_framesize)) {
+        cerr << "Abstract stack overflow." << endl;
+        return false;
+      }
+      buf_.setSlot(-1, apk_closure_ref);
+    }
+    
+    // Fill in application continuation frame.
+    for (uint32_t i = 0; i < extra_args; ++i) {
+      TRef ref = papOrDirectArg(buf_, arity + i, pap_args, args, fnode_ref);
+      buf_.setSlot(i, ref);
+    }
+
+    clearSlots(buf_, extra_args, apk_framesize);
+    
+    uint32_t framesize = ((CodeInfoTable *)fnode->info())->code()->framesize;
+    Word *newbase = pushFrame(base, apk_return_addr, funref, framesize);
+    if (!newbase) return false;
+    
+    for (uint32_t i = 0; i < arity; ++i) {
+      buf_.setSlot(i, papOrDirectArg(buf_, i, pap_args, args, fnode_ref));
+    }
+    clearSlots(buf_, arity, framesize);
+
+    if (pap) {
+      buf_.debugPrint(cerr, -1);
+      buf_.slots_.debugPrint(cerr);
+      cerr << "pap_payload_offset = " << (int)PAP_PAYLOAD_OFFSET
+           << " pap_function_offset = " << (int)PAP_FUNCTION_OFFSET
+           << " given args = " << direct_args
+           << " pap args = " << pap_args
+           << endl;
+      exit(1);
+    }
+
+    return true;
+    
+  } else {
+    LC_ASSERT(arity > total_args);  // Partial application.
+    logNYI(NYI_RECORD_CREATE_PAP);
+    return false;
+  }
+}
+                             
+/*
 bool Jit::recordGenericApply(uint32_t call_info, Word *base,
                              TRef fnode_ref, Closure *fnode,
                              const Code *code) {
   uint32_t given_args = call_info & 0xff;
   uint32_t pointer_mask = call_info >> 8;
+
+ generic_apply_retry:
   switch (fnode->info()->type()) {
 
-  case PAP:
+  case PAP: {
+
     logNYI(NYI_RECORD_CALL_PAP);
     return false;
+
+    PapClosure *pap = (PapClosure *)fnode;
+    LC_ASSERT(pap->info()->type() == PAP);
+    uint32_t papArgs = pap->info_.nargs_;
+
+    // We need to have a guard for the expected size and bitmask of
+    // the PAP since all PAPs share the same info table.
+    TRef papinforef = loadField(buf_, fnode_ref, PAP_INFO_OFFSET / sizeof(Word),
+                                IRT_I64);
+    TRef papinfo_expected = buf_.literal(IRT_I64, pap->info_.combined);
+    buf_.emit(IR::kEQ, IRT_VOID | IRT_GUARD, papinforef, papinfo_expected);
+
+    uint32_t framesize = papArgs + given_args;
+    if (!buf_.slots_.frame(base, base + framesize)) {
+      cerr << "Abstract stack overflow." << endl;
+      return false;
+    }
+    
+    // Move up given arguments
+    for (int i = given_args - 1; i >= 0; --i)
+      buf_.setSlot(papArgs + i, buf_.slot(i));
+
+    // Copy PAP args onto the stack.
+    int offs = PAP_PAYLOAD_OFFSET / sizeof(Word);
+    for (uint32_t i = 0; i < papArgs; ++i) {
+      buf_.setSlot(i, loadField(buf_, fnode_ref, offs + i, IRT_UNKNOWN));
+    }
+    fnode = pap->fun_;
+    buf_.setSlot(-1, loadField(buf_, fnode_ref, PAP_FUNCTION_OFFSET / sizeof(Word),
+                               IRT_CLOS));
+    specialiseOnInfoTable(buf_, buf_.slot(-1), fnode);
+
+    buf_.debugPrint(cerr, -1);
+    cerr << "pap_payload_offset = " << (int)PAP_PAYLOAD_OFFSET
+         << " pap_function_offset = " << (int)PAP_FUNCTION_OFFSET
+         << " given args = " << given_args
+         << " pap args = " << papArgs
+         << endl;
+    //    exit(1);
+
+    pointer_mask <<= papArgs;
+    pointer_mask |= pap->info_.pointerMask_;
+    given_args += papArgs;
+    orig_framesize = 0;
+
+    goto generic_apply_retry;
+  }
 
   case THUNK:
   case CAF: {
@@ -310,8 +606,12 @@ bool Jit::recordGenericApply(uint32_t call_info, Word *base,
   case FUN: {
     const CodeInfoTable *info = (CodeInfoTable *)fnode->info();
     uint32_t arity = info->code()->arity;
-    if (arity == given_args)
+    if (arity == given_args) {
+      
+
       return true;
+
+    }
     if (arity > given_args) {
       logNYI(NYI_RECORD_CREATE_PAP);
       return false;
@@ -358,6 +658,7 @@ bool Jit::recordGenericApply(uint32_t call_info, Word *base,
     return false;
   }
 }
+*/
 
 bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
   try {
@@ -483,12 +784,23 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
   case BcIns::kCALLT: {
     // TODO: Detect and optimise recursive calls into trace specially?
     Closure *clos = (Closure *)base[ins->a()];
+    uint32_t direct_args = ins->c();
 
     while (clos->isIndirection()) {
       clos = followIndirection(buf_, ins->a(), clos);
     }
 
-    TRef fnode = specialiseOnInfoTable(buf_, ins->a(), clos);
+    TRef args[32];
+    LC_ASSERT(direct_args <= 32);
+    for (int i = 0; i < direct_args; ++i)
+      args[i] = buf_.slot(i);
+
+    uint32_t call_info = (uint32_t)ins->c() | ((uint32_t)ins->b() << 8);
+    if (!recordGenericApply2(call_info, base, buf_.slot(ins->a()), clos, args, NULL))
+      goto abort_recording;
+
+    /*
+    TRef fnode = specialiseOnInfoTable(buf_, buf_.slot(ins->a()), clos);
 
     // Clear all non-argument registers.
     for (int i = ins->c(); i < code->framesize; ++i) {
@@ -497,10 +809,10 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     buf_.setSlot(-1, fnode);  // TODO: Can't write to slot before the guard?
 
     //    buf_.slots_.debugPrint(cerr);
-    uint32_t call_info = (uint32_t)ins->c() | ((uint32_t)ins->b() << 8);
-    if (!recordGenericApply(call_info, base, fnode, clos, code))
+        if (!recordGenericApply(call_info, base, fnode, clos, code, orig_framesize))
       goto abort_recording;
     //    buf_.slots_.debugPrint(cerr);
+    */
 
     flags_.set(kLastInsWasBranch);
     break;
@@ -514,7 +826,28 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
       clos = followIndirection(buf_, ins->a(), clos);
     }
 
-    TRef fnode = specialiseOnInfoTable(buf_, ins->a(), clos);
+    TRef args[32];
+    LC_ASSERT(nargs < 32);
+    
+    uint8_t *arg = (uint8_t *)(ins + 1);
+    for (int i = 0; i < nargs; ++i, ++arg) {
+      args[i] = buf_.slot(*arg);
+    }
+
+    TRef fnode_ref = buf_.slot(ins->a());
+
+    // See interpreter implementation for details.
+    BcIns *returnPc = ins + 1 + BC_ROUND(nargs) + 1;
+
+    uint32_t call_info = (uint32_t)nargs | ((uint32_t)ins->b() << 8);
+    if (!recordGenericApply2(call_info, base, fnode_ref, clos, args, returnPc))
+      goto abort_recording;
+
+    flags_.set(kLastInsWasBranch);
+    break;
+
+    /*
+    TRef fnode = specialiseOnInfoTable(buf_, buf_.slot(ins->a()), clos);
     InfoTable *info = clos->info();
 
     const Code *code = ((FuncInfoTable *)info)->code();
@@ -543,6 +876,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
 
     flags_.set(kLastInsWasBranch);
     break;
+    */
   }
 
   case BcIns::kMOV:
