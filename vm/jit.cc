@@ -289,7 +289,8 @@ papOrDirectArg(IRBuffer &buf_, int arg, int pap_args, TRef *args, TRef pap_ref)
   if (arg >= pap_args)
     return args[arg - pap_args];
   else
-    return loadField(buf_, pap_ref, (PAP_PAYLOAD_OFFSET / sizeof(Word)),
+    return loadField(buf_, pap_ref,
+                     (PAP_PAYLOAD_OFFSET / sizeof(Word)) + arg,
                      IRT_UNKNOWN);
 }
 
@@ -326,19 +327,12 @@ Jit::recordGenericApply2(uint32_t call_info, Word *base,
     fnode = pap->fun_;
     type = fnode->info()->type();
     LC_ASSERT(type == FUN);
-  }
 
-  if (type == THUNK || type == CAF) {
+  } else if (type == THUNK || type == CAF) {
 
     specialiseOnInfoTable(buf_, fnode_ref, fnode);
 
     LC_ASSERT(pap == NULL);
-
-    if (returnPc != NULL) {  // Create new frame first.
-      base = pushFrame(base, returnPc, fnode_ref, direct_args);
-      if (!base)
-        return false;
-    }
 
     // Turn current frame into application continuation.
     BcIns *apk_return_addr = NULL;
@@ -346,7 +340,7 @@ Jit::recordGenericApply2(uint32_t call_info, Word *base,
     MiscClosures::getApCont(&apk_closure, &apk_return_addr,
                             direct_args, pointer_mask);
     u4 apk_framesize = MiscClosures::apContFrameSize(direct_args);
-    TRef apk_closure_ref = buf_.literal(IRT_CLOS, (Word)(apk_closure));
+    TRef apk_closure_ref = buf_.literal(IRT_CLOS, (Word)apk_closure);
     
     // Create new frame (if CALL) or adjust size of current frame (if
     // CALLT).
@@ -366,10 +360,7 @@ Jit::recordGenericApply2(uint32_t call_info, Word *base,
     for (uint32_t i = 0; i < direct_args; ++i) {
       buf_.setSlot(i, args[i]);
     }
-    // Clear undefined slots in this frame.
-    for (uint32_t i = direct_args; i < apk_framesize; ++i) {
-      buf_.setSlot(i, TRef());
-    }
+    clearSlots(buf_, direct_args, apk_framesize);
 
     TRef upd_clos_lit =
       buf_.literal(IRT_CLOS, (Word)MiscClosures::stg_UPD_closure_addr);
@@ -403,7 +394,7 @@ Jit::recordGenericApply2(uint32_t call_info, Word *base,
       loadField(buf_, fnode_ref, PAP_FUNCTION_OFFSET / sizeof(Word), IRT_CLOS);
     specialiseOnInfoTable(buf_, funref, fnode);
 
-    uint32_t framesize = ((CodeInfoTable *)fnode->info())->code()->framesize;
+    uint32_t framesize = info->code()->framesize;
     if (returnPc) {
       base = pushFrame(base, returnPc, funref, framesize);
       if (!base) return false;
@@ -427,18 +418,38 @@ Jit::recordGenericApply2(uint32_t call_info, Word *base,
 
     clearSlots(buf_, total_args, framesize);
 
-    // if (pap) {
-    //   buf_.debugPrint(cerr, -1);
-    //   buf_.slots_.debugPrint(cerr);
-    //   cerr << "pap_payload_offset = " << (int)PAP_PAYLOAD_OFFSET
-    //        << " pap_function_offset = " << (int)PAP_FUNCTION_OFFSET
-    //        << " given args = " << direct_args
-    //        << " pap args = " << pap_args
-    //        << " total = " << total_args
-    //        << " framesize = " << framesize
-    //        << endl;
-    //   // exit(1);
-    // }
+    // buf_.debugPrint(cerr, -1);
+    // buf_.slots_.debugPrint(cerr);
+    // getchar();
+
+    
+    if (false && pap) {
+      buf_.debugPrint(cerr, -1);
+      buf_.slots_.debugPrint(cerr);
+      cerr << "pap_payload_offset = " << (int)PAP_PAYLOAD_OFFSET
+           << " pap_function_offset = " << (int)PAP_FUNCTION_OFFSET
+           << " pap_info_offset = " << (int)PAP_INFO_OFFSET
+           << " pap_info_size = " << (sizeof(pap->info_.combined))
+           << " given args = " << direct_args
+           << " pap args = " << pap_args
+           << " total = " << total_args
+           << " framesize = " << framesize
+           << endl;
+      cerr << " F: ";
+      printClosure(cerr, pap->fun_, false);
+      uint32_t mask = pap->info_.pointerMask_;
+      for (int i = 0; i < pap_args; ++i, mask >>= 1) {
+        cerr << " " << i << ": ";
+        if (mask & 1) {
+          Closure *cl = (Closure *)pap->payload(i);
+          printClosure(cerr, cl, false);
+        } else {
+          cerr << hex << (Word)pap->payload(i) << dec << endl;
+        }
+      }
+      //      getchar();
+      // exit(1);
+    }
 
     return true;
 
@@ -454,9 +465,9 @@ Jit::recordGenericApply2(uint32_t call_info, Word *base,
     Closure *apk_closure = NULL;
     MiscClosures::getApCont(&apk_closure, &apk_return_addr,
                             extra_args, pointer_mask >> arity);
-    TRef apk_closure_ref = buf_.literal(IRT_CLOS, (Word)(apk_closure));
+    TRef apk_closure_ref = buf_.literal(IRT_CLOS, (Word)apk_closure);
 
-    if (returnPc != NULL) { // CALL
+    if (returnPc) { // CALL
       base = pushFrame(base, returnPc, apk_closure_ref, apk_framesize);
       if (!base) return false;
     } else {
@@ -476,7 +487,7 @@ Jit::recordGenericApply2(uint32_t call_info, Word *base,
 
     clearSlots(buf_, extra_args, apk_framesize);
     
-    uint32_t framesize = ((CodeInfoTable *)fnode->info())->code()->framesize;
+    uint32_t framesize = info->code()->framesize;
     Word *newbase = pushFrame(base, apk_return_addr, funref, framesize);
     if (!newbase) return false;
     
@@ -493,6 +504,16 @@ Jit::recordGenericApply2(uint32_t call_info, Word *base,
            << " given args = " << direct_args
            << " pap args = " << pap_args
            << endl;
+      // uint32_t mask = pap->info_.pointerMask_;
+      // for (int i = 0; i < pap_args; ++i, mask >>= 1) {
+      //   cerr << " " << i << ": ";
+      //   if (mask & 1) {
+      //     cerr << ((Closure *)pap->payload(i))->info()->name
+      //          << endl;
+      //   } else {
+      //     cerr << hex << (Word)pap->payload(i) << dec << endl;
+      //   }
+      // }
       exit(1);
     }
 
@@ -1509,7 +1530,7 @@ void Jit::genCode(IRBuffer *buf, IR *ir) {
 
 extern "C" void LC_USED
 debugTrace(ExitState *ex) {
-  cerr << "Debug trace called" << endl;
+  cerr << "dbgtrace: end of trace " << ex->F_id << endl;
   printExitState(cerr, ex);
   if (traceDebugLastHp != NULL) {
     cerr << "Allocated: " << endl;
