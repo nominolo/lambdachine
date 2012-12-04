@@ -1487,7 +1487,16 @@ asmRegTestIsImplementedInAssembly(Word *regs, Callback f) {
     "movq 8(%%rax), %%rcx\n\t"
     "movq 16(%%rax), %%rdx\n\t"
     "movq 24(%%rax), %%rbx\n\t"
-    // TODO: Copy over the expected spill slot values.
+
+    // Copy over the expected spill slot values.
+    "movq 32(%%rax), %%rsi\n\t"    // source spill data
+    "movq $255, %%rdi\n\t"
+    ".L1:\n\t"
+    "movq 0x30(%%rsi,%%rdi,8),%%r8\n\t"
+    "movq %%r8,0x28(%%rsp,%%rdi,8)\n\t"
+    "decq %%rdi\n\t"
+    "jnl .L1\n\t"
+
     //    "movq 32(%%rax), %%rsp\n\t"
     "movq 40(%%rax), %%rbp\n\t"
     "movq 48(%%rax), %%rsi\n\t"
@@ -1527,11 +1536,11 @@ asmRegTestIsImplementedInAssembly(Word *regs, Callback f) {
 
     "movq 32(%%rax), %%rdx\n\t"  // Write spills to (%rdx)
     "movq $255, %%rcx\n\t"
-    ".L:\n\t"
+    ".L2:\n\t"
     "movq 0x28(%%rsp,%%rcx,8),%%rax\n\t"
     "movq %%rax,0x30(%%rdx,%%rcx,8)\n\t"
     "dec %%rcx\n\t"
-    "jnl .L\n\t"
+    "jnl .L2\n\t"
     
     "addq $2176, %%rsp\n\t"
 
@@ -1586,6 +1595,8 @@ initPAState(ParallelAssignState *pas)
   memset(pas->spills_expected, 0, sizeof(pas->spills_expected));
   pas->regs[RID_ESP] = (Word)((Word *)pas->spills - SPILL_FIRST);
   pas->regs_expected[RID_ESP] = pas->regs[RID_ESP];
+  pas->regs[RID_HP] = randomWord();
+  pas->regs_expected[RID_HP] = pas->regs[RID_HP];
 }
 
 static bool
@@ -1754,7 +1765,6 @@ TEST_P(ParallelAssignRandomTest, Random) {
 
   int param = GetParam();
   srandom(param);
-  cerr << "param = " << param << endl;
   
   ParAssign pa; int entries = 0;
   ParallelAssignState pas;
@@ -1763,27 +1773,53 @@ TEST_P(ParallelAssignRandomTest, Random) {
   as->setupRegAlloc();
 
   int total_entries = randomInRange(2, 20);
+  bool oneToOne = randomInRange(0, 100) > 50; // Only use each register once on the RHS.
+
+  cerr << "param = " << param << ";  1-to-1 = " << (oneToOne ? "yes" : "no") << endl;
+
   RegSet dests_avail = kGPR;
+  RegSet srcs_avail = kGPR;  // Only use in 1-to-1 mode.
   int next_dest_spill = 1;
   for (int i = 0; i < total_entries; ++i) {
     Reg dest_reg; uint8_t dest_spill = 0;
     Reg src_reg;  uint8_t src_spill = 0;
-    long reg_or_spill = randomInRange(0, 100);
-    if (dests_avail.isEmpty() ||
-        reg_or_spill >= 80 /* write to reg with 80% prob. */) {
+    bool pick_dest_spill = randomInRange(0, 100) >= 80;
+    if (dests_avail.isEmpty() || pick_dest_spill) {
       dest_reg = RID_NONE;
       dest_spill = next_dest_spill++;
     } else {
       dest_reg = pickRandomReg(dests_avail);
       dests_avail.clear(dest_reg);
-      if (randomInRange(0, 100) >= 95)
-        dest_spill = next_dest_spill++;
+      // Currently parallel assignments with both a destination
+      // register and a spill slot are handled outside the
+      // parallel assign code; so we don't test for it.  (We
+      // have an assertion that enforces this assumption.)
+      dest_spill = 0;
     }
-    if (dest_reg == RID_NONE || randomInRange(0, 100) < 90) {
-      src_reg = pickRandomReg(kGPR);
+
+    if (oneToOne) {
+      bool allow_src_spill = dest_reg != RID_NONE;
+      bool pick_src_spill = randomInRange(0, 100) >= 80;
+      if (srcs_avail.isEmpty() || (allow_src_spill && pick_src_spill)) {
+        if (!allow_src_spill) {
+          // We must not generate memory-to-memory writes.  Just skip
+          // this one.
+          continue;
+        }
+        src_reg = RID_NONE;
+        src_spill = randomInRange(1, 15);  // TODO: not strictly 1-to-1
+      } else {
+        src_reg = pickRandomReg(srcs_avail);
+        srcs_avail.clear(src_reg);
+        src_spill = 0;
+      }
     } else {
-      src_reg = RID_NONE;
-      src_spill = randomInRange(1, 15);
+      if (dest_reg == RID_NONE || randomInRange(0, 100) < 90) {
+        src_reg = pickRandomReg(kGPR);
+      } else {
+        src_reg = RID_NONE;
+        src_spill = randomInRange(1, 15);
+      }
     }
     paEntry(pa, entries++, dest_reg, dest_spill,
             src_reg, src_spill, as, &pas);
@@ -1794,14 +1830,17 @@ TEST_P(ParallelAssignRandomTest, Random) {
   as->parallelAssign(&pa, RID_NONE);
   MCode *code = as->finish();
   
-  Dump(param);
-
   asmRegTest(pas.regs, (Callback)code);
-  EXPECT_TRUE(checkPAState(&pas));
+  bool is_ok = checkPAState(&pas);
+  if (!is_ok) {
+    Dump(param);
+  }
+  EXPECT_TRUE(is_ok);
 }
 
+// 5000 tests currently take a bit over 1s.
 INSTANTIATE_TEST_CASE_P(Random, ParallelAssignRandomTest,
-                        ::testing::Range(1,10));
+                        ::testing::Range(1,5001));
 
 class TestFragment : public ::testing::Test {
 protected:

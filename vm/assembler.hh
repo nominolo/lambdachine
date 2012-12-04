@@ -417,9 +417,7 @@ typedef struct {
   RegSpill source[MAX_PAR_MOVE_SIZE];
   uint8_t status[MAX_PAR_MOVE_SIZE];
   uint32_t size;
-  uint8_t tmpReg;
   uint8_t tmpsInUse;
-  uint8_t totalTmps;
   uint8_t usingHp;
 } ParAssign;
 
@@ -548,7 +546,7 @@ public:
   void assemble(IRBuffer *, MachineCode *);
 
   void transfer(RegSpill dst, RegSpill src, ParAssign *assign);
-  void moveOne(uint32_t i, ParAssign *assign);
+  void moveOne(uint32_t i, ParAssign *assign, int level);
   void parallelAssign(ParAssign *assign, Reg optTmp);
 
   bool mergeWithParent();

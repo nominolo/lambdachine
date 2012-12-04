@@ -1380,7 +1380,9 @@ bool needsMoving(RegSpill dst, RegSpill src) {
 
 static inline
 bool conflicts(RegSpill candidate, RegSpill src) {
-  return candidate.reg == src.reg;  // FIXME: what about spills
+  return
+    (isReg(candidate.reg) && candidate.reg == src.reg) || 
+    (hasSpill(candidate) && candidate.spill == src.spill);
 }
 
 /* Store heap pointer in spill slot 0, which is otherwise unused. */
@@ -1389,25 +1391,24 @@ bool conflicts(RegSpill candidate, RegSpill src) {
 static inline Reg
 getTemp(Assembler *as, ParAssign *assign)
 {
-  if (assign->totalTmps >= 1 && assign->tmpsInUse >= 1) {
+  if (assign->tmpsInUse >= 1) {
     cerr << "More than one temporary required for parallel assignment.\n";
     exit(EXIT_FAILURE);
   }
-  if (assign->totalTmps == 0) {
-    Reg r;
-    if (as->hasFreeReg()) {
-      r = as->allocScratchReg(kGPR);
-    } else {
+  
+  Reg r;
+  if (as->hasFreeReg()) {
+    r = as->allocScratchReg(kGPR);
+  } else {
+    // Use heap pointer.  Free it up if necessary.
+    if (!assign->usingHp) {
       as->load_u64(RID_HP, RID_ESP, SAVE_HP_OFFS);
       assign->usingHp = 1;
-      r = RID_HP;
     }
-    assign->tmpReg = r;
-    assign->totalTmps = 1;
+    r = RID_HP;
   }
+
   LC_ASSERT(assign->tmpsInUse == 0);
-  Reg r = assign->tmpReg;
-  assign->tmpReg |= RID_NONE;
   assign->tmpsInUse = 1;
   return r;
 }
@@ -1416,13 +1417,12 @@ static inline void
 releaseTemp(ParAssign *assign, Reg r)
 {
   LC_ASSERT(assign->tmpsInUse == 1);
-  assign->tmpReg &= RID_MASK;
-  LC_ASSERT(assign->tmpReg == r);
   assign->tmpsInUse = 0;
 }
 
 void Assembler::transfer(RegSpill dst, RegSpill src, ParAssign *assign) {
   if (isReg(dst.reg)) {
+    LC_ASSERT(dst.spill == 0);
     if (isReg(src.reg)) {
       move(dst.reg, src.reg);
     } else {
@@ -1497,39 +1497,20 @@ void Assembler::transfer(RegSpill dst, RegSpill src, ParAssign *assign) {
 
 */
 
-void Assembler::moveOne(uint32_t i, ParAssign *assign) {
-  RegSpill dst = assign->dest[i];
-  RegSpill src = assign->source[i];
-  LC_ASSERT(isReg(dst.reg) || isReg(src.reg));
-  if (dst.reg != src.reg) {
-    assign->status[i] = PA_STATUS_MOVING;
-    // We're trying to emit a write from src to dst. We're generating
-    // code backwards, so if we have yet to emit a store to the source,
-    // then we have to emit that first.
-    for (uint32_t j = 0; j < assign->size; ++j) {
-      if (conflicts(assign->dest[j], src) &&
-          assign->status[j] != PA_STATUS_DONE) {
-        if (assign->status[j] == PA_STATUS_TODO) {
-          // Emit the move for that one first.
-          moveOne(j, assign);
-        } else { // (status[j] == PA_STATUS_MOVING)
-          // We found a cyclic dependency.  Use a temporary register
-          // to break the cycle.
-          Reg tmp = getTemp(this, assign);
-          releaseTemp(assign, tmp); // TODO: explain this.
-          dst = assign->dest[j];
-          if (isReg(dst.reg))
-            move(dst.reg, tmp);
-          else
-            store_u64(RID_ESP, spillOffset(dst.spill), tmp);
-          assign->dest[j].reg = tmp;
-          assign->dest[j].spill = 0;
-        }
-      }
-    }
-    transfer(assign->dest[i], assign->source[i], assign);
-    assign->status[i] = PA_STATUS_DONE;
-  }
+static void
+debugPrintSingleParallelAssign(ostream &out, RegSpill dst, RegSpill src)
+{
+  out << "   [" << hex << (uint32_t)dst.reg
+      << '.' << (uint32_t)dst.spill
+      << ":" << (uint32_t)src.reg
+      << '.' << (uint32_t)src.spill << "] ";
+  const char *dreg = isReg(dst.reg) ? regNames64[dst.reg] : " - ";
+  const char *sreg = isReg(src.reg) ? regNames64[src.reg] : " - ";
+  out << "   " << dreg;
+  if (hasSpill(dst)) out << '[' << (uint32_t)dst.spill << ']';
+  out << " <- " << sreg;
+  if (hasSpill(src)) out << '[' << (uint32_t)src.spill << ']';
+  out << endl;
 }
 
 static void
@@ -1541,17 +1522,65 @@ debugPrintParallelAssign(ostream &out, ParAssign *assign, RegSet freeset) {
   for (uint32_t i = 0; i < assign->size; ++i) {
     RegSpill dst = assign->dest[i];
     RegSpill src = assign->source[i];
-    out << "   [" << hex << (uint32_t)dst.reg
-        << '.' << (uint32_t)dst.spill
-        << ":" << (uint32_t)src.reg
-        << '.' << (uint32_t)src.spill << "] ";
-    const char *dreg = isReg(dst.reg) ? regNames64[dst.reg] : " - ";
-    const char *sreg = isReg(src.reg) ? regNames64[src.reg] : " - ";
-    out << "   " << dreg;
-    if (hasSpill(dst)) out << '[' << (uint32_t)dst.spill << ']';
-    out << " <- " << sreg;
-    if (hasSpill(src)) out << '[' << (uint32_t)src.spill << ']';
-    out << endl;
+    debugPrintSingleParallelAssign(out, dst, src);
+  }
+}
+
+static inline void
+printIndent(ostream &out, int level, const char *str) {
+  for (int k = 0; k < level; k++)
+    out << str;
+}
+
+// #define DBG_MOVEONE(level, stmts) do { printIndent(cerr, level, ".."); stmts; } while (0)
+#define DBG_MOVEONE(level, stmts) do { } while (0)
+
+void
+Assembler::moveOne(uint32_t i, ParAssign *assign, int level) {
+  RegSpill dst = assign->dest[i];
+  RegSpill src = assign->source[i];
+  LC_ASSERT(isReg(dst.reg) || isReg(src.reg));
+  if (dst.reg != src.reg) {
+    assign->status[i] = PA_STATUS_MOVING;
+    // We're trying to emit a write from src to dst. We're generating
+    // code backwards, so if we have yet to emit a store to the source,
+    // then we have to emit that first.
+    DBG_MOVEONE(level, { cerr << "Considering ";
+        debugPrintSingleParallelAssign(cerr, dst, src);});
+
+    for (uint32_t j = 0; j < assign->size; ++j) {
+      if (conflicts(assign->dest[j], src) &&
+          assign->status[j] != PA_STATUS_DONE) {
+        if (assign->status[j] == PA_STATUS_TODO) {
+          DBG_MOVEONE(level, { cerr << "-conflict (on todo list)\n"; });
+          // Emit the move for that one first.
+          moveOne(j, assign, level + 1);
+        } else { // (status[j] == PA_STATUS_MOVING)
+          DBG_MOVEONE(level, { cerr << "-conflict (cycle): ";
+                      debugPrintSingleParallelAssign(cerr, assign->dest[j],
+                                                     assign->source[j]); });
+          // We found a cyclic dependency.  Use a temporary register
+          // to break the cycle.
+          Reg tmp = getTemp(this, assign);
+          releaseTemp(assign, tmp); // TODO: explain this.
+          DBG_MOVEONE(level, { cerr << "-temp=" << regNames64[tmp] << endl; });
+          dst = assign->dest[j];
+          if (isReg(dst.reg))
+            move(dst.reg, tmp);
+          else
+            store_u64(RID_ESP, spillOffset(dst.spill), tmp);
+          assign->dest[j].reg = tmp;
+          assign->dest[j].spill = 0;
+          DBG_MOVEONE(level, { cerr << "-emitting: ";
+              debugPrintSingleParallelAssign(cerr, dst, assign->dest[j]); });
+        }
+      }
+    }
+    DBG_MOVEONE(level, { cerr << "-emitting: ";
+        debugPrintSingleParallelAssign(cerr, assign->dest[i],
+                                       assign->source[i]); });
+    transfer(assign->dest[i], assign->source[i], assign);
+    assign->status[i] = PA_STATUS_DONE;
   }
 }
 
@@ -1565,17 +1594,10 @@ Assembler::parallelAssign(ParAssign *assign, Reg optTmp)
   memset(assign->status, 0, sizeof(assign->status[0]) * assign->size);
   assign->tmpsInUse = 0; 
   assign->usingHp = 0;
-  if (optTmp != RID_NONE) {
-    assign->tmpReg = optTmp;
-    assign->totalTmps = 1;
-  } else {
-    assign->tmpReg = RID_NONE;
-    assign->totalTmps = 0;
-  }
 
   for (uint32_t i = 0; i < assign->size; ++i)
     if (assign->status[i] == PA_STATUS_TODO)
-      moveOne(i, assign);
+      moveOne(i, assign, 0);
 
   if (assign->usingHp)
     store_u64(RID_ESP, SPILL_SP_OFFS, RID_HP);
