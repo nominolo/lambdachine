@@ -265,7 +265,14 @@ debug:
     cerr << '[' << setfill(' ') << setw(3) << dec
          << depth << ':' << framesize << "] ... ";
     for (u4 i = 0; i < framesize; ++i) {
-      cerr << i << ':' << hex << base[i] << dec << ' ';
+      cerr << i << ':';
+      if (flags_.get(kDecodeClosures) &&
+          mm_->inRegions((void *)base[i]) &&
+          mm_->looksLikeClosure((void *)base[i]))
+        printClosureShort(cerr, (Closure *)base[i]);
+      else
+        cerr << hex << base[i] << dec;
+      cerr << ' ';
     }
     cerr << endl;
     cerr << '[' << setfill(' ') << setw(3) << depth << ':' << framesize << "] ";
@@ -549,6 +556,8 @@ op_ALLOCAP:
     for (u4 i = 0; i < nargs + 1; ++i, ++args) {
       cl->setPayload(i, base[*args]);
     }
+
+    LC_ASSERT(!isConstructor((Closure *)cl->payload(0)));
 
     pc += BC_ROUND(nargs + 1) + 1 /* bitmap */;
 

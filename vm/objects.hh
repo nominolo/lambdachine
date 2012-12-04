@@ -191,7 +191,9 @@ LC_STATIC_ASSERT(is_word_aligned(PAP_PAYLOAD_OFFSET));
 LC_STATIC_ASSERT(is_word_aligned(PAP_FUNCTION_OFFSET));
 LC_STATIC_ASSERT(is_word_aligned(PAP_INFO_OFFSET));
 
+bool isConstructor(Closure *cl);
 void printClosure(std::ostream &out, Closure *cl, bool oneline);
+void printClosureShort(std::ostream &out, Closure *cl);
 
 _END_LAMBDACHINE_NAMESPACE
 

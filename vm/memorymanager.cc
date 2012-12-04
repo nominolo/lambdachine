@@ -803,4 +803,16 @@ void MemoryManager::sanityCheckHeap(Capability *cap) {
     exit(42);
 }
 
+bool
+MemoryManager::inRegions(void *p)
+{
+  Region *r = region_;
+  while (r) {
+    if (r->inRegion(p))
+      return true;
+    r = r->region_link_;
+  }
+  return false;
+}
+
 _END_LAMBDACHINE_NAMESPACE

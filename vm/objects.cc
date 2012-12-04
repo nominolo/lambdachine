@@ -1,4 +1,5 @@
 #include "objects.hh"
+#include <string.h>
 
 _START_LAMBDACHINE_NAMESPACE
 
@@ -35,6 +36,42 @@ void printClosure(ostream &out, Closure *cl, bool oneline) {
   }
 
   if (!oneline) out << endl;
+}
+
+void
+printClosureShort(ostream &out, Closure *cl)
+{
+  const InfoTable *info = cl->info();
+  
+  if (!info) {
+    out << "[!NULL!]";
+    return;
+  }
+
+  out << '[' << COL_BLUE;
+  while (info->type() == IND) {
+    out << (void *)cl << "->";
+    cl = (Closure *)cl->payload(0);
+    info = cl->info();
+  }
+  out << (void *)cl << COL_RESET << '=';
+
+  const char *name = info->name();
+  const char *lastdot = strrchr(name, '.');
+  if (lastdot == NULL) 
+    lastdot = name;
+  else
+    ++lastdot;
+  size_t len = strlen(lastdot);
+  const char *backtick = strrchr(lastdot, '`');
+  if (backtick != NULL)
+    len = (size_t)(backtick - lastdot);
+  char buf[41];
+  if (len > 40) len = 40;
+  memcpy(buf, lastdot, len);
+  buf[len] = '\0';
+
+  out << buf << ']';
 }
 
 void InfoTable::printPayload(ostream &out, u4 bitmap, u4 size) {
@@ -147,6 +184,15 @@ static void printArgPointers(ostream &out, const u2 *bitmap, u4 arity) {
     }
   } while (mask != 0);
   out << ']';
+}
+
+bool
+isConstructor(Closure *cl)
+{
+  while (cl->isIndirection()) {
+    cl = (Closure *)cl->payload(0);
+  }
+  return cl->info()->type() == CONSTR;
 }
 
 void CodeInfoTable::printCode(std::ostream &out) const {

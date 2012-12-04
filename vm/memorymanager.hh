@@ -157,6 +157,10 @@ public:
 private:
   Region() {}  // Hidden
   void initBlocks();
+  inline bool inRegion(void *p) {
+    return (void *)this <= p &&
+      p < (void *)((char *)this + kRegionSize);
+  }
 
 #define REGION_MAGIC 0x7413828213897431UL
 
@@ -295,6 +299,7 @@ private:
                         const BcIns *pc);
   bool sanityCheckStaticRoots(SEEN_SET_TYPE &seen, Closure *cl);
   void sanityCheckHeap(Capability *cap);
+  bool inRegions(void *p);
 
   Region *region_;
   Block *free_;

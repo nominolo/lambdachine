@@ -25,6 +25,7 @@ public:
   inline bool isEnabledBytecodeTracing() const {
     return flags_.get(kTraceBytecode);
   }
+  inline void enableDecodeClosures() { flags_.set(kDecodeClosures); }
 
   inline bool run() { return run(currentThread_); }
   // Eval given closure using current thread.
@@ -95,6 +96,7 @@ private:
 
   static const int kTraceBytecode = 0;
   static const int kRecording     = 1;
+  static const int kDecodeClosures = 2;
   Flags32 flags_;
 
   Word *traceExitHp_;
