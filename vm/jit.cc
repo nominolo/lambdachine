@@ -1223,8 +1223,10 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     Fragment *F = lookupFragment(ins);
     while (parent) {
       if (F == parent) {
+#ifndef NDEBUG
         cerr << COL_RED "Loop-back to parent ("
              << parent->traceId() << ") found." COL_RESET "\n";
+#endif
         buf_.emit(IR::kSAVE, IRT_VOID | IRT_GUARD, IR_SAVE_LINK,
                   parent->traceId());
         finishRecording();
@@ -1301,7 +1303,9 @@ void Jit::finishRecording() {
   if (parent_ != NULL) {
     asm_.patchGuard(parent_, parentExitNo_, F->entry());
   } else if (!flags_.get(kIsReturnTrace)) {
+#ifndef NDEBUG
     cerr << "Writing JFUNC (" << flags_.get(kIsReturnTrace) << ")\n";
+#endif
     *startPc_ = BcIns::ad(BcIns::kJFUNC, 0, tno);
   }
 
