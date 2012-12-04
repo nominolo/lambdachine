@@ -69,6 +69,7 @@ int main(int argc, char *argv[]) {
 
   if (opts->traceInterpreter()) {
     cap.enableBytecodeTracing();
+    cap.enableDecodeClosures();
   }
 
   Time start_time = getProcessElapsedTime();
