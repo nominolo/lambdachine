@@ -796,7 +796,9 @@ bool Assembler::mergeWithParent() {
 
   if (moves > 0) {
     pa.size = moves;
+    RegSet saved_freeset = freeset_;
     parallelAssign(&pa, RID_NONE);
+    freeset_ = saved_freeset;
   }
 
   freeset_ = freeset_.setunion(parmoves);
@@ -1433,6 +1435,9 @@ void Assembler::transfer(RegSpill dst, RegSpill src, ParAssign *assign) {
       cerr << "Memory-to-memory moves not supported.\n";
       exit(EXIT_FAILURE);
     }
+  }
+  if (isReg(src.reg)) {
+    useReg(src.reg);
   }
 }
 

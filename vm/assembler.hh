@@ -597,6 +597,8 @@ public:
   inline const MCode *currMCode() const { return mcp; }
   inline IRRef currIns() const { return curins_; }
   inline IR *ir(IRRef ref) { return &ir_[ref]; }
+  /// Mark a register as not free (only public for test suite).
+  inline void useReg(Reg reg) { freeset_.clear(reg); }
 
 private:
   inline Jit *jit() { return jit_; }
