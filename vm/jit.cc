@@ -520,6 +520,74 @@ Jit::recordGenericApply2(uint32_t call_info, Word *base,
     return true;
     
   } else {
+    TRef funref = pap == NULL ? fnode_ref : 
+      loadField(buf_, fnode_ref, PAP_FUNCTION_OFFSET / sizeof(Word), IRT_CLOS);
+    specialiseOnInfoTable(buf_, funref, fnode);
+
+    TRef expectedReturnPc;
+    if (returnPc) {
+      // We're going to immediately return to `returnPc`, so no guard
+      // necessary.
+    } else {
+      // Otherwise, emit guard for the expected return address.
+      TRef retref = buf_.slot(-2);
+      expectedReturnPc = buf_.literal(IRT_PC, base[-2]);
+      buf_.emit(IR::kEQ, IRT_VOID | IRT_GUARD, retref, expectedReturnPc);
+    }
+
+    uint32_t new_pap_size = wordsof(PapClosure) + total_args;
+    buf_.emitHeapCheck(new_pap_size);
+    // cerr << "new_pap_size = " << new_pap_size << endl;
+
+    TRef new_pap_fields[66];
+    // Make sure we have a reference for each PAP arg (if any) before
+    // the NEW instruction.
+    for (int i = 0; i < total_args; ++i) {
+      new_pap_fields[(PAP_PAYLOAD_OFFSET / sizeof(Word)) - 1 + i] =
+        papOrDirectArg(buf_, i, pap_args, args, fnode_ref);
+    }
+
+    if (pap) {
+      pointer_mask <<= pap_args;
+      pointer_mask |= pap->info_.pointerMask_;
+    }
+    PapInfo pap_info;
+    pap_info.nargs_ = total_args;
+    pap_info.pointerMask_ = pointer_mask;
+    
+    new_pap_fields[(PAP_INFO_OFFSET / sizeof(Word)) - 1] =
+      buf_.literal(IRT_I64, pap_info.combined);
+    new_pap_fields[(PAP_FUNCTION_OFFSET / sizeof(Word)) - 1] = funref;
+
+    TRef pap_itbl = buf_.literal(IRT_INFO, (Word)MiscClosures::stg_PAP_info);
+    
+    IRBuffer::HeapEntry entry = 0;
+    TRef new_pap = buf_.emitNEW(pap_itbl, new_pap_size - 1, &entry);
+    for (int i = 0; i < new_pap_size - 1; ++i) {
+      buf_.setField(entry, i, new_pap_fields[i]);
+    }
+
+    // buf_.debugPrint(cerr, -2);
+    // buf_.slots_.debugPrint(cerr);
+    // callStack_.debugPrint(cerr, &buf_, 0);
+    
+    if (returnPc) {
+      // Set allocated as return result to be picked up by MOV_RES.
+      buf_.setSlot(buf_.slots_.top() + FRAME_SIZE, new_pap);
+    } else {
+      // Return to parent, so we must clean up the current frame.
+      clearSlots(buf_, -3, buf_.slots_.top());
+      buf_.setSlot(0, new_pap);  // Set return result;
+      LC_ASSERT(!expectedReturnPc.isNone());
+      callStack_.returnTo(expectedReturnPc);
+    }
+
+    // buf_.slots_.debugPrint(cerr);
+    // callStack_.debugPrint(cerr, &buf_, 0);
+    //    getchar();
+
+    return true;
+
     LC_ASSERT(arity > total_args);  // Partial application.
     logNYI(NYI_RECORD_CREATE_PAP);
     return false;
