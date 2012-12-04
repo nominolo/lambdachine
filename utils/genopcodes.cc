@@ -7,7 +7,7 @@
 
 #define STR(x) #x
 
-using namespace lambdachine;
+_USE_LAMBDACHINE_NAMESPACE
 
 int
 main(int argc, char **argv)

@@ -10,7 +10,7 @@
 #include <memory>
 
 using namespace std;
-using namespace lambdachine;
+_USE_LAMBDACHINE_NAMESPACE
 
 void formatTime(FILE *out, const char *label, Time time);
 void formatWithThousands(char *str, uint64_t n);

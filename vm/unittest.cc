@@ -14,7 +14,7 @@
 #include <fstream>
 
 using namespace std;
-using namespace lambdachine;
+_USE_LAMBDACHINE_NAMESPACE
 
 TEST(ThreadTest, StartStop) {
   MemoryManager m;

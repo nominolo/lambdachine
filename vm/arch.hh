@@ -2,8 +2,16 @@
 #ifndef _LAMBDACHINE_ARCH_H
 #define _LAMBDACHINE_ARCH_H
 
-#define _START_LAMBDACHINE_NAMESPACE namespace lambdachine {
-#define _END_LAMBDACHINE_NAMESPACE   }
+#if !defined(__APPLE__)
+# define _START_LAMBDACHINE_NAMESPACE namespace lambdachine {
+# define _END_LAMBDACHINE_NAMESPACE   }
+# define _USE_LAMBDACHINE_NAMESPACE   using namespace lambdachine;
+#else
+// OS X GDB cannot deal with namespaces (WTF!)
+# define _START_LAMBDACHINE_NAMESPACE
+# define _END_LAMBDACHINE_NAMESPACE
+# define _USE_LAMBDACHINE_NAMESPACE
+#endif
 
 _START_LAMBDACHINE_NAMESPACE
 
