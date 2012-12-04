@@ -1533,7 +1533,11 @@ void Assembler::moveOne(uint32_t i, ParAssign *assign) {
 }
 
 static void
-debugPrintParallelAssign(ostream &out, ParAssign *assign) {
+debugPrintParallelAssign(ostream &out, ParAssign *assign, RegSet freeset) {
+  out << "   free regs = ";
+  freeset.debugPrint(out);
+  out << endl;
+
   for (uint32_t i = 0; i < assign->size; ++i) {
     RegSpill dst = assign->dest[i];
     RegSpill src = assign->source[i];
@@ -1554,8 +1558,9 @@ debugPrintParallelAssign(ostream &out, ParAssign *assign) {
 void
 Assembler::parallelAssign(ParAssign *assign, Reg optTmp)
 {
-  if (DEBUG_COMPONENTS & DEBUG_ASSEMBLER)
-    debugPrintParallelAssign(cerr, assign);
+  if (DEBUG_COMPONENTS & DEBUG_ASSEMBLER) {
+    debugPrintParallelAssign(cerr, assign, freeset_);
+  }
 
   memset(assign->status, 0, sizeof(assign->status[0]) * assign->size);
   assign->tmpsInUse = 0; 

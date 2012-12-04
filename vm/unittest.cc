@@ -1470,21 +1470,24 @@ asmRegTestIsImplementedInAssembly(Word *regs, Callback f) {
 
     /* save %rbp and also makes %rsp 16-byte aligned */
     "push %%rbp\n\t"
-    "subq $64, %%rsp\n\t"
+
+    // Save callee saved regs
+    "subq $48, %%rsp\n\t"
+    "movq %%rbx, 0(%%rsp)\n\t"
+    "movq %%r12, 8(%%rsp)\n\t"
+    "movq %%r13, 16(%%rsp)\n\t"
+    "movq %%r14, 24(%%rsp)\n\t"
+    "movq %%r15, 32(%%rsp)\n\t"
+
+    "subq $2176, %%rsp\n\t"   // Make room for spill slots
     "movq %%rsi, 8(%%rsp)\n\t"  // save callback address
     "movq %%rdi, 0(%%rsp)\n\t"  // save register state pointer
     "movq %%rdi, %%rax\n\t"
-
-    // Save callee saved regs
-    "movq %%rbx, 16(%%rsp)\n\t"
-    "movq %%r12, 24(%%rsp)\n\t"
-    "movq %%r13, 32(%%rsp)\n\t"
-    "movq %%r14, 40(%%rsp)\n\t"
-    "movq %%r15, 48(%%rsp)\n\t"
     
     "movq 8(%%rax), %%rcx\n\t"
     "movq 16(%%rax), %%rdx\n\t"
     "movq 24(%%rax), %%rbx\n\t"
+    // TODO: Copy over the expected spill slot values.
     //    "movq 32(%%rax), %%rsp\n\t"
     "movq 40(%%rax), %%rbp\n\t"
     "movq 48(%%rax), %%rsi\n\t"
@@ -1501,8 +1504,8 @@ asmRegTestIsImplementedInAssembly(Word *regs, Callback f) {
 
     "callq *8(%%rsp)\n\t"
 
-    "movq %%rax, 8(%%rsp)\n\t"
-    "movq 0(%%rsp), %%rax\n\t"
+    "movq %%rax, 8(%%rsp)\n\t"  // save rax
+    "movq 0(%%rsp), %%rax\n\t"  // write register contents back
 
     "movq %%rcx, 8(%%rax)\n\t"
     "movq %%rdx, 16(%%rax)\n\t"
@@ -1519,17 +1522,27 @@ asmRegTestIsImplementedInAssembly(Word *regs, Callback f) {
     "movq %%r13, 104(%%rax)\n\t"
     "movq %%r14, 112(%%rax)\n\t"
     "movq %%r15, 120(%%rax)\n\t"
-    "movq 8(%%rsp), %%rcx\n\t"
+    "movq 8(%%rsp), %%rcx\n\t"   // write back %rax
     "movq %%rcx, 0(%%rax)\n\t"
 
-    // Restore callee saved regs
-    "movq 16(%%rsp), %%rbx\n\t"
-    "movq 24(%%rsp), %%r12\n\t"
-    "movq 32(%%rsp), %%r13\n\t"
-    "movq 40(%%rsp), %%r14\n\t"
-    "movq 48(%%rsp), %%r15\n\t"
+    "movq 32(%%rax), %%rdx\n\t"  // Write spills to (%rdx)
+    "movq $255, %%rcx\n\t"
+    ".L:\n\t"
+    "movq 0x28(%%rsp,%%rcx,8),%%rax\n\t"
+    "movq %%rax,0x30(%%rdx,%%rcx,8)\n\t"
+    "dec %%rcx\n\t"
+    "jnl .L\n\t"
+    
+    "addq $2176, %%rsp\n\t"
 
-    "addq $64, %%rsp\n\t"
+    // Restore callee saved regs
+    "movq 0(%%rsp), %%rbx\n\t"
+    "movq 8(%%rsp), %%r12\n\t"
+    "movq 16(%%rsp), %%r13\n\t"
+    "movq 24(%%rsp), %%r14\n\t"
+    "movq 32(%%rsp), %%r15\n\t"
+
+    "addq $48, %%rsp\n\t"
     "popq %%rbp\n\t"
     "ret\n\t"
     : : );
@@ -1539,51 +1552,256 @@ asmRegTestIsImplementedInAssembly(Word *regs, Callback f) {
 # error "asmRegTest not implemented for target architecture."
 #endif
 
-TEST_F(ParallelAssignTest, testRegTest) {
-  as->ret();
-  as->move(RID_EAX, RID_EDI);
-  MCode *code = as->finish();
+
+#define SPILL_FIRST (SPILL_SP_OFFS / sizeof(Word))
+
+typedef struct {
   Word regs[RID_NUM_GPR];
-  regs[RID_EAX] = 0;
-  regs[RID_EDI] = 5;
-  asmRegTest(regs, (Callback)code);
-  EXPECT_EQ(5, regs[RID_EAX]);
+  Word spills[256];
+  Word regs_expected[RID_NUM_GPR];
+  Word spills_expected[256];
+} ParallelAssignState;
+
+Word randomWord(void) {
+  Word r = (uint32_t)random();
+  r <<= 32;
+  r |= (Word)(uint32_t)random();
+  if (r == 0) r = (Word)0xf00dbee5 << 8;
+  return r;
 }
 
-TEST_F(ParallelAssignTest, testRegTest2) {
+long
+randomInRange(long low, long high)
+{
+  long range = high - low;
+  return (random() % range) + low;
+}
+
+static void
+initPAState(ParallelAssignState *pas)
+{
+  memset(pas->regs, 0, sizeof(pas->regs));
+  memset(pas->regs_expected, 0, sizeof(pas->regs_expected));
+  memset(pas->spills, 0, sizeof(pas->spills));
+  memset(pas->spills_expected, 0, sizeof(pas->spills_expected));
+  pas->regs[RID_ESP] = (Word)((Word *)pas->spills - SPILL_FIRST);
+  pas->regs_expected[RID_ESP] = pas->regs[RID_ESP];
+}
+
+static bool
+checkPAState(ParallelAssignState *pas)
+{
+  bool result = true;
+  for (Reg reg = RID_EAX; reg < RID_NUM_GPR; ++reg) {
+    if (pas->regs_expected[reg] != 0 &&
+        pas->regs_expected[reg] != pas->regs[reg]) {
+      result = false;
+      cerr << " Reg " << regNames64[reg]
+           << " expected: "
+           << hex << pas->regs_expected[reg] << dec
+           << ", but got: "
+           << hex << pas->regs[reg] << dec << endl;
+    }
+  }
+  for (int i = 0; i < countof(pas->spills); ++i) {
+    if (pas->spills_expected[i] != 0 &&
+        pas->spills_expected[i] != pas->spills[i]) {
+      result = false;
+      cerr << " Spill slot " << i
+           << " expected: "
+           << hex << pas->spills_expected[i] << dec
+           << ", but got: "
+           << hex << pas->spills[i] << dec << endl;
+    }
+  }
+  return result;
+}
+
+static inline void
+paEntry(ParAssign &pa, int entry, Reg dest_reg, uint8_t dest_spill,
+        Reg src_reg, uint8_t src_spill, Assembler *as,
+        ParallelAssignState *pas)
+{
+  pa.dest[entry].reg = dest_reg;
+  pa.dest[entry].spill = dest_spill;
+  pa.source[entry].reg = src_reg;
+  pa.source[entry].spill = src_spill;
+
+  Word value = randomWord();
+  if (isReg(src_reg)) {
+    LC_ASSERT(src_spill == 0);
+    if (pas->regs[src_reg] != 0)
+      value = pas->regs[src_reg];
+    else
+      pas->regs[src_reg] = value;
+  } else {
+    LC_ASSERT(src_spill != 0);
+    if (pas->spills[src_spill] != 0)
+      value = pas->spills[src_spill];
+    else
+      pas->spills[src_spill] = value;
+  }
+  
+  if (isReg(dest_reg)) { 
+    as->useReg(dest_reg);
+    pas->regs_expected[dest_reg] = value;
+  }
+  if (dest_spill != 0)
+    pas->spills_expected[dest_spill] = value;
+}
+
+TEST_F(ParallelAssignTest, testRegTest) {
+  ParAssign pa; int entries = 0;
+  ParallelAssignState pas;
+  initPAState(&pas);
+  as->setupRegAlloc();
+  
+  paEntry(pa, entries++, RID_EAX, 0, RID_EDI,  0, as, &pas);
+  pa.size = entries;
+
   as->ret();
+  as->parallelAssign(&pa, RID_NONE);
   MCode *code = as->finish();
-  Word regs[RID_NUM_GPR];
-  for (int i = 0; i < RID_NUM_GPR; ++i) {
-    regs[i] = (1 + i) * 34 - i;
-  }
-  asmRegTest(regs, (Callback)code);
-  for (int i = 0; i < RID_NUM_GPR; ++i) {
-    EXPECT_EQ((1 + i) * 34 - i, regs[i]);
-  }
+
+  Dump();
+
+  asmRegTest(pas.regs, (Callback)code);
+  EXPECT_TRUE(checkPAState(&pas));
 }
 
 TEST_F(ParallelAssignTest, SwapRegs1) {
-  ParAssign pa;
-  pa.size = 2;
+  ParAssign pa; int entries = 0;
+  ParallelAssignState pas;
+  initPAState(&pas);
+  as->setupRegAlloc();
+
+  paEntry(pa, entries++, RID_EAX, 0, RID_EBX,  0, as, &pas);
+  paEntry(pa, entries++, RID_EBX, 0, RID_EAX,  0, as, &pas);
+  pa.size = entries;
   
-  pa.dest[0].reg = RID_EAX; pa.dest[0].spill = 0;
-  pa.dest[1].reg = RID_EBX; pa.dest[1].spill = 0;
-  pa.source[0].reg = RID_EBX; pa.source[0].spill = 0;
-  pa.source[1].reg = RID_EAX; pa.source[1].spill = 0;
   as->ret();
   as->parallelAssign(&pa, RID_ECX);
   MCode *code = as->finish();
 
   Dump();
 
-  Word regs[RID_NUM_GPR];
-  regs[RID_EAX] = 5;
-  regs[RID_EBX] = 10;
-  asmRegTest(regs, (Callback)code);
-  EXPECT_EQ(10, regs[RID_EAX]);
-  EXPECT_EQ(5, regs[RID_EBX]);
+  asmRegTest(pas.regs, (Callback)code);
+  EXPECT_TRUE(checkPAState(&pas));
 }
+
+TEST_F(ParallelAssignTest, Bug1) {
+  ParAssign pa; int entries = 0;
+  ParallelAssignState pas;
+
+  initPAState(&pas);
+  as->setupRegAlloc();
+
+  paEntry(pa, entries++, RID_NONE, 1, RID_ECX,  0, as, &pas);
+  paEntry(pa, entries++, RID_NONE, 2, RID_EDI,  0, as, &pas);
+  paEntry(pa, entries++, RID_NONE, 3, RID_R8D,  0, as, &pas);
+  paEntry(pa, entries++, RID_R9D,  0, RID_R9D,  0, as, &pas);
+  paEntry(pa, entries++, RID_R10D, 0, RID_R10D, 0, as, &pas);
+  paEntry(pa, entries++, RID_R15D, 0, RID_R15D, 0, as, &pas);
+  paEntry(pa, entries++, RID_R14D, 0, RID_R14D, 0, as, &pas);
+  paEntry(pa, entries++, RID_R13D, 0, RID_R11D, 0, as, &pas);
+  paEntry(pa, entries++, RID_R11D, 0, RID_R13D, 0, as, &pas);
+  pa.size = entries;
+
+  cerr << hex << pas.regs[RID_ESP] << " == "
+       << pas.spills << endl;
+
+  as->ret();
+  as->parallelAssign(&pa, RID_NONE);
+  MCode *code = as->finish();
+
+  Dump();
+
+  asmRegTest(pas.regs, (Callback)code);
+  EXPECT_TRUE(checkPAState(&pas));
+}
+
+class ParallelAssignRandomTest : 
+  public ParallelAssignTest, public ::testing::WithParamInterface<int> {
+protected:
+  void Dump(int param) {
+    stringstream filename;
+    filename << "dump_ParAssignRandom_" << param << ".s";
+    ofstream out;
+    out.open(filename.str().c_str());
+    jit->mcode()->dumpAsm(out);
+    out.close();
+  }
+};
+
+static Reg
+pickRandomReg(RegSet avail) {
+  LC_ASSERT(!avail.isEmpty());
+  Reg candidate = randomInRange(RID_EAX, RID_MAX_GPR);
+  // Simple linear search
+  for (;;) {
+    if (avail.test(candidate))
+      return candidate;
+    ++candidate;
+    if (candidate >= RID_MAX_GPR)
+      candidate = RID_EAX;
+  }
+  LC_ASSERT(0 && "impossible");
+}
+
+#define RANDOM_TEST_COUNT  5
+
+TEST_P(ParallelAssignRandomTest, Random) {
+
+  int param = GetParam();
+  srandom(param);
+  cerr << "param = " << param << endl;
+  
+  ParAssign pa; int entries = 0;
+  ParallelAssignState pas;
+
+  initPAState(&pas);
+  as->setupRegAlloc();
+
+  int total_entries = randomInRange(2, 20);
+  RegSet dests_avail = kGPR;
+  int next_dest_spill = 1;
+  for (int i = 0; i < total_entries; ++i) {
+    Reg dest_reg; uint8_t dest_spill = 0;
+    Reg src_reg;  uint8_t src_spill = 0;
+    long reg_or_spill = randomInRange(0, 100);
+    if (dests_avail.isEmpty() ||
+        reg_or_spill >= 80 /* write to reg with 80% prob. */) {
+      dest_reg = RID_NONE;
+      dest_spill = next_dest_spill++;
+    } else {
+      dest_reg = pickRandomReg(dests_avail);
+      dests_avail.clear(dest_reg);
+      if (randomInRange(0, 100) >= 95)
+        dest_spill = next_dest_spill++;
+    }
+    if (dest_reg == RID_NONE || randomInRange(0, 100) < 90) {
+      src_reg = pickRandomReg(kGPR);
+    } else {
+      src_reg = RID_NONE;
+      src_spill = randomInRange(1, 15);
+    }
+    paEntry(pa, entries++, dest_reg, dest_spill,
+            src_reg, src_spill, as, &pas);
+  }
+  pa.size = entries;
+
+  as->ret();
+  as->parallelAssign(&pa, RID_NONE);
+  MCode *code = as->finish();
+  
+  Dump(param);
+
+  asmRegTest(pas.regs, (Callback)code);
+  EXPECT_TRUE(checkPAState(&pas));
+}
+
+INSTANTIATE_TEST_CASE_P(Random, ParallelAssignRandomTest,
+                        ::testing::Range(1,10));
 
 class TestFragment : public ::testing::Test {
 protected:
