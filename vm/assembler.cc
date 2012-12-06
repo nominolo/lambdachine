@@ -961,7 +961,16 @@ void Assembler::assemble(IRBuffer *buf, MachineCode *mcode) {
     }
   }
 
+  MCode *loop_entry = NULL;
   if (buf_->parent_ != NULL) {
+
+    if (jit()->traceType_ == TT_FALLTHROUGH) {
+      // If this is the target of a fallthrough trace we have to set
+      // the trace id, but we don't actually want to set the trace id
+      // on each loop iteration.
+      loop_entry = mcp;
+    }
+
     // If this is a side trace, update the trace id.
     mcp = emitSetTraceId(mcp, thisTraceId);
     if (buf_->entry_relbase_ != 0) {
@@ -974,12 +983,15 @@ void Assembler::assemble(IRBuffer *buf, MachineCode *mcode) {
 #endif
   }
 
+  if (loop_entry == NULL) {
+    loop_entry = mcp;
+  }
 
   MCode *target = NULL;
   if (saveref && ir(saveref)->op1() != IR_SAVE_FALLTHROUGH) {
     int save_type = ir(saveref)->op1();
     if (save_type == IR_SAVE_LOOP) {
-      target = mcp;
+      target = loop_entry;
     } else if (save_type == IR_SAVE_LINK) {
       Fragment *parent = jit()->traceById(ir(saveref)->op2());
       LC_ASSERT(parent != NULL);
@@ -1076,10 +1088,14 @@ void Assembler::patchGuard(Fragment *F, ExitNo exitno, MCode *target) {
   Snapshot &snap = F->snap(exitno);
   MCode *p = snap.mcode_;
   MCode *area = jit()->mcode()->patchBegin(p);
-  LC_ASSERT(p[0] == (MCode)0x0f);
-  LC_ASSERT(p[1] >= (MCode)XI_JCCn);
-  LC_ASSERT(p[1] <= (MCode)(XI_JCCn + 15));
-  *(int32_t *)(p + 2) = jmprel(p + 6, target);
+  if (p[0] == (MCode)0x0f) {  // Patch conditional branch.
+    LC_ASSERT(p[1] >= (MCode)XI_JCCn);
+    LC_ASSERT(p[1] <= (MCode)(XI_JCCn + 15));
+    *(int32_t *)(p + 2) = jmprel(p + 6, target);
+  } else {  // Patch unconditional branch (e.g., fall-through)
+    LC_ASSERT(p[0] == (MCode)XI_JMP);
+    *(int32_t *)(p + 1) = jmprel(p + 5, target);
+  }
   jit()->mcode()->patchFinish(area);
 }
 
@@ -1348,7 +1364,17 @@ void Assembler::emit_jmp(MCode *target) {
 
 void Assembler::exitTo(SnapNo snapno) {
   MCode *target = exitstubAddr(snapno);
+  Snapshot &snap = buf_->snap(snapno);
   emit_jmp(target);
+  snap.mcode_ = mcp;
+
+  // For debugging.
+  if (jit()->getOption(Jit::kOptDebugTrace)) {
+    MCode *p = mcp;
+    *(int32_t *)(p - 4) = jmprel(p, (MCode *)(void *)&asmTrace);
+    p[-5] = XI_CALL;
+    mcp = p - 5;
+  }
 }
 
 void Assembler::memstore(Reg base, int32_t ofs, IRRef ref, RegSet allow) {

@@ -358,7 +358,8 @@ typedef Word BloomFilter;
   _(RECORD_CREATE_PAP, "Recording of call which creates a PAP.") \
   _(RECORD_CALL_PAP, "Recording of a call of a PAP.") \
   _(RECORD_CALL_THUNK, "Recording of call of a thunk/CAF.") \
-  _(RECORD_CALL_IND, "Recording of call of an indirection.")
+  _(RECORD_CALL_IND, "Recording of call of an indirection.") \
+  _(RECORD_LINK_FALLTHROUGH, "link fall-through trace to newly-generated trace.")
 
 enum {
 #define NYIENUM(name, descr) NYI_##name,

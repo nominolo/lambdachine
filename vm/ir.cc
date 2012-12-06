@@ -209,6 +209,7 @@ void IRBuffer::reset(Word *base, Word *top) {
   bufmax_ = REF_BASE;
 
   stopins_ = REF_FIRST;
+  entry_relbase_ = 0;
   parent_ = NULL;
 
   flags_.clear();

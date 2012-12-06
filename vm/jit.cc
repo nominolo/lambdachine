@@ -59,6 +59,7 @@ Jit::Jit()
   Jit::resetFragments();
   memset(exitStubGroup_, 0, sizeof(exitStubGroup_));
   resetRecorderState();
+  // setDebugTrace(true);
 #ifdef LC_TRACE_STATS
   stats_ = NULL;
 #endif
@@ -74,6 +75,14 @@ void Jit::beginRecording(Capability *cap, BcIns *startPc, Word *base, bool isRet
   LC_ASSERT(targets_.size() == 0);
   initRecording(cap, base, startPc);
   flags_.set(kIsReturnTrace, isReturn);
+  traceType_ = TT_ROOT;
+}
+
+void Jit::setFallthroughParent(Fragment *parent, SnapNo snapno) {
+  traceType_ = TT_FALLTHROUGH;
+  parent_ = parent;
+  buf_.parent_ = parent;
+  parentExitNo_ = snapno;
 }
 
 void Jit::initRecording(Capability *cap, Word *base, BcIns *startPc)
@@ -172,6 +181,7 @@ void Jit::beginSideTrace(Capability *cap, Word *base, Fragment *parent, SnapNo s
   Snapshot &snap = parent->snap(snapno);
   initRecording(cap, base, snap.pc());
 
+  traceType_ = TT_SIDE;
   parent_ = parent;
   parentExitNo_ = snapno;
   buf_.parent_ = parent;
@@ -780,10 +790,24 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
         buf_.emit(IR::kSAVE, IRT_VOID | IRT_GUARD, IR_SAVE_LOOP, 0);
         finishRecording();
         return true;
-      } else {  
-        DBG(cerr << COL_GREEN << "REC: Inner loop. " << buf_.pc_ << COL_RESET);
-        logNYI(NYI_TRACE_TRUNCATE);
-        goto abort_recording;
+
+      } else if (ins->opcode() != BcIns::kIFUNC) {
+        // We found an inner loop.  We'd really want the loop to be
+        // its own trace.  So we cut off the current trace and
+        // directly fall back to the interpreter.  A new trace will
+        // quickly form at the fall-back point, which will then
+        // (hopefully) form a proper loop.
+        //
+        // Ideally, we'd like to cut off the trace *before* the inner
+        // loop, but doing it this way is easier to implement, ATM.
+
+        // We simply continue recording if the loop is caused by an
+        // IFUNC, which usually indicates that it's an AP continuation
+        // or an AP thunk, i.e., some kind of generic code.
+        DBG(cerr << COL_GREEN << "REC: Inner loop. " << buf_.pc_ << COL_RESET << endl);
+        buf_.emit(IR::kSAVE, IRT_VOID | IRT_GUARD, IR_SAVE_FALLTHROUGH, 0);
+        finishRecording();
+        return true;
       }
     }
   }
@@ -1298,13 +1322,15 @@ void Jit::finishRecording() {
 
   Fragment *F = saveFragment();
 
-  registerFragment(startPc_, F);
+  registerFragment(startPc_, F, traceType_ == TT_SIDE);
 
   if (parent_ != NULL) {
     asm_.patchGuard(parent_, parentExitNo_, F->entry());
-  } else if (!flags_.get(kIsReturnTrace)) {
+  }
+
+  if (traceType_ != TT_SIDE && !flags_.get(kIsReturnTrace)) {
 #ifndef NDEBUG
-    cerr << "Writing JFUNC (" << flags_.get(kIsReturnTrace) << ")\n";
+    cerr << "Writing JFUNC (isReturn=" << flags_.get(kIsReturnTrace) << ")\n";
 #endif
     *startPc_ = BcIns::ad(BcIns::kJFUNC, 0, tno);
   }
@@ -1535,7 +1561,7 @@ void Fragment::restoreSnapshot(ExitNo exitno, ExitState *ex) {
       }
     }
   }
-  if (sn.relbase() != 0) {
+  if (sn.relbase() != 0 && snapins->opcode() != IR::kSAVE) {
     DBG(cerr << "base + " << dec << (int)sn.relbase() << " => ");
     base += (int)sn.relbase();
     DBG(cerr << base << endl);
@@ -1553,9 +1579,25 @@ void Fragment::restoreSnapshot(ExitNo exitno, ExitState *ex) {
   cap->traceExitHpLim_ = ex->hplim;
 
   if (snapins->opcode() != IR::kHEAPCHK && sn.bumpExitCounter()) {
-    DBG(cerr << COL_RED "HOTSIDE" COL_RESET "\n");
-    cap->jit()->beginSideTrace(cap, base, this, exitno);
-    cap->setState(Capability::STATE_RECORD);
+    if (snapins->opcode() == IR::kSAVE && snapins->op1() == IR_SAVE_FALLTHROUGH) {
+      // If the parent trace falls back directly to the interpreter
+      // then this new traces should be treated like a root trace.
+      // The only difference is that the fallthrough branch should be
+      // updated to jump directly to the entry of the new trace.
+      BcIns *pc = sn.pc();
+      if (pc->opcode() == BcIns::kJFUNC) {
+        logNYI(NYI_RECORD_LINK_FALLTHROUGH);
+      } else {
+        bool isReturn = !(pc->opcode() == BcIns::kFUNC || pc->opcode() == BcIns::kIFUNC);
+        cap->jit()->beginRecording(cap, pc, base, isReturn);
+        cap->jit()->setFallthroughParent(this, exitno);
+        cap->setState(Capability::STATE_RECORD);
+      }
+    } else {
+      DBG(cerr << COL_RED "HOTSIDE" COL_RESET "\n");
+      cap->jit()->beginSideTrace(cap, base, this, exitno);
+      cap->setState(Capability::STATE_RECORD);
+    }
   }
 
   if (snapins->opcode() == IR::kHEAPCHK) {

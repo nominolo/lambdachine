@@ -150,6 +150,12 @@ class Fragment;
 
 #define TRACE_ID_NONE  (~0)
 
+typedef enum {
+  TT_ROOT,
+  TT_FALLTHROUGH,
+  TT_SIDE,
+} TraceType;
+
 class Jit {
 public:
   Jit();
@@ -204,10 +210,11 @@ public:
   }
 
   inline void setDebugTrace(bool val) { options_.set(kOptDebugTrace, val); }
-  static inline void registerFragment(BcIns *startPc, Fragment *F);
+  static inline void registerFragment(BcIns *startPc, Fragment *F, bool isSideTrace);
   static void resetFragments();
   static uint32_t numFragments();
 
+  void setFallthroughParent(Fragment *parent, SnapNo snapno);
 
 private:
   void initRecording(Capability *cap, Word *base, BcIns *startPc);
@@ -227,6 +234,7 @@ private:
   ExitNo parentExitNo_;
   Flags32 flags_;   // reset each time
   Flags32 options_; // configuration options
+  TraceType traceType_;
   std::vector<BcIns*> targets_;
   Prng prng_;
   MachineCode mcode_;
@@ -342,11 +350,11 @@ private:
   friend class Assembler;
 };
 
-inline void Jit::registerFragment(BcIns *startPc, Fragment *F) {
+inline void Jit::registerFragment(BcIns *startPc, Fragment *F, bool isSideTrace) {
   LC_ASSERT(F->traceId() == fragments_.size());
   fragments_.push_back(F);
   Word idx = reinterpret_cast<Word>(startPc) >> 2;
-  if (F->parent_ == NULL) {
+  if (!isSideTrace) {
     fragmentMap_[idx] = F->traceId();
   }
 #ifndef NDEBUG

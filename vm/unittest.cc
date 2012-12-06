@@ -1877,7 +1877,7 @@ public:
     as->assemble(buf, jit.mcode());
     buf->debugPrint(cerr, 1);
     F = jit.saveFragment();
-    Jit::registerFragment(NULL, F);
+    Jit::registerFragment(NULL, F, false);
     Dump();
   }
 
