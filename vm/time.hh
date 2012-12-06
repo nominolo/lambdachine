@@ -17,6 +17,7 @@ typedef uint64_t Time;
 extern Time loader_time;
 extern Time gc_time;
 extern Time jit_time;
+extern Time record_time;
 
 void initializeTimer();
 uint64_t getMonotonicNSec(void);

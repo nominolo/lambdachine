@@ -3,6 +3,7 @@
 #include "thread.hh"
 #include "objects.hh"
 #include "miscclosures.hh"
+#include "time.hh"
 
 #include <iomanip>
 #include <string.h>
@@ -133,13 +134,21 @@ Capability::interpBranch(BcIns *srcPc, BcIns *dstPc,
 #endif
 }
 
+Time record_time = 0;
+Time recording_start = 0;
+
 void Capability::setState(int state) {
   switch (state) {
   case STATE_INTERP:
+    if (recording_start != 0) {
+      record_time += getProcessElapsedTime() - recording_start;
+      recording_start = 0;
+    }
     dispatch_ = dispatch_normal_;
     flags_.clear(kRecording);
     break;
   case STATE_RECORD:
+    recording_start = getProcessElapsedTime();
     dispatch_ = dispatch_record_;
     flags_.set(kRecording);
     break;
