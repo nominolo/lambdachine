@@ -382,7 +382,17 @@ struct _ExitState {
   Word     spill[256];
 };
 
+typedef enum {
+  AR_ABSTRACT_STACK_OVERFLOW,
+  AR_KNOWN_TO_FAIL_GUARD,
+  AR_TRACE_TOO_LONG,
+  AR_INTERPRETER_REQUEST,
+  AR_NYI,
+  AR__MAX
+} AbortReason;
+
 extern uint64_t record_aborts;
+extern uint64_t record_abort_reasons[AR__MAX];
 
 #define HPLIM_SP_OFFS  0
 #define SPILL_SP_OFFS  (offsetof(ExitState, spill) - offsetof(ExitState, hplim))

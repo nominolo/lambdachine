@@ -103,10 +103,27 @@ int main(int argc, char *argv[]) {
   printf("  Traces Attempted (Completed:Aborted)  %" FMT_Word64 " "
          "(%d:%" FMT_Word64 ")\n",
          record_aborts, Jit::numFragments(), recordings_started);
+  printf("  Abort Reasons\n"
+         "    trace stack too deep   %10" FMT_Word64 "\n"
+         "    trace too long         %10" FMT_Word64 "\n"
+         "    always failing guard   %10" FMT_Word64 "\n"
+         "    interrupted (e.g. GC)  %10" FMT_Word64 "\n"
+         "    unimplemented feature  %10" FMT_Word64 "\n\n",
+         record_abort_reasons[AR_ABSTRACT_STACK_OVERFLOW],
+         record_abort_reasons[AR_TRACE_TOO_LONG],
+         record_abort_reasons[AR_KNOWN_TO_FAIL_GUARD],
+         record_abort_reasons[AR_INTERPRETER_REQUEST],
+         record_abort_reasons[AR_NYI]);
+  
   printf("  Interpreter-to-MCode Switches         %" FMT_Word64
          " (%5.1f per MUT second)\n\n",
          switch_interp_to_asm,
          (double)switch_interp_to_asm / ((double)run_time / 1000000000));
+
+  MachineCode *mcode = cap.jit()->mcode();
+  char buf[50];
+  formatWithThousands(buf, (uint64_t)(mcode->end() - mcode->start()));
+  printf("  Compiled code: %20s bytes \n\n", buf);
 
   formatTime(stdout, "  Startup ", start_time - startup_time);
   formatTime(stdout, "    LOAD  ", loader_time);

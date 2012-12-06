@@ -20,6 +20,7 @@ _START_LAMBDACHINE_NAMESPACE
 using namespace std;
 
 uint64_t record_aborts = 0;
+uint64_t record_abort_reasons[AR__MAX] = { 0, 0, 0, 0, 0 };
 
 HotCounters::HotCounters(HotCount threshold)
   : threshold_(threshold) {
@@ -362,7 +363,8 @@ Jit::recordGenericApply2(uint32_t call_info, Word *base,
     } else {
       // Adjust size of current frame.
       if (!buf_.slots_.frame(base, base + apk_framesize)) {
-        cerr << "Abstract stack overflow." << endl;
+        ++record_abort_reasons[AR_ABSTRACT_STACK_OVERFLOW];
+        //        cerr << "Abstract stack overflow." << endl;
         return false;
       }
       buf_.setSlot(-1, apk_closure_ref);
@@ -764,8 +766,10 @@ bool Jit::recordGenericApply(uint32_t call_info, Word *base,
 bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
   try {
 
-  if (LC_UNLIKELY(shouldAbort_))
+  if (LC_UNLIKELY(shouldAbort_)) {
+    ++record_abort_reasons[AR_INTERPRETER_REQUEST];
     goto abort_recording;
+  }
   buf_.pc_ = ins;
   buf_.steps_++;
   DBG(cerr << "REC: " << ins << " " << ins->name() << endl);
@@ -782,8 +786,9 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     if (LC_LIKELY(loopentry == -1)) {  // Not a loop.
       btb_.emit(ins);
       if (btb_.size() > 100) {
-        cerr << COL_RED << "TRACE TOO LONG (" << btb_.size()
-             << ")" << COL_RESET << endl;
+        ++record_abort_reasons[AR_TRACE_TOO_LONG];
+        // cerr << COL_RED << "TRACE TOO LONG (" << btb_.size()
+        //      << ")" << COL_RESET << endl;
         goto abort_recording;
       }
     } else {  // We found a true loop.
@@ -1075,7 +1080,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     // is quite wasteful.
     Word *newbase = (Word *)base[-3];
     if (!buf_.slots_.frame(newbase, base - 3)) {
-      cerr << "Abstract stack overflow/underflow" << endl;
+      ++record_abort_reasons[AR_ABSTRACT_STACK_OVERFLOW];
       goto abort_recording;
     }
 
@@ -1105,7 +1110,8 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     // is quite wasteful.
     Word *newbase = (Word *)base[-3];
     if (!buf_.slots_.frame(newbase, base - 3)) {
-      cerr << "Abstract stack overflow/underflow" << endl;
+      ++record_abort_reasons[AR_ABSTRACT_STACK_OVERFLOW];
+      // cerr << "Abstract stack overflow/underflow" << endl;
       goto abort_recording;
     }
 
@@ -1132,6 +1138,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
 
     if (info->type() == CAF) {
       logNYI(NYI_RECORD_UPDATE_CAF);
+      ++record_abort_reasons[AR_NYI];
       goto abort_recording;
     }
 
@@ -1257,8 +1264,6 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
                   parent->traceId());
         finishRecording();
         return true;
-        exit(7);
-        goto abort_recording;
       }
       parent = parent->parent_;
     }
@@ -1294,6 +1299,7 @@ abort_recording:
     case IROPTERR_FAILING_GUARD:
       DBG(cerr << "Aborting due to permanently failing guard.\n");
       ++record_aborts;
+      ++record_abort_reasons[AR_KNOWN_TO_FAIL_GUARD];
       //      if ((++record_aborts % 1000) == 0) cout << record_aborts << endl;
       resetRecorderState();
       return true;
@@ -1471,7 +1477,8 @@ Word *Jit::pushFrame(Word *base, BcIns *returnPc,
   buf_.setSlot(topslot + 2, noderef);
   Word *newbase = base + topslot + 3;
   if (!buf_.slots_.frame(newbase, newbase + framesize)) {
-    cerr << "Abstract stack overflow." << endl;
+    ++record_abort_reasons[AR_ABSTRACT_STACK_OVERFLOW];
+    //    cerr << "Abstract stack overflow." << endl;
     return NULL;
   }
   return newbase;
