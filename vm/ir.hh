@@ -478,7 +478,11 @@ typedef Snapshot::MapRef SnapmapRef;
 
 inline bool Snapshot::bumpExitCounter() {
   --exitCounter_;
-  return (exitCounter_ == 0);
+  bool is_hot = exitCounter_ == 0;
+  if (is_hot) {
+    exitCounter_ = HOT_SIDE_EXIT_THRESHOLD;
+  }
+  return is_hot;
 }
 
 
