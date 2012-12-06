@@ -309,7 +309,8 @@ install-deps:
 
 # Rules for building built-in packages
 
-LCCFLAGS = --dump-bytecode --dump-core-binds
+LCCFLAGS = -o2
+# --dump-bytecode --dump-core-binds -o2
 
 tests/ghc-prim/%.lcbc: tests/ghc-prim/%.hs
 	cd tests/ghc-prim && \
@@ -368,6 +369,10 @@ clean-bytecode:
 gtest: $(GTEST_A)
 
 bench-ghc/%: tests/Bench/%.hs
+	@mkdir -p bench-ghc
+	$(HC) -O2 -fforce-recomp -DBENCH_GHC $(BENCH_HC_OPTS) -rtsopts -o $@ $<
+
+bench-ghc/Nofib_Spectral_%: tests/Bench/Nofib/Spectral/%.hs
 	@mkdir -p bench-ghc
 	$(HC) -O2 -fforce-recomp -DBENCH_GHC $(BENCH_HC_OPTS) -rtsopts -o $@ $<
 
