@@ -594,6 +594,11 @@ Jit::recordGenericApply2(uint32_t call_info, Word *base,
       buf_.setSlot(0, new_pap);  // Set return result;
       LC_ASSERT(!expectedReturnPc.isNone());
       callStack_.returnTo(expectedReturnPc);
+      Word *newbase = (Word *)base[-3];
+      if (!buf_.slots_.frame(newbase, base - 3)) {
+        ++record_abort_reasons[AR_ABSTRACT_STACK_OVERFLOW];
+        return false;
+      }
     }
 
     // buf_.slots_.debugPrint(cerr);
