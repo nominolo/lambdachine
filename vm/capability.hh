@@ -112,6 +112,9 @@ Capability::heapCheckFailQuick(char **heap, char **hplim)
   return mm_->bumpAllocatorFullNoGC(heap, hplim);
 }
 
+extern uint64_t recordings_started;
+extern uint64_t switch_interp_to_asm;
+
 _END_LAMBDACHINE_NAMESPACE
 
 #endif /* _CAPABILITY_H_ */

@@ -84,6 +84,7 @@ Capability::interpBranch(BcIns *srcPc, BcIns *dstPc,
         }
 
         T->sync(dstPc, base);
+        ++switch_interp_to_asm;
         asmEnter(F->traceId(), T, (Word *)heap, (Word*)heaplim,
                  T->stackLimit(), F->entry());
         heap = (char *)traceExitHp_;
@@ -136,6 +137,8 @@ Capability::interpBranch(BcIns *srcPc, BcIns *dstPc,
 
 Time record_time = 0;
 Time recording_start = 0;
+uint64_t recordings_started = 0;
+uint64_t switch_interp_to_asm = 0;
 
 void Capability::setState(int state) {
   switch (state) {
@@ -148,6 +151,7 @@ void Capability::setState(int state) {
     flags_.clear(kRecording);
     break;
   case STATE_RECORD:
+    ++recordings_started;
     recording_start = getProcessElapsedTime();
     dispatch_ = dispatch_record_;
     flags_.set(kRecording);
@@ -876,6 +880,7 @@ op_JFUNC: {
     cerr << "Entering trace " << F->traceId() << endl;
 #endif
     LC_ASSERT(F->startPc() == pc - 1);
+    ++switch_interp_to_asm;
     asmEnter(F->traceId(), T,
              (Word *)heap, (Word *)heaplim,
              T->stackLimit(), F->entry());

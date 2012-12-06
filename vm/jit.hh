@@ -382,6 +382,8 @@ struct _ExitState {
   Word     spill[256];
 };
 
+extern uint64_t record_aborts;
+
 #define HPLIM_SP_OFFS  0
 #define SPILL_SP_OFFS  (offsetof(ExitState, spill) - offsetof(ExitState, hplim))
 #define F_ID_OFFS      (offsetof(ExitState, F_id) - offsetof(ExitState, hplim))

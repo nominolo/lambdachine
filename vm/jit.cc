@@ -19,6 +19,8 @@ _START_LAMBDACHINE_NAMESPACE
 
 using namespace std;
 
+uint64_t record_aborts = 0;
+
 HotCounters::HotCounters(HotCount threshold)
   : threshold_(threshold) {
   for (Word i = 0; i < kNumCounters; ++i) {
@@ -1282,6 +1284,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
   return false;
 
 abort_recording:
+  ++record_aborts;
   resetRecorderState();
   return true;
 
@@ -1290,6 +1293,8 @@ abort_recording:
     switch (err) {
     case IROPTERR_FAILING_GUARD:
       DBG(cerr << "Aborting due to permanently failing guard.\n");
+      ++record_aborts;
+      //      if ((++record_aborts % 1000) == 0) cout << record_aborts << endl;
       resetRecorderState();
       return true;
     default:

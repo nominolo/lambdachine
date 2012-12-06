@@ -100,6 +100,14 @@ int main(int argc, char *argv[]) {
   printTraceStats(stdout);
 #endif
 
+  printf("  Traces Attempted (Completed:Aborted)  %" FMT_Word64 " "
+         "(%d:%" FMT_Word64 ")\n",
+         record_aborts, Jit::numFragments(), recordings_started);
+  printf("  Interpreter-to-MCode Switches         %" FMT_Word64
+         " (%5.1f per MUT second)\n\n",
+         switch_interp_to_asm,
+         (double)switch_interp_to_asm / ((double)run_time / 1000000000));
+
   formatTime(stdout, "  Startup ", start_time - startup_time);
   formatTime(stdout, "    LOAD  ", loader_time);
   formatTime(stdout, "  Runtime ", run_time);
@@ -110,7 +118,7 @@ int main(int argc, char *argv[]) {
   formatTime(stdout, "  Total   ", total_time);
   printf("\n" "    %%GC      %5.1f%%\n", percent(gc_time, run_time)); 
   printf("    %%JIT     %5.1f%%  (  # traces      %5d  )" "\n\n",
-         percent(jit_time, run_time), Jit::numFragments()); 
+         percent(jit_time, run_time), Jit::numFragments());
 
   //  cerr << mm << endl;
 
