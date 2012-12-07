@@ -326,7 +326,7 @@ tests/base/%.lcbc: tests/base/%.hs
 #	@echo "@ = $@, < = $<"
 
 tests/%.lcbc: tests/%.hs
-	@echo "LCC $< => $@"
+	@echo "LCC $(LCCFLAGS) $< => $@"
 	@cd tests && \
 	 $(LCC) $(LCCFLAGS) $(patsubst tests/%, %, $<)
 
