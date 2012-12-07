@@ -315,7 +315,7 @@ FOLDF(kfold_cmp) {
   case IR::kEQ:
     return (k1 == k2) ? DROPFOLD : FAILFOLD;
   case IR::kNE:
-    return (k1 == k2) ? DROPFOLD : FAILFOLD;
+    return (k1 != k2) ? DROPFOLD : FAILFOLD;
   default:
     cerr << "FATAL: kfold_cmp called on unsupported instruction.\n";
     fins->debugPrint(cerr, 0);
