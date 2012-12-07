@@ -215,6 +215,7 @@ public:
   static uint32_t numFragments();
 
   void setFallthroughParent(Fragment *parent, SnapNo snapno);
+  void patchFallthrough(Fragment *parent, ExitNo exitno, Fragment *target);
 
 private:
   void initRecording(Capability *cap, Word *base, BcIns *startPc);

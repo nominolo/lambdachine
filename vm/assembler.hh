@@ -534,6 +534,7 @@ public:
   void save(IR *ins);
   void memstore(Reg base, int32_t ofs, IRRef ref, RegSet allow);
   void patchGuard(Fragment *, ExitNo, MCode *target);
+  void patchFallthrough(Fragment *parent, ExitNo, Fragment *target);
   void adjustBase(int32_t relbase);
   void insPLOAD(IR *ins);
 

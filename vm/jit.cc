@@ -1371,6 +1371,12 @@ void Jit::finishRecording() {
   jit_time += getProcessElapsedTime() - compilestart;
 }
 
+void
+Jit::patchFallthrough(Fragment *parent, ExitNo exitno, Fragment *target)
+{
+  asm_.patchFallthrough(parent, exitno, target);
+}
+
 /*
 
 Note: Reset Dominated Conters
@@ -1604,7 +1610,11 @@ void Fragment::restoreSnapshot(ExitNo exitno, ExitState *ex) {
       // updated to jump directly to the entry of the new trace.
       BcIns *pc = sn.pc();
       if (pc->opcode() == BcIns::kJFUNC) {
-        logNYI(NYI_RECORD_LINK_FALLTHROUGH);
+        // A trace has been formed at the fall-through point before
+        // the side exit got hot.
+        Fragment *target = cap->jit()->lookupFragment(pc);
+        LC_ASSERT(target && target->traceId() == pc->d());
+        cap->jit()->patchFallthrough(this, exitno, target);
       } else {
         bool isReturn = !(pc->opcode() == BcIns::kFUNC || pc->opcode() == BcIns::kIFUNC);
         cap->jit()->beginRecording(cap, pc, base, isReturn);

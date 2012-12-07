@@ -1099,6 +1099,20 @@ void Assembler::patchGuard(Fragment *F, ExitNo exitno, MCode *target) {
   jit()->mcode()->patchFinish(area);
 }
 
+void Assembler::patchFallthrough(Fragment *parent, ExitNo exitno, Fragment *target) {
+  MachineCode *mcode = jit()->mcode();
+
+  // Generate the short sequence that sets the target trace ID and
+  // then jumps to the target fragment.
+  setupMachineCode(mcode);
+  emit_jmp(target->entry());
+  mcp = emitSetTraceId(mcp, target->traceId());
+  MCode *bridge_start = mcp;
+  mcode->commit(mcp);
+
+  patchGuard(parent, exitno, bridge_start);
+}
+
 void Assembler::compare(IR *ins, int cc) {
   IRRef lref = ins->op1(), rref = ins->op2();
   int32_t imm = 0;
