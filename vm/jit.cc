@@ -414,8 +414,10 @@ Jit::recordGenericApply2(uint32_t call_info, Word *base,
       if (!base) return false;
     } else {
       buf_.setSlot(-1, funref);
-      if (!buf_.slots_.frame(base, base + framesize))
+      if (!buf_.slots_.frame(base, base + framesize)) {
+        ++record_abort_reasons[AR_ABSTRACT_STACK_OVERFLOW];
         return false;
+      }
     }
 
     // Move arguments into place.
@@ -487,7 +489,7 @@ Jit::recordGenericApply2(uint32_t call_info, Word *base,
     } else {
       // Adjust size of current frame.
       if (!buf_.slots_.frame(base, base + apk_framesize)) {
-        cerr << "Abstract stack overflow." << endl;
+        ++record_abort_reasons[AR_ABSTRACT_STACK_OVERFLOW];
         return false;
       }
       buf_.setSlot(-1, apk_closure_ref);
@@ -1305,7 +1307,6 @@ abort_recording:
       DBG(cerr << "Aborting due to permanently failing guard.\n");
       ++record_aborts;
       ++record_abort_reasons[AR_KNOWN_TO_FAIL_GUARD];
-      //      if ((++record_aborts % 1000) == 0) cout << record_aborts << endl;
       resetRecorderState();
       return true;
     default:
