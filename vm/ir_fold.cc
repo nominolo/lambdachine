@@ -329,17 +329,40 @@ FOLDF(load_fwd) {
   LC_ASSERT(fleft->opcode() == IR::kFREF);
   IRBuffer::HeapEntry entry = buf->getHeapEntry(fleft->op1());
   if (entry != IRBuffer::kInvalidHeapEntry) {
-    IRRef field = buf->getField(entry, fleft->op2() - 1);
+    int field_id = fleft->op2() - 1;
+    IRRef ind = buf->isIndirection(entry);
+    if (ind) {
+      LC_ASSERT(field_id == 0);
+      return ind;
+    }
+    IRRef field = buf->getField(entry, field_id);
     return field;
   }
   return NEXTFOLD;
 }
 
+// UPDATE (NEW k ...) i  -->  mark (NEW k ...) as updated
+FOLDF(kfold_update_new) {
+  IRBuffer::HeapEntry entry = buf->getHeapEntry(fins->op1());
+  LC_ASSERT(entry != IRBuffer::kInvalidHeapEntry);
+  buf->update(entry, fins->op2());
+  return NEXTFOLD;
+}
+
 // info(NEW k1 [...]) == k2 ==> k1 == k2
 FOLDF(kfold_eqinfo_new) {
-  // fleft is NEW instruction.
   fins->setOpcode(IR::kEQ);
-  fins->setOp1(fleft->op1());
+
+  IRBuffer::HeapEntry entry = buf->getHeapEntry(fins->op1());
+  LC_ASSERT(entry != IRBuffer::kInvalidHeapEntry);
+  IRRef ind = buf->isIndirection(entry);
+  if (ind)
+    // fleft has been updated
+    fins->setOp1(REF_IND);
+  else
+    // fleft is NEW instruction.
+    fins->setOp1(fleft->op1());
+
   return RETRYFOLD;
 }
 
@@ -426,6 +449,9 @@ retry:
     /// (y + x) - (x + z) ==> y - z
     /// (y + x) - (z + x) ==> y - z
     PATTERN(ADD, ADD, simplify_intsubaddadd_cancel);
+    break;
+  case IR::kUPDATE:
+    PATTERN(NEW, any, kfold_update_new);
     break;
   case IR::kEQINFO:
     // Info table guard on a static closure.

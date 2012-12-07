@@ -552,16 +552,20 @@ class AbstractHeapEntry {
 public:
   AbstractHeapEntry(IRRef1 ref, uint16_t size,
                     int ofs, int hpofs)
-    : ref_(ref), size_(size), ofs_(ofs), hpofs_(hpofs) {}
+    : ref_(ref), size_(size), ofs_(ofs), hpofs_(hpofs),
+      fwdref_(0) {}
   inline IRRef1 ref() const { return ref_; }
   inline int size() const { return size_; }
   inline int mapentry() const { return ofs_; }
   inline int hpOffset() const { return hpofs_; }
+  inline void update(IRRef fwdref) { fwdref_ = fwdref; }
+  inline IRRef isIndirection() const { return fwdref_; }
 private:
   IRRef1 ref_;
   uint16_t size_;
   uint16_t ofs_;
   int16_t hpofs_;
+  IRRef1 fwdref_;  // Set on UPDATE
 
   friend class AbstractHeap;
   friend class IRBuffer;
@@ -901,6 +905,8 @@ public:
   static const HeapEntry kInvalidHeapEntry = -1;
   inline HeapEntry getHeapEntry(IRRef ref);
   inline IRRef1 getField(HeapEntry entry, int field);
+  inline void update(HeapEntry entry, IRRef fwdref);
+  inline IRRef isIndirection(HeapEntry entry) const;
 
   inline bool regsAllocated() { return flags_.get(kRegsAllocated); }
   inline void setPC(void *pc) { pc_ = pc; }
@@ -980,12 +986,22 @@ void IRBuffer::setField(HeapEntry entry, int field, IRRef1 ref) {
   heap_.data_.set(heap_.entries_[entry].mapentry() + field, ref);
 }
 
+// NOTE: Returns the fields set on allocation.  Use isIndirection to
+// check whether the object has since been replaced by an indirection.
 inline IRRef1 IRBuffer::getField(HeapEntry entry, int field) {
   return heap_.data_.at(heap_.entries_[entry].mapentry() + field);
 }
 
 inline int IRBuffer::numFields(HeapEntry entry) {
   return heap_.entries_[entry].size();
+}
+
+inline void IRBuffer::update(HeapEntry entry, IRRef fwdref) {
+  heap_.entries_[entry].update(fwdref);
+}
+
+inline IRRef IRBuffer::isIndirection(HeapEntry entry) const {
+  return heap_.entries_[entry].isIndirection();
 }
 
 // Can invert condition by toggling lowest bit.

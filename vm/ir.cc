@@ -139,6 +139,11 @@ static void print_heapentry(ostream &out, IRBuffer *buf,
     IR::printIRRef(out, (IRRef)buf->getField(entry, i));
   }
   out << ']';
+  IRRef ind = buf->isIndirection(entry);
+  if (ind) {
+    out << " =>";
+    IR::printIRRef(out, ind);
+  }
 }
 
 void IR::debugPrint(ostream &out, IRRef self, IRBuffer *buf, bool regs) {
@@ -641,6 +646,7 @@ int AbstractHeap::newEntry(IRRef1 ref, int nfields) {
   e->size_ = nfields;
   e->ofs_ = data_.reserve(nfields);
   e->ref_ = ref;
+  e->fwdref_ = 0;
   e->hpofs_ = -reserved_;
   reserved_ -= nfields + 1;
   return nextentry_ - 1;
