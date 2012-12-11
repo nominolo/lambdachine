@@ -129,7 +129,7 @@ int main(int argc, char *argv[]) {
   formatTime(stdout, "    LOAD  ", loader_time);
   formatTime(stdout, "  Runtime ", run_time);
   formatTime(stdout, "    MUT   ", mut_time);
-  formatTime(stdout, "    REC   ", record_time);
+  formatTime(stdout, "     REC  ", record_time - jit_time);
   formatTime(stdout, "    JIT   ", jit_time);
   formatTime(stdout, "    GC    ", gc_time);
   formatTime(stdout, "  Total   ", total_time);
