@@ -1167,28 +1167,85 @@ Assembler::adjustHeapPointer(int32_t bytes)
   emit_rmro(XO_LEA, RID_HP | REX_64, RID_HP | REX_64, bytes);
 }
 
-void Assembler::heapCheck(IR *ins) {
-  int32_t bytes = sizeof(Word) * ins->op1();
+inline void
+Assembler::conditionalBranch(x86CC cc, MCode *target)
+{
+  MCode *p = mcp;
+  *(int32_t *)(p - 4) = jmprel(p, target);
+  p[-5] = (MCode)(XI_JCCn + (cc & 15));
+  p[-6] = 0x0f;
+  mcp = p - 6;
+}
 
-  if (bytes == 0)
+void Assembler::heapCheck(IR *ins) {
+  int32_t bytes_needed = sizeof(Word) * (int32_t)(int16_t)ins->op1();
+  
+  if (bytes_needed == 0)
     return;
 
-  if (mcQuickHeapCheck_ != NULL) {
+  /*
+  int32_t bytes_inherited = sizeof(Word) * (int32_t)(int16_t)ins->op2();
+  int32_t bytes_delta = bytes_needed - bytes_inherited;
 
-    MCode *p = mcp;
+  if (bytes_delta == 0)
+    return;
+
+  if (bytes_delta < 0) {
+    adjustHeapPointer(bytes_delta);
+    return;
+  }
+
+  LC_ASSERT(bytes_delta > 0);
+
+  */
+  if (mcQuickHeapCheck_ != NULL) {
+    // NOTE: If we have inherited bytes from a parent trace's heap
+    // check and need a few more bytes for the current side trace we
+    // do NOT just request the difference.
+    //
+    // Consider: We have 5 words inherited from the parent and the
+    // side trace needs 8 words.  We may be tempted to request only 3
+    // words.  Unfortunately, that will cause problems if the heap
+    // check fails.  Assume that the heap overflow code simply grabs a
+    // new block and doesn't need to fall back to the interpreter to
+    // invoke a full garbage collection.  The heap pointer now points
+    // to the beginning of a block.  We increment it by 3 and check
+    // for overflow, which succeeds.  Now we allocate the first object
+    // and write its info table to Hp[-8] -- that's outside the
+    // current block.  Oops!
+    //
+    // We have two options: communicate to the heap overflow handling
+    // code that this heap check occured in a context where we assumed
+    // to have a prior succeeding heap check of size 5 words.  This
+    // moves work off the common case into the rare case, but it is
+    // also more complicated.  The other option is to emit code like
+    // this:
+    //
+    //       Hp -= 5;   // "un-allocate" parent memory
+    //     retry:
+    //       Hp += 8;
+    //       if (Hp > HpLim) goto heap_overflow;
+    //       ...
+    //     heap_overflow:
+    //       Hp -= 8;
+    //       ... handle overflow ...
+    //       goto retry;
+    //
+
     Snapshot &snap = buf_->snap(snapno_);
-    *(int32_t *)(p - 4) = jmprel(p, mcQuickHeapCheck_);
-    p[-5] = (MCode)(XI_JCCn + (CC_A & 15));
-    p[-6] = 0x0f;
-    mcp = p - 6;
     snap.mcode_ = NULL;  // just in case
 
+    conditionalBranch(CC_A, mcQuickHeapCheck_);
     emit_rmro(XO_CMP, RID_HP | REX_64, RID_ESP | REX_64, HPLIM_SP_OFFS);
-    emit_rmro(XO_LEA, RID_HP | REX_64, RID_HP | REX_64, bytes);
+    adjustHeapPointer(bytes_needed);
 
     MCode *retryAddr = mcp;
-    heapCheckFailure(snapno_, retryAddr, mcQuickHeapCheck_, bytes);
+    heapCheckFailure(snapno_, retryAddr, mcQuickHeapCheck_, bytes_needed);
     mcQuickHeapCheck_ = NULL;
+
+    // if (bytes_inherited != 0) {
+    //   adjustHeapPointer(-bytes_inherited);
+    // }
 
   } else {
     
@@ -1196,9 +1253,11 @@ void Assembler::heapCheck(IR *ins) {
 
     // HpLim == [rsp + HPLIM_SP_OFFS]
     emit_rmro(XO_CMP, RID_HP | REX_64, RID_ESP | REX_64, HPLIM_SP_OFFS);
+    adjustHeapPointer(bytes_needed);
 
-    // HpLim = HpLim + bytes
-    emit_rmro(XO_LEA, RID_HP | REX_64, RID_HP | REX_64, bytes);
+    // if (bytes_inherited != 0) {
+    //   adjustHeapPointer(-bytes_inherited);
+    // }
   }
 }
 

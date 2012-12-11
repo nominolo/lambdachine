@@ -62,7 +62,7 @@ Jit::Jit()
   Jit::resetFragments();
   memset(exitStubGroup_, 0, sizeof(exitStubGroup_));
   resetRecorderState();
-  // setDebugTrace(true);
+  //  setDebugTrace(true);
 #ifdef LC_TRACE_STATS
   stats_ = NULL;
 #endif
@@ -180,9 +180,12 @@ void Jit::beginSideTrace(Capability *cap, Word *base, Fragment *parent, SnapNo s
   LC_ASSERT(cap_ == NULL);
   LC_ASSERT(targets_.size() == 0);
   LC_ASSERT(cap != NULL);
-  
+
   Snapshot &snap = parent->snap(snapno);
+
   initRecording(cap, base, snap.pc());
+
+  //  cerr << "heap wasted: " << snap.overallocated(&parent->heap_) << endl;
 
   traceType_ = TT_SIDE;
   parent_ = parent;
@@ -192,6 +195,10 @@ void Jit::beginSideTrace(Capability *cap, Word *base, Fragment *parent, SnapNo s
   buf_.setParentHeapReserved(parentHeapReserved);
 
   replaySnapshot(parent, snapno, base);
+
+  // if (parentHeapReserved != 0) {
+  //   buf_.emitParentHeapCheck(parentHeapReserved);
+  // }
 
   if (DEBUG_COMPONENTS & DEBUG_ASSEMBLER) {
     buf_.debugPrint(cerr, ~0);

@@ -407,7 +407,7 @@ uint32_t IRBuffer::setHeapOffsets() {
   for (;;) {
     while (chkref > cur) {
       // Check that we've reserved exactly the amount needed.
-      LC_ASSERT((int)ir(chkref)->op1() == -offset);
+      LC_ASSERT((int)(int16_t)ir(chkref)->op1() /* + parentHeapReserved_ */ == -offset);
       offset = 0;
       ++heapchecks;
       chkref = ir(chkref)->prev();

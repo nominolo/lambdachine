@@ -290,7 +290,9 @@ IRRef IRBuffer::foldHeapcheck() {
   if (hpchkref /* && hpchkref >= loop_ */) {
     IR *hpchk = ir(hpchkref);
     uint16_t nwords = hpchk->op1() + fins->op1();
+    uint16_t nreserved = hpchk->op2() + fins->op2();
     hpchk->setOp1(nwords);
+    hpchk->setOp2(nreserved);
     return DROPFOLD;
   }
   return NEXTFOLD;

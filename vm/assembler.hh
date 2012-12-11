@@ -528,6 +528,7 @@ public:
   void itblGuard(IR *ins);
   void fieldLoad(IR *ins);
   inline void adjustHeapPointer(int32_t bytes);
+  inline void conditionalBranch(x86CC cc, MCode *target);
   void heapCheck(IR *ins);
   void insNew(IR *ins);
   void insUpdate(IR *ins);

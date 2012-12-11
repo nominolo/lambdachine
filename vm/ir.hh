@@ -46,7 +46,7 @@ typedef u4 IRRef;               /* Used to pass around references */
   _(GTU,     G,   ref, ref) \
   _(EQRET,   G,   ref, ref) \
   _(EQINFO,  G,   ref, ref) \
-  _(HEAPCHK, S,   lit, ___) \
+  _(HEAPCHK, S,   lit, lit) \
    \
   _(NOP,     N,   ___, ___) \
   _(BASE,    N,   lit, lit) \
@@ -882,6 +882,10 @@ public:
   inline void emitHeapCheck(int nwords) {
     emit(IR::kHEAPCHK, IRT_VOID|IRT_GUARD, nwords, 0);
     heap_.heapCheck(nwords);
+  }
+
+  inline void emitParentHeapCheck(int nwords) {
+    emit(IR::kHEAPCHK, IRT_VOID|IRT_GUARD, 0, nwords);
   }
 
   typedef int HeapEntry;

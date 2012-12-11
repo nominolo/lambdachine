@@ -246,6 +246,7 @@ private:
   BranchTargetBuffer btb_;
   MCode *exitStubGroup_[16];
   bool shouldAbort_;
+
 #ifdef LC_TRACE_STATS
   uint64_t *stats_;
 #endif
