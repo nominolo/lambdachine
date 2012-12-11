@@ -216,6 +216,7 @@ void IRBuffer::reset(Word *base, Word *top) {
   stopins_ = REF_FIRST;
   entry_relbase_ = 0;
   parent_ = NULL;
+  parentHeapReserved_ = 0;
 
   flags_.clear();
   flags_.set(kOptCSE);
@@ -375,6 +376,11 @@ void IRBuffer::snapshot(IRRef ref, void *pc) {
   Snapshot snap;
   slots_.snapshot(&snap, &snapmap_, ref, pc);
   snap.steps_ = steps_ - 1;
+  if (chain_[IR::kNEW]) {
+    snap.lastHeapEntry_ = ir(chain_[IR::kNEW])->op2();
+  } else {
+    snap.lastHeapEntry_ = -1;
+  }
   snaps_.push_back(snap);
 }
 
@@ -410,12 +416,15 @@ uint32_t IRBuffer::setHeapOffsets() {
       break;
     AbstractHeapEntry &entry = heap_.entry(ir(cur)->op2());
     int sz = entry.size() + 1;
+    LC_ASSERT(offset <= 0);
+    entry.overallocated_ = -offset;
     offset -= sz;
     entry.hpofs_ = offset;
     cur = ir(cur)->prev();
   }
   // Non-zero offset indicates missing heap check.
   LC_ASSERT(offset == 0);
+
   return heapchecks;
 }
 
@@ -601,6 +610,17 @@ void HeapSnapData::growTop() {
   data_ = (IRRef1 *)realloc(data_, size_ * sizeof(IRRef1));
 }
 
+void
+HeapSnapData::compactCopyInto(HeapSnapData *dest, HeapSnapData *snapdata)
+{
+  LC_ASSERT(dest != snapdata);
+  dest->reset();
+  size_t size = snapdata->next_;
+  dest->size_ = size;
+  dest->next_ = size;
+  dest->data_ = new IRRef1[size];
+  memcpy(dest->data_, snapdata->data_, sizeof(IRRef1) * size);
+}
 
 // void HeapSnapData::compact() {
 //   if (data_) {
@@ -614,6 +634,20 @@ void HeapSnapData::growTop() {
 AbstractHeap::AbstractHeap()
   : entries_(NULL), nentries_(0), nextentry_(0),
     data_(), reserved_(0) {
+}
+
+void
+AbstractHeap::compactCopyInto(AbstractHeap *dest, AbstractHeap *src) {
+  LC_ASSERT(dest != src);
+  dest->reset();
+  uint32_t entries = src->nextentry_;
+  dest->nentries_ = entries;
+  dest->nextentry_ = entries;
+  dest->entries_ =
+    static_cast<AbstractHeapEntry *>(malloc(sizeof(AbstractHeapEntry) * entries));
+  memcpy(dest->entries_, src->entries_, sizeof(AbstractHeapEntry) * entries);
+  HeapSnapData::compactCopyInto(&dest->data_, &src->data_);
+  dest->reserved_ = 0;
 }
 
 void AbstractHeap::reset() {
@@ -648,6 +682,7 @@ int AbstractHeap::newEntry(IRRef1 ref, int nfields) {
   e->ref_ = ref;
   e->fwdref_ = 0;
   e->hpofs_ = -reserved_;
+  e->overallocated_ = 0;
   reserved_ -= nfields + 1;
   return nextentry_ - 1;
 }

@@ -188,6 +188,8 @@ void Jit::beginSideTrace(Capability *cap, Word *base, Fragment *parent, SnapNo s
   parent_ = parent;
   parentExitNo_ = snapno;
   buf_.parent_ = parent;
+  int parentHeapReserved = snap.overallocated(&parent->heap_);
+  buf_.setParentHeapReserved(parentHeapReserved);
 
   replaySnapshot(parent, snapno, base);
 
@@ -1467,6 +1469,8 @@ Fragment *Jit::saveFragment() {
   F->snapmap_.data_ = buf->snapmap_.data_;
   F->snapmap_.index_ = buf->snapmap_.data_.size();
 
+  AbstractHeap::compactCopyInto(&F->heap_, &buf->heap_);
+
   F->mcode_ = as->mcp;
 #ifdef LC_TRACE_STATS
   F->stats_ = stats_;  // Transfers ownership.
@@ -1494,6 +1498,26 @@ Word *Jit::pushFrame(Word *base, BcIns *returnPc,
     return NULL;
   }
   return newbase;
+}
+
+int32_t
+Jit::checkFreeHeapAvail(Fragment *F, SnapNo snapno)
+{
+  Snapshot &sn = F->snap(snapno);
+  IRRef ref = sn.ref() - 1;
+  int32_t used = 0;
+  while (ref >= REF_FIRST) {
+    IR *ins = F->ir(ref);
+    if (ins->opcode() == IR::kNEW) {
+      AbstractHeapEntry &entry = F->heap_.entry(ins->op2());
+      used += 1 + entry.size();
+    } else if (ins->opcode() == IR::kHEAPCHK) {
+      used -= (int32_t)F->ir(ref)->op1();
+      break;
+    }
+    --ref;
+  }
+  return used;
 }
 
 #undef DBG

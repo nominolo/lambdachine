@@ -207,7 +207,9 @@ enum {
   IROPTERR_FAILING_GUARD = 1
 };
 
-class IRBuffer; // Defined below.
+// Forward references, defined in this file.
+class IRBuffer;
+class AbstractHeap;
 
 class IR {
 public:
@@ -458,6 +460,10 @@ public:
   // to zero.  It is used by the shadow interpreter.
   inline uint16_t steps() const { return steps_; }
 
+  // Returns the number of words that have been overallocated at this
+  // program point.
+  inline uint32_t overallocated(AbstractHeap *heap) const;
+
 private:
 
   IRRef1 ref_;
@@ -467,6 +473,7 @@ private:
   uint8_t framesize_;
   uint16_t exitCounter_;
   uint16_t steps_;
+  int16_t lastHeapEntry_;
   void *pc_;
   MCode *mcode_;
   friend class AbstractStack;
@@ -518,6 +525,7 @@ private:
   void growTop();
   int reserve(int n);
   void set(int n, IRRef1 ref);
+  static void compactCopyInto(HeapSnapData *dest, HeapSnapData *src);
 
   IRRef1 *data_;
   size_t size_;
@@ -560,11 +568,14 @@ public:
   inline int hpOffset() const { return hpofs_; }
   inline void update(IRRef fwdref) { fwdref_ = fwdref; }
   inline IRRef isIndirection() const { return fwdref_; }
+  inline uint32_t overallocated() const { return overallocated_; }
 private:
   IRRef1 ref_;
   uint16_t size_;
   uint16_t ofs_;
   int16_t hpofs_;
+  // TODO: I think overallocated is just -(hpofs_ + 1 + size_)
+  uint16_t overallocated_;
   IRRef1 fwdref_;  // Set on UPDATE
 
   friend class AbstractHeap;
@@ -575,10 +586,14 @@ private:
 class AbstractHeap {
 public:
   AbstractHeap();
+  static void compactCopyInto(AbstractHeap *dest, AbstractHeap *src);
   int newEntry(IRRef1 ref, int nfields);
   void reset();
   inline void heapCheck(int nwords) { reserved_ += nwords; }
-  inline AbstractHeapEntry &entry(int n) { return entries_[n]; }
+  inline AbstractHeapEntry &entry(int n) {
+    LC_ASSERT(n < nextentry_);
+    return entries_[n];
+  }
 private:
   void grow();
   AbstractHeapEntry *entries_;
@@ -859,6 +874,11 @@ public:
 
   SnapshotData *snapmap() { return &snapmap_; }
 
+  inline void setParentHeapReserved(int nwords) {
+    parentHeapReserved_ = nwords;
+    heap_.reserved_ = nwords;
+  }
+
   inline void emitHeapCheck(int nwords) {
     emit(IR::kHEAPCHK, IRT_VOID|IRT_GUARD, nwords, 0);
     heap_.heapCheck(nwords);
@@ -952,6 +972,7 @@ private:
   typedef uint16_t InheritedSlotInfo;
   InheritedSlotInfo parentmap_[200];
   Fragment *parent_;
+  int32_t parentHeapReserved_;
   int32_t entry_relbase_;
   // no. of inherited slots = stopins_ - REF_FIRST.
 
@@ -1002,6 +1023,16 @@ inline void IRBuffer::update(HeapEntry entry, IRRef fwdref) {
 
 inline IRRef IRBuffer::isIndirection(HeapEntry entry) const {
   return heap_.entries_[entry].isIndirection();
+}
+
+inline uint32_t
+Snapshot::overallocated(AbstractHeap *heap) const
+{
+  if (lastHeapEntry_ < 0)
+    return 0;
+  
+  AbstractHeapEntry &entry = heap->entry(lastHeapEntry_);
+  return entry.overallocated();
 }
 
 // Can invert condition by toggling lowest bit.

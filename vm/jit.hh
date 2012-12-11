@@ -224,6 +224,7 @@ private:
   void finishRecording();
   void resetRecorderState();
   void replaySnapshot(Fragment *parent, SnapNo snapno, Word *base);
+  int32_t checkFreeHeapAvail(Fragment *F, SnapNo snapno);
   
   static const int kLastInsWasBranch = 0;
   static const int kIsReturnTrace = 1;
@@ -339,6 +340,7 @@ private:
   uint16_t nsnaps_;
   Snapshot *snaps_;      
   SnapshotData snapmap_;
+  AbstractHeap heap_;
   
   MCode *mcode_;
   //  size_t sizemcode_;

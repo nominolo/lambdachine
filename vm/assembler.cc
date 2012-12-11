@@ -977,6 +977,10 @@ void Assembler::assemble(IRBuffer *buf, MachineCode *mcode) {
       adjustBase(buf_->entry_relbase_);
     }
 
+    if (buf_->parentHeapReserved_ != 0) {
+      adjustHeapPointer(-(int32_t)(buf_->parentHeapReserved_ * sizeof(Word)));
+    }
+
 #ifdef LC_TRACE_STATS
     // Bump the parent trace's exit counter.
     incrementCounter(buf_->parent_->exitCounterAddress(jit()->parentExitNo_));
@@ -1150,6 +1154,17 @@ void Assembler::insPLOAD(IR *ins) {
   emit_rmrxo(XO_MOVZXb, dst, ptr, ofs, XM_SCALE1, 0);
 
   // TODO: add special case for irref_islit(ofsref)?
+}
+
+// Increment or decrement the heap pointer by a number of bytes.
+//
+// We may want to decrement the heap pointer if the parent trace
+// allocated more memory than the side trace needs.
+inline void
+Assembler::adjustHeapPointer(int32_t bytes)
+{
+  // HpLim = HpLim + bytes
+  emit_rmro(XO_LEA, RID_HP | REX_64, RID_HP | REX_64, bytes);
 }
 
 void Assembler::heapCheck(IR *ins) {
