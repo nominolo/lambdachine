@@ -28,6 +28,7 @@
 
 #define LC_JIT   1
 
+// #define LC_DUMP_TRACES
 // #define LC_TRACE_STATS
 #define LC_CLEAR_DOM_COUNTERS
 

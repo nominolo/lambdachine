@@ -1358,17 +1358,27 @@ void Jit::finishRecording() {
   // See Note "Reset Dominated Counters" below.
   btb_.resetDominatedCounters(cap_);
 #endif
+
+#ifdef LC_DUMP_TRACES
+  {
+    ofstream out;
+    out.open("dump_traces.txt",
+             (tno == 0 ? ofstream::trunc : ofstream::app) | ofstream::out);
+    buf_.debugPrint(out, tno);
+    out.close();
+  }
+#endif
   
   resetRecorderState();
 
-  DBG( {
+  if (DEBUG_COMPONENTS & DEBUG_ASSEMBLER) {
     ofstream out;
     stringstream filename;
     filename << "dump_Trace_" << (int)tno << ".s";
     out.open(filename.str().c_str());
     mcode()->dumpAsm(out);
     out.close();
-  });
+  };
 
   jit_time += getProcessElapsedTime() - compilestart;
 }
