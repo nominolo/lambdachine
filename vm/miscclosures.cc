@@ -18,6 +18,7 @@ MemoryManager *MiscClosures::allocMM = NULL;
 InfoTable *MiscClosures::stg_PAP_info = NULL;
 InfoTable **MiscClosures::smallApInfos = NULL;
 APMAP *MiscClosures::otherApInfos = NULL;
+Closure *MiscClosures::stg_BLACKHOLE_closure_addr = NULL;
 
 void MiscClosures::initStopClosure(MemoryManager &mm) {
   CodeInfoTable *info = static_cast<FuncInfoTable *>
@@ -53,6 +54,32 @@ void MiscClosures::initStopClosure(MemoryManager &mm) {
   Closure *stg_STOP_closure = mm.allocStaticClosure(0);
   stg_STOP_closure->setInfo((InfoTable *)info);
   MiscClosures::stg_STOP_closure_addr = stg_STOP_closure;
+}
+
+void MiscClosures::initBlackholeClosure(MemoryManager &mm) {
+  ThunkInfoTable *info = static_cast<ThunkInfoTable *>
+                        (mm.allocInfoTable(wordsof(ThunkInfoTable)));
+  info->type_ = BLACKHOLE;
+  info->size_ = 1;
+  info->tagOrBitmap_ = 0;
+  info->layout_.bitmap = 0;
+  info->name_ = "stg_BLACKHOLE";
+  info->code_.framesize = 1;
+  info->code_.arity = 0;
+  info->code_.sizecode = 1;
+  info->code_.sizelits = 0;
+  info->code_.sizebitmaps = 0;
+  info->code_.lits = NULL;
+  info->code_.littypes = NULL;
+  info->code_.code = static_cast<BcIns *>
+                     (mm.allocCode(info->code_.sizecode, info->code_.sizebitmaps));
+  BcIns *code = info->code_.code;
+  //  u2 *bitmasks = cast(u2 *, code + info->code_.sizecode);
+  code[0] = BcIns::ad(BcIns::kSTOP, 1, 0);
+
+  Closure *stg_BLACKHOLE_closure = mm.allocStaticClosure(0);
+  stg_BLACKHOLE_closure->setInfo((InfoTable *)info);
+  MiscClosures::stg_BLACKHOLE_closure_addr = stg_BLACKHOLE_closure;
 }
 
 void MiscClosures::initUpdateClosure(MemoryManager &mm) {
@@ -351,6 +378,7 @@ InfoTable *MiscClosures::getApInfo(u4 nargs, u4 pointerMask) {
 
 void MiscClosures::init(MemoryManager *mm) {
   MiscClosures::initStopClosure(*mm);
+  MiscClosures::initBlackholeClosure(*mm);
   MiscClosures::initUpdateClosure(*mm);
   MiscClosures::initIndirectionItbl(*mm);
   MiscClosures::initApConts(mm);
@@ -360,6 +388,7 @@ void MiscClosures::init(MemoryManager *mm) {
 
 void MiscClosures::reset() {
   MiscClosures::stg_STOP_closure_addr = NULL;
+  MiscClosures::stg_BLACKHOLE_closure_addr = NULL;
   MiscClosures::stg_UPD_return_pc = NULL;
   MiscClosures::stg_UPD_closure_addr = NULL;
   MiscClosures::stg_IND_info = NULL;

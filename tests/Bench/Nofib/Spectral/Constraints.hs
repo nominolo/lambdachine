@@ -1,4 +1,4 @@
-{-# LANGUAGE NoImplicitPrelude, CPP #-}
+{-# LANGUAGE NoImplicitPrelude, CPP, MagicHash #-}
 {- Andrew Tolmach and Thomas Nordin's contraint solver
 
 	See Proceedings of WAAAPL '99
@@ -237,9 +237,29 @@ bm csp = mapTree fst . lookupCache csp . cacheChecks csp (emptyTable csp)
 emptyTable :: CSP -> Table
 emptyTable CSP{vars=vars,vals=vals} = []:[[Unknown | m <- [1..vals]] | n <- [1..vars]]
 
+mytail :: [a] -> [a]
+mytail (_:xs) = xs
+mytail [] = mytail []
+
+undef = undef
+
+myidx :: [a] -> Int -> a
+xs `myidx` (I# n0)
+  | n0 <# 0# = undef
+  | otherwise = sub xs n0
+     where
+       sub :: [a] -> Int# -> a
+       sub []     _ = undef
+       sub (y:ys) n = if n ==# 0#
+                      then y
+                      else sub ys (n -# 1#)
+
+
+--myidx 
+
 cacheChecks :: CSP -> Table -> Transform State (State, Table)
 cacheChecks csp tbl (Node s cs) =
-  Node (s, tbl) (map (cacheChecks csp (fillTable s csp (tail tbl))) cs)
+  Node (s, tbl) (map (cacheChecks csp (fillTable s csp (mytail tbl))) cs)
 
 fillTable :: State -> CSP -> Table -> Table
 fillTable [] csp tbl = tbl
@@ -254,7 +274,7 @@ lookupCache csp t = mapTree f t
   where f ([], tbl)      = (([], Unknown), tbl)
         f (s@(a:_), tbl) = ((s, cs), tbl) 
 	     where cs = if tableEntry == Unknown then checkComplete csp s else tableEntry
-                   tableEntry = (head tbl)!!(value a-1)
+                   tableEntry = (head tbl) `myidx` (value a-1)
 
 --------------------------------------------
 -- Figure 10. Conflict-directed backjumping.

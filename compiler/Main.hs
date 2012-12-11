@@ -14,7 +14,7 @@ import Lambdachine.Serialise
 import qualified Lambdachine.Options as Cli
 
 import GHC
-import DynFlags ( setPackageName )
+import DynFlags ( setPackageName, updOptLevel )
 import GHC.Paths ( libdir )
 import Outputable
 import MonadUtils ( liftIO )
@@ -34,8 +34,8 @@ main = do
   opts <- Cli.getOptions
   runGhc (Just libdir) $ do
     dflags0 <- getSessionDynFlags
-    let dflags1 = dflags0{ ghcLink = NoLink
-                         , optLevel = Cli.optLevel opts }
+    let dflags1a = dflags0{ ghcLink = NoLink }
+        dflags1 = updOptLevel (Cli.optLevel opts) dflags1a
         dflags2 | Cli.package_name opts /= ""
                 = setPackageName (Cli.package_name opts) dflags1
                 | otherwise = dflags1
@@ -53,7 +53,7 @@ main = do
         putStrLn $ showPpr core_binds
 
       let bcos = generateBytecode s this_mod core_binds data_tycons
-      putStrLn $ pretty bcos
+      -- putStrLn $ pretty bcos
       let !bco_mdl =
             allocRegs (moduleNameString this_mod)
                       (map moduleNameString imports)

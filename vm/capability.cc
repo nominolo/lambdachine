@@ -900,7 +900,20 @@ op_JFUNC: {
   }
 
 op_LOADBH:
+  {
+    DECODE_AD;
+    base[opA] = (Word)MiscClosures::stg_BLACKHOLE_closure_addr;
+    DISPATCH_NEXT;
+  }
+
 op_INITF:
+  {
+    DECODE_BC;
+    Closure *cl = (Closure *)base[opA];
+    cl->setPayload(opC - 1, base[opB]);
+    DISPATCH_NEXT;
+  }
+
 op_KINT:
 op_NEW_INT:
 op_CASE_S:

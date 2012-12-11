@@ -31,6 +31,8 @@ public:
   static Closure *stg_UPD_closure_addr;
   static BcIns *stg_UPD_return_pc;
   static const uint32_t UPD_frame_size = 2;
+
+  static Closure *stg_BLACKHOLE_closure_addr;
   
   static Closure *stg_STOP_closure_addr;
   static InfoTable *stg_IND_info;
@@ -57,6 +59,7 @@ private:
     return (1u << nargs) - 2 + pointerMask;
   }
   static void initStopClosure(MemoryManager &mm);
+  static void initBlackholeClosure(MemoryManager &mm);
   static void initUpdateClosure(MemoryManager &mm);
   static void initIndirectionItbl(MemoryManager &mm);
   static void initPapItbl(MemoryManager *mm);

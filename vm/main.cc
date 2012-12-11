@@ -40,6 +40,10 @@ int main(int argc, char *argv[]) {
 
   for (int i = 0; i < opts->inputCount(); ++i) {
     if (!loader.loadModule(opts->inputModule(i).c_str())) {
+      if (opts->printLoaderState()) {
+        loader.printInfoTables(cout);
+        loader.printClosures(cout);
+      }
       //cerr << "Could not load module: " << opts->inputModule(i) << endl;
       return 1;
     }

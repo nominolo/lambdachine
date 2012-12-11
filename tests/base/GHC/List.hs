@@ -10,9 +10,7 @@ module GHC.List (
    any, all, elem, notElem, lookup,
    concatMap,
    zip, zip3, zipWith, zipWith3, unzip, unzip3,
--- errorEmptyList,
-
-
+   errorEmptyList,
 ) where
 
 import GHC.Prim
@@ -26,7 +24,18 @@ infix  4 `elem`, `notElem`
 
 head                    :: [a] -> a
 head (x:_)              =  x
-head []                 =  undef
+head []                 =  badHead
+
+badHead :: a
+badHead = errorEmptyList "head"
+-- This rule is useful in cases like 
+--      head [y | (x,y) <- ps, x==t]
+{-# RULES
+"head/build"    forall (g::forall b.(a->b->b)->b->b) .
+                head (build g) = g (\x _ -> x) badHead
+"head/augment"  forall xs (g::forall b. (a->b->b) -> b -> b) . 
+                head (augment g xs) = g (\x _ -> x) (head xs)
+ #-}
 
 tail                    :: [a] -> [a]
 tail (_:xs)             =  xs
@@ -96,6 +105,14 @@ scanr1 f (x:xs)         =  f x q : qs
 
 iterate :: (a -> a) -> a -> [a]
 iterate f x =  x : iterate f (f x)
+
+iterateFB :: (a -> b -> b) -> (a -> a) -> a -> b
+iterateFB c f x = x `c` iterateFB c f (f x)
+
+{-# RULES
+"iterate"    [~1] forall f x.   iterate f x = build (\c _n -> iterateFB c f x)
+"iterateFB"  [1]                iterateFB (:) = iterate
+ #-}
 
 repeat :: a -> [a]
 -- The pragma just gives the rules more chance to fire
@@ -307,3 +324,6 @@ unzip3   :: [(a,b,c)] -> ([a],[b],[c])
 {-# INLINE unzip3 #-}
 unzip3   =  foldr (\(a,b,c) ~(as,bs,cs) -> (a:as,b:bs,c:cs))
                   ([],[],[])
+
+errorEmptyList :: String -> a
+errorEmptyList fun = errorEmptyList fun

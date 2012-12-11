@@ -209,6 +209,19 @@ build g = g k []
  where k x xs = x : xs
        {-# NOINLINE k #-}
 
+augment :: forall a. (forall b. (a->b->b) -> b -> b) -> [a] -> [a]
+{-# INLINE [1] augment #-}
+augment g xs = g (:) xs
+
+{-# RULES
+"fold/build"    forall k z (g::forall b. (a->b->b) -> b -> b) . 
+                foldr k z (build g) = g k z
+
+"foldr/augment" forall k z xs (g::forall b. (a->b->b) -> b -> b) . 
+                foldr k z (augment g xs) = g k (foldr k z xs)
+
+"foldr/id"                        foldr (:) [] = \x  -> x
+ #-}
 
 chr :: Int -> Char
 chr i@(I# i#)
@@ -223,6 +236,11 @@ unsafeChr (I# i#) = C# (chr# i#)
 -- | The 'Prelude.fromEnum' method restricted to the type 'Data.Char.Char'.
 ord :: Char -> Int
 ord (C# c#) = I# (ord# c#)
+
+eqString :: String -> String -> Bool
+eqString []       []       = True
+eqString (c1:cs1) (c2:cs2) = c1 == c2 && cs1 `eqString` cs2
+eqString _        _        = False
 
 -- This code is needed for virtually all programs, since it's used for
 -- unpacking the strings of error messages.
