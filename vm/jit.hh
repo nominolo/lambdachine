@@ -360,7 +360,7 @@ inline void Jit::registerFragment(BcIns *startPc, Fragment *F, bool isSideTrace)
   if (!isSideTrace) {
     fragmentMap_[idx] = F->traceId();
   }
-#ifndef NDEBUG
+#if (DEBUG_COMPONENTS & DEBUG_TRACE_CREATION)
   std::cerr << "ADD TRACE " << F->traceId() << " pc=" << startPc;
   if (F->parent_ != NULL) {
     std::cerr << " parent=" << F->parent_->traceId()

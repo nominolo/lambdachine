@@ -876,7 +876,7 @@ op_JFUNC: {
     Fragment *F = jit_.lookupFragment(pc - 1);
     T->sync(pc - 1, base);
     //    traceDebugLastHp = (Word *)heap;
-#ifndef NDEBUG
+#if (DEBUG_COMPONENTS & DEBUG_TRACE_ENTEREXIT)
     cerr << "Entering trace " << F->traceId() << endl;
 #endif
     LC_ASSERT(F->startPc() == pc - 1);

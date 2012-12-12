@@ -1272,7 +1272,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     Fragment *F = lookupFragment(ins);
     while (parent) {
       if (F == parent) {
-#ifndef NDEBUG
+#if (DEBUG_COMPONENTS & DEBUG_TRACE_RECORDER)
         cerr << COL_RED "Loop-back to parent ("
              << parent->traceId() << ") found." COL_RESET "\n";
 #endif
@@ -1369,7 +1369,7 @@ void Jit::finishRecording() {
   }
 
   if (traceType_ != TT_SIDE && !flags_.get(kIsReturnTrace)) {
-#ifndef NDEBUG
+#if (DEBUG_COMPONENTS & DEBUG_TRACE_RECORDER)
     cerr << "Writing JFUNC (isReturn=" << flags_.get(kIsReturnTrace) << ")\n";
 #endif
     *startPc_ = BcIns::ad(BcIns::kJFUNC, 0, tno);
