@@ -41,8 +41,9 @@ heapCheckFail(ExitState *s)
 }
 
 extern "C" void LC_USED
-asmStackOverflow(void) {
+handleStackOverflow(void) {
   fprintf(stderr, "Stack overflow (in JIT)\n");
+  fflush(stderr);
   abort();
 }
 
@@ -50,6 +51,7 @@ asmStackOverflow(void) {
 #define ASM_EXIT  NAME_PREFIX "asmExit"
 #define ASM_TRACE NAME_PREFIX "asmTrace"
 #define ASM_HEAP_OVERFLOW NAME_PREFIX "asmHeapOverflow"
+#define ASM_STACK_OVERFLOW NAME_PREFIX "asmStackOverflow"
 
 #define SAVE_SIZE (80 + 256 * sizeof(Word))
 
@@ -437,6 +439,32 @@ asmHeapBufOverflowDummy(void) {
     "ret\n\t"
 
     : : "i"(SAVE_SIZE + 256));
+}
+
+static void LC_USED
+asmStackOverflowIsImplementedInAssembly(void) {
+  asm volatile(
+    ".globl " ASM_STACK_OVERFLOW "\n"
+    ASM_STACK_OVERFLOW ":\n\t"
+
+    "leaq %c0(%%rsp), %%rax\n\t"
+    /* restore callee saved registers */
+    "movq -8(%%rax),%%rbx\n\t"
+    "movq -16(%%rax),%%r12\n\t"
+    "movq -24(%%rax),%%r13\n\t"
+    "movq -32(%%rax),%%r14\n\t"
+    "movq -40(%%rax),%%r15\n\t"
+
+    /* deallocate the stack used */
+    "addq %0, %%rsp\n\t"
+
+    "call " NAME_PREFIX "handleStackOverflow\n\t"
+
+    /* return to original caller */
+    "pop %%rbp\n\t"
+    "ret\n\t"
+    
+    : : "i"(SAVE_SIZE));
 }
 
 _END_LAMBDACHINE_NAMESPACE
