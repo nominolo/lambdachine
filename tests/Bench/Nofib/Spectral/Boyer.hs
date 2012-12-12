@@ -1,7 +1,43 @@
-
+{-# LANGUAGE NoImplicitPrelude, CPP, MagicHash #-}
+{-
 module Main (main) where
+-}
 
-import System.Environment
+#ifdef BENCH_GHC
+import Prelude
+#else
+module Bench.Nofib.Spectral.Boyer where
+
+import GHC.Base
+import GHC.Num
+import Data.List hiding ( find )
+import Data.Tuple
+#endif
+
+{-
+main = do 
+  (n:_) <- getArgs
+  print (test (read n))
+-}
+
+run n = test1 n
+
+test1 :: Int -> Bool
+test1 n = all test0 xs
+ where xs = take n (repeat (Var X))
+       {-# NOINLINE xs #-}
+
+test = run 5
+
+bench = run 700
+
+error' _ = let x = x in x
+
+#ifdef BENCH_GHC
+main = print bench
+#endif
+
+-- import System.Environment
 
 data Term               = Var Id |
                           Fun Id [Term] [Lemma]
@@ -49,18 +85,18 @@ one_way_unify1 term1 term2@(Var vid2) subst
 one_way_unify1 (Fun f1 as1 _) (Fun f2 as2 _) subst
         | f1 == f2
         = one_way_unify1_lst as1 as2 subst
-one_way_unify1 _ _ _ = (False, error "unify")
+one_way_unify1 _ _ _ = (False, error' "unify")
 
 one_way_unify1_lst [] [] subst = (True, subst)
 one_way_unify1_lst (t1:ts1) (t2:ts2) subst
         = (hd_ok && tl_ok, subst'')
           where (hd_ok, subst')  = one_way_unify1 t1 t2 subst
                 (tl_ok, subst'') = one_way_unify1_lst ts1 ts2 subst'
-one_way_unify1_lst _ _ _ = (False, error "unify_lst")
+one_way_unify1_lst _ _ _ = (False, error' "unify_lst")
 
 
 find :: Id -> Substitution -> (Bool, Term)
-find vid []                   = (False, error "find")
+find vid []                   = (False, error' "find")
 find vid1 ((vid2,val2):bs)    = if vid1 == vid2
                                   then (True, val2)
                                   else find vid1 bs
@@ -113,14 +149,6 @@ falsep (Fun FALSE _ _) _ = True
 falsep x l               = x `elem` l
 
 
-main = do 
-  (n:_) <- getArgs
-  print (test (read n))
-
-test :: Int -> Bool
-test n = all test0 xs
- where xs = take n (repeat (Var X))
-       {-# NOINLINE xs #-}
 
 test0 xxxx = tautp (apply_subst subst0 theorem)
  where
