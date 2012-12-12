@@ -40,6 +40,12 @@ heapCheckFail(ExitState *s)
   return ok;
 }
 
+extern "C" void LC_USED
+asmStackOverflow(void) {
+  fprintf(stderr, "Stack overflow (in JIT)\n");
+  abort();
+}
+
 #define ASM_ENTER NAME_PREFIX "asmEnter"
 #define ASM_EXIT  NAME_PREFIX "asmExit"
 #define ASM_TRACE NAME_PREFIX "asmTrace"

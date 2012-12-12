@@ -1357,6 +1357,15 @@ void Assembler::adjustBase(int32_t relbase) {
   emit_gri(XG_ARITHi(XOg_ADD), RID_BASE | REX_64, relbase * sizeof(Word));
 }
 
+void Assembler::stackCheck(void) {
+  MCode *p = mcp;
+  *(int32_t *)(p - 4) = jmprel(p, (MCode *)(void *)asmStackOverflow);
+  p[-5] = (MCode)(XI_JCCn + (CC_A & 15));
+  p[-6] = 0x0f;
+  mcp = p - 6;
+  emit_rmro(XO_CMP, RID_BASE | REX_64, RID_ESP | REX_64, SPLIM_SP_OFFS);
+}
+
 void Assembler::save(IR *ins) {
   LC_ASSERT(ins->opcode() == IR::kSAVE);
   SnapNo snapno = snapno_;
@@ -1372,6 +1381,7 @@ void Assembler::save(IR *ins) {
   if (relbase != 0) {
     if (relbase > 0) {
       // TODO: Stack check (done after adjusting BASE)
+      stackCheck();
     }
     adjustBase(relbase);
   }

@@ -86,7 +86,7 @@ Capability::interpBranch(BcIns *srcPc, BcIns *dstPc,
         T->sync(dstPc, base);
         ++switch_interp_to_asm;
         asmEnter(F->traceId(), T, (Word *)heap, (Word*)heaplim,
-                 T->stackLimit(), F->entry());
+                 T->stackLimit() - 200, F->entry());
         heap = (char *)traceExitHp_;
         heaplim = (char *)traceExitHpLim_;
 
@@ -883,7 +883,7 @@ op_JFUNC: {
     ++switch_interp_to_asm;
     asmEnter(F->traceId(), T,
              (Word *)heap, (Word *)heaplim,
-             T->stackLimit(), F->entry());
+             T->stackLimit() - 200, F->entry());
     heap = (char *)traceExitHp_;
     heaplim = (char *)traceExitHpLim_;
 

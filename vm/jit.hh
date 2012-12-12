@@ -398,6 +398,7 @@ extern uint64_t record_aborts;
 extern uint64_t record_abort_reasons[AR__MAX];
 
 #define HPLIM_SP_OFFS  0
+#define SPLIM_SP_OFFS  8
 #define SPILL_SP_OFFS  (offsetof(ExitState, spill) - offsetof(ExitState, hplim))
 #define F_ID_OFFS      (offsetof(ExitState, F_id) - offsetof(ExitState, hplim))
 
@@ -407,6 +408,7 @@ extern "C" void asmEnter(TraceId F_id, Thread *T,
 extern "C" void asmExit(int);
 
 extern "C" void asmHeapOverflow(void);
+extern "C" void asmStackOverflow(void);
 extern "C" void asmTrace(void);
 extern "C" void debugTrace(ExitState *);
 

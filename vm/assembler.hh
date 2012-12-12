@@ -538,6 +538,7 @@ public:
   void patchFallthrough(Fragment *parent, ExitNo, Fragment *target);
   void adjustBase(int32_t relbase);
   void insPLOAD(IR *ins);
+  void stackCheck(void);
 
   // Emits code to increment the value of the value at the target
   // address.
