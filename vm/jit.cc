@@ -1287,6 +1287,20 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     }
   }
 
+  case BcIns::kGETTAG: {
+    // WARNING: We currently overspecialise.  The idea is that GETTAG
+    // is usually followed by an integer comparison on the tag.  So we
+    // can specialise on the info-table and just load a static
+    // constant.  This may not be a good idea in other cases.
+    Closure *cl = (Closure *)base[ins->d()];
+    LC_ASSERT(!cl->isIndirection() && cl->isHNF());
+    specialiseOnInfoTable(buf_, buf_.slot(ins->d()), cl);
+    TRef taglit = buf_.literal(IRT_I64, cl->tag() - 1);
+    //    cerr << "nodespec = " << buf_.slot(ins->d()).ref() - REF_BIAS << endl;
+    buf_.setSlot(ins->a(), taglit);
+    break;
+  }
+
   default:
     cerr << "NYI: Recording of " << ins->name() << endl;
     goto abort_recording;
