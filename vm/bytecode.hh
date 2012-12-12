@@ -48,6 +48,7 @@ _START_LAMBDACHINE_NAMESPACE
   _(BROR,    RRR) \
   /* Primops */ \
   _(PTROFSC, RRR) /* indexCharOffAddr# :: Addr# -> Int# -> Char# */ \
+  _(GETTAG,  RR) /* dataToTag# :: a -> Int# */ \
   /* Constants */ \
   _(LOADK,   RN) \
   _(KINT,    RS) \

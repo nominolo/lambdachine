@@ -121,6 +121,7 @@ type CmpOp = BinOp
 
 data PrimOp
   = OpIndexOffAddrChar
+  | OpGetTag
   | OpNegateInt
   | OpBitNot
   | OpBitAnd

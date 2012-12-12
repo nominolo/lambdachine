@@ -153,8 +153,18 @@ const BcIns *BcIns::debugPrint(ostream &out, const BcIns *ins,
     }
     break;
     case kCASE_S:
-      out << "CASE_S\tr" << (int)i.a() << " ...TODO..." << endl;
-      ins += i.d();
+      {
+        uint32_t minmax = ((const uint32_t *)ins)[0];
+        out << "CASE_S\tr" << (int)i.a()
+            << " [" << (minmax & 0xffff) << ".." << (minmax >> 16) << "]\n";
+        uint32_t n = i.d();
+        const uint32_t *alts = (const uint32_t *)ins + 1;
+        ins += 1 + i.d();
+        for (uint32_t j = 0; j < n; ++j) {
+          out << "           " << (alts[j] >> 16) << ": ->";
+          printAddr(out, baseaddr, ins + (alts[j] & 0xffff) + 1) << endl;
+        }
+      }
       break;
     case kALLOC1:
       out << i.name() << "\tr" << (int)i.a() << ", r" << (int)i.b()

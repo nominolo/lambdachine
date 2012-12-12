@@ -914,9 +914,69 @@ op_INITF:
     DISPATCH_NEXT;
   }
 
+op_GETTAG:
+  {
+    DECODE_AD;
+    Closure *cl = (Closure *)base[opC];
+    base[opA] = cl->tag();
+    DISPATCH_NEXT;
+  }
+
+op_CASE_S:
+  // Sparse CASE.  A case with possibly missing tags.
+  //
+  //  +-----------+-----+-----+
+  //  | num_cases |  A  | OPC |
+  //  +-----------+-----+-----+
+  //  | max_tag   |  min_tag  |
+  //  +-----------+-----------+
+  //  | target    |    tag    |  x num_cases
+  //  +-----------+-----------+
+  //  :  default case follows :
+  //  +- - - - - - - - - - - -+
+  //
+  // The (tag, target) items must be in ascending order.  This allows us
+  // to use binary search to find the matching case.
+  //
+  {
+    // Sparse CASE.
+    DECODE_AD;
+    Closure *cl = (Closure *)base[opA];
+    uint32_t tag = cl->tag();
+    uint32_t num_cases = opC;
+    uint32_t minMax = ((uint32_t *)pc)[0];
+    uint32_t min_tag = minMax & 0xffff;
+    uint32_t max_tag = minMax >> 16;
+    // pc[-1].debugPrint(cerr, pc - 1, false, NULL, NULL);
+    // pc[num_cases + 1].debugPrint(cerr, pc + num_cases + 1, false, NULL, NULL);
+    uint32_t offset = 0;
+
+    if (tag >= min_tag && tag <= max_tag) {
+      int32_t istart = 0;
+      int32_t iend = num_cases - 1;
+      int32_t imid = 0;
+      uint32_t *targets = (uint32_t *)pc + 1;
+
+      while (iend - istart >= 0) {
+        imid = istart + ((iend - istart) / 2);
+        uint32_t alt = targets[imid];
+        uint32_t alttag = alt >> 16;
+        if (tag == alttag) {
+          offset = (alt & 0xffff) + 1;
+          break;
+        } else if (tag < alttag) {
+          iend = imid - 1;
+        } else {
+          istart = imid + 1;
+        }
+      }
+    }
+    pc += num_cases + 1 + offset;
+    DISPATCH_NEXT;
+  }
+
 op_KINT:
 op_NEW_INT:
-op_CASE_S:
 op_JRET:
   cerr << "\nERROR: Unimplemented instruction: " << (pc - 1)->name() << endl;
   // not_yet_implemented:

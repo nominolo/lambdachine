@@ -1033,6 +1033,10 @@ TEST_F(RunFileTest, Alloc1) {
   run("Bc.Alloc1");
 }
 
+TEST_F(RunFileTest, SparseCase) {
+  run("Bc.SparseCase");
+}
+
 TEST_F(RunFileTest, EvalThunk) {
   run("Bc.EvalThunk");
 }

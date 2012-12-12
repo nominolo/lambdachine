@@ -1436,6 +1436,7 @@ primOpOther :: Ghc.PrimOp -> Maybe (PrimOp, [OpTy], OpTy)
 primOpOther primop =
   case primop of
     Ghc.IndexOffAddrOp_Char -> Just (OpIndexOffAddrChar, [AddrTy, IntTy], CharTy)
+    Ghc.DataToTagOp -> Just (OpGetTag, [PtrTy], IntTy)
     Ghc.IntNegOp -> Just (OpNegateInt, [IntTy], IntTy)
 
     Ghc.AndOp -> Just (OpBitAnd, [WordTy, WordTy], WordTy)

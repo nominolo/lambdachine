@@ -1005,6 +1005,9 @@ emitLinearIns bit_r lit_ids tgt_labels r ins_id ins = do
     Mid (Assign (BcReg dst _)
         (PrimOp OpIndexOffAddrChar _ty [BcReg ptr _, BcReg ofs _])) ->
       emitInsABC r opc_PTROFSC (i2b dst) (i2b ptr) (i2b ofs)
+    Mid (Assign (BcReg dst _)
+                (PrimOp OpGetTag _ty [BcReg ptr _])) ->
+      emitInsAD r opc_GETTAG (i2b dst) (i2h ptr)
     Mid (Assign (BcReg dst _) (PrimOp OpNegateInt _ty [BcReg src _])) ->
       emitInsAD r opc_NEG (i2b dst) (i2h src)
     Mid (Assign (BcReg dst _) (PrimOp OpBitNot _ty [BcReg src _])) ->
