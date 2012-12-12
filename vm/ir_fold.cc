@@ -301,10 +301,11 @@ IRRef IRBuffer::foldHeapcheck() {
 FOLDF(kfold_eqinfo) {
   Closure *cl = (Closure *)buf->literalValue(fins->op1());
   InfoTable *itbl = (InfoTable *)buf->literalValue(fins->op2());
-  if (cl->info() == itbl)
-    return DROPFOLD;
-  else
-    return FAILFOLD;
+  if (fins->opcode() == IR::kEQINFO) {
+    return (cl->info() == itbl) ? DROPFOLD : FAILFOLD;
+  } else {
+    return (cl->info() != itbl) ? DROPFOLD : FAILFOLD;
+  }
 }
 
 // Constant fold any arithmetic comparison operation.
@@ -351,13 +352,13 @@ FOLDF(kfold_update_new) {
 
 // info(NEW k1 [...]) == k2 ==> k1 == k2
 FOLDF(kfold_eqinfo_new) {
-  fins->setOpcode(IR::kEQ);
+  fins->setOpcode(fins->opcode() == IR::kEQINFO ? IR::kEQ : IR::kNE);
 
   IRBuffer::HeapEntry entry = buf->getHeapEntry(fins->op1());
   LC_ASSERT(entry != IRBuffer::kInvalidHeapEntry);
   IRRef ind = buf->isIndirection(entry);
   if (ind)
-    // fleft has been updated
+    // fleft has been updated, info table is stg_IND`info
     fins->setOp1(REF_IND);
   else
     // fleft is NEW instruction.
@@ -454,6 +455,7 @@ retry:
     PATTERN(NEW, any, kfold_update_new);
     break;
   case IR::kEQINFO:
+  case IR::kNEINFO:
     // Info table guard on a static closure.
     PATTERN(lit, lit, kfold_eqinfo);
     // info(NEW k1 [...]) == k2 ==> k1 == k2

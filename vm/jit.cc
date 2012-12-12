@@ -1248,6 +1248,13 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     break;
   }
 
+  case BcIns::kCASE_S:
+    // TODO: It is quite common to have only one alternative for
+    // sparse cases.  In that case we really have just a binary branch
+    // and it would be easier to generate a NEINFO guard.  I.e., we
+    // only care whether it's the case mentioned in the CASE_S or any
+    // other.  Unfortunately, that requires a mechanism to get an info
+    // table from a tag, which we don't have yet.
   case BcIns::kCASE: {
     Closure *cl = (Closure *)base[ins->a()];
     TRef clos = buf_.slot(ins->a());

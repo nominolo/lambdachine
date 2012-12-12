@@ -525,7 +525,7 @@ public:
   void divmod(IR *ins, DivModOp op, bool useSigned);
 
   /// Generate code for the given instruction.
-  void itblGuard(IR *ins);
+  void itblGuard(IR *ins, bool inverted);
   void fieldLoad(IR *ins);
   inline void adjustHeapPointer(int32_t bytes);
   void heapCheck(IR *ins);

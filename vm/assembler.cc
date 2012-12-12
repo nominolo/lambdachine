@@ -1036,7 +1036,7 @@ void Assembler::emitSLOAD(IR *ins) {
   load_u64(dst, base, ofs);
 }
 
-void Assembler::itblGuard(IR *ins) {
+void Assembler::itblGuard(IR *ins, bool inverted) {
   // Emit a guard for an info table. On x86 `EQINFO x kinfo` compiles
   // to the following two instructions:
   //
@@ -1049,7 +1049,7 @@ void Assembler::itblGuard(IR *ins) {
   Reg closreg = alloc1(closref, kGPR);
   int32_t imm = 0;
 
-  guardcc(CC_NE);
+  guardcc(inverted ? CC_E : CC_NE);
   LC_ASSERT(closreg != RID_ESP && closreg != RID_EBP);
 
   if (is32BitLiteral(itblref, &imm)) {
@@ -1297,7 +1297,8 @@ void Assembler::emit(IR *ins) {
     break;
   }
   case IR::kEQINFO:
-    itblGuard(ins);
+  case IR::kNEINFO:
+    itblGuard(ins, ins->opcode() == IR::kNEINFO);
     break;
   case IR::kHEAPCHK:
     heapCheck(ins);
