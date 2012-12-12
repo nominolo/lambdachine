@@ -1037,6 +1037,10 @@ TEST_F(RunFileTest, SparseCase) {
   run("Bc.SparseCase");
 }
 
+TEST_F(RunFileTest, JitGetTag) {
+  run("Bc.JitGetTag");
+}
+
 TEST_F(RunFileTest, EvalThunk) {
   run("Bc.EvalThunk");
 }

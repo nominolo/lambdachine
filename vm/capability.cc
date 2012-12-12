@@ -918,7 +918,7 @@ op_GETTAG:
   {
     DECODE_AD;
     Closure *cl = (Closure *)base[opC];
-    base[opA] = cl->tag();
+    base[opA] = cl->tag() - 1;
     DISPATCH_NEXT;
   }
 
