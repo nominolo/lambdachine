@@ -994,7 +994,10 @@ emitLinearIns bit_r lit_ids tgt_labels r ins_id ins = do
       assert (length args - 1 <= cMAX_CALL_ARGS) $ do
       -- the pointer mask excludes the first argument (because it's
       -- always a pointer)
-      let [ptrs] = bitsToWord32s (map isPtrReg (tail args))
+      let ps = bitsToWord32s (map isPtrReg (tail args))
+      let [ptrs] | [] <- ps  = trace "Warning: alloc-ap with no arguments"
+                                     [0::Word32]  -- TODO: seems dodgy
+                 | otherwise = ps
       emitInsABC r opc_ALLOCAP (i2b d) (fromIntegral ptrs) (i2b (length args - 1))
       emitArgs r args
       emitBitSets bit_r lives r

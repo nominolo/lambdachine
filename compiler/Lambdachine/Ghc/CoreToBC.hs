@@ -1534,14 +1534,29 @@ viewGhcApp expr = {- tracePpr expr $ -} go expr []
      in {- tracePpr (r, Ghc.varType r) -} r
 
    adjustTy :: Ghc.Type -> [CoreArg] -> Ghc.Type
+--   adjustTy ty args
+--     | trace ("adjustTy " ++ showPpr ty ++ " ; " ++ showPpr args) False = undefined
    adjustTy ty [] = ty
    adjustTy ty (Type a:as) =
      -- ty must be a forall 
      let Just (_tyvar, res) = Ghc.splitForAllTy_maybe ty in
      adjustTy (Ghc.applyTy ty a) as
-   adjustTy ty (a:as) =  -- at this stage 'a' must be a variable
+   adjustTy ty (a:as) =
+     case Ghc.splitFunTy_maybe ty of
+       Just (arg, res) -> Ghc.mkFunTy arg $! adjustTy res as
+       Nothing  -- it may be a newtype
+         | Just (tycon, tyargs) <- Ghc.splitTyConApp_maybe ty
+         -> case Ghc.unwrapNewTyCon_maybe tycon of
+              Just (_tyvars, rhs, _opt_coercion) ->
+                adjustTy rhs (a:as)
+              Nothing ->
+                error $ "adjustTy: Could not look through tycon:" ++ showPpr ty
+     
+   adjustTy ty0 (a:as) =  -- at this stage 'a' must be a variable
+     let ty = fromMaybe ty0 (Ghc.coreView ty0) in
+     trace (showPpr ty0 ++ " -coreView-> " ++ showPpr (Ghc.coreView ty0)) $
      -- ty must be a FunType of some sort
-     let Just (arg, res) = Ghc.splitFunTy_maybe ty in
+     let Just (arg, res) = Ghc.splitFunTy_maybe (trace (showPpr ty) ty) in
      Ghc.mkFunTy arg $! adjustTy res as
 
   -- f @ a @ b x y z ==
