@@ -280,3 +280,8 @@ zeroInt, oneInt, twoInt, maxInt, minInt :: Int
 zeroInt = I# 0#
 oneInt  = I# 1#
 twoInt  = I# 2#
+
+-- | @'until' p f@ yields the result of applying @f@ until @p@ holds.
+until                   :: (a -> Bool) -> (a -> a) -> a -> a
+until p f x | p x       =  x
+            | otherwise =  until p f (f x)

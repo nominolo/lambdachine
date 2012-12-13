@@ -59,3 +59,9 @@ instance  Num Int  where
 
     {-# INLINE fromInteger #-}	 -- Just to be sure!
     fromInteger i = I# (toInt# i)
+
+quotRemInt :: Int -> Int -> (Int, Int)
+quotRemInt a@(I# _) b@(I# _) = (a `quotInt` b, a `remInt` b)
+
+divModInt ::  Int -> Int -> (Int, Int)
+divModInt x@(I# _) y@(I# _) = (x `divInt` y, x `modInt` y)
