@@ -504,7 +504,10 @@ Reg Assembler::destReg(IR *ins, RegSet allow) {
   RA_DBGX((this, "dest           $r", dest));
   if (LC_UNLIKELY(ins->spill() != 0)) {
     saveReg(ins, dest);
-    spills_.free(ins->spill());
+    // TODO: A more sophisticated scheme might be able to safely reuse
+    // spill slots, but this is wrong:
+    // 
+    //     spills_.free(ins->spill());
   }
   return dest;
 }
