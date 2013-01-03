@@ -380,3 +380,108 @@ efdtIntDnFB c n x1 x2 y    -- Be careful about underflow!
                            | otherwise = I# x `c` go_dn (x +# delta)
                in I# x1 `c` go_dn x2
 
+
+instance  Enum Char  where
+    succ (C# c#)
+       | not (ord# c# ==# 0x10FFFF#) = C# (chr# (ord# c# +# 1#))
+       | otherwise              = error ("Prelude.Enum.Char.succ: bad argument")
+    pred (C# c#)
+       | not (ord# c# ==# 0#)   = C# (chr# (ord# c# -# 1#))
+       | otherwise              = error ("Prelude.Enum.Char.pred: bad argument")
+
+    toEnum   = chr
+    fromEnum = ord
+
+    {-# INLINE enumFrom #-}
+    enumFrom (C# x) = eftChar (ord# x) 0x10FFFF#
+        -- Blarg: technically I guess enumFrom isn't strict!
+
+    {-# INLINE enumFromTo #-}
+    enumFromTo (C# x) (C# y) = eftChar (ord# x) (ord# y)
+    
+    {-# INLINE enumFromThen #-}
+    enumFromThen (C# x1) (C# x2) = efdChar (ord# x1) (ord# x2)
+    
+    {-# INLINE enumFromThenTo #-}
+    enumFromThenTo (C# x1) (C# x2) (C# y) = efdtChar (ord# x1) (ord# x2) (ord# y)
+
+{-# RULES
+"eftChar"       [~1] forall x y.        eftChar x y       = build (\c n -> eftCharFB c n x y)
+"efdChar"       [~1] forall x1 x2.      efdChar x1 x2     = build (\ c n -> efdCharFB c n x1 x2)
+"efdtChar"      [~1] forall x1 x2 l.    efdtChar x1 x2 l  = build (\ c n -> efdtCharFB c n x1 x2 l)
+"eftCharList"   [1]  eftCharFB  (:) [] = eftChar
+"efdCharList"   [1]  efdCharFB  (:) [] = efdChar
+"efdtCharList"  [1]  efdtCharFB (:) [] = efdtChar
+ #-}
+-- We can do better than for Ints because we don't
+-- have hassles about arithmetic overflow at maxBound
+{-# INLINE [0] eftCharFB #-}
+eftCharFB :: (Char -> a -> a) -> a -> Int# -> Int# -> a
+eftCharFB c n x0 y = go x0
+                 where
+                    go x | x ># y    = n
+                         | otherwise = C# (chr# x) `c` go (x +# 1#)
+
+eftChar :: Int# -> Int# -> String
+eftChar x y | x ># y    = []
+            | otherwise = C# (chr# x) : eftChar (x +# 1#) y
+
+
+-- For enumFromThenTo we give up on inlining
+{-# NOINLINE [0] efdCharFB #-}
+efdCharFB :: (Char -> a -> a) -> a -> Int# -> Int# -> a
+efdCharFB c n x1 x2
+  | delta >=# 0# = go_up_char_fb c n x1 delta 0x10FFFF#
+  | otherwise    = go_dn_char_fb c n x1 delta 0#
+  where
+    !delta = x2 -# x1
+
+efdChar :: Int# -> Int# -> String
+efdChar x1 x2
+  | delta >=# 0# = go_up_char_list x1 delta 0x10FFFF#
+  | otherwise    = go_dn_char_list x1 delta 0#
+  where
+    !delta = x2 -# x1
+
+{-# NOINLINE [0] efdtCharFB #-}
+efdtCharFB :: (Char -> a -> a) -> a -> Int# -> Int# -> Int# -> a
+efdtCharFB c n x1 x2 lim
+  | delta >=# 0# = go_up_char_fb c n x1 delta lim
+  | otherwise    = go_dn_char_fb c n x1 delta lim
+  where
+    !delta = x2 -# x1
+
+efdtChar :: Int# -> Int# -> Int# -> String
+efdtChar x1 x2 lim
+  | delta >=# 0# = go_up_char_list x1 delta lim
+  | otherwise    = go_dn_char_list x1 delta lim
+  where
+    !delta = x2 -# x1
+
+go_up_char_fb :: (Char -> a -> a) -> a -> Int# -> Int# -> Int# -> a
+go_up_char_fb c n x0 delta lim
+  = go_up x0
+  where
+    go_up x | x ># lim  = n
+            | otherwise = C# (chr# x) `c` go_up (x +# delta)
+
+go_dn_char_fb :: (Char -> a -> a) -> a -> Int# -> Int# -> Int# -> a
+go_dn_char_fb c n x0 delta lim
+  = go_dn x0
+  where
+    go_dn x | x <# lim  = n
+            | otherwise = C# (chr# x) `c` go_dn (x +# delta)
+
+go_up_char_list :: Int# -> Int# -> Int# -> String
+go_up_char_list x0 delta lim
+  = go_up x0
+  where
+    go_up x | x ># lim  = []
+            | otherwise = C# (chr# x) : go_up (x +# delta)
+
+go_dn_char_list :: Int# -> Int# -> Int# -> String
+go_dn_char_list x0 delta lim
+  = go_dn x0
+  where
+    go_dn x | x <# lim  = []
+            | otherwise = C# (chr# x) : go_dn (x +# delta)

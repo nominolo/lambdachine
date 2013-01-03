@@ -31,15 +31,15 @@ class  Eq a  where
 deriving instance Eq ()
 deriving instance (Eq  a, Eq  b) => Eq  (a, b)
 deriving instance (Eq  a, Eq  b, Eq  c) => Eq  (a, b, c)
-deriving instance (Eq  a, Eq  b, Eq  c, Eq  d) => Eq  (a, b, c, d)
-deriving instance (Eq  a, Eq  b, Eq  c, Eq  d, Eq  e) => Eq  (a, b, c, d, e)
-deriving instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f)
-               => Eq (a, b, c, d, e, f)
-deriving instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f, Eq g)
-               => Eq (a, b, c, d, e, f, g)
-deriving instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f, Eq g,
-                   Eq h)
-               => Eq (a, b, c, d, e, f, g, h)
+-- deriving instance (Eq  a, Eq  b, Eq  c, Eq  d) => Eq  (a, b, c, d)
+-- deriving instance (Eq  a, Eq  b, Eq  c, Eq  d, Eq  e) => Eq  (a, b, c, d, e)
+-- deriving instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f)
+--                => Eq (a, b, c, d, e, f)
+-- deriving instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f, Eq g)
+--                => Eq (a, b, c, d, e, f, g)
+-- deriving instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f, Eq g,
+--                    Eq h)
+--                => Eq (a, b, c, d, e, f, g, h)
 
 instance Eq a => Eq [a] where
     {-# SPECIALISE instance Eq [Char] #-}
@@ -97,6 +97,12 @@ instance (Ord a) => Ord [a] where
 
 deriving instance Ord Bool
 deriving instance Ord Ordering
+
+deriving instance Ord ()
+deriving instance (Ord a, Ord b) => Ord (a, b)
+deriving instance (Ord a, Ord b, Ord c) => Ord (a, b, c)
+-- deriving instance (Ord a, Ord b, Ord c, Ord d) => Ord (a, b, c, d)
+
 
 -- We don't use deriving for Ord Char, because for Ord the derived
 -- instance defines only compare, which takes two primops.  Then
