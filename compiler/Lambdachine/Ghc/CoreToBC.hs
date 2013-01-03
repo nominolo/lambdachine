@@ -347,6 +347,14 @@ build_bind_code fwd_env env fvi closures locs0 = do
      let locs2 = updateLoc locs1 x (InVar r)
      go (bcis <*> bcis1 <*> add_fw_refs x r locs2) locs2 (fvs `mappend` fvs1) objs
 
+   -- r = r2
+   go bcis locs0 fvs ((x, AppObj f []) : objs) = do
+     (bcis1, locs1, fvs1, [fvar]) <- transArgs [Ghc.Var f] env fvi locs0
+     xvar <- mbFreshLocal (Ghc.repType (Ghc.varType x)) Nothing
+     let bcis2 = bcis <*> insMove xvar fvar
+         locs2 = updateLoc locs1 x (InVar xvar)
+     go bcis2 locs2 (fvs `mappend` fvs1) objs
+ 
    -- r = allocap f(a1,...,aN)
    go bcis locs0 fvs ((x, AppObj f args) : objs) = do
      (bcis1, locs1, fvs1, (freg:regs))
@@ -1241,7 +1249,7 @@ transCase scrut bndr alt_ty alts env0 fvi locs0 ctxt = do
               `catGraphsC` inss,
               locs1, fvs0 `mappend` fvs1, Nothing)
     BindC mr -> do -- close inss' first
-      error "UNTESTED"
+      -- error "UNTESTED"
       r1 <- mbFreshLocal alt_ty mr
       (alts, inss, fvs1) <- transCaseAlts alts r env fvi locs2 (BindC (Just r1))
       let bcis' =
