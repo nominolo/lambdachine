@@ -924,8 +924,11 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     for (int i = 0; i < direct_args; ++i)
       args[i] = buf_.slot(i);
 
-    uint32_t call_info = (uint32_t)ins->c() | ((uint32_t)ins->b() << 8);
-    if (!recordGenericApply2(call_info, base, buf_.slot(ins->a()), clos, args, NULL))
+    TRef node_ref = buf_.slot(ins->a());
+    uint32_t ptr_mask = *(uint32_t *)(ins + 1);
+
+    uint32_t call_info = (uint32_t)ins->c() | (ptr_mask << 8);
+    if (!recordGenericApply2(call_info, base, node_ref, clos, args, NULL))
       goto abort_recording;
 
     /*
@@ -955,20 +958,22 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
       clos = followIndirection(buf_, ins->a(), clos);
     }
 
+    TRef fnode_ref = buf_.slot(ins->a());
+
     TRef args[32];
     LC_ASSERT(nargs < 32);
+    uint32_t ptr_mask = *(uint32_t *)(ins + 1);
+    ++ins;
     
     uint8_t *arg = (uint8_t *)(ins + 1);
     for (int i = 0; i < nargs; ++i, ++arg) {
       args[i] = buf_.slot(*arg);
     }
 
-    TRef fnode_ref = buf_.slot(ins->a());
-
     // See interpreter implementation for details.
     BcIns *returnPc = ins + 1 + BC_ROUND(nargs) + 1;
 
-    uint32_t call_info = (uint32_t)nargs | ((uint32_t)ins->b() << 8);
+    uint32_t call_info = (uint32_t)nargs | (ptr_mask << 8);
     if (!recordGenericApply2(call_info, base, fnode_ref, clos, args, returnPc))
       goto abort_recording;
 

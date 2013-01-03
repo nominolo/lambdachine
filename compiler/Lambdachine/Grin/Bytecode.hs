@@ -1,7 +1,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, BangPatterns #-}
 {-# LANGUAGE GADTs, TypeFamilies, ScopedTypeVariables, RankNTypes #-}
 {-# LANGUAGE TypeSynonymInstances, FlexibleContexts, MultiParamTypeClasses,
-             FlexibleInstances #-}
+             FlexibleInstances, CPP #-}
 module Lambdachine.Grin.Bytecode
   ( module Lambdachine.Grin.Bytecode,
     (<*>), (|*><*|), O, C, emptyGraph, catGraphs, MaybeO(..),
@@ -27,6 +27,8 @@ import Data.Generics.Uniplate.Direct
 import Data.Bits ( (.&.) )
 import qualified Data.Vector as V
 import Data.Binary
+
+#include "../../Opcodes.h"
 
 instance Show Ghc.Type where show = Ghc.showSDoc . Ghc.ppr
 
@@ -410,7 +412,10 @@ insLoadBlackhole :: BcVar -> BcGraph O O
 insLoadBlackhole r = mkMiddle $ Assign r (Load LoadBlackhole)
 
 insMkAp :: BcVar -> [BcVar] -> BcGraph O O
-insMkAp r args = mkMiddle $ Assign r (AllocAp args S.empty)
+insMkAp r args 
+ | length args > cMAX_CALL_ARGS + 1 = error "Too many arguments to ALLOCAP"
+ | otherwise
+ = mkMiddle $ Assign r (AllocAp args S.empty)
 
 insMove :: BcVar -> BcVar -> BcGraph O O
 insMove dst src = mkMiddle $ Assign dst (Move src)
@@ -449,7 +454,11 @@ insGoto :: BlockId -> BcGraph O C
 insGoto l = mkLast $ Goto l
 
 insCall :: Maybe (BcVar, BlockId) -> BcVar -> [BcVar] -> BcGraph O C
-insCall kont f args = mkLast $ Call kont' f args
+insCall kont f args 
+  | length args > cMAX_CALL_ARGS
+  = error $ "Too many arguments to CALL/CALLT (" ++ show (length args) ++ ")"
+  | otherwise
+  = mkLast $ Call kont' f args
   where kont' = do (x, l) <- kont
                    return (x, l, S.empty)
 

@@ -1,4 +1,4 @@
-{-# LANGUAGE ViewPatterns, GADTs, ScopedTypeVariables #-}
+{-# LANGUAGE ViewPatterns, GADTs, ScopedTypeVariables, CPP #-}
 {-# LANGUAGE PatternGuards, GeneralizedNewtypeDeriving #-}
 {-| Generate bytecode from GHC Core.
 
@@ -90,6 +90,8 @@ import Data.Monoid
 import Data.Maybe ( fromMaybe )
 
 import Debug.Trace
+
+#include "../../Opcodes.h"
 
 ----------------------------------------------------------------------
 -- * Debug Utils:
@@ -917,6 +919,9 @@ transApp :: CoreBndr -> [CoreArg] -> LocalEnv -> FreeVarsIndex
          -> Trans (Bcis x, KnownLocs, FreeVars, Maybe BcVar)
 transApp f [] env fvi locs ctxt = transBody (Ghc.Var f) env fvi locs ctxt
 transApp f args env fvi locs0 ctxt
+  | length args > cMAX_CALL_ARGS
+  = error $ "Call with too many args: " ++ showPpr f ++ " (" ++
+            show (length args) ++ ")"
   | Just p <- isGhcPrimOpId f
   = do (is0, locs1, fvs, regs) <- transArgs args env fvi locs0
        case () of

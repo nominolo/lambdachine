@@ -202,7 +202,7 @@ void MiscClosures::buildApCont(MemoryManager *mm, ApContInfo *out,
 
   info->code_.framesize = nargs + 1;
   info->code_.arity = 1;
-  info->code_.sizecode = 5;
+  info->code_.sizecode = 5 + 1;
   info->code_.sizelits = 0;
   info->code_.sizebitmaps = bitmapSize(pointerMask) + bitmapSize(livemask);
 
@@ -229,7 +229,8 @@ void MiscClosures::buildApCont(MemoryManager *mm, ApContInfo *out,
   code[1] = BcIns::ad(BcIns::kEVAL, nargs, 0); // never executed
   code[2] = BcIns::bitmapOffset(byteOffset32(&code[2], bitmasks));
   code[3] = BcIns::ad(BcIns::kMOV_RES, nargs, 0);
-  code[4] = BcIns::abc(BcIns::kCALLT, nargs, pointerMask, nargs);
+  code[4] = BcIns::abc(BcIns::kCALLT, nargs, 0xff, nargs);
+  code[5] = BcIns::pointerInfo(pointerMask);
 
   bitmasks += encodeBitmask(bitmasks, pointerMask);
   bitmasks += encodeBitmask(bitmasks, livemask);
@@ -324,7 +325,7 @@ InfoTable *MiscClosures::buildApInfo(MemoryManager *mm, u4 nargs, u4 pointerMask
 
   info->code_.framesize = 1 + nargs;
   info->code_.arity = 0;
-  info->code_.sizecode = 3 + nargs;
+  info->code_.sizecode = 3 + nargs + 1;
   info->code_.sizelits = 0;
   info->code_.sizebitmaps = 0;
   info->code_.lits = NULL;
@@ -343,7 +344,8 @@ InfoTable *MiscClosures::buildApInfo(MemoryManager *mm, u4 nargs, u4 pointerMask
     code[2 + i] = BcIns::ad(BcIns::kLOADFV, i, i + 2);
   }
 
-  code[2 + nargs] = BcIns::abc(BcIns::kCALLT, nargs, pointerMask, nargs);
+  code[2 + nargs] = BcIns::abc(BcIns::kCALLT, nargs, 0xff, nargs);
+  code[3 + nargs] = BcIns::pointerInfo(pointerMask);
 
   return info;
 }

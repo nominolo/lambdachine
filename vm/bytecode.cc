@@ -197,10 +197,11 @@ const BcIns *BcIns::debugPrint(ostream &out, const BcIns *ins,
     }
     break;
     case kCALL: {
+      u4 ptrmask = *(u4 *)ins;
+      ++ins;
       u1 *arg = (u1 *)ins;
       ins += BC_ROUND(i.c()) + 1;
       out << "CALL\tr" << (int)i.a();
-      u1 ptrmask = i.b();
       char comma = '(';
       for (u4 j = 0; j < i.c(); j++, arg++) {
         out << comma << "r" << (int)*arg;
@@ -213,7 +214,8 @@ const BcIns *BcIns::debugPrint(ostream &out, const BcIns *ins,
     }
     break;
     case kCALLT: {
-      u1 bitmask = i.b();
+      u4 bitmask = *(u4 *)ins;
+      ++ins;
       out << "CALLT r" << (int)i.a();
       char comma = '(';
       for (u4 j = 0; j < i.c(); j++) {

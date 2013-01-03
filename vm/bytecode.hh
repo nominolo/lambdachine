@@ -104,7 +104,7 @@ class BcIns {
   BcIns() : raw_(kSTOP) {}
   
   static const int32_t kBranchBias = 0x8000;
-  static const u4 kMaxCallArgs = 8;
+  static const u4 kMaxCallArgs = 13;
 
   typedef enum {
 #define DEF_BCINS_OPCODE(ins,format) k##ins,
@@ -160,6 +160,10 @@ class BcIns {
 
   static inline BcIns bitmapOffset(int32_t n) {
     return BcIns(static_cast<uint32_t>(n));
+  }
+
+  static inline BcIns pointerInfo(uint32_t n) {
+    return BcIns(n);
   }
 
   static inline BcIns args(uint8_t arg1, uint8_t arg2, uint8_t arg3,

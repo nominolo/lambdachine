@@ -562,6 +562,7 @@ op_ALLOCAP:
     u4 pointerMask = opB;
     const u1 *args = (const u1 *)pc;
     LC_ASSERT(nargs > 0);
+    LC_ASSERT(nargs <= BcIns::kMaxCallArgs);
 
     Closure *cl = (Closure *)heap;
     BUMP_HEAP(nargs + 1);
@@ -714,7 +715,8 @@ op_CALL: {
     // following bytes: argument regs, bitmask
     DECODE_BC;
     u4 callargs = opC;
-    u4 pointer_mask = opB;
+    u4 pointer_mask = *((const uint32_t *)pc);
+    ++pc;
     u4 nargs;
     Closure *fnode;
     Word *top;
@@ -730,7 +732,7 @@ op_CALL: {
 
     LC_ASSERT(fnode != NULL);
     LC_ASSERT(mm_->looksLikeClosure(fnode));
-    LC_ASSERT(callargs < BcIns::kMaxCallArgs);
+    LC_ASSERT(callargs <= BcIns::kMaxCallArgs);
     LC_ASSERT(fnode->info()->type() == FUN ||
               fnode->info()->type() == CAF ||
               fnode->info()->type() == THUNK ||
@@ -767,7 +769,9 @@ op_CALLT: {
     // opC = no of args
     // opB = argument pointer mask
     u4 callargs = opC; // arguments from this call
-    u4 pointer_mask = opB; // pointer mask for callargs
+    u4 pointer_mask = *((const uint32_t *)pc);
+    ++pc;
+
     u4 nargs = callargs; // arguments including PAP arguments
     //    recordEvent(EV_CALL, callargs);
     Closure *fnode;
@@ -779,7 +783,7 @@ op_CALLT: {
 
     LC_ASSERT(fnode != NULL);
     LC_ASSERT(mm_->looksLikeClosure(fnode));
-    LC_ASSERT(callargs < BcIns::kMaxCallArgs);
+    LC_ASSERT(callargs <= BcIns::kMaxCallArgs);
 
     while (fnode->isIndirection()) {
       fnode = (Closure *)fnode->payload(0);

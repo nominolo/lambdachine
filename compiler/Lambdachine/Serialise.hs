@@ -391,8 +391,8 @@ insLength' ins = case ins of
   Lst (Ret1 _) -> 1
   Lst (RetN _) -> 1
   Lst (Eval _ _ _) -> 3
-  Lst (Call Nothing _ (_:args)) -> 1
-  Lst (Call (Just _) _ (_:args)) -> 3 + arg_len args
+  Lst (Call Nothing _ (_:args)) -> 1 + 1
+  Lst (Call (Just _) _ (_:args)) -> 3 + arg_len args + 1
   Lst (CondBranch _ _ _ _ _ _) -> 2
   Lst (Goto _) -> 1
   Lst Update -> 1
@@ -940,11 +940,13 @@ emitLinearIns bit_r lit_ids tgt_labels r ins_id ins = do
       assert (length args <= cMAX_CALL_ARGS) $ do
       assert (args == map (\n -> BcReg n VoidTy) [0 .. length args - 1]) $ do
       let [ptrs] = bitsToWord32s (map isPtrReg args)
-      emitInsABC r opc_CALLT (i2b f) (fromIntegral ptrs) (i2b (length args))
+      emitInsABC r opc_CALLT (i2b f) 0xff (i2b (length args))
+      emitWord32be r ptrs
       --emitBitSets bit_r (S.fromList args) r
     Lst (Call (Just (BcReg rslt _, _, lives)) (BcReg f _) args)      -> do
         let [ptrs] = bitsToWord32s (map isPtrReg args)
-        emitInsABC r opc_CALL (i2b f) (fromIntegral ptrs) (i2b $ length args)
+        emitInsABC r opc_CALL (i2b f) 0xff (i2b $ length args)
+        emitWord32be r ptrs
         emitArgs r args
         emitBitSets bit_r (S.delete (BcReg rslt VoidTy) lives) r
         emitInsAD r opc_MOV_RES (i2b rslt) 0
