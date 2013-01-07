@@ -122,7 +122,7 @@ int main(int argc, char *argv[]) {
   printf("  Interpreter->MCode Switches         %" FMT_Word64
          " (%5.1f per MUT second)\n\n",
          switch_interp_to_asm,
-         (double)switch_interp_to_asm / ((double)run_time / 1000000000));
+         (double)switch_interp_to_asm / ((double)mut_time / 1000000000));
 
   MachineCode *mcode = cap.jit()->mcode();
   char buf[50];
