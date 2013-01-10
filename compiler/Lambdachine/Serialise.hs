@@ -1076,16 +1076,20 @@ emitArgs rgn regs_ =
 
 emitCase :: R.Region -> CaseType -> BcVar -> [(BcTag, a, Int)]
          -> TargetLabels -> Build ()
-emitCase r casetype (BcReg reg _) alts0 tgt_labels = do
+emitCase r casetype (BcReg reg regty) alts0 tgt_labels = do
   post_case_label <- liftBuildM R.makeLabel
+  impossible_label <- liftBuildM R.makeLabel
   -- Address offsets in a case are relative to the *end* of the CASE
   -- instruction.  We place post_case_label right after the CASE to
   -- calculate such offsets.
   case enc of
     UseDenseCase n -> do
       emitInsAD r opc_CASE (i2b reg) (fromIntegral n)
-      emitDenseAlts n post_case_label dflt
+      emitDenseAlts n post_case_label impossible_label dflt
       liftBuildM $ R.placeLabel r post_case_label
+      when (has_impossible_case n) $ do
+        liftBuildM $ R.placeLabel r impossible_label
+        emitInsAD r opc_STOP 1 1
 
     UseSparseCase -> do
       emitInsAD r opc_CASE_S (i2b reg) (fromIntegral (length alts))
@@ -1095,31 +1099,64 @@ emitCase r casetype (BcReg reg _) alts0 tgt_labels = do
       liftBuildM $ R.placeLabel r post_case_label
  where
    (dflt, alts, enc, len) = viewCaseAlts casetype alts0
+ 
+   -- Sometimes GHC generates CASEs that are not exhaustive. It does
+   -- so if it can prove that the missing cases are impossible (e.g.,
+   -- due to a prior CASE expression).  To protect against
+   -- implementation bugs we explicitly stop the program if any of
+   -- these cases are hit at runtime.  For example, if we have type
+   --
+   --     data T = A | B | C
+   --
+   -- and an expression:
+   --
+   --     case (x :: T) of B -> ...body...
+   --
+   -- then we translate this into the instruction:
+   -- 
+   --     EVAL x
+   --     CASE x [1..3]
+   --       1: ->L1
+   --       2: ->L2
+   --       3: ->L1
+   --     L1: STOP (with error)
+   --     L2: ...body...
+   --
+   has_impossible_case nalts =
+     dflt == Nothing && length alts /= nalts
 
    emitBranchToDefault Nothing = return ()
    emitBranchToDefault (Just lbl) =
      emitInsAJ r opc_JMP 0 (tgt_labels IM.! lbl)
 
-   dense_targets nalts dflt_tgt alts = collect [1..nalts] alts
+   dense_targets :: Int -> Maybe Int -> [(BcTag, a, Int)] -> [Maybe Int]
+   dense_targets nalts mb_dflt_tgt alts = collect [1..nalts] alts
      where
        collect [] [] = []
        collect [] ((Tag t, _, _):_) =
          error $ "emitCase: Tag " ++ show t ++ " not in range 1.." ++ show nalts
        collect (tag:tags) ((Tag tag', _, tgt):alts)
-         | tag == tag' = tgt : collect tags alts
-       collect (tag:tags) alts = dflt_tgt : collect tags alts
+         | tag == tag' = Just tgt : collect tags alts
+       collect (tag:tags) alts = mb_dflt_tgt : collect tags alts
 
    -- Tags that don't occur in the case alternatives just point to
    -- the default branch
-   emitDenseAlts nalts post_case_label dflt_label =
-     let dflt_target = fromMaybe missing_default dflt_label in
-     let targets = dense_targets nalts dflt_target alts in
+   emitDenseAlts :: Int -> R.Label -> R.Label -> Maybe Int -> Build ()
+   emitDenseAlts nalts post_case_label impossible_label dflt_label =
+     -- let dflt_target = fromMaybe missing_default dflt_label in
+     let targets = dense_targets nalts dflt_label alts in
      --trace (show targets) $
      mapMWord16s $
-       map (liftBuildM . dense_case_offset . (tgt_labels IM.!)) $ targets
+       map (liftBuildM . dense_case_offset) $ targets
     where
-      missing_default = error $ "No default target in non-exhaustive case"
-      dense_case_offset = R.offset' R.S2 R.BE (`shiftR` 2) r post_case_label 
+      missing_default = error $ "No default target in non-exhaustive case: " ++
+                          show ([ (x, y) | (x,_,y) <- alts0 ],
+                                IM.toList tgt_labels, pretty reg, pretty regty)
+      dense_case_offset Nothing =
+        R.offset' R.S2 R.BE (`shiftR` 2) r post_case_label impossible_label
+      dense_case_offset (Just target) =
+        let !label = tgt_labels IM.! target in
+        R.offset' R.S2 R.BE (`shiftR` 2) r post_case_label label
 
    -- input builds must write a single Word16 in big endian each
    mapMWord16s :: [Build ()] -> Build ()
