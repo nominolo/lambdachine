@@ -663,6 +663,49 @@ void Assembler::intArith(IR *ins, x86Arith xa) {
   allocLeft(dest, lref);
 }
 
+void
+Assembler::bitshift(IR *ins, x86Shift xs)
+{
+  IRRef rref = ins->op2();
+  IR *rins = ir(rref);
+  Reg dest;
+  if (irref_islit(rref)) {      // shift by constant amount
+    LC_ASSERT(rins->opcode() != IR::kKBASEO);
+    uint64_t k = buf_->literalValue(rref);
+    int shift = k & 63;
+    dest = destReg(ins, kGPR);
+    switch (shift) {
+    case 0:
+      break;
+    case 1: 
+      emit_rr(XO_SHIFT1, xs | REX_64, dest);
+      break;
+    default:
+      emit_shifti(xs | REX_64, dest, shift);
+      break;
+    }
+  } else {  /* variable shift amount must be in cl */
+    Reg right;
+    dest = destReg(ins, kGPR.exclude(RID_ECX));
+    if (dest == RID_ECX) {
+      dest = allocScratchReg(kGPR.exclude(RID_ECX));
+      emit_rr(XO_MOV, RID_ECX | REX_64, dest);
+    }
+    right = rins->reg();
+    if (!isReg(right)) {
+      right = allocRef(rref, kGPR.exclude(RID_ECX));
+    } else if (right != RID_ECX) {
+      // Free up ECX
+      allocScratchReg(RegSet::fromReg(RID_ECX));
+    }
+    emit_rr(XO_SHIFTcl, xs | REX_64, dest);
+    if (right != RID_ECX) {
+      emit_rr(XO_MOV, RID_ECX, right); // need not be 64 bit
+    }
+  }
+  allocLeft(dest, ins->op1());
+}
+
 void Assembler::intNegNot(IR *ins, x86Group3 xg) {
   Reg dest = destReg(ins, kGPR);
   emit_rr(XO_GROUP3, REX_64 | xg, dest);
@@ -1321,6 +1364,9 @@ void Assembler::emit(IR *ins) {
   case IR::kPLOAD:
     insPLOAD(ins);
     break;
+  case IR::kBSHL: bitshift(ins, XOg_SHL); break;
+  case IR::kBSHR: bitshift(ins, XOg_SHR); break;
+  case IR::kBSAR: bitshift(ins, XOg_SAR); break;
   default:
     cerr << "NYI: codegen for ";
     ins->debugPrint(cerr, REF_BIAS + (IRRef1)(ins - ir_));

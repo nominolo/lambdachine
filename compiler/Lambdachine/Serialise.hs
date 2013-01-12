@@ -1026,6 +1026,15 @@ emitLinearIns bit_r lit_ids tgt_labels r ins_id ins = do
     Mid (Assign (BcReg dst _)
         (PrimOp OpBitXor _ty [BcReg src1 _, BcReg src2 _])) ->
       emitInsABC r opc_BXOR (i2b dst) (i2b src1) (i2b src2)
+    Mid (Assign (BcReg dst _)
+        (PrimOp OpShiftLeft _ty [BcReg src1 _, BcReg src2 _])) ->
+      emitInsABC r opc_BSHL (i2b dst) (i2b src1) (i2b src2)
+    Mid (Assign (BcReg dst _)
+        (PrimOp OpShiftRightLogical _ty [BcReg src1 _, BcReg src2 _])) ->
+      emitInsABC r opc_BSHR (i2b dst) (i2b src1) (i2b src2)
+    Mid (Assign (BcReg dst _)
+        (PrimOp OpShiftRightArith _ty [BcReg src1 _, BcReg src2 _])) ->
+      emitInsABC r opc_BSAR (i2b dst) (i2b src1) (i2b src2)
     Mid (Store (BcReg ptr _) offs (BcReg src _)) | offs <= 255 ->
       emitInsABC r opc_INITF (i2b ptr) (i2b src) (i2b offs)
     Mid m -> error $ "Don't know how to serialise " ++ pretty m

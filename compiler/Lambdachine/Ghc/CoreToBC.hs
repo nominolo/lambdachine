@@ -1458,6 +1458,13 @@ primOpOther primop =
     Ghc.XorOp -> Just (OpBitXor, [WordTy, WordTy], WordTy)
     Ghc.NotOp -> Just (OpBitNot, [WordTy], WordTy)
 
+    -- bit shifting
+    Ghc.SllOp -> Just (OpShiftLeft, [WordTy, IntTy], WordTy)
+    Ghc.SrlOp -> Just (OpShiftRightLogical, [WordTy, IntTy], WordTy)
+    Ghc.ISllOp -> Just (OpShiftLeft, [IntTy, IntTy], IntTy)
+    Ghc.ISraOp -> Just (OpShiftRightArith, [IntTy, IntTy], IntTy)
+    Ghc.ISrlOp -> Just (OpShiftRightLogical, [IntTy, IntTy], IntTy)
+
     -- these are all NOPs
     Ghc.OrdOp -> Just (OpNop, [CharTy], IntTy)
     Ghc.ChrOp -> Just (OpNop, [IntTy], CharTy)

@@ -369,6 +369,9 @@ typedef enum {
 #define XG_ARITHi(g)	XG_(XI_ARITHi8, XI_ARITHi, g)
 #define XO_ARITH(a)	((x86Op)(0x030000fe + ((a)<<27)))
 
+#define emit_shifti(xg, r, i) \
+  (emit_i8((i)), emit_rr(XO_SHIFTi, (Reg)(xg), (r)))
+
 typedef enum {
   XOg_ADD, XOg_OR, XOg_ADC, XOg_SBB, XOg_AND, XOg_SUB, XOg_XOR, XOg_CMP,
   XOg_X_IMUL
@@ -377,6 +380,10 @@ typedef enum {
 typedef enum {
   XOg_TEST, XOg_TEST_, XOg_NOT, XOg_NEG, XOg_MUL, XOg_IMUL, XOg_DIV, XOg_IDIV
 } x86Group3;
+
+typedef enum {
+  XOg_ROL, XOg_ROR, XOg_RCL, XOg_RCR, XOg_SHL, XOg_SHR, XOg_SAL, XOg_SAR
+} x86Shift;
 
 #define MODRM(mode, r1, r2)	((MCode)((mode)+(((r1)&7)<<3)+((r2)&7)))
 
@@ -516,6 +523,7 @@ public:
   bool is32BitLiteral(IRRef ref, int32_t *k);
   void intArith(IR *ins, x86Arith xa);
   void intNegNot(IR *ins, x86Group3 xg);
+  void bitshift(IR *ins, x86Shift xs);
 
   typedef uint32_t DivModOp;
   enum {

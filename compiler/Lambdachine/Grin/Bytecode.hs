@@ -129,6 +129,9 @@ data PrimOp
   | OpBitAnd
   | OpBitOr
   | OpBitXor
+  | OpShiftLeft
+  | OpShiftRightLogical
+  | OpShiftRightArith
   | OpNop  -- See Note "Primitive Nops"
   deriving (Eq, Ord, Show)
 
@@ -282,6 +285,9 @@ instance Pretty PrimOp where
   ppr OpBitAnd = text "and#"
   ppr OpBitOr = text "or#"
   ppr OpBitXor = text "xor#"
+  ppr OpShiftLeft = text "shiftLeft#"
+  ppr OpShiftRightLogical = text "shiftRightLogical#"
+  ppr OpShiftRightArith = text "shiftRightArith#"
   ppr OpNop = text "nop"
 
 instance Pretty OpTy where

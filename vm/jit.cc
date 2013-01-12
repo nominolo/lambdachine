@@ -883,7 +883,6 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     break; \
   }
       
-
     ARITH_OP_RRR(kADDRR, kADD, IRT_I64);
     ARITH_OP_RRR(kSUBRR, kSUB, IRT_I64);
     ARITH_OP_RRR(kMULRR, kMUL, IRT_I64);
@@ -895,6 +894,9 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     ARITH_OP_RRR(kBAND, kBAND, IRT_I64);
     ARITH_OP_RRR(kBXOR, kBXOR, IRT_I64);
     ARITH_OP_RRR(kBOR, kBOR, IRT_I64);
+
+    ARITH_OP_RRR(kBSHL, kBSHL, IRT_I64);
+    ARITH_OP_RRR(kBSHR, kBSHR, IRT_I64);
 
 #undef ARITH_OP_RR
 #undef ARITH_OP_RRR

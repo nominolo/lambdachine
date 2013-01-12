@@ -1141,6 +1141,10 @@ TEST_F(RunFileTest, Rank2) {
   run("Bc.Rank2");
 }
 
+TEST_F(RunFileTest, Shifting) {
+  run("Bc.Shifting");
+}
+
 TEST(HotCounters, Simple) {
   HotCounters counters(5);
   BcIns pc[] = { BcIns::ad(BcIns::kFUNC, 3, 0) };
