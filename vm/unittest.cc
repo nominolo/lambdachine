@@ -1137,6 +1137,10 @@ TEST_F(RunFileTest, BitOps) {
   run("Bc.BitOps");
 }
 
+TEST_F(RunFileTest, Rank2) {
+  run("Bc.Rank2");
+}
+
 TEST(HotCounters, Simple) {
   HotCounters counters(5);
   BcIns pc[] = { BcIns::ad(BcIns::kFUNC, 3, 0) };

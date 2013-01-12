@@ -181,6 +181,7 @@ TEST_FILES := tests/Bc/Bc0016.lcbc tests/Bc/Bc0014.lcbc \
 	tests/Bc/NopPrims.lcbc tests/Bc/NegateInt.lcbc \
 	tests/Bc/WordCompare.lcbc tests/Bc/TestShow.lcbc \
 	tests/Bc/BitOps.lcbc tests/Bc/Set1.lcbc tests/Bc/Map1.lcbc \
+	tests/Bc/Rank2.lcbc \
 	tests/Bench/Nofib/Spectral/Constraints.lcbc \
 	tests/Bench/Nofib/Spectral/Boyer.lcbc \
 	tests/Bench/Nofib/Spectral/Lambda.lcbc \

@@ -67,6 +67,7 @@ import qualified TyCon as Ghc
 import qualified TypeRep as Ghc
 import qualified Outputable as Ghc
 import qualified MkId as Ghc ( realWorldPrimId )
+import qualified CoreUtils as Ghc
 import TyCon ( TyCon )
 import Outputable ( Outputable, showPpr, alwaysQualify, showSDocForUser )
 import CoreSyn ( CoreBind, CoreBndr, CoreExpr, CoreArg, CoreAlt,
@@ -1526,20 +1527,32 @@ isCondPrimOp primop =
 viewGhcApp :: CoreExpr -> Maybe (CoreBndr, [CoreArg])
 viewGhcApp expr = {- tracePpr expr $ -} go expr []
  where
-   go (Ghc.Var v)    as = Just (adjustVarTy v as, filter (not . Ghc.isTypeArg) as)
+   go (Ghc.Var v)    as = Just (adjustVarTy v (Ghc.varType v) as,
+                                filter (not . Ghc.isTypeArg) as)
    go (Ghc.App f a)  as = go f (a:as)
    go (Ghc.Note _ e) as = go e as
+   go e@(Ghc.Cast (Ghc.Var v) co) as =
+     -- TODO: probably won't work in the general case.
+     let !ty = Ghc.exprType e in
+       Just (adjustVarTy v ty as, filter (not . Ghc.isTypeArg) as)
    go (Ghc.Cast e _) as = go e as
    go (Ghc.Lam x e)  as | isTyVar x = go e as
    go _ _ = Nothing
 
    -- We want the returned Id/CoreBndr to be annotated with the usage
    -- type, not the polymorphic type.
-   adjustVarTy :: CoreBndr -> [CoreArg] -> CoreBndr
-   adjustVarTy v [] = v
-   adjustVarTy v args =
+   -- 
+   -- XXX: That might not actually be possible.  Consider:
+   --
+   --     f :: A -> N, x :: A, y :: B
+   --     ((f x) `cast` N ~ B -> C) y
+   --
+   -- What's the usage type of "f" here?  Should it be A -> B -> C?
+   adjustVarTy :: CoreBndr -> Ghc.Type -> [CoreArg] -> CoreBndr
+   adjustVarTy v _ [] = v
+   adjustVarTy v ty args =
      -- tracePpr (v, Ghc.varType v, args) $
-     let ty' = adjustTy (Ghc.varType v) args in
+     let !ty' = adjustTy ty args in
      let r = if Ghc.isGlobalId v then
                Ghc.mkGlobalVar (Ghc.idDetails v) (Ghc.varName v) ty' (Ghc.idInfo v)
               else
@@ -1547,13 +1560,15 @@ viewGhcApp expr = {- tracePpr expr $ -} go expr []
      in {- tracePpr (r, Ghc.varType r) -} r
 
    adjustTy :: Ghc.Type -> [CoreArg] -> Ghc.Type
---   adjustTy ty args
---     | trace ("adjustTy " ++ showPpr ty ++ " ; " ++ showPpr args) False = undefined
+   -- adjustTy ty args
+   --   | trace ("adjustTy " ++ showPpr ty ++ " ; " ++ showPpr args) False = undefined
    adjustTy ty [] = ty
    adjustTy ty (Type a:as) =
      -- ty must be a forall 
      let Just (_tyvar, res) = Ghc.splitForAllTy_maybe ty in
-     adjustTy (Ghc.applyTy ty a) as
+     let !ty' = -- trace ("applyTy [[" ++ showPpr ty ++ "]] [[" ++ showPpr a ++ "]]")
+                      (Ghc.applyTy ty a) in
+     adjustTy ty' as
    adjustTy ty (a:as) =
      case Ghc.splitFunTy_maybe ty of
        Just (arg, res) -> Ghc.mkFunTy arg $! adjustTy res as
