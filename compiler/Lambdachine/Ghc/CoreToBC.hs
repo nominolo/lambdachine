@@ -476,6 +476,7 @@ transFields f args = map to_field args
  where
    to_field (Ghc.Lit (Ghc.MachInt n)) = Left (CInt n)
    to_field (Ghc.Lit (Ghc.MachChar c)) = Left (CChar c)
+   to_field (Ghc.Lit (Ghc.MachWord n)) = Left (CWord n)
    to_field (Ghc.Var x)               = Right (f x)
    to_field (Ghc.App x (Ghc.Type _))  = to_field x
    to_field (Lam a x) | isTyVar a     = to_field x
@@ -1444,6 +1445,10 @@ primOpToBinOp primop =
     Ghc.IntMulOp -> Just (OpMul, IntTy)
     Ghc.IntQuotOp -> Just (OpDiv, IntTy)
     Ghc.IntRemOp  -> Just (OpRem, IntTy)
+
+    Ghc.WordAddOp -> Just (OpAdd, WordTy)
+    Ghc.WordSubOp -> Just (OpSub, WordTy)
+    Ghc.WordMulOp -> Just (OpMul, WordTy)
     _ -> Nothing
 
 primOpOther :: Ghc.PrimOp -> Maybe (PrimOp, [OpTy], OpTy)
