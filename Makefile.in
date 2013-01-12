@@ -331,6 +331,10 @@ tests/integer-gmp/%.lcbc: tests/integer-gmp/%.hs
 	cd tests/integer-gmp && \
 	$(LCC) $(LCCFLAGS) --package-name=integer-gmp $(patsubst tests/integer-gmp/%, %, $<)
 
+tests/integer-simple/%.lcbc: tests/integer-simple/%.hs
+	cd tests/integer-simple && \
+	$(LCC) $(LCCFLAGS) --package-name=integer-simple $(patsubst tests/integer-simple/%, %, $<)
+
 tests/base/%.lcbc: tests/base/%.hs
 	cd tests/base && \
 	$(LCC) $(LCCFLAGS) --package-name=base $(patsubst tests/base/%, %, $<)
@@ -342,7 +346,9 @@ tests/%.lcbc: tests/%.hs
 	 $(LCC) $(LCCFLAGS) $(patsubst tests/%, %, $<)
 
 PRIM_MODULES_ghc-prim = GHC/Bool GHC/Types GHC/Ordering GHC/Tuple GHC/Unit
-PRIM_MODULES_integer-gmp = GHC/Integer/Type GHC/Integer
+PRIM_MODULES_integer-simple = GHC/Integer/Type GHC/Integer/Simple/Internals \
+	GHC/Integer
+# PRIM_MODULES_integer-gmp = GHC/Integer/Type GHC/Integer
 PRIM_MODULES_base = GHC/Base GHC/Classes GHC/Num  \
 	Control/Exception/Base GHC/Enum Data/Maybe Data/Either GHC/List \
 	Data/Monoid GHC/Show GHC/Unicode Data/Char \
@@ -350,7 +356,7 @@ PRIM_MODULES_base = GHC/Base GHC/Classes GHC/Num  \
 
 PRIM_MODULES = \
 	$(patsubst %,tests/ghc-prim/%.lcbc,$(PRIM_MODULES_ghc-prim)) \
-	$(patsubst %,tests/integer-gmp/%.lcbc,$(PRIM_MODULES_integer-gmp)) \
+	$(patsubst %,tests/integer-simple/%.lcbc,$(PRIM_MODULES_integer-simple)) \
 	$(patsubst %,tests/base/%.lcbc,$(PRIM_MODULES_base))
 
 unittest: $(PRIM_MODULES)
