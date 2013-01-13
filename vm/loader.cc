@@ -212,7 +212,7 @@ moduleNameToFile(const char *basepath, const char *name) {
 }
 
 const char *const wired_in_packages[] = {
-  "ghc-prim", "integer-gmp", "base"
+  "ghc-prim", "integer-simple", "base"
 };
 
 char *Loader::findModule(const char *moduleName) {
