@@ -75,11 +75,40 @@ import GHC.Prim
 import GHC.Num
 import GHC.Base
 import GHC.Show
+import GHC.Read
+import Data.List ( filter, zip, elem , span, (!!), foldl, lookup, all)
+import Data.Maybe ( Maybe(..) )
+import Data.Tuple
+import Text.Read ( reads, read )
 
-import Data.Char (isSpace, isAlpha, isAlphaNum, isDigit)
+--import Data.Char (isSpace, isAlpha, isAlphaNum, isDigit)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Bench.Fibon.Agum.IntLinEq
+
+isSpace :: Char -> Bool
+isSpace c =
+   c == ' ' || c == '\t' || c == '\n' || c == '\r' ||
+   c == '\f' || c == '\v' || c == '\xa0'
+
+isLower :: Char -> Bool
+isLower c =  c >= 'a' && c <= 'z' ||
+             c >= '\xDF' && c <= '\xF6' ||
+             c >= '\xF8' && c <= '\xFF'
+
+isUpper :: Char -> Bool
+isUpper c =  c >= 'A' && c <= 'Z' ||
+             c >= '\xC0' && c <= '\xD6' ||
+             c >= '\xD8' && c <= '\xDE'
+
+isAlpha :: Char -> Bool
+isAlpha c =  isLower c || isUpper c
+
+isDigit :: Char -> Bool
+isDigit c =  c >= '0' && c <= '9'
+
+isAlphaNum :: Char -> Bool
+isAlphaNum c =  isAlpha c || isDigit c
 
 -- Chapter 8, Section 5 of the Handbook of Automated Reasoning by
 -- Franz Baader and Wayne Snyder describes unification and matching in
@@ -143,7 +172,7 @@ ide = Term Map.empty
 -- the 'isVar' predicate.
 isVar :: String -> Bool
 isVar [] = False
-isVar (c:s) = noinline (isAlpha c) && all isAlphaNum s
+isVar (c:s) = isAlpha c && all isAlphaNum s
 
 
 -- | Return a term that consists of a single variable.
@@ -166,7 +195,7 @@ neg (Term t) =
 -- | Add two terms.
 add :: Term -> Term -> Term
 add (Term t) (Term t') =
-    Term $ Map.foldWithKey f t' t -- Fold over the mappings in t
+    Term $ Map.foldrWithKey f t' t -- Fold over the mappings in t
     where
       f x c t =                 -- Alter the mapping of
           Map.alter (g c) x t   -- variable x in t
@@ -213,7 +242,7 @@ maplets (Substitution s) = Map.assocs s
 -- | Return the result of applying a substitution to a term.
 apply :: Substitution -> Term -> Term
 apply (Substitution s) (Term t) =
-    Map.foldWithKey f ide t
+    Map.foldrWithKey f ide t
     where
       f x n t =
           add (mul n (Map.findWithDefault (var x) x s)) t

@@ -6,6 +6,7 @@ module GHC.Base
   , module GHC.Classes
   , module GHC.Ordering
   , module GHC.Prim
+  , module GHC.Err
   )
 where
 
@@ -15,6 +16,7 @@ import GHC.Bool
 import GHC.Classes
 import GHC.Ordering
 import {-# SOURCE #-} GHC.Show
+import {-# SOURCE #-} GHC.Err
 
 import GHC.Tuple ()
 import GHC.Unit ()
@@ -107,8 +109,8 @@ instance  Monad []  where
 
 type String = [Char]
 
-error :: String -> a
-error = error
+-- error :: String -> a
+-- error = error
 
 {-# INLINE eqInt #-}
 {-# INLINE neInt #-}

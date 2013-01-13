@@ -53,6 +53,10 @@ instance Eq Char where
     (C# c1) == (C# c2) = c1 `eqChar#` c2
     (C# c1) /= (C# c2) = c1 `neChar#` c2
 
+instance Eq Integer where
+    (==) = eqInteger
+    (/=) = neqInteger
+
 -- | The 'Ord' class is used for totally ordered datatypes.
 --
 -- Instances of 'Ord' can be derived for any user-defined
@@ -112,6 +116,13 @@ instance Ord Char where
     (C# c1) >= (C# c2) = c1 `geChar#` c2
     (C# c1) <= (C# c2) = c1 `leChar#` c2
     (C# c1) <  (C# c2) = c1 `ltChar#` c2
+
+instance Ord Integer where
+    (<=) = leInteger
+    (>)  = gtInteger
+    (<)  = ltInteger
+    (>=) = geInteger
+    compare = compareInteger
 
 -- | Boolean \"not\"
 not :: Bool -> Bool

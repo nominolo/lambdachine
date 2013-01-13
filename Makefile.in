@@ -182,6 +182,7 @@ TEST_FILES := tests/Bc/Bc0016.lcbc tests/Bc/Bc0014.lcbc \
 	tests/Bc/WordCompare.lcbc tests/Bc/TestShow.lcbc \
 	tests/Bc/BitOps.lcbc tests/Bc/Set1.lcbc tests/Bc/Map1.lcbc \
 	tests/Bc/Rank2.lcbc tests/Bc/Shifting.lcbc \
+	tests/Bc/Integer.lcbc \
 	tests/Bench/Nofib/Spectral/Constraints.lcbc \
 	tests/Bench/Nofib/Spectral/Boyer.lcbc \
 	tests/Bench/Nofib/Spectral/Lambda.lcbc \
@@ -349,10 +350,11 @@ PRIM_MODULES_ghc-prim = GHC/Bool GHC/Types GHC/Ordering GHC/Tuple GHC/Unit
 PRIM_MODULES_integer-simple = GHC/Integer/Type GHC/Integer/Simple/Internals \
 	GHC/Integer
 # PRIM_MODULES_integer-gmp = GHC/Integer/Type GHC/Integer
-PRIM_MODULES_base = GHC/Base GHC/Classes GHC/Num  \
+PRIM_MODULES_base = GHC/Base GHC/Classes GHC/Err GHC/Num  \
 	Control/Exception/Base GHC/Enum Data/Maybe Data/Either GHC/List \
-	Data/Monoid GHC/Show GHC/Unicode Data/Char \
-        Data/Tuple Data/List Data/Set Data/Map
+	Data/Monoid GHC/Show GHC/Real GHC/Unicode Data/Char Simple/Data/Char \
+        Data/Tuple Data/List Data/Set Data/Map Control/Monad \
+	Text/ParserCombinators/ReadP
 
 PRIM_MODULES = \
 	$(patsubst %,tests/ghc-prim/%.lcbc,$(PRIM_MODULES_ghc-prim)) \
