@@ -1,5 +1,5 @@
 {-# LANGUAGE ViewPatterns, GADTs, ScopedTypeVariables, CPP #-}
-{-# LANGUAGE PatternGuards, GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE PatternGuards, GeneralizedNewtypeDeriving, BangPatterns #-}
 {-| Generate bytecode from GHC Core.
 
 GHC Core has quite a few invariants and accommodating them all
@@ -68,8 +68,12 @@ import qualified TypeRep as Ghc
 import qualified Outputable as Ghc
 import qualified MkId as Ghc ( realWorldPrimId )
 import qualified CoreUtils as Ghc
+import qualified Coercion as Ghc
 import TyCon ( TyCon )
-import Outputable ( Outputable, showPpr, alwaysQualify, showSDocForUser )
+import Outputable ( Outputable, showPpr, alwaysQualify, showSDocForUser,
+                    showSDocOneLine )
+import qualified Outputable as Out
+import qualified Pretty as Out
 import CoreSyn ( CoreBind, CoreBndr, CoreExpr, CoreArg, CoreAlt,
                  Bind(..), Expr(Lam, Let, Type, Cast, Note),
                  AltCon(..),
@@ -102,6 +106,9 @@ unimplemented str = error $ "UNIMPLEMENTED: " ++ str
 
 tracePpr :: Outputable a => a -> b -> b
 tracePpr o exp = trace (">>> " ++ showPpr o) exp
+
+showPpr1 :: Outputable a => a -> String
+showPpr1 o = Out.showDocWith Out.OneLineMode ((Out.ppr o) Out.defaultUserStyle)
 
 -- -------------------------------------------------------------------
 -- * Top-level Interface
@@ -1537,70 +1544,64 @@ isCondPrimOp primop =
 -- We use this to compute the representation type of the variable in
 -- function position.
 viewGhcApp :: CoreExpr -> Maybe (CoreBndr, [CoreArg])
-viewGhcApp expr = {- tracePpr expr $ -} go expr []
+viewGhcApp expr = {- tracePpr expr $ trace test1 $ go expr [] -}
+   do (f, ctx, args) <- go1 expr []
+      let !f_with_usage_type = adjustVarTy' f (Ghc.varType f) ctx
+      let !real_args = filter (not . Ghc.isTypeArg) args
+      return (f_with_usage_type, real_args)
  where
-   go (Ghc.Var v)    as = Just (adjustVarTy v (Ghc.varType v) as,
-                                filter (not . Ghc.isTypeArg) as)
-   go (Ghc.App f a)  as = go f (a:as)
-   go (Ghc.Note _ e) as = go e as
-   go e@(Ghc.Cast (Ghc.Var v) co) as =
-     -- TODO: probably won't work in the general case.
-     let !ty = Ghc.exprType e in
-       Just (adjustVarTy v ty as, filter (not . Ghc.isTypeArg) as)
-   go (Ghc.Cast e _) as = go e as
-   go (Ghc.Lam x e)  as | isTyVar x = go e as
-   go _ _ = Nothing
+   go1 (Ghc.Var v)     as = Just (v, EmptyContext, as)
+   go1 (Ghc.App f a)   as = do (f', ctx, as') <- go1 f (a:as)
+                               return (f', AppCtx ctx a, as')
+   go1 (Ghc.Note _ e)  as = go1 e as
+   go1 (Ghc.Cast e co) as = do (f', ctx, as') <- go1 e as
+                               return (f', CastCtx ctx co, as')
+   go1 (Ghc.Lam x e)   as | isTyVar x = go1 e as
+   go1 _               _  = Nothing
 
-   -- We want the returned Id/CoreBndr to be annotated with the usage
-   -- type, not the polymorphic type.
-   -- 
-   -- XXX: That might not actually be possible.  Consider:
-   --
-   --     f :: A -> N, x :: A, y :: B
-   --     ((f x) `cast` N ~ B -> C) y
-   --
-   -- What's the usage type of "f" here?  Should it be A -> B -> C?
-   adjustVarTy :: CoreBndr -> Ghc.Type -> [CoreArg] -> CoreBndr
-   adjustVarTy v _ [] = v
-   adjustVarTy v ty args =
-     -- tracePpr (v, Ghc.varType v, args) $
-     let !ty' = adjustTy ty args in
-     let r = if Ghc.isGlobalId v then
+   -- Annotate the binder with the usage type, not the (polymorphic)
+   -- definition type.
+   adjustVarTy' :: CoreBndr -> Ghc.Type -> AppContext -> CoreBndr
+   adjustVarTy' v _ EmptyContext = v
+   adjustVarTy' v ty ctx =
+     let !ty' = typeInContext ty ctx in
+     let !r = if Ghc.isGlobalId v then
                Ghc.mkGlobalVar (Ghc.idDetails v) (Ghc.varName v) ty' (Ghc.idInfo v)
               else
                Ghc.mkLocalVar (Ghc.idDetails v) (Ghc.varName v) ty' (Ghc.idInfo v)
-     in {- tracePpr (r, Ghc.varType r) -} r
+     in r
 
-   adjustTy :: Ghc.Type -> [CoreArg] -> Ghc.Type
-   -- adjustTy ty args
-   --   | trace ("adjustTy " ++ showPpr ty ++ " ; " ++ showPpr args) False = undefined
-   adjustTy ty [] = ty
-   adjustTy ty (Type a:as) =
-     -- ty must be a forall 
-     let Just (_tyvar, res) = Ghc.splitForAllTy_maybe ty in
-     let !ty' = -- trace ("applyTy [[" ++ showPpr ty ++ "]] [[" ++ showPpr a ++ "]]")
-                      (Ghc.applyTy ty a) in
-     adjustTy ty' as
-   adjustTy ty (a:as) =
-     case Ghc.splitFunTy_maybe ty of
-       Just (arg, res) -> Ghc.mkFunTy arg $! adjustTy res as
-       Nothing  -- it may be a newtype
-         | Just (tycon, tyargs) <- Ghc.splitTyConApp_maybe ty
-         -> case Ghc.unwrapNewTyCon_maybe tycon of
-              Just (_tyvars, rhs, _opt_coercion) ->
-                adjustTy rhs (a:as)
-              Nothing ->
-                error $ "adjustTy: Could not look through tycon:" ++ showPpr ty
-     
-   adjustTy ty0 (a:as) =  -- at this stage 'a' must be a variable
-     let ty = fromMaybe ty0 (Ghc.coreView ty0) in
-     trace (showPpr ty0 ++ " -coreView-> " ++ showPpr (Ghc.coreView ty0)) $
-     -- ty must be a FunType of some sort
-     let Just (arg, res) = Ghc.splitFunTy_maybe (trace (showPpr ty) ty) in
-     Ghc.mkFunTy arg $! adjustTy res as
+data AppContext
+  = EmptyContext                    -- []
+  | AppCtx AppContext CoreArg       -- ([] {type}) -or- ([] arg)
+  | CastCtx AppContext Ghc.Coercion -- ([] |> co)
 
-  -- f @ a @ b x y z ==
-  -- (App (App (Var f) a) b)
+typeInContext :: Ghc.Type -> AppContext -> Ghc.Type
+typeInContext ty ctx =
+  let (!res, !rebuild) = applyContext ty ctx in rebuild res
+
+applyContext :: Ghc.Type -> AppContext -> (Ghc.Type, Ghc.Type -> Ghc.Type)
+applyContext ty EmptyContext = (ty, id)
+applyContext ty (AppCtx ctx (Type a)) =
+  let (!ty', !rebuild) = applyContext ty ctx in
+  case Ghc.splitForAllTy_maybe ty' of
+    Just (_tyvar, _bodyType) -> (Ghc.applyTy ty' a, rebuild)
+    Nothing -> error $ "Type arguments can only be applied to forall types: "
+                  ++ showPpr (ty' :: Ghc.Type, (Type a) :: CoreArg)
+applyContext ty (AppCtx ctx var) =
+  let (!ty', !rebuild) = applyContext ty ctx in
+  let !varTy = Ghc.exprType var in
+  case Ghc.splitFunTy_maybe ty' of
+    Just (!arg, !resTy) -> (resTy, \res ->
+                                     let !res' = Ghc.mkFunTy arg res in
+                                     rebuild res')
+    Nothing -> error $ "Applying argument to type that's not a function type: "
+                  ++ showPpr (ty', var)
+applyContext ty (CastCtx ctx co) =
+  let (!ty', !rebuild) = applyContext ty ctx in
+  let ty'' = snd (Ghc.coercionKind co) in
+  (ty'', rebuild)
+
 
 -- | View expression as n-ary abstraction.  Ignores type abstraction.
 --
