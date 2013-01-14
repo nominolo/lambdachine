@@ -2,8 +2,44 @@
 module Text.ParserCombinators.ReadP
   ( 
   ReadP,      -- :: * -> *; instance Functor, Monad, MonadPlus
+
+  get,        -- :: ReadP Char
+  look,       -- :: ReadP String
+  (+++),      -- :: ReadP a -> ReadP a -> ReadP a
+  (<++),      -- :: ReadP a -> ReadP a -> ReadP a
+  gather,     -- :: ReadP a -> ReadP (String, a)
+  
+  -- * Other operations
+  pfail,      -- :: ReadP a
+  eof,        -- :: ReadP ()
+  satisfy,    -- :: (Char -> Bool) -> ReadP Char
+  char,       -- :: Char -> ReadP Char
+  string,     -- :: String -> ReadP String
+  munch,      -- :: (Char -> Bool) -> ReadP String
+  munch1,     -- :: (Char -> Bool) -> ReadP String
+  skipSpaces, -- :: ReadP ()
+  choice,     -- :: [ReadP a] -> ReadP a
+  count,      -- :: Int -> ReadP a -> ReadP [a]
+  between,    -- :: ReadP open -> ReadP close -> ReadP a -> ReadP a
+  option,     -- :: a -> ReadP a -> ReadP a
+  optional,   -- :: ReadP a -> ReadP ()
+  many,       -- :: ReadP a -> ReadP [a]
+  many1,      -- :: ReadP a -> ReadP [a]
+  skipMany,   -- :: ReadP a -> ReadP ()
+  skipMany1,  -- :: ReadP a -> ReadP ()
+  sepBy,      -- :: ReadP a -> ReadP sep -> ReadP [a]
+  sepBy1,     -- :: ReadP a -> ReadP sep -> ReadP [a]
+  endBy,      -- :: ReadP a -> ReadP sep -> ReadP [a]
+  endBy1,     -- :: ReadP a -> ReadP sep -> ReadP [a]
+  chainr,     -- :: ReadP a -> ReadP (a -> a -> a) -> a -> ReadP a
+  chainl,     -- :: ReadP a -> ReadP (a -> a -> a) -> a -> ReadP a
+  chainl1,    -- :: ReadP a -> ReadP (a -> a -> a) -> ReadP a
+  chainr1,    -- :: ReadP a -> ReadP (a -> a -> a) -> ReadP a
+  manyTill,   -- :: ReadP a -> ReadP end -> ReadP [a]
+
   ReadS,
-  readP_to_S
+  readP_to_S,
+  readS_to_P, -- :: ReadS a -> ReadP a
   )
 where
 
@@ -242,3 +278,6 @@ readP_to_S :: ReadP a -> ReadS a
 readP_to_S (R f) = run (f return)
 
 
+readS_to_P :: ReadS a -> ReadP a
+readS_to_P r =
+  R (\k -> Look (\s -> final [bs'' | (a,s') <- r s, bs'' <- run (k a) s']))

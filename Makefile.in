@@ -354,7 +354,8 @@ PRIM_MODULES_base = GHC/Base GHC/Classes GHC/Err GHC/Num  \
 	Control/Exception/Base GHC/Enum Data/Maybe Data/Either GHC/List \
 	Data/Monoid GHC/Show GHC/Real GHC/Unicode Data/Char Simple/Data/Char \
         Data/Tuple Data/List Data/Set Data/Map Control/Monad \
-	Text/ParserCombinators/ReadP
+	Text/ParserCombinators/ReadP Text/ParserCombinators/ReadPrec \
+	Text/Read/Lex
 
 PRIM_MODULES = \
 	$(patsubst %,tests/ghc-prim/%.lcbc,$(PRIM_MODULES_ghc-prim)) \
