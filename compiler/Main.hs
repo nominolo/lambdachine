@@ -21,7 +21,8 @@ import MonadUtils ( liftIO )
 import qualified Data.Map as M
 
 import Control.Exception ( onException )
-import Control.Monad ( when )
+import Control.Monad ( when, unless )
+import Data.List ( isSuffixOf )
 import System.Environment ( getArgs )
 import System.Directory ( getTemporaryDirectory, renameFile, removeFile )
 import System.IO ( openTempFile, hPutStr, hFlush, hClose )
@@ -34,8 +35,8 @@ main = do
   opts <- Cli.getOptions
   runGhc (Just libdir) $ do
     dflags0 <- getSessionDynFlags
-    let dflags1a = dflags0{ ghcLink = NoLink
-                          , ghcMode = OneShot }
+    let dflags1a = dflags0{ ghcLink = NoLink }
+--                          , ghcMode = OneShot }
         dflags1 = updOptLevel (Cli.optLevel opts) dflags1a
         dflags2 | Cli.package_name opts /= ""
                 = setPackageName (Cli.package_name opts) dflags1
@@ -43,9 +44,11 @@ main = do
         dflags = dflags2
     setSessionDynFlags dflags
     let file = Cli.inputFile opts
-    (this_mod, core_binds, data_tycons, imports)
-      <- compileToCore file
-    liftIO $ do
+    comp_result <- compileToCore file
+    case comp_result of
+     Nothing -> -- it was probably just a .hs-boot file
+       return ()
+     Just (this_mod, core_binds, data_tycons, imports) -> liftIO $ do
       print (moduleNameString this_mod,
             map moduleNameString imports)
       s <- newUniqueSupply 'g'

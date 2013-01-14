@@ -7,11 +7,16 @@ import HscTypes
 import MonadUtils ( MonadIO(..) )
 import CoreSyn
 import CorePrep
+import MkIface ( mkIfaceTc )
 import GHC hiding ( exprType )
-import HscMain ( hscSimplify, hscParse, hscTypecheck, hscDesugar )
-import TidyPgm ( tidyProgram )
+import HscMain ( hscSimplify, hscParse, hscTypecheck, hscDesugar,
+                 hscWriteIface )
+import TcRnMonad ( TcGblEnv(..) )
+import TidyPgm ( tidyProgram, mkBootModDetailsTc )
+import Outputable ( showPpr )
 import TyCon ( isDataTyCon )
 import Data.List ( find )
+import Control.Monad ( liftM )
 import qualified IdInfo as Ghc
 import qualified Id as Ghc
 import CoreUtils ( exprType )
@@ -22,22 +27,47 @@ io :: MonadIO m => IO a -> m a
 io = liftIO
 
 compileToCore :: GhcMonad m => FilePath
-              -> m (ModuleName, [CoreBind], [TyCon], [ModuleName])
+              -> m (Maybe (ModuleName, [CoreBind], [TyCon], [ModuleName]))
 compileToCore file = do
   addTarget =<< guessTarget file Nothing
   _ <- load LoadAllTargets
   mod_graph <- depanal [] True
   case find ((== file) . msHsFilePath) mod_graph of
-    Just mod_summary -> 
+    Just mod_summary -> do
       withTempSession (\env ->
-                         env{ hsc_dflags = ms_hspp_opts mod_summary }) $
-        hscParse mod_summary >>=
-          hscTypecheck mod_summary >>=
-            hscDesugar mod_summary >>=
-              hscSimplify >>=
-                prepareCore mod_summary
+                         env{ hsc_dflags = ms_hspp_opts mod_summary }) $ do
+        -- liftIO $ putStrLn "Parsing ..."
+        rdr_module <- hscParse mod_summary
+        -- liftIO $ putStrLn "Typechecking ..."
+        tc_result <- hscTypecheck mod_summary rdr_module
+        case ms_hsc_src mod_summary of
+          HsBootFile -> do
+            -- liftIO $ putStrLn "Writing .hi-boot file ..."
+            (iface, changed, _) <- hscSimpleIface' tc_result
+            hscWriteIface iface changed mod_summary
+            return Nothing
+          _ -> do
+            -- liftIO $ putStrLn "Desugaring ..."
+            guts <- hscDesugar mod_summary tc_result
+            -- liftIO $ putStrLn "Optimising ..."
+            guts' <- hscSimplify guts
+            -- liftIO $ putStrLn "Translating to bytecode ..."
+            liftM Just (prepareCore mod_summary guts')
     Nothing -> 
       error $ "compileToCore: File not found in module graph: " ++ file
+
+hscSimpleIface' :: GhcMonad m =>
+                   TcGblEnv
+                -> m (ModIface, Bool, ModDetails)
+hscSimpleIface' tc_result = do
+   hsc_env <- getSession
+   details <- liftIO $ mkBootModDetailsTc hsc_env tc_result
+   (new_iface, no_change)
+       <- {-# SCC "MkFinalIface" #-}
+          ioMsgMaybe $ mkIfaceTc hsc_env Nothing details tc_result
+   -- And the answer is ...
+   -- liftIO $ dumpIfaceStats hsc_env
+   return (new_iface, no_change, details)
     
 
 -- | Run simplifier and put Core into A-normal form.
