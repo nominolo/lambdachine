@@ -144,7 +144,7 @@ void Code::printLiteral(std::ostream &out, u4 litid) const {
     break;
   case LIT_INFO: {
     const InfoTable *i = (const InfoTable *)lit;
-    if (i != NULL) {
+    if (i != NULL && i->type() != INVALID_OBJECT) {
       out << "info " << i << " (" << i->name() << ")";
     } else {
       out << "info (unresolved)";
@@ -153,7 +153,7 @@ void Code::printLiteral(std::ostream &out, u4 litid) const {
   }
   case LIT_CLOSURE: {
     const Closure *cl = (const Closure *)lit;
-    if (cl != NULL) {
+    if (cl != NULL && cl->info() != NULL) {
       out << "clos " << cl << " (" << cl->info()->name() << ")";
     } else {
       out << "clos (unresolved)";
