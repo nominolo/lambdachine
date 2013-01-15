@@ -12,7 +12,7 @@ int main(int argc, char *argv[]) {
 
   const char *module = argv[1];
   MemoryManager mm;
-  Loader l(&mm, "tests");
+  Loader l(&mm, "libraries:tests");
 
   if (!l.loadModule(module)) {
     cerr << "Could not load module " << module << endl;

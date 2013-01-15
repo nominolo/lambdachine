@@ -49,6 +49,7 @@ instance Eq a => Eq [a] where
 
 deriving instance Eq Bool
 deriving instance Eq Ordering
+
 instance Eq Char where
     (C# c1) == (C# c2) = c1 `eqChar#` c2
     (C# c1) /= (C# c2) = c1 `neChar#` c2

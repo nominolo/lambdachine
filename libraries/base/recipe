@@ -1,0 +1,35 @@
+name: base
+version: 4.3.1.0
+id: base-4.3.1.0-inplace
+license: BSD3
+copyright:
+maintainer: libraries@haskell.org
+stability:
+homepage:
+package-url:
+description: This package contains the Prelude and its support libraries,
+             and a large collection of useful libraries ranging from data
+             structures to parsing combinators and debugging utilities.
+category:
+author:
+exposed: True
+exposed-modules: GHC.Base GHC.Classes GHC.Enum GHC.Err GHC.List GHC.Num GHC.Real
+                 GHC.Show GHC.Unicode Control.Exception.Base Data.Char Data.Either
+                 Data.List Data.Maybe Data.Monoid Data.Tuple
+hidden-modules:
+import-dirs: /home/nominolo/code/lambdachine/libraries/base
+library-dirs: /home/nominolo/code/lambdachine/libraries/base
+hs-libraries: HSbase-4.3.1.0
+extra-libraries:
+extra-ghci-libraries:
+include-dirs: 
+includes: 
+depends: ghc-prim-0.2.0.0-inplace integer-simple-0.1.0.0-inplace
+         builtin_rts
+hugs-options:
+cc-options:
+ld-options:
+framework-dirs:
+frameworks:
+haddock-interfaces:
+haddock-html:

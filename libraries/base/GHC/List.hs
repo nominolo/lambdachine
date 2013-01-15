@@ -17,7 +17,7 @@ import GHC.Prim
 import GHC.Tuple
 import GHC.Base
 import Data.Maybe
-import Control.Exception.Base
+-- import Control.Exception.Base
 
 infixl 9  !!
 infix  4 `elem`, `notElem`

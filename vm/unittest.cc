@@ -63,7 +63,7 @@ TEST(LoaderTest, DefaultBasePath) {
 
 TEST(LoaderTest, Load1) {
   MemoryManager mm;
-  Loader l(&mm, "tests");
+  Loader l(&mm, "libraries");
   ASSERT_TRUE(l.loadModule("GHC.Bool"));
   const Module *m = l.module("GHC.Bool");
   ASSERT_TRUE(m != NULL);
@@ -72,7 +72,7 @@ TEST(LoaderTest, Load1) {
 
 TEST(LoaderTest, LoadIdempotent) {
   MemoryManager mm;
-  Loader l(&mm, "tests");
+  Loader l(&mm, "libraries");
   const char *modname = "GHC.Bool";
   ASSERT_TRUE(l.loadModule(modname));
   const Module *m = l.module(modname);
@@ -91,7 +91,8 @@ TEST(LoaderTest, LoadIdempotent) {
 
 TEST(LoaderTest, DebugPrint) {
   MemoryManager mm;
-  Loader l(&mm, "tests");
+  Loader l(&mm, "libraries");
+  ASSERT_TRUE(l.loadWiredInModules());
   ASSERT_TRUE(l.loadModule("GHC.Base"));
   // We don't really specify the debug output.  It shouldn't cause
   // crashes, though.
@@ -101,17 +102,18 @@ TEST(LoaderTest, DebugPrint) {
 
 TEST(LoaderTest, BuiltinClosures) {
   MemoryManager mm;
-  ASSERT_TRUE(NULL == MiscClosures::stg_STOP_closure_addr);
-  ASSERT_TRUE(NULL == MiscClosures::stg_UPD_closure_addr);
-  ASSERT_TRUE(NULL == MiscClosures::stg_UPD_return_pc);
-  ASSERT_TRUE(NULL == MiscClosures::stg_IND_info);
+  EXPECT_TRUE(NULL == MiscClosures::stg_STOP_closure_addr);
+  EXPECT_TRUE(NULL == MiscClosures::stg_UPD_closure_addr);
+  EXPECT_TRUE(NULL == MiscClosures::stg_UPD_return_pc);
+  EXPECT_TRUE(NULL == MiscClosures::stg_IND_info);
 
-  Loader l(&mm, "tests");
+  Loader l(&mm, "libraries");
+  ASSERT_TRUE(l.loadWiredInModules());
   ASSERT_TRUE(l.loadModule("GHC.Base"));
-  ASSERT_TRUE(NULL != MiscClosures::stg_STOP_closure_addr);
-  ASSERT_TRUE(NULL != MiscClosures::stg_UPD_closure_addr);
-  ASSERT_TRUE(NULL != MiscClosures::stg_UPD_return_pc);
-  ASSERT_TRUE(NULL != MiscClosures::stg_IND_info);
+  EXPECT_TRUE(NULL != MiscClosures::stg_STOP_closure_addr);
+  EXPECT_TRUE(NULL != MiscClosures::stg_UPD_closure_addr);
+  EXPECT_TRUE(NULL != MiscClosures::stg_UPD_return_pc);
+  EXPECT_TRUE(NULL != MiscClosures::stg_IND_info);
 }
 
 TEST(RegSetTest, fromReg) {
@@ -906,7 +908,7 @@ protected:
 
   virtual void SetUp() {
     mm = new MemoryManager();
-    loader = new Loader(mm, "tests");
+    loader = new Loader(mm, "libraries:tests");
     cap = new Capability(mm);
     T = Thread::createThread(cap, 1U << 13);
   }
@@ -1033,11 +1035,11 @@ TEST_F(RunFileTest, Alloc1) {
   run("Bc.Alloc1");
 }
 
-TEST_F(RunFileTest, Set1) {
+TEST_F(RunFileTest, DISABLED_Set1) {
   run("Bc.Set1");
 }
 
-TEST_F(RunFileTest, Map1) {
+TEST_F(RunFileTest, DISABLED_Map1) {
   run("Bc.Map1");
 }
 
@@ -1137,7 +1139,7 @@ TEST_F(RunFileTest, BitOps) {
   run("Bc.BitOps");
 }
 
-TEST_F(RunFileTest, Rank2) {
+TEST_F(RunFileTest, DISABLED_Rank2) {
   run("Bc.Rank2");
 }
 
@@ -1868,7 +1870,7 @@ TEST_P(ParallelAssignRandomTest, Random) {
 
 // 5000 tests currently take a bit over 1s.
 INSTANTIATE_TEST_CASE_P(Random, ParallelAssignRandomTest,
-                        ::testing::Range(1,5001));
+                        ::testing::Range(1,51));
 
 class TestFragment : public ::testing::Test {
 protected:

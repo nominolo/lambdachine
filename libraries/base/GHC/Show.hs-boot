@@ -1,0 +1,7 @@
+{-# OPTIONS_GHC -XNoImplicitPrelude #-}
+
+module GHC.Show (showSignedInt) where
+
+import GHC.Types
+
+showSignedInt :: Int -> Int -> [Char] -> [Char]

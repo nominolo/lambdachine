@@ -180,15 +180,20 @@ TEST_FILES := tests/Bc/Bc0016.lcbc tests/Bc/Bc0014.lcbc \
 	tests/Bc/UnpackCString.lcbc tests/Bc/Monoid.lcbc \
 	tests/Bc/NopPrims.lcbc tests/Bc/NegateInt.lcbc \
 	tests/Bc/WordCompare.lcbc tests/Bc/TestShow.lcbc \
-	tests/Bc/BitOps.lcbc tests/Bc/Set1.lcbc tests/Bc/Map1.lcbc \
-	tests/Bc/Rank2.lcbc tests/Bc/Shifting.lcbc \
+	tests/Bc/BitOps.lcbc \
+	tests/Bc/Shifting.lcbc \
 	tests/Bc/Integer.lcbc \
 	tests/Bench/Nofib/Spectral/Constraints.lcbc \
 	tests/Bench/Nofib/Spectral/Boyer.lcbc \
 	tests/Bench/Nofib/Spectral/Lambda.lcbc \
-	tests/Bench/Nofib/Spectral/Circsim.lcbc \
-	tests/Bench/Fibon/Agum/IntLinEq.lcbc \
-	tests/Bench/Fibon/Agum/UnificationMatching.lcbc
+	tests/Bench/Nofib/Spectral/Circsim.lcbc
+
+# tests/Bc/Set1.lcbc tests/Bc/Map1.lcbc
+# tests/Bench/Fibon/Agum/IntLinEq.lcbc
+# tests/Bench/Fibon/Agum/UnificationMatching.lcbc
+# tests/Bc/Rank2.lcbc 
+# 	tests/Data/Map.lcbc \
+
 
 .PHONY: test-files
 test-files: $(TEST_FILES)
@@ -315,8 +320,12 @@ distclean: clean
 
 .PHONY: install-deps
 install-deps:
-	$(CABAL) install --only-dependencies --with-compiler=$(HC) \
-	  --with-hc-pkg=$(HC_PKG)
+	sh install-deps.sh $(HC) $(HC_PKG) $(CABAL)
+
+
+
+# $(CABAL) install --only-dependencies --with-compiler=$(HC) \
+#   --with-hc-pkg=$(HC_PKG)
 # find compiler -name "*.hi" -delete
 
 # Rules for building built-in packages
@@ -324,45 +333,45 @@ install-deps:
 LCCFLAGS = -o2
 # --dump-bytecode --dump-core-binds -o2
 
-tests/ghc-prim/%.lcbc: tests/ghc-prim/%.hs
-	cd tests/ghc-prim && \
-	$(LCC) $(LCCFLAGS) --package-name=ghc-prim $(patsubst tests/ghc-prim/%, %, $<)
+# tests/ghc-prim/%.lcbc: tests/ghc-prim/%.hs
+# 	cd tests/ghc-prim && \
+# 	$(LCC) $(LCCFLAGS) --package-name=ghc-prim $(patsubst tests/ghc-prim/%, %, $<)
 
-tests/integer-gmp/%.lcbc: tests/integer-gmp/%.hs
-	cd tests/integer-gmp && \
-	$(LCC) $(LCCFLAGS) --package-name=integer-gmp $(patsubst tests/integer-gmp/%, %, $<)
+# tests/integer-gmp/%.lcbc: tests/integer-gmp/%.hs
+# 	cd tests/integer-gmp && \
+# 	$(LCC) $(LCCFLAGS) --package-name=integer-gmp $(patsubst tests/integer-gmp/%, %, $<)
 
-tests/integer-simple/%.lcbc: tests/integer-simple/%.hs
-	cd tests/integer-simple && \
-	$(LCC) $(LCCFLAGS) --package-name=integer-simple $(patsubst tests/integer-simple/%, %, $<)
+# tests/integer-simple/%.lcbc: tests/integer-simple/%.hs
+# 	cd tests/integer-simple && \
+# 	$(LCC) $(LCCFLAGS) --package-name=integer-simple $(patsubst tests/integer-simple/%, %, $<)
 
-tests/base/%.lcbc: tests/base/%.hs
-	cd tests/base && \
-	$(LCC) $(LCCFLAGS) --package-name=base $(patsubst tests/base/%, %, $<)
-#	@echo "@ = $@, < = $<"
+# tests/base/%.lcbc: tests/base/%.hs
+# 	cd tests/base && \
+# 	$(LCC) $(LCCFLAGS) --package-name=base $(patsubst tests/base/%, %, $<)
+# #	@echo "@ = $@, < = $<"
 
-tests/%.lcbc: tests/%.hs
+tests/%.lcbc: tests/%.hs libraries/built
 	@echo "LCC $(LCCFLAGS) $< => $@"
 	@cd tests && \
 	 $(LCC) $(LCCFLAGS) $(patsubst tests/%, %, $<)
 
-PRIM_MODULES_ghc-prim = GHC/Bool GHC/Types GHC/Ordering GHC/Tuple GHC/Unit
-PRIM_MODULES_integer-simple = GHC/Integer/Type GHC/Integer/Simple/Internals \
-	GHC/Integer
-# PRIM_MODULES_integer-gmp = GHC/Integer/Type GHC/Integer
-PRIM_MODULES_base = GHC/Base GHC/Classes GHC/Err GHC/Num  \
-	Control/Exception/Base GHC/Enum Data/Maybe Data/Either GHC/List \
-	Data/Monoid GHC/Show GHC/Real GHC/Unicode Data/Char Simple/Data/Char \
-        Data/Tuple Data/List Data/Set Data/Map Control/Monad \
-	Text/ParserCombinators/ReadP Text/ParserCombinators/ReadPrec \
-	Text/Read/Lex
+# PRIM_MODULES_ghc-prim = GHC/Bool GHC/Types GHC/Ordering GHC/Tuple GHC/Unit
+# PRIM_MODULES_integer-simple = GHC/Integer/Type GHC/Integer/Simple/Internals \
+# 	GHC/Integer
+# # PRIM_MODULES_integer-gmp = GHC/Integer/Type GHC/Integer
+# PRIM_MODULES_base = GHC/Base GHC/Classes GHC/Err GHC/Num  \
+# 	Control/Exception/Base GHC/Enum Data/Maybe Data/Either GHC/List \
+# 	Data/Monoid GHC/Show GHC/Real GHC/Unicode Data/Char Simple/Data/Char \
+#         Data/Tuple Data/List Data/Set Control/Monad \
+# 	Text/ParserCombinators/ReadP Text/ParserCombinators/ReadPrec \
+# 	Text/Read/Lex GHC/Read Text/Read
 
-PRIM_MODULES = \
-	$(patsubst %,tests/ghc-prim/%.lcbc,$(PRIM_MODULES_ghc-prim)) \
-	$(patsubst %,tests/integer-simple/%.lcbc,$(PRIM_MODULES_integer-simple)) \
-	$(patsubst %,tests/base/%.lcbc,$(PRIM_MODULES_base))
+# PRIM_MODULES = \
+# 	$(patsubst %,tests/ghc-prim/%.lcbc,$(PRIM_MODULES_ghc-prim)) \
+# 	$(patsubst %,tests/integer-simple/%.lcbc,$(PRIM_MODULES_integer-simple)) \
+# 	$(patsubst %,tests/base/%.lcbc,$(PRIM_MODULES_base))
 
-unittest: $(PRIM_MODULES)
+unittest: libraries/built
 
 .PHONY: check
 TESTS ?= .
@@ -379,7 +388,15 @@ pr:
 .PHONY: bytecode corelibs testlibs
 corelibs: $(PRIM_MODULES)
 testlibs: $(TEST_FILES)
-bytecode: corelibs testlibs
+# bytecode: corelibs testlibs
+
+BOOT_SRCS := $(shell find libraries -name '*.hs*')
+# TODO: We should track more precisely what the boot dependencies are.
+bytecode: libraries/built
+
+libraries/built: lcc $(BOOT_SRCS)
+	cd libraries && sh bootstrap-bytecode.sh ../lcc $(HC_PKG) package.conf
+	@touch $@
 
 clean-bytecode:
 	rm -f $(PRIM_MODULES)

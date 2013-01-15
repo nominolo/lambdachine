@@ -21,12 +21,12 @@ import {-# SOURCE #-} GHC.Err
 import GHC.Tuple ()
 import GHC.Unit ()
 
+
 infixr 9  .
 infixr 5  ++
 infixl 4  <$
 infixl 1  >>, >>=
 infixr 0  $
-
 -- | Identity function.
 id                      :: a -> a
 id x                    =  x
@@ -186,13 +186,6 @@ x# `divInt#` y#
     | otherwise                = x# `quotInt#` y#
 
 
-{-
-quotInt, remInt, divInt :: Int -> Int -> Int
-(I# x) `quotInt`  (I# y) = I# (x `quotInt#` y)
-(I# x) `remInt`   (I# y) = I# (x `remInt#`  y)
-(I# x) `divInt`   (I# y) = I# (x `divInt#`  y)
--}
-
 (++) :: [a] -> [a] -> [a]
 (++) []     ys = ys
 (++) (x:xs) ys = x : xs ++ ys
@@ -240,7 +233,6 @@ chr i@(I# i#)
  | otherwise
     = error ("Prelude.chr: bad argument: " ++ showSignedInt (I# 9#) i "")
 
-
 unsafeChr :: Int -> Char
 unsafeChr (I# i#) = C# (chr# i#)
 
@@ -250,8 +242,23 @@ ord (C# c#) = I# (ord# c#)
 
 eqString :: String -> String -> Bool
 eqString []       []       = True
-eqString (c1:cs1) (c2:cs2) = c1 == c2 && cs1 `eqString` cs2
+eqString (C# c1:cs1) (C# c2:cs2) = c1 `eqChar#` c2 && cs1 `eqString` cs2
 eqString _        _        = False
+
+-- | Returns the 'tag' of a constructor application; this function is used
+-- by the deriving code for Eq, Ord and Enum.
+--
+-- The primitive dataToTag# requires an evaluated constructor application
+-- as its argument, so we provide getTag as a wrapper that performs the
+-- evaluation before calling dataToTag#.  We could have dataToTag#
+-- evaluate its argument, but we prefer to do it this way because (a)
+-- dataToTag# can be an inline primop if it doesn't need to do any
+-- evaluation, and (b) we want to expose the evaluation to the
+-- simplifier, because it might be possible to eliminate the evaluation
+-- in the case when the argument is already known to be evaluated.
+getTag :: a -> Int#
+getTag x = x `seq` dataToTag# x
+{-# INLINE getTag #-}
 
 -- This code is needed for virtually all programs, since it's used for
 -- unpacking the strings of error messages.
@@ -282,12 +289,12 @@ unpackAppendCString# addr rest
       where
         !ch = indexCharOffAddr# addr nh
 
-
+maxInt, minInt :: Int
 {- Seems clumsy. Should perhaps put minInt and MaxInt directly into MachDeps.h -}
 minInt  = I# (-0x8000000000000000#)
 maxInt  = I# 0x7FFFFFFFFFFFFFFF#
 
-zeroInt, oneInt, twoInt, maxInt, minInt :: Int
+zeroInt, oneInt, twoInt :: Int
 zeroInt = I# 0#
 oneInt  = I# 1#
 twoInt  = I# 2#
@@ -296,3 +303,4 @@ twoInt  = I# 2#
 until                   :: (a -> Bool) -> (a -> a) -> a -> a
 until p f x | p x       =  x
             | otherwise =  until p f (f x)
+

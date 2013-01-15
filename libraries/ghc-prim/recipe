@@ -1,0 +1,30 @@
+name: ghc-prim
+version: 0.2.0.0
+id: ghc-prim-0.2.0.0-inplace
+license: BSD3
+copyright:
+maintainer: libraries@haskell.org
+stability:
+homepage:
+package-url:
+description: GHC primitives.
+category:
+author:
+exposed: True
+exposed-modules: GHC.Prim GHC.Bool GHC.Ordering GHC.Tuple GHC.Types GHC.Unit
+hidden-modules:
+import-dirs: /home/nominolo/code/lambdachine/libraries/ghc-prim
+library-dirs: /home/nominolo/code/lambdachine/libraries/ghc-prim
+hs-libraries: HSghc-prim-0.2.0.0
+extra-libraries:
+extra-ghci-libraries:
+include-dirs:
+includes:
+depends: 
+hugs-options:
+cc-options:
+ld-options:
+framework-dirs:
+frameworks:
+haddock-interfaces: 
+haddock-html: 

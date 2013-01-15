@@ -2,7 +2,7 @@
 module Text.Read.Lex
   -- lexing types
   ( Lexeme(..)  -- :: *; Show, Eq
-{-
+
   -- lexer      
   , lex         -- :: ReadP Lexeme      Skips leading spaces
   , hsLex       -- :: ReadP String
@@ -12,7 +12,7 @@ module Text.Read.Lex
   , readOctP    -- :: Num a => ReadP a 
   , readDecP    -- :: Num a => ReadP a
   , readHexP    -- :: Num a => ReadP a
--}
+
   )
  where
 

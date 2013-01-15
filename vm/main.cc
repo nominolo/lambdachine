@@ -24,7 +24,7 @@ inline double percent(double num, double denom) {
 int main(int argc, char *argv[]) {
   OptionParser p;
   p.defaultEntry("test");
-  p.defaultBasePath("tests");
+  p.defaultBasePath("libraries:tests");
   auto_ptr<Options> opts(p.parse(argc, argv));
   if (!opts.get())
     return 1;

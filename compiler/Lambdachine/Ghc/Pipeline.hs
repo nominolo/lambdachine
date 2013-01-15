@@ -10,9 +10,10 @@ import CorePrep
 import MkIface ( mkIfaceTc )
 import GHC hiding ( exprType )
 import HscMain ( hscSimplify, hscParse, hscTypecheck, hscDesugar,
-                 hscWriteIface )
+                 hscWriteIface, hscNormalIface, hscGenHardCode )
 import TcRnMonad ( TcGblEnv(..) )
 import TidyPgm ( tidyProgram, mkBootModDetailsTc )
+import SysTools ( touch )
 import Outputable ( showPpr )
 import TyCon ( isDataTyCon )
 import Data.List ( find )
@@ -42,7 +43,7 @@ compileToCore file = do
         tc_result <- hscTypecheck mod_summary rdr_module
         case ms_hsc_src mod_summary of
           HsBootFile -> do
-            -- liftIO $ putStrLn "Writing .hi-boot file ..."
+            liftIO $ putStrLn "Writing .hi-boot file ..."
             (iface, changed, _) <- hscSimpleIface' tc_result
             hscWriteIface iface changed mod_summary
             return Nothing
@@ -51,10 +52,44 @@ compileToCore file = do
             guts <- hscDesugar mod_summary tc_result
             -- liftIO $ putStrLn "Optimising ..."
             guts' <- hscSimplify guts
-            -- liftIO $ putStrLn "Translating to bytecode ..."
+
+            -- liftIO $ putStrLn "Translating to bytecode ..."            
             liftM Just (prepareCore mod_summary guts')
     Nothing -> 
       error $ "compileToCore: File not found in module graph: " ++ file
+
+compileSingle :: GhcMonad m => HscEnv -> ModSummary -> Bool
+              -> m (Maybe (ModuleName, [CoreBind], [TyCon], [ModuleName]))
+compileSingle hsc_env mod_summary _source_unchanged = do
+  withTempSession (\env ->
+                     env{ hsc_dflags = ms_hspp_opts mod_summary }) $ do
+    -- liftIO $ putStrLn "Parsing ..."
+    rdr_module <- hscParse mod_summary
+    -- liftIO $ putStrLn "Typechecking ..."
+    tc_result <- hscTypecheck mod_summary rdr_module
+    case ms_hsc_src mod_summary of
+      HsBootFile -> do
+        liftIO $ putStrLn "Writing .hi-boot file ..."
+        (iface, changed, _) <- hscSimpleIface' tc_result
+        hscWriteIface iface changed mod_summary
+        return Nothing
+      _ -> do
+        liftIO $ putStrLn "Desugaring ..."
+        guts <- hscDesugar mod_summary tc_result
+        liftIO $ putStrLn "Optimising ..."
+        guts' <- hscSimplify guts
+
+        liftIO $ putStrLn "Writing iface"        
+        (iface, changed, _details, cgguts) <- hscNormalIface guts' Nothing
+        hscWriteIface iface changed mod_summary
+        
+        let dflags = hsc_dflags hsc_env
+            s_file = hscOutName dflags
+        liftIO $ SysTools.touch dflags "Touching .s file" s_file
+--        _hasStub <- hscGenHardCode cgguts mod_summary
+
+        liftIO $ putStrLn "Translating to bytecode ..."
+        liftM Just (prepareCore mod_summary guts')
 
 hscSimpleIface' :: GhcMonad m =>
                    TcGblEnv

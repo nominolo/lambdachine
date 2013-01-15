@@ -233,7 +233,6 @@ instance  Bounded Char  where
     minBound =  '\0'
     maxBound =  '\x10FFFF'
 
-{-
 instance  Enum Char  where
     succ (C# c#)
        | not (ord# c# ==# 0x10FFFF#) = C# (chr# (ord# c# +# 1#))
@@ -257,7 +256,6 @@ instance  Enum Char  where
     
     {-# INLINE enumFromThenTo #-}
     enumFromThenTo (C# x1) (C# x2) (C# y) = efdtChar (ord# x1) (ord# x2) (ord# y)
--}
 
 instance  Bounded Int where
     minBound =  minInt
@@ -380,30 +378,6 @@ efdtIntDnFB c n x1 x2 y    -- Be careful about underflow!
                            | otherwise = I# x `c` go_dn (x +# delta)
                in I# x1 `c` go_dn x2
 
-
-instance  Enum Char  where
-    succ (C# c#)
-       | not (ord# c# ==# 0x10FFFF#) = C# (chr# (ord# c# +# 1#))
-       | otherwise              = error ("Prelude.Enum.Char.succ: bad argument")
-    pred (C# c#)
-       | not (ord# c# ==# 0#)   = C# (chr# (ord# c# -# 1#))
-       | otherwise              = error ("Prelude.Enum.Char.pred: bad argument")
-
-    toEnum   = chr
-    fromEnum = ord
-
-    {-# INLINE enumFrom #-}
-    enumFrom (C# x) = eftChar (ord# x) 0x10FFFF#
-        -- Blarg: technically I guess enumFrom isn't strict!
-
-    {-# INLINE enumFromTo #-}
-    enumFromTo (C# x) (C# y) = eftChar (ord# x) (ord# y)
-    
-    {-# INLINE enumFromThen #-}
-    enumFromThen (C# x1) (C# x2) = efdChar (ord# x1) (ord# x2)
-    
-    {-# INLINE enumFromThenTo #-}
-    enumFromThenTo (C# x1) (C# x2) (C# y) = efdtChar (ord# x1) (ord# x2) (ord# y)
 
 {-# RULES
 "eftChar"       [~1] forall x y.        eftChar x y       = build (\c n -> eftCharFB c n x y)

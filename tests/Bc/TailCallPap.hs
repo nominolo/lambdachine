@@ -6,8 +6,7 @@ module Bc.TailCallPap where
 import GHC.Bool
 import GHC.Prim
 import GHC.Types
-
---import GHC.Base
+import GHC.Base
 
 {-# NOINLINE f #-}
 f :: Int# -> Int# -> Int#
