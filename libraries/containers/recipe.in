@@ -1,0 +1,33 @@
+name: containers
+version: 0.4.0.0
+id: containers-0.4.0.0-inplace
+license: BSD3
+copyright:
+maintainer: libraries@haskell.org
+stability:
+homepage:
+package-url:
+description: This package contains efficient general-purpose implementations
+             of various basic immutable container types.  The declared cost of
+             each operation is either worst-case or amortized, but remains
+             valid even if structures are shared.
+category: Data Structures
+author:
+exposed: True
+exposed-modules: Data.Map Data.Set
+hidden-modules:
+import-dirs: ${DIR}
+library-dirs: ${DIR}
+hs-libraries: HScontainers-0.4.0.0
+extra-libraries:
+extra-ghci-libraries:
+include-dirs: 
+includes:
+depends: base-4.3.1.0-inplace
+hugs-options:
+cc-options:
+ld-options:
+framework-dirs:
+frameworks:
+haddock-interfaces:
+haddock-html:

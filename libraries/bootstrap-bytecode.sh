@@ -66,4 +66,17 @@ echo "Registering ${YELLOW}base${NC}"
 sed 's:\${DIR}:'"${DIR}"'/base:g' <base/recipe.in >base/recipe
 ${HC_PKG} register --global-conf=${PKG_DB} --force base/recipe
 
+
+MODULES_containers="Data/Set.hs Data/Map.hs"
+cd containers
+for module in ${MODULES_containers}; do
+  echo "Compiling ${YELLOW}containers:${module}${NC}"
+  ../${LCC} -o2 --package-name=containers-0.4.0.0 ${module} || exit 1
+done
+touch libHScontainers-0.4.0.0.a
+cd ..
+echo "Registering ${YELLOW}containers${NC}"
+sed 's:\${DIR}:'"${DIR}"'/containers:g' <containers/recipe.in >containers/recipe
+${HC_PKG} register --global-conf=${PKG_DB} --force containers/recipe
+
 exit 0

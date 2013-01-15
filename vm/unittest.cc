@@ -1035,11 +1035,11 @@ TEST_F(RunFileTest, Alloc1) {
   run("Bc.Alloc1");
 }
 
-TEST_F(RunFileTest, DISABLED_Set1) {
+TEST_F(RunFileTest, Set1) {
   run("Bc.Set1");
 }
 
-TEST_F(RunFileTest, DISABLED_Map1) {
+TEST_F(RunFileTest, Map1) {
   run("Bc.Map1");
 }
 
