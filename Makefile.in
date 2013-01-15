@@ -180,6 +180,7 @@ TEST_FILES := tests/Bc/Bc0016.lcbc tests/Bc/Bc0014.lcbc \
 	tests/Bc/UnpackCString.lcbc tests/Bc/Monoid.lcbc \
 	tests/Bc/NopPrims.lcbc tests/Bc/NegateInt.lcbc \
 	tests/Bc/WordCompare.lcbc tests/Bc/TestShow.lcbc \
+	tests/Bc/Rank2.lcbc \
 	tests/Bc/BitOps.lcbc \
 	tests/Bc/Shifting.lcbc \
 	tests/Bc/Integer.lcbc \
@@ -191,7 +192,6 @@ TEST_FILES := tests/Bc/Bc0016.lcbc tests/Bc/Bc0014.lcbc \
 # tests/Bc/Set1.lcbc tests/Bc/Map1.lcbc
 # tests/Bench/Fibon/Agum/IntLinEq.lcbc
 # tests/Bench/Fibon/Agum/UnificationMatching.lcbc
-# tests/Bc/Rank2.lcbc 
 # 	tests/Data/Map.lcbc \
 
 

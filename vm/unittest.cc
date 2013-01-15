@@ -1139,7 +1139,7 @@ TEST_F(RunFileTest, BitOps) {
   run("Bc.BitOps");
 }
 
-TEST_F(RunFileTest, DISABLED_Rank2) {
+TEST_F(RunFileTest, Rank2) {
   run("Bc.Rank2");
 }
 

@@ -49,7 +49,7 @@ echo "Registering ${YELLOW}integer-simple${NC}"
 ${HC_PKG} register --global-conf=${PKG_DB} --force integer-simple/recipe
 
 
-MODULES_base="Control/Exception/Base.hs GHC/Classes.hs GHC/Show.hs-boot GHC/Err.hs-boot GHC/Base.hs Data/Tuple.hs GHC/Enum.hs Data/Maybe.hs GHC/List.hs GHC/Show.hs GHC/Num.hs GHC/Err.hs GHC/Real.hs GHC/Unicode.hs-boot GHC/Unicode.hs Data/Char.hs Data/Either.hs Data/List.hs Data/Monoid.hs"
+MODULES_base="Control/Exception/Base.hs GHC/Classes.hs GHC/Show.hs-boot GHC/Err.hs-boot GHC/Base.hs Data/Tuple.hs GHC/Enum.hs Data/Maybe.hs GHC/List.hs GHC/Show.hs GHC/Num.hs GHC/Err.hs GHC/Real.hs GHC/Unicode.hs-boot GHC/Unicode.hs Data/Char.hs Data/Either.hs Data/List.hs Data/Monoid.hs Control/Monad.hs Text/ParserCombinators/ReadP.hs Text/ParserCombinators/ReadPrec.hs Text/Read/Lex.hs GHC/Read.hs Text/Read.hs"
 cd base
 for module in ${MODULES_base}; do
   echo "Compiling ${YELLOW}base:${module}${NC}"

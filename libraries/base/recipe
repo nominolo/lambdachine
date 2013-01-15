@@ -15,7 +15,9 @@ author:
 exposed: True
 exposed-modules: GHC.Base GHC.Classes GHC.Enum GHC.Err GHC.List GHC.Num GHC.Real
                  GHC.Show GHC.Unicode Control.Exception.Base Data.Char Data.Either
-                 Data.List Data.Maybe Data.Monoid Data.Tuple
+                 Data.List Data.Maybe Data.Monoid Data.Tuple Control.Monad
+                 Text.ParserCombinators.ReadP Text.ParserCombinators.ReadPrec
+                 Text.Read.Lex GHC.Read Text.Read
 hidden-modules:
 import-dirs: /home/nominolo/code/lambdachine/libraries/base
 library-dirs: /home/nominolo/code/lambdachine/libraries/base
