@@ -1,4 +1,5 @@
 #!/bin/sh
+# TODO: Replace this script by a Perl script (or Python or Ruby)
 if [ $# -ne 3 ]; then
     echo "Please use 'make bytecode' to run this script with the right arguments"
     exit 1
@@ -6,6 +7,7 @@ fi
 LCC=$1
 HC_PKG=$2
 PKG_DB=$3
+DIR=`pwd`
 
 YELLOW='\033[0;33m'
 NC='\033[0m' # No Color
@@ -23,6 +25,7 @@ fi
 
 ${HC_PKG} init ${PKG_DB}
 
+sed 's:\${DIR}:'"${DIR}"'/rts:g' <rts/recipe.in >rts/recipe
 ${HC_PKG} register --global-conf=${PKG_DB} rts/recipe
 
 MODULES_ghc_prim="GHC/Bool.hs GHC/Ordering.hs GHC/Tuple.hs GHC/Unit.hs GHC/Types.hs"
@@ -33,6 +36,7 @@ for module in ${MODULES_ghc_prim}; do
 done
 cd ..
 echo "Registering ${YELLOW}ghc-prim${NC}"
+sed 's:\${DIR}:'"${DIR}"'/ghc-prim:g' <ghc-prim/recipe.in >ghc-prim/recipe
 ${HC_PKG} register --global-conf=${PKG_DB} ghc-prim/recipe --force
 
 
@@ -46,6 +50,7 @@ done
 touch libHSinteger-simple-0.1.0.0.a
 cd ..
 echo "Registering ${YELLOW}integer-simple${NC}"
+sed 's:\${DIR}:'"${DIR}"'/integer-simple:g' <integer-simple/recipe.in >integer-simple/recipe
 ${HC_PKG} register --global-conf=${PKG_DB} --force integer-simple/recipe
 
 
@@ -58,6 +63,7 @@ done
 touch libHSbase-4.3.1.0.a
 cd ..
 echo "Registering ${YELLOW}base${NC}"
+sed 's:\${DIR}:'"${DIR}"'/base:g' <base/recipe.in >base/recipe
 ${HC_PKG} register --global-conf=${PKG_DB} --force base/recipe
 
 exit 0

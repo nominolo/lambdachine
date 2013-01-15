@@ -1,5 +1,7 @@
-{-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE PatternGuards, CPP #-}
 module Main where
+
+#include "Locations.h"
 
 import Lambdachine.Utils
 import Lambdachine.Ghc.Pipeline
@@ -34,7 +36,7 @@ import System.FilePath ( replaceExtension )
 import System.IO.Temp
 
 dbPath :: String
-dbPath = "/home/nominolo/code/lambdachine/libraries/package.conf"
+dbPath = PACKAGE_CONF_STRING
 
 main :: IO ()
 main = do

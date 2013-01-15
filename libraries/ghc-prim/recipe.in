@@ -13,8 +13,8 @@ author:
 exposed: True
 exposed-modules: GHC.Prim GHC.Bool GHC.Ordering GHC.Tuple GHC.Types GHC.Unit
 hidden-modules:
-import-dirs: /home/nominolo/code/lambdachine/libraries/ghc-prim
-library-dirs: /home/nominolo/code/lambdachine/libraries/ghc-prim
+import-dirs: ${DIR}
+library-dirs: ${DIR}
 hs-libraries: HSghc-prim-0.2.0.0
 extra-libraries:
 extra-ghci-libraries:

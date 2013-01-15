@@ -292,7 +292,10 @@ HSSRCS := $(shell find compiler -name '*.hs')
 $(DIST)/setup-config: lambdachine.cabal
 	$(CABAL) configure --with-compiler=$(HC) --with-hc-pkg=$(HC_PKG)
 
-$(LCC): $(HSSRCS) compiler/Opcodes.h $(DIST)/setup-config
+compiler/Locations.h:
+	@echo "#define PACKAGE_CONF_STRING \"$(PWD)/libraries/package.conf\"" > $@
+
+$(LCC): $(HSSRCS) compiler/Opcodes.h compiler/Locations.h $(DIST)/setup-config
 	@mkdir -p $(HSBUILDDIR)
 	$(CABAL) build
 

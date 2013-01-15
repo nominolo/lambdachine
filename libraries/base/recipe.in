@@ -19,8 +19,8 @@ exposed-modules: GHC.Base GHC.Classes GHC.Enum GHC.Err GHC.List GHC.Num GHC.Real
                  Text.ParserCombinators.ReadP Text.ParserCombinators.ReadPrec
                  Text.Read.Lex GHC.Read Text.Read
 hidden-modules:
-import-dirs: /home/nominolo/code/lambdachine/libraries/base
-library-dirs: /home/nominolo/code/lambdachine/libraries/base
+import-dirs: ${DIR}
+library-dirs: ${DIR}
 hs-libraries: HSbase-4.3.1.0
 extra-libraries:
 extra-ghci-libraries:

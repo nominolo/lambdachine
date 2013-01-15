@@ -14,7 +14,7 @@ exposed: True
 exposed-modules:
 hidden-modules:
 import-dirs:
-library-dirs: /home/nominolo/code/lambdachine/libraries/rts
+library-dirs: ${DIR}
 hs-libraries: 
 extra-libraries: 
 extra-ghci-libraries:

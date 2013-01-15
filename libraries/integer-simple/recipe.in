@@ -13,8 +13,8 @@ author:
 exposed: True
 exposed-modules: GHC.Integer GHC.Integer.Simple.Internals
 hidden-modules: GHC.Integer.Type
-import-dirs: /home/nominolo/code/lambdachine/libraries/integer-simple
-library-dirs: /home/nominolo/code/lambdachine/libraries/integer-simple
+import-dirs: ${DIR}
+library-dirs: ${DIR}
 hs-libraries: HSinteger-simple-0.1.0.0
 extra-libraries:
 extra-ghci-libraries:
