@@ -188,12 +188,10 @@ TEST_FILES := tests/Bc/Bc0016.lcbc tests/Bc/Bc0014.lcbc \
 	tests/Bench/Nofib/Spectral/Constraints.lcbc \
 	tests/Bench/Nofib/Spectral/Boyer.lcbc \
 	tests/Bench/Nofib/Spectral/Lambda.lcbc \
-	tests/Bench/Nofib/Spectral/Circsim.lcbc
-
-
-# tests/Bench/Fibon/Agum/IntLinEq.lcbc
-# tests/Bench/Fibon/Agum/UnificationMatching.lcbc
-# 	tests/Data/Map.lcbc \
+	tests/Bench/Nofib/Spectral/Circsim.lcbc \
+	tests/Bench/Fibon/Agum/IntLinEq.lcbc \
+	tests/Bench/Fibon/Agum/UnificationMatching.lcbc \
+	tests/Bench/Fibon/Agum/Main.lcbc
 
 
 .PHONY: test-files
