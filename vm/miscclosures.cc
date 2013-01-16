@@ -21,8 +21,9 @@ APMAP *MiscClosures::otherApInfos = NULL;
 Closure *MiscClosures::stg_BLACKHOLE_closure_addr = NULL;
 
 void MiscClosures::initStopClosure(MemoryManager &mm) {
+  AllocInfoTableHandle hdl(mm);
   CodeInfoTable *info = static_cast<FuncInfoTable *>
-                        (mm.allocInfoTable(wordsof(FuncInfoTable)));
+    (mm.allocInfoTable(hdl, wordsof(FuncInfoTable)));
   info->type_ = FUN;
   info->size_ = 1;
   info->tagOrBitmap_ = 0;
@@ -57,8 +58,9 @@ void MiscClosures::initStopClosure(MemoryManager &mm) {
 }
 
 void MiscClosures::initBlackholeClosure(MemoryManager &mm) {
+  AllocInfoTableHandle hdl(mm);
   ThunkInfoTable *info = static_cast<ThunkInfoTable *>
-                        (mm.allocInfoTable(wordsof(ThunkInfoTable)));
+    (mm.allocInfoTable(hdl, wordsof(ThunkInfoTable)));
   info->type_ = BLACKHOLE;
   info->size_ = 1;
   info->tagOrBitmap_ = 0;
@@ -83,8 +85,9 @@ void MiscClosures::initBlackholeClosure(MemoryManager &mm) {
 }
 
 void MiscClosures::initUpdateClosure(MemoryManager &mm) {
+  AllocInfoTableHandle hdl(mm);
   CodeInfoTable *info = static_cast<FuncInfoTable *>
-                        (mm.allocInfoTable(wordsof(FuncInfoTable)));
+    (mm.allocInfoTable(hdl, wordsof(FuncInfoTable)));
   info->type_ = UPDATE_FRAME;
   info->size_ = 2;
   info->tagOrBitmap_ = 0;
@@ -126,8 +129,9 @@ void MiscClosures::initUpdateClosure(MemoryManager &mm) {
 }
 
 void MiscClosures::initIndirectionItbl(MemoryManager &mm) {
+  AllocInfoTableHandle hdl(mm);
   InfoTable *info = static_cast<InfoTable *>
-                    (mm.allocInfoTable(wordsof(InfoTable)));
+    (mm.allocInfoTable(hdl, wordsof(InfoTable)));
   info->type_ = IND;
   info->size_ = 1;
   info->tagOrBitmap_ = 1;
@@ -182,8 +186,9 @@ void MiscClosures::buildApCont(MemoryManager *mm, ApContInfo *out,
   LC_ASSERT(nargs < 32);
   LC_ASSERT(pointerMask < (1u << nargs));
 
+  AllocInfoTableHandle hdl(*mm);
   CodeInfoTable *info = static_cast<FuncInfoTable *>
-                        (mm->allocInfoTable(wordsof(FuncInfoTable)));
+    (mm->allocInfoTable(hdl, wordsof(FuncInfoTable)));
   info->type_ = AP_CONT;
   info->size_ = 0;
   info->tagOrBitmap_ = 0; // pointerMask;
@@ -280,8 +285,9 @@ void MiscClosures::getApCont(Closure **closure, BcIns **returnAddr,
 }
 
 void MiscClosures::initPapItbl(MemoryManager *mm) {
+  AllocInfoTableHandle hdl(*mm);
   CodeInfoTable *info = static_cast<FuncInfoTable *>
-                        (mm->allocInfoTable(wordsof(FuncInfoTable)));
+    (mm->allocInfoTable(hdl, wordsof(FuncInfoTable)));
   info->type_ = PAP;
   info->size_ = 0;  // special layout
   info->tagOrBitmap_ = 0;
@@ -307,8 +313,9 @@ void MiscClosures::initPapItbl(MemoryManager *mm) {
 
 InfoTable *MiscClosures::buildApInfo(MemoryManager *mm, u4 nargs, u4 pointerMask) {
   LC_ASSERT(nargs <= 8);
+  AllocInfoTableHandle hdl(*mm);
   CodeInfoTable *info = static_cast<CodeInfoTable *>
-                        (mm->allocInfoTable(wordsof(CodeInfoTable)));
+    (mm->allocInfoTable(hdl, wordsof(CodeInfoTable)));
   info->type_ = THUNK;
   info->size_ = 1 + nargs;
   info->tagOrBitmap_ = (pointerMask << 1) | 1u;
@@ -379,6 +386,7 @@ InfoTable *MiscClosures::getApInfo(u4 nargs, u4 pointerMask) {
 }
 
 void MiscClosures::init(MemoryManager *mm) {
+  AllocInfoTableHandle h(*mm); // Prevent lots of mprotect calls
   MiscClosures::initStopClosure(*mm);
   MiscClosures::initBlackholeClosure(*mm);
   MiscClosures::initUpdateClosure(*mm);

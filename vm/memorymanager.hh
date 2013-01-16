@@ -28,6 +28,9 @@ public:
   // Points past last free byte.
   inline char *end() const { return end_; }
   
+  // Size of block in bytes.
+  inline size_t size() const { return (size_t)(end() - start()); }
+
   // Allocate a number of bytes in this block.  Returns NULL
   // if no room left.
   inline char *alloc(size_t bytes) {
@@ -173,6 +176,8 @@ private:
   friend class MemoryManager;
 };
 
+class AllocInfoTableHandle; // forward decl
+
 class MemoryManager
 {
   //  void *allocInfoTable(Word nwords);
@@ -180,10 +185,7 @@ public:
   MemoryManager();
   ~MemoryManager();
 
-  inline InfoTable *allocInfoTable(Word nwords) {
-    return static_cast<InfoTable*>
-      (allocInto(&info_tables_, nwords * sizeof(Word)));
-  }
+  InfoTable *allocInfoTable(AllocInfoTableHandle&, Word nwords);
 
   inline char *allocString(size_t length) {
     return reinterpret_cast<char*>(allocInto(&strings_, length + 1));
@@ -216,7 +218,7 @@ public:
   friend std::ostream& operator<<(std::ostream& out, const MemoryManager&);
 
   inline uint64_t allocated() const { return allocated_; }
-  inline uint32_t numGCs() const { return num_gcs_; }
+  inline uint32_t numGCs() const { return num_gcs_; };
 
   static const u4 kNoMask = ~0;
 
@@ -279,6 +281,9 @@ private:
   // and *heaplim point to a new block.
   int bumpAllocatorFullNoGC(char **heap, char **heaplim);
 
+  bool markBlockReadOnly(const Block *block);
+  bool markBlockReadWrite(const Block *block);
+
   Block *grabFreeBlock(Block::Flags);
   void blockFull(Block **);
   void performGC(Capability *cap);
@@ -301,6 +306,9 @@ private:
   void sanityCheckHeap(Capability *cap);
   bool inRegions(void *p);
 
+  void beginAllocInfoTable();
+  void endAllocInfoTable();
+
   Region *region_;
   Block *free_;
   Block *info_tables_;
@@ -310,6 +318,7 @@ private:
   Block *bytecode_;
   Block *old_heap_; // Only non-NULL during GC
   u4 topOfStackMask_;
+  int beginAllocInfoTableLevel_;
 
   uint64_t minHeapSize_;  // in blocks
   u4 nextGC_;  // if zero, a GC gets triggered.
@@ -319,6 +328,16 @@ private:
   // to be fine for now (it's for statistical purposes only).
   uint64_t allocated_;
   uint64_t num_gcs_;
+
+  friend class AllocInfoTableHandle;
+};
+
+class AllocInfoTableHandle {
+public:
+  AllocInfoTableHandle(MemoryManager &mm) : mm_(mm) {  mm_.beginAllocInfoTable(); }
+  ~AllocInfoTableHandle() { mm_.endAllocInfoTable(); }
+private:
+  MemoryManager &mm_;
 };
 
 _END_LAMBDACHINE_NAMESPACE

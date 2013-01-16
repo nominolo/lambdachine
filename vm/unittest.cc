@@ -33,16 +33,18 @@ TEST(MMTest, AllocRegion) {
 
 TEST(MMTest, AllocBasic) {
   MemoryManager m;
-  void *p = m.allocInfoTable(10);
+  AllocInfoTableHandle h(m);
+  void *p = m.allocInfoTable(h, 10);
   ASSERT_TRUE(p != NULL);
 }
 
 TEST(MMTest, AllocBasic2) {
   MemoryManager m;
+  AllocInfoTableHandle h(m);
   // Fill up at least one block.
   size_t i = 0;
   for ( ; i < (Block::kBlockSize / 10) + 10; i++) {
-    void *p = m.allocInfoTable(10);
+    void *p = m.allocInfoTable(h, 10);
     ASSERT_TRUE(p != NULL);
   }
   //cout << i << "," << i * 10 * sizeof(Word) << endl << m;

@@ -86,9 +86,9 @@ Loader::~Loader() {
 }
 
 bool Loader::loadWiredInModules() {
-  return
-    loadModule("GHC.Bool") &&
-    loadModule("Control.Exception.Base");
+  AllocInfoTableHandle h(*mm_); // Prevent lots of mprotect calls
+  bool result = loadModule("GHC.Bool") && loadModule("Control.Exception.Base");
+  return result;
 }
 
 // Linked list of strings
@@ -256,7 +256,11 @@ char *Loader::findModule(const char *moduleName) {
 
 bool Loader::loadModule(const char *moduleName) {
   Time starttime = getProcessElapsedTime();
-  bool ans = loadModule(moduleName, 0) && checkNoForwardRefs();
+  bool ans = false;
+  {
+    AllocInfoTableHandle h(*mm_); // Prevent lots of mprotect calls
+    ans = loadModule(moduleName, 0) && checkNoForwardRefs();
+  }
   loader_time += getProcessElapsedTime() - starttime;
   return ans;
 }
@@ -474,9 +478,10 @@ InfoTable *Loader::loadInfoTable(BytecodeFile &f,
   case CONSTR:
     // A statically allocated constructor
   {
+    AllocInfoTableHandle h(*mm_);
     DLOG("itbl.CONSTR %s\n", itbl_name);
     ConInfoTable *info = static_cast<ConInfoTable *>
-                         (mm_->allocInfoTable(wordsof(ConInfoTable)));
+      (mm_->allocInfoTable(h, wordsof(ConInfoTable)));
     info->type_ = cl_type;
     info->tagOrBitmap_ = f.get_varuint();  // tag
     Word sz = f.get_varuint();
@@ -492,9 +497,10 @@ InfoTable *Loader::loadInfoTable(BytecodeFile &f,
   case CAF:
   case THUNK:
   case FUN: {
+    AllocInfoTableHandle h(*mm_);
     DLOG("itbl.FUN/CAF/THK %s\n", itbl_name);
     CodeInfoTable *info = static_cast<CodeInfoTable *>
-                          (mm_->allocInfoTable(wordsof(CodeInfoTable)));
+      (mm_->allocInfoTable(h, wordsof(CodeInfoTable)));
     info->type_ = cl_type;
     info->tagOrBitmap_ = 0; // TODO: anything useful to put in here?
     Word sz = f.get_varuint();

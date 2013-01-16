@@ -141,11 +141,16 @@ Time gc_time = 0;
 
 MemoryManager::MemoryManager()
   : free_(NULL), old_heap_(NULL), topOfStackMask_(kNoMask),
-    minHeapSize_(2), nextGC_(minHeapSize_),
-    allocated_(0), num_gcs_(0) {
+    beginAllocInfoTableLevel_(0),
+    minHeapSize_(2), 
+    nextGC_(minHeapSize_),
+    allocated_(0), num_gcs_(0)
+{
   region_ = Region::newRegion(Region::kSmallObjectRegion);
-  info_tables_ = grabFreeBlock(Block::kInfoTables);
   static_closures_ = grabFreeBlock(Block::kStaticClosures);
+  info_tables_ = grabFreeBlock(Block::kInfoTables);
+  bool ok = markBlockReadOnly(info_tables_);
+  LC_ASSERT(ok);
   closures_ = grabFreeBlock(Block::kClosures);
   strings_ = grabFreeBlock(Block::kStrings);
   bytecode_ = grabFreeBlock(Block::kBytecode);
@@ -194,6 +199,73 @@ void MemoryManager::blockFull(Block **block) {
   dout << "BLOCK_FULL" << endl;
   emptyBlock->link_ = *block;
   *block = emptyBlock;
+}
+
+bool
+MemoryManager::markBlockReadOnly(const Block *block)
+{
+  char *from = block->start();
+  size_t size = block->size();
+  DLOG( "Marking block as read-only [%p-%p]\n", from, from + size);
+  // May fail in particular if "from" is not page-aligned.
+  return mprotect(from, size, PROT_READ) == 0;
+}
+
+bool
+MemoryManager::markBlockReadWrite(const Block *block)
+{
+  char *from = block->start();
+  size_t size = block->size();
+  DLOG( "Marking block as read-write [%p-%p]\n", from, from + size);
+  return mprotect(from, size, PROT_READ | PROT_WRITE) == 0;
+}
+
+inline bool isPageAligned(const void *ptr) {
+  return ((Word)ptr & 0xfff) == 0;
+}
+
+InfoTable *
+MemoryManager::allocInfoTable(AllocInfoTableHandle&, Word nwords)
+{
+  // The fact that we got passed a AllocInfoTableHandle means that the
+  // block at info_tables_ is writeable.
+  LC_ASSERT(beginAllocInfoTableLevel_ > 0);
+
+  size_t bytes = nwords * sizeof(Word);
+  char *ptr = info_tables_->alloc(bytes);
+  while (LC_UNLIKELY(ptr == NULL)) {
+    bool ok = markBlockReadOnly(info_tables_);
+    LC_ASSERT(ok && "Failed to mark block R/O");
+    blockFull(&info_tables_);
+    if (!isPageAligned(info_tables_->start())) {
+      cerr << "TODO: Need API to request page-aligned memory.\n";
+      // Just grab another block.
+      continue;
+    }
+    ptr = info_tables_->alloc(bytes);
+  }
+  allocated_ += bytes;
+  return (InfoTable *)ptr;
+}
+
+void
+MemoryManager::beginAllocInfoTable()
+{
+  if (beginAllocInfoTableLevel_ == 0) {
+    bool ok = markBlockReadWrite(info_tables_);
+    LC_ASSERT(ok && "Failed to mark block as R/W");
+  }
+  ++beginAllocInfoTableLevel_;
+}
+
+void
+MemoryManager::endAllocInfoTable()
+{
+  --beginAllocInfoTableLevel_;
+  if (beginAllocInfoTableLevel_ == 0) {
+    bool ok = markBlockReadOnly(info_tables_);
+    LC_ASSERT(ok && "Failed to mark block R/O");
+  }
 }
 
 // Returns non-zero if GC is necessary.
