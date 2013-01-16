@@ -616,6 +616,8 @@ op_EVAL:
       tnode = (Closure *)tnode->payload(0);
     }
 
+    LC_ASSERT(tnode->info() != MiscClosures::stg_IND_info);
+
     if (tnode->isHNF()) {
       T->top_[FRAME_SIZE] = (Word)tnode;
       ++pc;  // skip live-out info
@@ -691,6 +693,11 @@ op_UPDATE: {
     InfoTable *info = oldnode->info();
     LC_ASSERT(oldnode != NULL && mm_->looksLikeClosure(oldnode));
     LC_ASSERT(newnode != NULL && mm_->looksLikeClosure(newnode));
+
+    LC_ASSERT(!oldnode->isHNF());
+
+    // cerr << "UPDATING: " << oldnode << " (" << oldnode->info()->name() << ") with "
+    //      << newnode << " (" << newnode->info()->name() << ")\n";
 
     oldnode->setInfo(MiscClosures::stg_IND_info);
     oldnode->setPayload(0, (Word)newnode);
@@ -848,6 +855,7 @@ op_CASE:
   // D = number of cases
   //
   {
+    const BcIns *this_pc = pc - 1;
     Closure *cl = (Closure *)base[opA];
     u2 num_cases = opC;
     u2 *table = (u2 *)pc;
@@ -858,7 +866,14 @@ op_CASE:
 
     u2 tag = cl->tag() - 1;  // tags start at 1
 
-    LC_ASSERT(tag < num_cases);
+    if (!(tag < num_cases)) {
+      cerr << "tag = " << tag << ", num_cases = " << num_cases << endl;
+      cerr << "closure = " << (void*)cl << ", itbl = " << cl->info()
+           << ", name = " << cl->info()->name()
+           << endl;
+      BcIns::debugPrint(cerr, this_pc, false, NULL, code);
+      LC_ASSERT(tag < num_cases);
+    }
 
     u2 offs = table[tag];
     pc += offs;
