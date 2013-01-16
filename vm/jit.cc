@@ -62,7 +62,9 @@ Jit::Jit()
   Jit::resetFragments();
   memset(exitStubGroup_, 0, sizeof(exitStubGroup_));
   resetRecorderState();
-  // setDebugTrace(true);
+#if (DEBUG_COMPONENTS & DEBUG_TRACE_PROGRESS)
+  setDebugTrace(true);
+#endif
 #ifdef LC_TRACE_STATS
   stats_ = NULL;
 #endif
