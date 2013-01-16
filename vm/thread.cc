@@ -31,6 +31,10 @@ void Thread::initialize(Word stackSizeInWords) {
   pc_ = &stopCode_[0];
   stackSize_ = stackSizeInWords;
   stack_ = new Word[stackSize_];
+#ifndef NDEBUG
+  // This is mainly to shut up Valgrind
+  memset(stack_, 0xf0, stackSize_ * sizeof(Word));
+#endif
   stack_[0] = (Word)NULL;   // previous base
   stack_[1] = (Word)NULL;   // previous PC
   stack_[2] = (Word)MiscClosures::stg_STOP_closure_addr;

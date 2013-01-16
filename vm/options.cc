@@ -17,7 +17,13 @@ typedef enum {
 
 long parseMemorySize(const char *str);
 
-Options::Options() : entry_("test"), stackSize_(MIN_STACK_SIZE) {
+Options::Options()
+  : entry_("test"),
+    printLoaderState_(false),
+    traceInterpreter_(false),
+    enableAsm_(1),
+    stackSize_(MIN_STACK_SIZE)
+{
 }
 
 Options::~Options() { }
