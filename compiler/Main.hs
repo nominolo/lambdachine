@@ -19,7 +19,7 @@ import Ghc.Api.Pipeline
 
 import GHC
 import HscTypes ( HscEnv(hsc_dflags) )
-import DynFlags ( setPackageName, updOptLevel )
+import DynFlags ( setPackageName, updOptLevel, dopt_unset )
 import GHC.Paths ( libdir )
 import Outputable
 import MonadUtils ( liftIO )
@@ -58,7 +58,8 @@ main = do
         dflags2 | Cli.package_name opts /= ""
                 = setPackageName (Cli.package_name opts) dflags1
                 | otherwise = dflags1
-        dflags = dflags2{ systemPackageConfig = dbPath }
+        dflags3 = dflags2{ systemPackageConfig = dbPath }
+        dflags = dopt_unset dflags3 Opt_ReadUserPackageConf
     setSessionDynFlags dflags
     let file = Cli.inputFile opts
     hsc_env <- getSession
