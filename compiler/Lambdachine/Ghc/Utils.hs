@@ -122,7 +122,10 @@ ghcAnyType = Ghc.anyPrimTy
 -- TODO: How to deal with 'void' types, like @State#@?
 --
 transType :: Ghc.Type -> OpTy
-transType (Ghc.TyConApp tycon _)
+transType ty0 = transType1 (Ghc.expandTypeSynonyms ty0)
+
+transType1 :: Ghc.Type -> OpTy
+transType1 (Ghc.TyConApp tycon _)
   | Ghc.isPrimTyCon tycon =
     case () of
      _ | tycon == Ghc.intPrimTyCon   -> IntTy
@@ -138,18 +141,18 @@ transType (Ghc.TyConApp tycon _)
          error $ "Unknown primitive type: " ++ showPpr tycon
   | otherwise =
     AlgTy (tyConId (Ghc.tyConName tycon))
-transType ty@(Ghc.FunTy _ _) | (args, res) <- Ghc.splitFunTys ty =
-  FunTy (map transType args) (transType res)
+transType1 ty@(Ghc.FunTy _ _) | (args, res) <- Ghc.splitFunTys ty =
+  FunTy (map transType1 args) (transType1 res)
 -- Type abstraction stuff.  See documentation above.
-transType (Ghc.ForAllTy _ t) = transType t
-transType (Ghc.TyVarTy _) = PtrTy
-transType (Ghc.AppTy t _) = transType t
+transType1 (Ghc.ForAllTy _ t) = transType1 t
+transType1 (Ghc.TyVarTy _) = PtrTy
+transType1 (Ghc.AppTy t _) = transType1 t
 -- Get the dictionary data type for predicates.
 -- TODO: I think this may cause a GHC panic under some circumstances.
-transType (Ghc.PredTy pred) =
-  transType (Ghc.predTypeRep pred)
-transType ty =
-  error $ "transType: Don't know how to translate type: "
+transType1 (Ghc.PredTy pred) =
+  transType1 (Ghc.predTypeRep pred)
+transType1 ty =
+  error $ "transType1: Don't know how to translate type: "
           ++ showPpr ty
 
 ghcPretty :: Ghc.Outputable a => a -> String
