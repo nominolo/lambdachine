@@ -361,7 +361,7 @@ build_bind_code fwd_env env fvi closures locs0 = do
    go bcis locs0 fvs ((x, AppObj f []) : objs) = do
      (bcis1, locs1, fvs1, [fvar]) <- transArgs [Ghc.Var f] env fvi locs0
      xvar <- mbFreshLocal (Ghc.repType (Ghc.varType x)) Nothing
-     let bcis2 = bcis <*> insMove xvar fvar
+     let bcis2 = bcis <*> bcis1 <*> insMove xvar fvar
          locs2 = updateLoc locs1 x (InVar xvar)
      go bcis2 locs2 (fvs `mappend` fvs1) objs
  
