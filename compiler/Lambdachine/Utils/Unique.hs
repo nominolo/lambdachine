@@ -15,7 +15,7 @@ module Lambdachine.Utils.Unique (
 
   UniqueSet,
   emptyUS, singletonUS, unionUS, foldUS, insertUS, deleteUS,
-  nullUS, sizeUS, memberUS, fromListUS,
+  nullUS, sizeUS, memberUS, fromListUS, elementsUS,
   differenceUS, intersectionUS,
 
 ) where
@@ -258,6 +258,9 @@ foldUS f z (US m) = IM.fold f z m
 
 fromListUS :: Uniquable a => [a] -> UniqueSet a
 fromListUS as = US $ IM.fromList [ (uInt a, a) | a <- as ]
+
+elementsUS :: UniqueSet a -> [a]
+elementsUS (US m) = IM.elems m
 
 differenceUS :: UniqueSet a -> UniqueSet a -> UniqueSet a
 differenceUS (US m1) (US m2) = US (m1 `IM.difference` m2)

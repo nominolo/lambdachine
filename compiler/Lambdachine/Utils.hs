@@ -32,6 +32,7 @@ second f (x, y) = (x, f y)
 -- | Variant of 'modify' that is strict in the state.
 modify' :: MonadState s m => (s -> s) -> m ()
 modify' f = do s <- get; put $! f s
+{-# INLINE modify' #-}
 
 -- | Strict left fold over two lists.  Returns after fully processing
 -- the shortest input list.  Strict in all arguments.
