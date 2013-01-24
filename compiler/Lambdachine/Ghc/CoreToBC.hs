@@ -599,30 +599,40 @@ data ValueLocation
 -- @x -> Field z 1@ and @y -> Field z 2@ to the @KnownLocs@.  If we
 -- later do need @x@ or @y@ we can issue the store there.
 --
-newtype KnownLocs = KnownLocs (Ghc.IdEnv ValueLocation)
+data KnownLocs = KnownLocs
+  { closureLocs :: !(Ghc.IdEnv ValueLocation)
+  , itblLocs    :: !(Ghc.IdEnv ValueLocation)
+  }
 
 lookupLoc :: KnownLocs -> CoreBndr -> Maybe ValueLocation
-lookupLoc (KnownLocs env) x = Ghc.lookupVarEnv env x
+lookupLoc (KnownLocs env _) x = Ghc.lookupVarEnv env x
+
+lookupItblLoc :: KnownLocs -> CoreBndr -> Maybe ValueLocation
+lookupItblLoc (KnownLocs _ denv) x = Ghc.lookupVarEnv denv x
 
 updateLoc :: KnownLocs -> CoreBndr -> ValueLocation -> KnownLocs
-updateLoc (KnownLocs env) x l = KnownLocs $ Ghc.extendVarEnv env x l
+updateLoc (KnownLocs env denv) x l = KnownLocs (Ghc.extendVarEnv env x l) denv
+
+updateItblLoc :: KnownLocs -> CoreBndr -> ValueLocation -> KnownLocs
+updateItblLoc (KnownLocs env denv) x l = KnownLocs env (Ghc.extendVarEnv denv x l)
 
 extendLocs :: KnownLocs -> [(CoreBndr, ValueLocation)] -> KnownLocs
-extendLocs (KnownLocs env) xls = 
-  KnownLocs $ Ghc.extendVarEnvList env xls
+extendLocs (KnownLocs env denv) xls = 
+  KnownLocs (Ghc.extendVarEnvList env xls) denv
 
 noLocs :: KnownLocs
-noLocs = KnownLocs Ghc.emptyVarEnv
+noLocs = KnownLocs Ghc.emptyVarEnv Ghc.emptyVarEnv
 
 -- The local environment always includes `realWorld#`.  It doesn't
 -- actually have a runtime representation.
 mkLocs :: [(Ghc.Id, ValueLocation)] -> KnownLocs
 mkLocs l = KnownLocs (Ghc.extendVarEnv (Ghc.mkVarEnv l) Ghc.realWorldPrimId Void)
+                     Ghc.emptyVarEnv
 
 instance Monoid KnownLocs where
   mempty = noLocs
-  (KnownLocs e1) `mappend` (KnownLocs e2) =
-    KnownLocs (Ghc.plusVarEnv e1 e2)
+  (KnownLocs e1 d1) `mappend` (KnownLocs e2 d2) =
+    KnownLocs (Ghc.plusVarEnv e1 e2) (Ghc.plusVarEnv d1 d2)
 
 -- | Keeps track of non-toplevel variables bound outside the current
 -- bytecode context.  Consider the following example:
@@ -867,7 +877,7 @@ transVar ::
 --                     False = undefined
 transVar x env fvi locs0 mr =
   case lookupLoc locs0 x of
-    Just (InVar x') -> -- trace "inVAR" $
+    Just (InVar x') -> {- trace ("inVAR: (" ++ pretty x' ++ ") <> " ++ ppVar x) $ do -}
       return (mbMove mr x', fromMaybe x' mr, in_whnf, locs0, mempty)
     Just (InReg r ty) -> do -- trace "inREG" $
       x' <- mbFreshLocal ty mr
@@ -910,6 +920,7 @@ transVar x env fvi locs0 mr =
           this_mdl <- getThisModule
           let x' = toplevelId this_mdl x
           r <- mbFreshLocal (Ghc.repType (Ghc.varType x)) mr
+          {- trace ("VARadd:" ++ ppVar x ++ " : " ++ pretty x') $ do -}
           return (insLoadGbl r x', r, isGhcConWorkId x,  -- TODO: only if CAF
                   updateLoc locs0 x (InVar r), globalVar x')
     r -> error $ "transVar: unhandled case: " ++ show r ++ " "
@@ -1093,16 +1104,19 @@ transStore dcon args env fvi locs0 ctxt = do
   let bcis = (bcis0 <*> bcis1) <*> insAlloc rslt con_reg regs
   maybeAddRet ctxt bcis locs2 (fvs `mappend` fvs') rslt
 
+ppVar :: CoreBndr -> String
+ppVar x = Ghc.showSDocDebug (Ghc.ppr x) ++ "{" ++ show (getUnique x) ++ "}"
+
 loadDataCon :: CoreBndr -> LocalEnv -> FreeVarsIndex -> KnownLocs -> Maybe BcVar
             -> Trans (Bcis O, BcVar, KnownLocs, FreeVars)
 loadDataCon x env fvi locs0 mr = do
-  case lookupLoc locs0 x of
-    Just (InVar x') -> -- trace "inVAR" $
+  case lookupItblLoc locs0 x of
+    Just (InVar x') -> {- trace ("DCONinVAR: (" ++ pretty x' ++ ") <> " ++ ppVar x) $ -}
       return (mbMove mr x', fromMaybe x' mr, locs0, mempty)
-    Just (InReg r ty) -> do -- trace "inREG" $
+    Just (InReg r ty) -> do -- trace ("DCONinREG (" ++ pretty r ++ ") <> " ++ ppVar  x) $
       x' <- mbFreshLocal ty mr
       return (insMove x' (BcReg r (transType ty)), x',
-              updateLoc locs0 x (InVar x'), mempty)
+              updateItblLoc locs0 x (InVar x'), mempty)
     Nothing -> do
       this_mdl <- getThisModule
       let is_nullary = Ghc.isNullarySrcDataCon (ghcIdDataCon x)
@@ -1110,9 +1124,10 @@ loadDataCon x env fvi locs0 mr = do
              | otherwise  = dataConInfoTableId (ghcIdDataCon x)
       let ty | is_nullary = ghcAnyType
              | otherwise  = Ghc.bcoPrimTy
+      -- trace ("DCONadd: " ++ ppVar x ++ " : " ++ pretty x') $ do
       r <- mbFreshLocal ty mr
       return (insLoadGbl r x', r, -- TODO: only if CAF
-                  updateLoc locs0 x (InVar r), globalVar x')
+                  updateItblLoc locs0 x (InVar r), globalVar x')
 
 -- | Translate a case expression.
 --
