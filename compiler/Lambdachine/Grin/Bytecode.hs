@@ -19,6 +19,7 @@ import qualified Outputable as Ghc
 
 import Compiler.Hoopl
 import Control.Monad.State
+import Control.DeepSeq
 import Data.Maybe ( maybeToList, fromMaybe )
 --import qualified Data.Set as S
 import qualified Data.Map as M
@@ -39,27 +40,29 @@ type BlockId = Label
 
 type LiveSet = S.Set BcVar
 
+instance NFData Label
+
 -- | A bytecode instruction.  Suitable for use with Hoopl.
 data BcIns' b e x where
-  Label  :: b -> BcIns' b C O
+  Label  :: !b -> BcIns' b C O
   -- O/O stuff
-  Assign :: BcVar -> BcRhs        -> BcIns' b O O
-  Store  :: BcVar -> Int -> BcVar -> BcIns' b O O
+  Assign :: !BcVar -> !BcRhs         -> BcIns' b O O
+  Store  :: !BcVar -> !Int -> !BcVar -> BcIns' b O O
 
   -- O/C stuff
-  Goto   :: b                     -> BcIns' b O C
-  CondBranch :: BinOp -> OpTy -> BcVar -> BcVar
-             -> b -> b            -> BcIns' b O C
-  Case :: CaseType -> BcVar 
+  Goto   :: !b                       -> BcIns' b O C
+  CondBranch :: !BinOp -> !OpTy -> !BcVar -> !BcVar
+             -> !b -> !b             -> BcIns' b O C
+  Case :: !CaseType -> !BcVar 
        -> [(BcTag, LiveSet, b)]   -> BcIns' b O C
-  Call :: Maybe (BcVar, b, LiveSet)
-       -> BcVar -> [BcVar]        -> BcIns' b O C
-  Ret1 :: BcVar                   -> BcIns' b O C
-  RetN :: [BcVar]                 -> BcIns' b O C
-  Eval   :: b -> LiveSet -> BcVar -> BcIns' b O C
+  Call :: !(Maybe (BcVar, b, LiveSet))
+       -> !BcVar -> ![BcVar]         -> BcIns' b O C
+  Ret1 :: !BcVar                     -> BcIns' b O C
+  RetN :: ![BcVar]                   -> BcIns' b O C
+  Eval   :: !b -> !LiveSet -> !BcVar -> BcIns' b O C
   -- only used by the interpreter / RTS
-  Update ::                          BcIns' b O C
-  Stop   ::                          BcIns' b O C
+  Update ::                             BcIns' b O C
+  Stop   ::                             BcIns' b O C
 
 -- | A linearised bytecode instruction.
 data LinearIns' b
@@ -80,35 +83,46 @@ instance Pretty b => Pretty (LinearIns' b) where
   ppr (Mid i) = ppr i
   ppr (Lst i) = ppr i
 
+instance NFData b => NFData (BcIns' b e x) -- where
+--  rnf (Case t v targets) = rnf targets `seq` ()  -- FIXME: complete this instance
+
 data CaseType
-  = CaseOnTag Int  -- no. of tags
+  = CaseOnTag !Int  -- no. of tags
   | CaseOnLiteral
   deriving (Eq, Ord)
 
+instance NFData CaseType
+
 data BcTag
   = DefaultTag
-  | Tag Int
-  | LitT Integer
+  | Tag !Int
+  | LitT !Integer
   deriving (Eq, Ord, Show)
 
+instance NFData BcTag
+
 data BcRhs
-  = Move BcVar
-  | HiResult Int   -- for loading results of a multi-result return
-  | Load BcLoadOperand
-  | BinOp BinOp OpTy BcVar BcVar
-  | Fetch BcVar Int
-  | Alloc BcVar [BcVar] LiveSet
-  | AllocAp [BcVar] LiveSet
-  | PrimOp PrimOp OpTy [BcVar]
+  = Move !BcVar
+  | HiResult !Int   -- for loading results of a multi-result return
+  | Load !BcLoadOperand
+  | BinOp !BinOp !OpTy !BcVar !BcVar
+  | Fetch !BcVar Int
+  | Alloc !BcVar ![BcVar] !LiveSet
+  | AllocAp ![BcVar] !LiveSet
+  | PrimOp !PrimOp !OpTy ![BcVar]
   deriving (Eq, Ord)
 
 data BcLoadOperand
-  = LoadLit BcConst
-  | LoadGlobal Id
-  | LoadClosureVar Int
+  = LoadLit !BcConst
+  | LoadGlobal !Id
+  | LoadClosureVar Int  -- must be lazy
   | LoadSelf
   | LoadBlackhole
   deriving (Eq, Ord)
+
+instance NFData BcLoadOperand where
+  rnf (LoadClosureVar !idx) = ()
+
 {-
 data CompOp
   = CmpGt | CmpLe | CmpGe | CmpLt | CmpEq | CmpNe
@@ -157,13 +171,21 @@ data OpTy = IntTy
           | DoubleTy
           | AddrTy
           | PtrTy
-          | FunTy [OpTy] OpTy
+          | FunTy ![OpTy] !OpTy
           | AlgTy !Id
           | VoidTy
   deriving (Eq, Ord)
 
+instance NFData OpTy where
+  rnf (FunTy args _) = rnf args `seq` ()
+  rnf x = x `seq` ()
+
 data BcVar = BcVar !Id Ghc.Type
            | BcReg {-# UNPACK #-} !Int OpTy
+
+instance NFData BcVar where
+  rnf (BcVar _ !t) = ()
+  rnf (BcReg _ !t) = ()
 
 -- | Comparison of 'BcVar' ignores type differences.
 compareBcVar :: BcVar -> BcVar -> Ordering
