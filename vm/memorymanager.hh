@@ -90,7 +90,7 @@ private:
     flags_ = (uint32_t)Block::kUninitialized;
     free_ = start_;
 #if !defined(NDEBUG)
-    memset(free_, 0xfe, end_ - free_);
+    memset(free_, 0, end_ - free_);
 #endif
   }
   void operator delete(void *) {}; // Forbid deleting Blocks
