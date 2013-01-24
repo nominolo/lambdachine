@@ -227,7 +227,7 @@ hooplUniqueFromUniqueSupply us =
 -- -------------------------------------------------------------------
 
 instance Pretty BcVar where
-  ppr (BcVar v t) = ppr v <> brackets (ppr t)
+  ppr (BcVar v t) = ppr v <> colour2 (brackets (ppr t))
   ppr (BcReg n t) = char 'r' <> int n <> char '_' <> ppr t
   
 instance Pretty Label where

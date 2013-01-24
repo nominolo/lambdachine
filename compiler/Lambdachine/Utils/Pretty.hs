@@ -215,6 +215,9 @@ keyword = bold . text
 colour1 :: PDoc -> PDoc
 colour1 = withStyle P.cyan
 
+colour2 :: PDoc -> PDoc
+colour2 = withStyle P.red
+
 pale :: PDoc -> PDoc
 pale = withStyle P.dullwhite
 
