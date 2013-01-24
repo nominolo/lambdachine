@@ -9,7 +9,8 @@ import Lambdachine.Ghc.CoreToBC
 --import Lambdachine.Grin.Eval
 import Lambdachine.Grin.Bytecode
 import Lambdachine.Grin.Analyse
-import Lambdachine.Grin.RegAlloc
+import Lambdachine.Grin.RegAlloc hiding ( allocRegs )
+import Lambdachine.Grin.RegAllocLinearScan
 --import Lambdachine.Interp.Exec
 --import Lambdachine.Interp.Trace
 import Lambdachine.Serialise
@@ -82,11 +83,24 @@ compileToBytecode options hsc_env mod_summary source_unchanged = do
     Just (this_mod, core_binds, data_tycons, imports) -> liftIO $ do
       print (moduleNameString this_mod, map moduleNameString imports)
       s <- newUniqueSupply 'g'
+
+      when (Cli.dumpCoreBinds options) $ do
+        putStrLn "================================================="
+        putStrLn $ showPpr core_binds
+
       let !bcos = generateBytecode s this_mod core_binds data_tycons
+
+      when (Cli.dumpBytecode options) $ do
+        pprint $ bcos
+
       let !bco_mdl =
              allocRegs (moduleNameString this_mod)
                        (map moduleNameString imports)
                        bcos
+
+      when (Cli.dumpBytecode options) $ do
+        pprint $ bco_mdl
+
       let file = ml_obj_file (ms_location mod_summary)
       let ofile = file `replaceExtension` ".lcbc"
       
