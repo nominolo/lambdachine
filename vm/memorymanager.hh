@@ -53,7 +53,8 @@ public:
   _(StaticClosures, STAT) \
   _(InfoTables,     INFO) \
   _(Strings,        STRG) \
-  _(Bytecode,       CODE)
+  _(Bytecode,       CODE) \
+  _(Metadata,       META)
 
   typedef enum {
 #define DEF_CONTENT_CONST(name, shortname) k##name,
@@ -216,6 +217,7 @@ public:
   unsigned int infoTables();
 
   friend std::ostream& operator<<(std::ostream& out, const MemoryManager&);
+  void debugPrint();
 
   inline uint64_t allocated() const { return allocated_; }
   inline uint32_t numGCs() const { return num_gcs_; };

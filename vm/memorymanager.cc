@@ -102,7 +102,21 @@ Region *Region::newRegion(RegionType regionType) {
 void Region::initBlocks() {
   // Mark all blocks as free.
   char *ptr = reinterpret_cast<char *>(this) + sizeof(Region);
-  for (Word i = 0; i < kBlocksPerRegion; i++) {
+
+  // If the block size is very small, the first few blocks may not be available since
+  // that is where the meta data is stored.
+  Word first_avail = sizeof(Region) / Block::kBlockSize;
+  
+  char *metadata = reinterpret_cast<char *>(this);
+  for (Word i = 0; i < first_avail; i++) {
+    blocks_[i].flags_ = Block::kMetadata;
+    blocks_[i].start_ = metadata;
+    metadata = alignToBlockBoundary(metadata + 1);
+    blocks_[i].end_ = metadata;
+    blocks_[i].free_ = metadata;
+    blocks_[i].link_ = NULL;
+  }
+  for (Word i = first_avail; i < kBlocksPerRegion; i++) {
     blocks_[i].flags_ = Block::kUninitialized;
     blocks_[i].start_ = ptr;
     blocks_[i].free_ = ptr;
@@ -111,7 +125,7 @@ void Region::initBlocks() {
     blocks_[i].link_ = &blocks_[i + 1];
   }
   blocks_[kBlocksPerRegion - 1].link_ = NULL; // Overwrite last link
-  next_free_ = &blocks_[0];
+  next_free_ = &blocks_[first_avail];
 }
 
 void Region::operator delete(void *) {
@@ -313,6 +327,10 @@ unsigned int MemoryManager::infoTables() {
 bool MemoryManager::looksLikeInfoTable(void *p) {
   Block *block = Region::blockFromPointer(p);
   return block->contents() == Block::kInfoTables;
+}
+
+void MemoryManager::debugPrint() {
+  cerr << *this << endl;
 }
 
 bool MemoryManager::looksLikeClosure(void *p) {
