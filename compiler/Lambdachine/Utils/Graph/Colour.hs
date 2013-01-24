@@ -2,7 +2,7 @@
 -- Authors:  (c) Ben Lippmeier, Ian Lynagh, Simon Marlow
 
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE PatternGuards, ScopedTypeVariables #-}
 module Lambdachine.Utils.Graph.Colour where
 
 import Lambdachine.Utils.Graph.Base
@@ -13,6 +13,7 @@ import Lambdachine.Utils.Pretty
 import Data.Foldable ( toList )
 import Data.List ( mapAccumL )
 import Data.Maybe ( catMaybes )
+import qualified Data.Set as Set
 
 -- | Try to colour a graph with this set of colours.
 --
@@ -107,13 +108,14 @@ colourGraph iterative spinCount colours triv spill graph0 =
   in
     if not $ null ksNoTriv
       then
-        error "colourGraph: trivially colourable nodes didn't colour!" -- empty
-	  {- (  empty
+        error $ "colourGraph: trivially colourable nodes didn't colour!" -- empty
+	  ++ pretty (  empty
 		$$ text "ksTriv    = " <> ppr ksTriv
 		$$ text "ksNoTriv  = " <> ppr ksNoTriv
 		$$ text "colours    = " <> ppr colours
 		$$ empty
-		$$ dotGraph (\_ -> text "white") triv graph_triv) -}
+                $$ text (dotGraph graph_triv))
+--		$$ dotGraph (\_ -> text "white") triv graph_triv) -- -}
 
       else
 	( graph_prob
@@ -122,6 +124,26 @@ colourGraph iterative spinCount colours triv spill graph0 =
 	    then fromListUM kksCoalesce2
 	    else fromListUM kksCoalesce1)
 
+dotGraph :: forall k cls colour. (Ord k, Pretty k, Pretty cls, Pretty colour) =>
+            Graph k cls colour -> String
+dotGraph g = unlines $ [ "graph G {" ] ++ edges ++ [ "}" ]
+ where
+   nodes :: [Node k cls colour]
+   nodes = elementsUM (graphMap g)
+
+   ordered_edge k1 k2 | k1 < k2   = (k1, k2)
+                      | otherwise = (k2, k1)
+
+   removeDuplicates = Set.toList . Set.fromList
+
+   edges = removeDuplicates edges0  -- remove duplicates
+   
+   edges0 = 
+     [ show (pretty n_id) ++ " -- " ++ show (pretty c_id)
+     | n@Node{ nodeId = n_id0 } <- nodes
+     , c_id0 <- elementsUS (nodeConflicts n)
+     , let (n_id, c_id) = ordered_edge n_id0 c_id0
+     ]
 
 -- | Scan through the conflict graph separating out trivially
 -- colourable and potentially uncolourable (problem) nodes.

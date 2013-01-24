@@ -171,12 +171,20 @@ delCoalesce :: Uniquable k =>
 delCoalesce k1 k2 =
   modNode k1 $ \node ->
     node{ nodeCoalesce = deleteUS k2 (nodeCoalesce node) }
+
 -- | Set the colour of the given node.
 setColour :: Uniquable k => k -> colour
           -> Graph k cls colour -> Graph k cls colour
 setColour k c graph =
   graph{ graphMap =
     adjustUM (\n -> n{ nodeColour = Just c }) k (graphMap graph) }
+
+addPreference :: Uniquable k => (k, cls) -> colour
+              -> Graph k cls colour -> Graph k cls colour
+addPreference (u, c) colour graph =
+  modifyGraphMap graph $ \mp ->
+    adjustOrInsertUM (\node -> node{ nodePreference = colour : nodePreference node })
+                     u (newNode u c){ nodePreference = [colour] } mp
 
 -- | Find all the nodes that match the predicate.
 scanGraph :: Uniquable k =>
@@ -343,9 +351,9 @@ coalesceNodes_merge aggressive triv graph kMin kMax nMin nMax
   | nodeClass nMin /= nodeClass nMax
   = error "coalesceNodes: can't coalesce nodes of different classes."
 
---  | not (isNothing (nodeColour nMin) && isNothing (nodeColour nMax))
---  = error $ "coalesceNodes: can't coalesce coloured nodes.\n" ++
---           pretty (nMin, nMax)
+  | not (isNothing (nodeColour nMin) && isNothing (nodeColour nMax))
+  = error $ "coalesceNodes: can't coalesce coloured nodes.\n" ++
+            pretty (nMin, nMax)
 
   -- TODO: Does this break some invariant elsewhere?
   -- Let nMin be the coloured node (if any)
