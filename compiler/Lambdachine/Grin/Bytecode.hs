@@ -302,6 +302,7 @@ instance Pretty BcRhs where
 
 instance Pretty PrimOp where
   ppr OpIndexOffAddrChar = text "indexCharOffAddr#"
+  ppr OpGetTag = text "getTag#"
   ppr OpNegateInt = text "negateInt#"
   ppr OpBitNot = text "not#"
   ppr OpBitAnd = text "and#"
