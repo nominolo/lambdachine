@@ -5,11 +5,12 @@ import Lambdachine.Ghc.Utils
 import Lambdachine.Grin.Bytecode
 import Lambdachine.Grin.Analyse
 import Lambdachine.Utils
+import Lambdachine.Utils.Unique as U
 import qualified Lambdachine.Utils.Graph.Base as Gr
 import qualified Lambdachine.Utils.Graph.Ops as Gr
 import qualified Lambdachine.Utils.Graph.Colour as Gr
 
-import Compiler.Hoopl hiding ( UniqueSet )
+import Compiler.Hoopl hiding ( UniqueSet, UniqueMap )
 import Data.Maybe ( fromMaybe )
 import Data.Vector ( Vector )
 import Data.Word ( Word8 )
@@ -221,14 +222,21 @@ instance Pretty FinalReg where
   ppr (R r) = char 'R' <> text (show r)
 
 -- | TODO: Size2 for Double's?
-data RegClass = Size1
+data RegClass = Size1 | PreColoured FinalReg
   deriving Eq
 
 instance Uniquable RegClass where
   getUnique Size1 = unsafeMkUniqueNS 'C' 1
+  getUnique (PreColoured (R r)) = unsafeMkUniqueNS 'C' (2 + fromIntegral r)
 
 instance Pretty RegClass where
   ppr Size1 = text "Sz1"
+  ppr (PreColoured r) = text "PC:" <> ppr r
+
+classes :: UniqueMap RegClass (UniqueSet FinalReg)
+classes = fromListUM $
+  (Size1, (fromListUS (map R [0..255]))) :
+  [ let r = R n in (PreColoured r, singletonUS r) | n <- [0..20] ]
 
 -- | The register allocator is parameterised over three types:
 --
@@ -258,7 +266,7 @@ assignRegs lc@(LinearCode code lives live_outs lbls) =
       !code' = Vec.map (transformBi assign1) code
   in
     if not (verifyAlloc assign1 lives) then
-      error $ "BUG-IN-REGALLOC\n" ++ pretty code ++ "\n\n"
+      error $ "BUG-IN-REGALLOC1\n" ++ pretty code ++ "\n\n" ++ pretty code' ++ "\n\n"
 --            ++ pretty ig
      else
        LinearCode code' lives live_outs lbls
@@ -275,9 +283,11 @@ colourGraph igraph =
     (igraph', uncoloured, coalesced)
       | nullUS uncoloured -> get_alloc igraph' coalesced
  where
-   classes =
-     singletonUM Size1 (fromListUS (map R [0..255]))
+   -- classes =
+   --   singletonUM Size1 (fromListUS (map R [0..255]))
    triv Size1 neighbs excls = True
+   triv (PreColoured r) _neighbs excls = not (r `memberUS` excls)
+
    spill gr = error "Cannot spill"
 
    get_alloc ig co x@(BcVar _ t) = get_alloc' ig co (transType t) x
@@ -286,16 +296,23 @@ colourGraph igraph =
      case Gr.lookupNode x ig of
        Just n | Just (R r) <- Gr.nodeColour n
          -- We have a register assignment for this node.
-         -> BcReg (fromIntegral r) ot
+         -> {- trace ("COLOUR["++pretty x++"]=>"++show r) $ -}
+            case x of
+              BcReg n _ -> if fromIntegral n /= r then
+                             error $ "Invalid colouring for pre-assigned colour: "
+                               ++ pretty x
+                           else x
+              _ -> BcReg (fromIntegral r) ot
 
        Nothing | Just y <- lookupUM x co
          -- This node has been coalesced with another node.  We'll
          -- have to use the right type, though.
-         -> get_alloc' ig co ot y
+         -> {- trace ("COALESCE["++pretty x++"]=>") $ -}
+            get_alloc' ig co ot y
 
 buildInterferenceGraph :: LinearCode -> IGraph
 buildInterferenceGraph lc@(LinearCode code0 lives live_outs lbls) =
-  gr3
+  {- trace (">>>GRAPH:" ++ pretty gr3) -} gr3
  where
    !gr1 = Vec.ifoldl' add_conflicts Gr.newGraph code0
    !gr2 = Vec.foldl' add_coalesces gr1 code0
@@ -324,12 +341,22 @@ buildInterferenceGraph lc@(LinearCode code0 lives live_outs lbls) =
    defines (Lst lst) = insDefines lst
    defines _ = S.empty
 
+   -- removePreColoured :: [BcVar] -> [BcVar]
+   -- removePreColoured = filter notPreColoured
+   --  where notPreColoured (BcVar _ _) = True
+   --        notPreColoured (BcReg _ _) = False
+
    conv :: LiveVars -> UniqueSet BcVar
    conv vs = fromListUS (S.toList vs)
 
    add_coalesces :: IGraph -> LinearIns -> IGraph
-   add_coalesces gr (Mid (Assign dst (Move src))) =
-     Gr.addCoalesce (src, Size1) (dst, Size1) gr
+   add_coalesces gr (Mid (Assign dst (Move src)))
+    | BcVar _ _ <- dst, BcVar _ _ <- src
+    = Gr.addCoalesce (src, Size1) (dst, Size1) gr
+    | BcVar _ _ <- dst, BcReg r _ <- src
+    = Gr.addPreference (dst, Size1) (R (fromIntegral r)) gr
+    | BcReg r _ <- dst, BcVar _ _ <- src
+    = Gr.addPreference (src, Size1) (R (fromIntegral r)) gr
    add_coalesces gr _ = gr
 
    -- For BcVars that represent specific registers, assign the proper
@@ -341,7 +368,7 @@ buildInterferenceGraph lc@(LinearCode code0 lives live_outs lbls) =
 
    fix_colour node =
      case Gr.nodeId node of
-       BcReg n _ -> node{ Gr.nodeColour = Just (R (fromIntegral n)) }
+       BcReg n _ -> node{ Gr.nodeClass = PreColoured (R (fromIntegral n)) }
        _ -> node
 
 -- | The linear-scan register allocator.
@@ -352,7 +379,7 @@ mkAllocMap lc@(LinearCode code0 lives liveouts lbls) =
   in
     if not (verifyAlloc alloc lives) then
       let lc' = LinearCode code' (Vec.map (S.map (alloc M.!)) lives) liveouts lbls in
-      error ("BUG-IN-REGALLOC\n" ++ pretty lc ++ "\n\n" ++ pretty alloc ++ "\n" ++ pretty lc')
+      error ("BUG-IN-REGALLOC2\n" ++ pretty lc ++ "\n\n" ++ pretty alloc ++ "\n" ++ pretty lc')
      else
        LinearCode code' lives liveouts lbls
  where
