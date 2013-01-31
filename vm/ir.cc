@@ -54,6 +54,11 @@ static const char *tycolorcode[TC_MAX] = {
   "", COL_PURPLE, COL_RED, COL_GREY
 };
 
+void printType(ostream &out, uint8_t ty) {
+  out << tycolorcode[tycolor[ty]];
+  out << tyname[ty] << COL_RESET << ' ';
+}
+
 void IR::printIRRef(std::ostream &out, IRRef ref) {
   if (ref < REF_BIAS) {
     out << 'K' << right << setw(3) << dec << setfill('0')
@@ -63,28 +68,17 @@ void IR::printIRRef(std::ostream &out, IRRef ref) {
   }
 }
 
-static void printArg(ostream &out, uint8_t mode, uint16_t op, IR *ir, IRBuffer *buf) {
-  switch ((IR::Mode)mode) {
-  case IR::IRMnone:
-    break;
-  case IR::IRMref:
-    out << ' ';
-    IR::printIRRef(out, (IRRef)op);
-    break;
-  case IR::IRMlit:
-    out << " #";
-    out << setw(3) << setfill(' ') << left << (unsigned int)op;
-    break;
-  case IR::IRMcst:
-    if (ir->opcode() == IR::kKINT) {
-      int32_t i = ir->i32();
-      char sign = (i < 0) ? '-' : '+';
-      uint32_t k = (i < 0) ? -i : i;
-      out << ' ' << COL_PURPLE << sign << k << COL_RESET;
-    } else if (ir->opcode() == IR::kKWORD && buf != NULL &&
-               (ir - 1)->opcode() == IR::kKWORDHI) {
+void printLiteralValue(ostream &out, IR *ir, bool print_raw_value) {
+  if (ir->opcode() == IR::kKINT) {
+    int32_t i = ir->i32();
+    char sign = (i < 0) ? '-' : '+';
+    uint32_t k = (i < 0) ? -i : i;
+    out << ' ' << COL_PURPLE << sign << k << COL_RESET;
+  } else if (ir->opcode() == IR::kKWORD) {
       uint64_t k = (uint64_t)ir->u32() | ((uint64_t)(ir - 1)->u32() << 32);
-      out << ' ' << COL_BLUE "0x" << hex << k << dec << COL_RESET;
+      if (print_raw_value) {
+        out << ' ' << COL_BLUE "0x" << hex << k << dec << COL_RESET << ' ';
+      }
       if ((k & 2) == 0) {
         // Real info tables are always aligned at 4 or 8 bytes.  For
         // testing, we use dummy info tables which are intentionally
@@ -92,22 +86,48 @@ static void printArg(ostream &out, uint8_t mode, uint16_t op, IR *ir, IRBuffer *
         switch (ir->type()) {
         case IRT_INFO: {
           InfoTable *info = (InfoTable *)k;
-          out << " " << info->name();
+          out << info->name();
           break;
         }
         case IRT_CLOS: {
           Closure *cl = (Closure *)k;
-          out << " " << cl->info()->name();
+          out << cl->info()->name();
           break;
         }
         default:
           break;
         }
       }
-    } else if (ir->opcode() == IR::kKBASEO) {
-      out << " #" << left << ir->i32();
-    } else {
-      out << "<cst>";
+  } else if (ir->opcode() == IR::kKBASEO) {
+    out << "#" << left << ir->i32();
+  }
+}
+
+static void printArg(ostream &out, uint8_t mode, uint16_t op, IR *ir, IRBuffer *buf) {
+  switch ((IR::Mode)mode) {
+  case IR::IRMnone:
+    break;
+  case IR::IRMref:
+    out << ' ';
+    {
+      IRRef ref = (IRRef)op;
+      IR::printIRRef(out, ref);
+      if (irref_islit(ref) && buf) {
+        IR *ins = buf->ir(ref);
+        out << '(';
+        printType(out, ins->type());
+        printLiteralValue(out, ins, false);
+        out << ')';
+      }
+    }
+    break;
+  case IR::IRMlit:
+    out << " #";
+    out << setw(3) << setfill(' ') << left << (unsigned int)op;
+    break;
+  case IR::IRMcst:
+    if (buf != NULL) {
+      printLiteralValue(out, ir, true);
     }
     break;
   default:
@@ -155,8 +175,7 @@ void IR::debugPrint(ostream &out, IRRef self, IRBuffer *buf, bool regs) {
     print_spill(out, spill());
   }
   out << "    "; // TODO: flags go here
-  out << tycolorcode[tycolor[ty]];
-  out << tyname[ty] << COL_RESET << ' ';
+  printType(out, ty);
   out << setw(8) << setfill(' ') << left << name_[op];
   uint8_t mod = mode(op);
   printArg(out, mod & 3, op1(), this, buf);
