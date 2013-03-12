@@ -1,7 +1,11 @@
-{-# LANGUAGE NoImplicitPrelude, BangPatterns, MagicHash #-}
+{-# LANGUAGE CPP, NoImplicitPrelude, BangPatterns, MagicHash #-}
 -- RUN: %bc_vm_chk
 -- CHECK: @Result@ IND -> GHC.Types.I#`con_info 3
+#ifdef BENCH_GHC
+import Prelude ( print )
+#else
 module Bench.Tak where
+#endif
 
 import GHC.Types
 import GHC.Base
@@ -17,6 +21,15 @@ tak x y z = if not (y `ltInt` x)
 {-# NOINLINE root #-}
 root x y z = tak x y z
 
+#ifdef BENCH_GHC
+main = print bench
+#endif
 
-test = --root 24 16 8
-  root 8 4 2
+bench = root 33 17 8
+
+test = root 8 4 2
+  
+-- root 24 16 8
+--  
+
+
