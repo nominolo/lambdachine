@@ -1189,6 +1189,17 @@ void Assembler::fieldLoad(IR *ins) {
   load_u64(dst, basereg, sizeof(Word) * fieldid);
 }
 
+void Assembler::fieldStore(IR *ins) {
+  IRRef fref = ins->op1();
+  LC_ASSERT(fref && ir(fref)->opcode() == IR::kFREF);
+  IR *frefins = ir(fref);
+  IRRef closref = frefins->op1();
+  int fieldid = frefins->op2();
+  Reg closreg = alloc1(closref, kGPR);
+  memstore(closreg, fieldid * sizeof(Word), ins->op2(),
+           kGPR.exclude(closreg));
+}
+
 void Assembler::insPLOAD(IR *ins) {
   IRRef ptrref = ins->op1();
   IRRef ofsref = ins->op2();
@@ -1357,6 +1368,9 @@ void Assembler::emit(IR *ins) {
     break;
   case IR::kFLOAD:
     fieldLoad(ins);
+    break;
+  case IR::kFSTORE:
+    fieldStore(ins);
     break;
   case IR::kUPDATE:
     insUpdate(ins);

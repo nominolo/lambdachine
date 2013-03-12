@@ -535,6 +535,7 @@ public:
   /// Generate code for the given instruction.
   void itblGuard(IR *ins, bool inverted);
   void fieldLoad(IR *ins);
+  void fieldStore(IR *ins);
   inline void adjustHeapPointer(int32_t bytes);
   void heapCheck(IR *ins);
   void insNew(IR *ins);

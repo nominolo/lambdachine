@@ -1317,6 +1317,22 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
     break;
   }
 
+  case BcIns::kLOADBH: {
+    TRef lit = buf_.literal(IRT_CLOS, (Word)MiscClosures::stg_BLACKHOLE_closure_addr);
+    buf_.setSlot(ins->a(), lit);
+    break;
+  }
+
+  // case BcIns::kINITF: {
+    // rA[rC] = rB
+    // TODO: Needs testing
+    // TRef rbase = buf_.slot(ins->a());
+    // TRef fref = buf_.emit(IR::kFREF, IRT_PTR, rbase, ins->c());
+    // TRef val = buf_.slot(ins->b());
+    // buf_.emit(IR::kFSTORE, IRT_VOID, fref, val);
+    // break;
+  // }
+
   default:
     cerr << "NYI: Recording of " << ins->name() << endl;
     ++record_abort_reasons[AR_NYI];
