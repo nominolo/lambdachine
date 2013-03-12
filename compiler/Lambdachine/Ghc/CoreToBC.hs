@@ -1410,7 +1410,10 @@ transBinaryCase cond ty args bndr alt_ty alts@[_,_] env0 fvi locs0 ctxt = do
 addMatchLocs :: KnownLocs -> BcVar -> AltCon -> [CoreBndr] -> KnownLocs
 addMatchLocs locs _base_reg DEFAULT [] = locs
 addMatchLocs locs _base_reg (LitAlt _) [] = locs
-addMatchLocs locs base_reg (DataAlt _) vars =
+addMatchLocs locs base_reg (DataAlt _) vars0 =
+  -- For existential types, type variables may occur in the pattern
+  -- match.
+  let vars = filter (not . isTyVar) vars0 in
   extendLocs locs [ (x, Field base_reg n t)
                   | (x,n) <- zip vars [1..]
                   , let t = Ghc.repType (Ghc.varType x) ]
