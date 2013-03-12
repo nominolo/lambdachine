@@ -188,10 +188,14 @@ printTraceStats(FILE *out)
 {
 #ifdef LC_TRACE_STATS
   fprintf(out, "Trace Statistics:\n"
-          " TRACE     Completions  C.Rate          Exits"
+          " TRACE             Completions  C.Rate          Exits"
           "  Exit Points\n");
   for (uint32_t traceId = 0; traceId < Jit::numFragments(); ++traceId) {
     Fragment *F = Jit::traceById(traceId);
+    int32_t parentId = -1;
+    if (F->parent()) {
+      parentId = F->parent()->traceId();
+    }
     uint64_t completions = F->traceCompletions();
     uint64_t exits = F->traceExits();
     uint64_t entries = completions + exits;
@@ -199,8 +203,14 @@ printTraceStats(FILE *out)
     char exitsString[30];
     formatWithThousands(completionsString, completions);
     formatWithThousands(exitsString, exits);
-    fprintf(out, "  %04d %15s  %5.1f%% %14s ",
-            traceId, completionsString,
+    fprintf(out, "  %04d", traceId);
+    if (parentId >= 0) {
+      fprintf(out, " %04d:%02d", parentId, F->parentExitNo());
+    } else {
+      fprintf(out, " root   ");
+    }
+    fprintf(out, " %15s  %5.1f%% %14s ",
+            completionsString,
             100 * (double)completions / (double)entries,
             exitsString);
     if (exits > 0) {

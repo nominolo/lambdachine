@@ -1469,7 +1469,8 @@ created.  It is not a 100% solution, but it shouldn't hurt either.
 */
 
 Fragment::Fragment()
-  : flags_(0), traceId_(0), startPc_(NULL), targets_(NULL) {
+  : flags_(0), traceId_(0), startPc_(NULL), parentExit_(0), targets_(NULL)
+     {
 #ifdef LC_TRACE_STATS
   stats_ = NULL;
 #endif
@@ -1500,6 +1501,7 @@ Fragment *Jit::saveFragment() {
   F->traceId_ = fragments_.size();
   F->startPc_ = startPc_;
   F->parent_ = parent_;
+  F->parentExit_ = parentExitNo_;
 
   F->numTargets_ = targets_.size();
   F->targets_ = new BcIns*[F->numTargets_];

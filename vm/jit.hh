@@ -310,6 +310,7 @@ public:
   }
   uint64_t traceExits() const;
   inline Fragment *parent() const { return parent_; }
+  inline ExitNo parentExitNo() const { return parentExit_; }
 
 private:
   void bumpExitCount(ExitNo n) { ++stats_[1 + n]; }
@@ -327,7 +328,7 @@ private:
   uint32_t traceId_;
   BcIns *startPc_;
   Fragment *parent_;
-  // ExitNo parentExit_;
+  ExitNo parentExit_;
 
   BcIns **targets_;
   uint32_t numTargets_;
