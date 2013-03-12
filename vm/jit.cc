@@ -1319,6 +1319,7 @@ bool Jit::recordIns(BcIns *ins, Word *base, const Code *code) {
 
   default:
     cerr << "NYI: Recording of " << ins->name() << endl;
+    ++record_abort_reasons[AR_NYI];
     goto abort_recording;
   }
 
