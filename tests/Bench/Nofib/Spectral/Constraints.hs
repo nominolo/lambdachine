@@ -9,7 +9,9 @@
 import Prelude hiding ( Maybe(..) )
 import Data.List
 import System.Environment
-import GHC.Base ( divInt, remInt )
+import GHC.Base ( divInt, remInt, Int(..) )
+import GHC.Prim
+import GHC.Num
 #else
 module Bench.Nofib.Spectral.Constraints where
 
