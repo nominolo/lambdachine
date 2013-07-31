@@ -51,7 +51,7 @@ import Lambdachine.Utils.Unique ( mkBuiltinUnique )
 import qualified Var as Ghc
 import qualified VarEnv as Ghc
 import qualified VarSet as Ghc
-import qualified HscTypes as Ghc ( CoreModule(..) )
+import qualified HscTypes as Ghc ( CgGuts(..) )
 import qualified Module as Ghc
 import qualified Literal as Ghc
 import qualified Name as Ghc hiding ( varName )
@@ -70,12 +70,12 @@ import qualified MkId as Ghc ( realWorldPrimId )
 import qualified CoreUtils as Ghc
 import qualified Coercion as Ghc
 import TyCon ( TyCon )
-import Outputable ( Outputable, showPpr, alwaysQualify, showSDocForUser,
-                    showSDocOneLine )
+import Outputable ( Outputable, alwaysQualify, showSDocOneLine )
+import DynFlags ( tracingDynFlags )
 import qualified Outputable as Out
 import qualified Pretty as Out
 import CoreSyn ( CoreBind, CoreBndr, CoreExpr, CoreArg, CoreAlt,
-                 Bind(..), Expr(Lam, Let, Type, Cast, Note),
+                 Bind(..), Expr(..),
                  AltCon(..),
                  collectBinders, flattenBinds, collectArgs )
 import Var ( isTyVar )
@@ -108,7 +108,7 @@ tracePpr :: Outputable a => a -> b -> b
 tracePpr o exp = trace (">>> " ++ showPpr o) exp
 
 showPpr1 :: Outputable a => a -> String
-showPpr1 o = Out.showDocWith Out.OneLineMode ((Out.ppr o) Out.defaultUserStyle)
+showPpr1 o = Out.showDocWith Out.OneLineMode (Out.withPprStyleDoc tracingDynFlags Out.defaultUserStyle (Out.ppr o))
 
 -- -------------------------------------------------------------------
 -- * Top-level Interface
@@ -163,6 +163,9 @@ transTyCon tycon = do
                         , bcoConArgTypes = arg_tys }
     in M.insert dcon_id bco bcos
 
+repType :: a -> a
+repType = id
+
 -- | Translate a top-level binding.
 transTopLevelBind :: CoreBndr -> CoreExpr -> Trans BCOs
 transTopLevelBind f (viewGhcLam -> (params, body)) = do
@@ -170,7 +173,7 @@ transTopLevelBind f (viewGhcLam -> (params, body)) = do
   let !f' = toplevelId this_mdl f
   let bco_type | (_:_) <- params =
                  BcoFun (length params)
-                        (map (transType . Ghc.repType . Ghc.varType) params)
+                        (map (transType . repType . Ghc.varType) params)
                | looksLikeCon body = Con
                | isGhcConWorkId f = Con
                | otherwise = CAF
@@ -180,7 +183,7 @@ transTopLevelBind f (viewGhcLam -> (params, body)) = do
       let env0 = mkLocalEnv [(x, undefined) | x <- params]
           locs0 = mkLocs [ (b, InReg n t)
                          | (b, n) <- zip params [0..]
-                         , let t = Ghc.repType (Ghc.varType b) ]
+                         , let t = repType (Ghc.varType b) ]
           fvi0 = Ghc.emptyVarEnv
       (bcis, _, fvs, Nothing) <- withParentFun f $ transBody body env0 fvi0 locs0 RetC
       g <- finaliseBcGraph bcis
@@ -360,7 +363,7 @@ build_bind_code fwd_env env fvi closures locs0 = do
    -- r = r2
    go bcis locs0 fvs ((x, AppObj f []) : objs) = do
      (bcis1, locs1, fvs1, [fvar]) <- transArgs [Ghc.Var f] env fvi locs0
-     xvar <- mbFreshLocal (Ghc.repType (Ghc.varType x)) Nothing
+     xvar <- mbFreshLocal (repType (Ghc.varType x)) Nothing
      let bcis2 = bcis <*> bcis1 <*> insMove xvar fvar
          locs2 = updateLoc locs1 x (InVar xvar)
      go bcis2 locs2 (fvs `mappend` fvs1) objs
@@ -371,12 +374,12 @@ build_bind_code fwd_env env fvi closures locs0 = do
        <- transArgs (Ghc.Var f : args) env fvi locs0
      let Just (arg_tys, rslt_ty) =
            --trace ("splitfun" ++
-           --       ghcPretty (length args, f, Ghc.repType (Ghc.varType f),
-           --              Ghc.splitFunTys (Ghc.repType (Ghc.varType f)))) $
+           --       ghcPretty (length args, f, repType (Ghc.varType f),
+           --              Ghc.splitFunTys (repType (Ghc.varType f)))) $
             splitFunTysN (length args) $
-               Ghc.repType (Ghc.varType f)
+               repType (Ghc.varType f)
      -- trace ("AppObj:" ++ show (length args) ++ ":" ++
-     --        Ghc.showSDoc (Ghc.ppr (Ghc.repType (Ghc.varType f))) ++
+     --        Ghc.showSDoc (Ghc.ppr (repType (Ghc.varType f))) ++
      --        " => " ++ Ghc.showSDoc (Ghc.ppr rslt_ty)) $ do
      rslt <- mbFreshLocal rslt_ty Nothing
      let bcis2 = (bcis <*> bcis1) <*> insMkAp rslt (freg:regs)
@@ -435,7 +438,7 @@ transBind x (viewGhcApp -> Just (f, args)) _env0
 transBind x (viewGhcLam -> (bndrs, body)) env0 = do
   let locs0 = mkLocs $ (x, Self) : [ (b, InReg n t) |
                                      (b, n) <- zip bndrs [0..],
-                                     let t = Ghc.repType (Ghc.varType b) ]
+                                     let t = repType (Ghc.varType b) ]
       -- The new local environment does *not* include env0, because
       -- elements of env0 are no longer local in the body of the
       -- lambda.  They must be accessed explicitly via the free
@@ -458,7 +461,7 @@ transBind x (viewGhcLam -> (bndrs, body)) env0 = do
   --trace ("DBG: " ++ show parent ++ "=>" ++ show x') $ do
   g <- finaliseBcGraph bcis
   let arity = length bndrs
-      arg_types = map (transType . Ghc.repType . Ghc.varType) bndrs
+      arg_types = map (transType . repType . Ghc.varType) bndrs
       free_vars = M.fromList [ (n, transType (Ghc.varType v))
                               | (n, v) <- zip [1..] vars ]
   let bco = BcObject { bcoType = if arity > 0 then
@@ -470,7 +473,7 @@ transBind x (viewGhcLam -> (bndrs, body)) env0 = do
                      , bcoGlobalRefs = toList gbls
                      , bcoFreeVars = free_vars }
   addBCO x' bco
-  return (FunObj arity x' vars (Ghc.repType (Ghc.varType x)))
+  return (FunObj arity x' vars (repType (Ghc.varType x)))
 
 -- | Split a list of variables into pointers and non-pointers.
 splitPtrNonPtr :: [Ghc.Id] -> ([Ghc.Id], [Ghc.Id])
@@ -488,7 +491,7 @@ transFields f args = map to_field args
    to_field (Ghc.App x (Ghc.Type _))  = to_field x
    to_field (Lam a x) | isTyVar a     = to_field x
    to_field (Cast x _)                = to_field x
-   to_field (Note _ x)                = to_field x
+--   to_field (Note _ x)                = to_field x
    to_field arg = 
      error $ "transFields: Ill-formed argument: " ++ showPpr arg
 
@@ -812,7 +815,7 @@ transBody (Ghc.Let bind body) env fvi locs0 ctxt = do
   (bcis', locs2, fvs', mb_r) <- transBody body env' fvi locs1 ctxt
   return (bcis <*> bcis', locs2, fvs `mappend` fvs', mb_r)
 
-transBody (Ghc.Note _ e) env fvi locs ctxt = transBody e env fvi locs ctxt
+--transBody (Ghc.Note _ e) env fvi locs ctxt = transBody e env fvi locs ctxt
 transBody (Ghc.Cast e _) env fvi locs ctxt = transBody e env fvi locs ctxt
 transBody (Ghc.Lam a e) env fvi locs ctxt
   | isTyVar a = transBody e env fvi locs ctxt
@@ -910,7 +913,7 @@ transVar x env fvi locs0 mr =
           if isGhcVoid x then
             error "Free variables of type void not yet supported."
            else do
-            r <- mbFreshLocal (Ghc.repType (Ghc.varType x)) mr
+            r <- mbFreshLocal (repType (Ghc.varType x)) mr
             -- Do not force @i@ -- must remain a thunk
             let i = expectJust "transVar" (Ghc.lookupVarEnv fvi x)
             return (insLoadFV r i, r, in_whnf,
@@ -919,7 +922,7 @@ transVar x env fvi locs0 mr =
       | otherwise -> do  -- global variable
           this_mdl <- getThisModule
           let x' = toplevelId this_mdl x
-          r <- mbFreshLocal (Ghc.repType (Ghc.varType x)) mr
+          r <- mbFreshLocal (repType (Ghc.varType x)) mr
           {- trace ("VARadd:" ++ ppVar x ++ " : " ++ pretty x') $ do -}
           return (insLoadGbl r x', r, isGhcConWorkId x,  -- TODO: only if CAF
                   updateLoc locs0 x (InVar r), globalVar x')
@@ -948,7 +951,7 @@ transApp f args env fvi locs0 ctxt
          _ | Just (op, ty) <- primOpToBinOp p, [r1, r2] <- regs
            -> do
              let Just (_arg_tys, rslt_ty) =
-                   splitFunTysN 2 $ Ghc.repType (Ghc.varType f)
+                   splitFunTysN 2 $ repType (Ghc.varType f)
              rslt <- mbFreshLocal rslt_ty (contextVar ctxt)
              maybeAddRet ctxt (is0 <*> insBinOp op ty rslt r1 r2)
                          locs1 fvs rslt
@@ -981,7 +984,7 @@ transApp f args env fvi locs0 ctxt
              -- likely).
              let [reg] = regs
              let Just(_argument_types, result_type) =
-                   splitFunTysN 1 (Ghc.repType (Ghc.varType f))
+                   splitFunTysN 1 (repType (Ghc.varType f))
              result <- mbFreshLocal result_type (contextVar ctxt)
              maybeAddRet ctxt (is0 <*> insMove result reg) locs1 fvs result
              
@@ -994,7 +997,7 @@ transApp f args env fvi locs0 ctxt
              -- TODO: We could type check the arguments as an extra assertion.
              -- That's a bit tricky given the current setup, though.
              let Just(_argument_types, result_type) =
-                   splitFunTysN arity (Ghc.repType (Ghc.varType f))
+                   splitFunTysN arity (repType (Ghc.varType f))
              result <- mbFreshLocal result_type (contextVar ctxt)
              maybeAddRet ctxt (is0 <*> insPrimOp op res_ty result regs)
                          locs1 fvs result
@@ -1028,10 +1031,10 @@ transApp f args env fvi locs0 ctxt
            -- a fresh label after the call
            let rslt_ty0 =
                  case splitFunTysN (length args) $
-                        Ghc.repType (Ghc.varType f) of
+                        repType (Ghc.varType f) of
                    Just (_arg_tys, rslt_ty_) -> rslt_ty_
                    Nothing -> error $ "Result type for: " ++
-                                ghcPretty (f, Ghc.repType (Ghc.varType f),
+                                ghcPretty (f, repType (Ghc.varType f),
                                            Ghc.varType f, length args)
                rslt_ty:_ = splitUnboxedTuples rslt_ty0
            r <- mbFreshLocal rslt_ty mr
@@ -1061,7 +1064,7 @@ transArgs args0 env fvi locs0 = go args0 emptyGraph locs0 mempty []
    trans_arg (Ghc.App x (Ghc.Type _)) locs = trans_arg x locs
    trans_arg (Lam a x) locs | isTyVar a    = trans_arg x locs
    trans_arg (Cast x _) locs               = trans_arg x locs
-   trans_arg (Note _ x) locs               = trans_arg x locs
+--   trans_arg (Note _ x) locs               = trans_arg x locs
 
 transStore :: CoreBndr -> [CoreArg] -> LocalEnv -> FreeVarsIndex
            -> KnownLocs -> Context x
@@ -1099,13 +1102,13 @@ transStore dcon args env fvi locs0 ctxt = do
   (bcis1, con_reg, locs2, fvs')
     <- loadDataCon dcon env fvi locs1 (contextVar ctxt)
   let Just (arg_tys, rslt_ty) =
-        splitFunTysN (length args) $ Ghc.repType (Ghc.varType dcon)
+        splitFunTysN (length args) $ repType (Ghc.varType dcon)
   rslt <- mbFreshLocal rslt_ty (contextVar ctxt)
   let bcis = (bcis0 <*> bcis1) <*> insAlloc rslt con_reg regs
   maybeAddRet ctxt bcis locs2 (fvs `mappend` fvs') rslt
 
 ppVar :: CoreBndr -> String
-ppVar x = Ghc.showSDocDebug (Ghc.ppr x) ++ "{" ++ show (getUnique x) ++ "}"
+ppVar x = Ghc.showSDocDebug tracingDynFlags (Ghc.ppr x) ++ "{" ++ show (getUnique x) ++ "}"
 
 loadDataCon :: CoreBndr -> LocalEnv -> FreeVarsIndex -> KnownLocs -> Maybe BcVar
             -> Trans (Bcis O, BcVar, KnownLocs, FreeVars)
@@ -1174,7 +1177,7 @@ transCase scrut bndr alt_ty [(altcon, vars, body)] env0 fvi locs0 ctxt
 
       -- Result variables don't survive across multiple CALL instructions
       -- so we load them all into fresh variables.
-      regs <- mapM (\x -> mbFreshLocal (Ghc.repType (Ghc.varType x)) Nothing)
+      regs <- mapM (\x -> mbFreshLocal (repType (Ghc.varType x)) Nothing)
                    otherResultVars
       let bcis1 = [ insLoadExtraResult r n | (r, n) <- zip regs [1..] ]
       let locs2 = extendLocs locs1 [(resultVar0, InVar result0)]
@@ -1413,7 +1416,7 @@ addMatchLocs locs _base_reg (LitAlt _) [] = locs
 addMatchLocs locs base_reg (DataAlt _) vars =
   extendLocs locs [ (x, Field base_reg n t)
                   | (x,n) <- zip vars [1..]
-                  , let t = Ghc.repType (Ghc.varType x) ]
+                  , let t = repType (Ghc.varType x) ]
 
 dataConTag :: AltCon -> BcTag
 dataConTag DEFAULT = DefaultTag
@@ -1568,7 +1571,7 @@ viewGhcApp expr = {- tracePpr expr $ trace test1 $ go expr [] -}
    go1 (Ghc.Var v)     as = Just (v, EmptyContext, as)
    go1 (Ghc.App f a)   as = do (f', ctx, as') <- go1 f (a:as)
                                return (f', AppCtx ctx a, as')
-   go1 (Ghc.Note _ e)  as = go1 e as
+   go1 (Ghc.Tick _ e)  as = go1 e as
    go1 (Ghc.Cast e co) as = do (f', ctx, as') <- go1 e as
                                return (f', CastCtx ctx co, as')
    go1 (Ghc.Lam x e)   as | isTyVar x = go1 e as
@@ -1628,7 +1631,7 @@ viewGhcLam expr = go expr []
      | isTyVar x = go e xs
      | otherwise = go e (x:xs)
    go (Cast e _) xs = go e xs
-   go (Note _ e) xs = go e xs
+   go (Tick _ e) xs = go e xs
    go e xs = (reverse xs, e)
 
 
@@ -1642,7 +1645,7 @@ viewGhcArg (Ghc.Lit l)              = Left l
 viewGhcArg (Ghc.App x (Ghc.Type _)) = viewGhcArg x
 viewGhcArg (Lam a x) | isTyVar a    = viewGhcArg x
 viewGhcArg (Cast x _)               = viewGhcArg x
-viewGhcArg (Note _ x)               = viewGhcArg x
+viewGhcArg (Tick _ x)               = viewGhcArg x
 
 ghcLiteralType :: Ghc.Literal -> OpTy
 ghcLiteralType lit = case lit of

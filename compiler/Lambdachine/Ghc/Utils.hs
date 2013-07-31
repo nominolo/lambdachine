@@ -25,8 +25,14 @@ import Outputable ( Outputable, alwaysQualify )
 import qualified Outputable ( showPpr, showSDocForUser )
 import Unique ( Uniquable(..), getKey )
 
+showPpr :: Outputable a => a -> String
 showPpr = Outputable.showPpr tracingDynFlags
+
+showSDocForUser :: Ghc.PrintUnqualified -> Ghc.SDoc -> String
 showSDocForUser = Outputable.showSDocForUser tracingDynFlags
+
+ghcPretty :: Ghc.Outputable a => a -> String
+ghcPretty = Ghc.showSDoc tracingDynFlags . Ghc.ppr
 
 -- | Directly turn GHC 'Ghc.Id' into 'Id'.
 --
@@ -192,8 +198,5 @@ transType1 (Ghc.PredTy pred) =
 transType1 ty =
   error $ "transType1: Don't know how to translate type: "
           ++ showPpr ty
-
-ghcPretty :: Ghc.Outputable a => a -> String
-ghcPretty = Ghc.showSDoc . Ghc.ppr
-
 -}
+
