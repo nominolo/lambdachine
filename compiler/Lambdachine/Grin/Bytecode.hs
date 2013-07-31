@@ -16,6 +16,7 @@ import qualified Lambdachine.Utils.Unique as U
 
 import qualified Type as Ghc
 import qualified Outputable as Ghc
+import qualified DynFlags as Ghc
 
 import Compiler.Hoopl
 import Control.Monad.State
@@ -31,7 +32,7 @@ import Data.Binary
 
 #include "../../Opcodes.h"
 
-instance Show Ghc.Type where show = Ghc.showSDoc . Ghc.ppr
+instance Show Ghc.Type where show = Ghc.showSDoc Ghc.tracingDynFlags . Ghc.ppr
 
 instance Pretty Ghc.Type where ppr t = text (show t)
 
@@ -387,9 +388,9 @@ pprGraph ppN ppL (GMany entry blocks exit) =
 pprBlock :: NodePpr n -> Block n e x -> PDoc
 pprBlock ppN blk =
   --ppMaybeC ppN entry $$
-  vcat (map ppN middles) $$
+  vcat (map ppN (blockToList middles)) $$
   ppMaybeC ppN exit
- where (entry, middles, exit) = blockToNodeList blk
+ where (entry, middles, exit) = blockSplitAny blk
 
 ppMaybeO :: (a -> PDoc) -> MaybeO o a -> PDoc
 ppMaybeO pp NothingO = empty

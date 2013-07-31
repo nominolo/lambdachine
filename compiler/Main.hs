@@ -4,7 +4,7 @@ module Main where
 #include "Locations.h"
 
 import Lambdachine.Utils
-import Lambdachine.Ghc.Pipeline
+--import Lambdachine.Ghc.Pipeline
 import Lambdachine.Ghc.CoreToBC
 --import Lambdachine.Grin.Eval
 import Lambdachine.Grin.Bytecode
@@ -16,7 +16,7 @@ import Lambdachine.Grin.RegAllocLinearScan
 import Lambdachine.Serialise
 import qualified Lambdachine.Options as Cli
 
-import Ghc.Api.Pipeline
+import Ghc.Api.V76
 
 import GHC
 import HscTypes ( HscEnv(hsc_dflags) )

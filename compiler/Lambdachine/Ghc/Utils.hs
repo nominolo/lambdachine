@@ -20,8 +20,13 @@ import qualified CoreSyn as Ghc
 import qualified CoreFVs as Ghc
 import qualified Var as Ghc
 import qualified VarSet as Ghc
-import Outputable ( Outputable, showPpr, alwaysQualify, showSDocForUser )
+import DynFlags ( tracingDynFlags )
+import Outputable ( Outputable, alwaysQualify )
+import qualified Outputable ( showPpr, showSDocForUser )
 import Unique ( Uniquable(..), getKey )
+
+showPpr = Outputable.showPpr tracingDynFlags
+showSDocForUser = Outputable.showSDocForUser tracingDynFlags
 
 -- | Directly turn GHC 'Ghc.Id' into 'Id'.
 --
@@ -63,7 +68,8 @@ isGhcVoid :: Ghc.CoreBndr -> Bool
 isGhcVoid x = isGhcVoidType (Ghc.varType x)
 
 isGhcVoidType :: Ghc.Type -> Bool
-isGhcVoidType ty = transType (Ghc.repType ty) == VoidTy
+--isGhcVoidType ty = transType (Ghc.repType ty) == VoidTy
+isGhcVoidType ty = transType ty == VoidTy
 
 -- | Split unboxed tuples into their non-void components.  Leave
 -- everything else untouched.
@@ -122,6 +128,38 @@ ghcAnyType = Ghc.anyPrimTy
 -- TODO: How to deal with 'void' types, like @State#@?
 --
 transType :: Ghc.Type -> OpTy
+transType ty0 = case Ghc.repType ty0 of
+  Ghc.UnaryRep rep_ty ->
+    case Ghc.tyConAppTyCon_maybe rep_ty of
+      Just tycon
+        | Ghc.isUnLiftedTyCon tycon
+        -> case () of
+            _ | tycon == Ghc.intPrimTyCon   -> IntTy
+              | tycon == Ghc.charPrimTyCon  -> CharTy
+              | tycon == Ghc.floatPrimTyCon -> FloatTy
+              | tycon == Ghc.byteArrayPrimTyCon -> PtrTy
+              | tycon == ghcAnyTyCon           -> PtrTy
+              | tycon == Ghc.bcoPrimTyCon       -> AddrTy
+              | tycon == Ghc.addrPrimTyCon      -> AddrTy
+              | tycon == Ghc.wordPrimTyCon  -> WordTy
+              | tycon == Ghc.statePrimTyCon -> VoidTy
+              | otherwise ->
+                  error $ "Unknown primitive type: " ++ showPpr tycon
+
+        | Ghc.isAbstractTyCon tycon
+        -> PtrTy
+
+        | Ghc.isAlgTyCon tycon
+        -> AlgTy (tyConId (Ghc.tyConName tycon))
+
+        | otherwise
+        -> if not (Ghc.isFunTyCon tycon || Ghc.isPrimTyCon tycon || Ghc.isFamilyTyCon tycon)
+             then error $ "Unexpected tycon" ++ showPpr tycon
+             else PtrTy
+
+{-
+
+transType :: Ghc.Type -> OpTy
 transType ty0 = transType1 (Ghc.expandTypeSynonyms ty0)
 
 transType1 :: Ghc.Type -> OpTy
@@ -158,3 +196,4 @@ transType1 ty =
 ghcPretty :: Ghc.Outputable a => a -> String
 ghcPretty = Ghc.showSDoc . Ghc.ppr
 
+-}

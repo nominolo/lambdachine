@@ -176,9 +176,9 @@ annotateAllocationsWithLiveIns lives inss = Vec.imap annotate inss
 
 lineariseBlock :: FactBase LiveVars -> Block BcIns e x -> [LinearIns]
 lineariseBlock live_facts block =
-  entry_inss ++ map (Mid . force) middles ++ tail_inss
+  entry_inss ++ map (Mid . force) (blockToList middles) ++ tail_inss
  where
-   (entry, middles, tail) = blockToNodeList block
+   (entry, middles, tail) = blockSplitAny block
    entry_inss | JustC ins <- entry = [Fst ins]
               | otherwise          = []
    tail_inss

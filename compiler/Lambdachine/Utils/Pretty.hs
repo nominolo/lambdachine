@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 -- |
 -- Module      : Lambdachine.Utils.Pretty
@@ -10,6 +11,7 @@
 --
 module Lambdachine.Utils.Pretty
   ( module Lambdachine.Utils.Pretty
+  , (<>)
   )
 where
 
@@ -82,12 +84,13 @@ text s _ = P.text s
 int :: Int -> PDoc
 int i _ = P.int i
 
-infixr 6 <> 
+-- infixr 6 <>   -- same as Data.Monoid.<>
 infixr 6 <+>
 infixr 5 $$, $+$, <//>, </>
 
-(<>) :: PDoc -> PDoc -> PDoc
-(<>) d1 d2 sty = d1 sty P.<> d2 sty
+-- Monoid instance for functions and P.Doc do the same
+-- (<>) :: PDoc -> PDoc -> PDoc
+-- (<>) d1 d2 sty = d1 sty P.<> d2 sty
 
 (<+>) :: PDoc -> PDoc -> PDoc
 (<+>) d1 d2 sty = d1 sty P.<+> d2 sty

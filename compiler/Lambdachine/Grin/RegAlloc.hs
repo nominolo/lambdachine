@@ -149,9 +149,9 @@ lineariseCode live_facts g@(GMany (JustO entry) body NothingO) =
 -- Annotates various instructions with the live variables.
 --
 lineariseBlock :: FactBase LiveVars -> Block BcIns e x -> [LinearIns]
-lineariseBlock live_facts blk = entry_ins (map Mid middles ++ tail_ins)
+lineariseBlock live_facts blk = entry_ins (map Mid (blockToList middles) ++ tail_ins)
  where
-   (entry, middles, tail) = blockToNodeList blk
+   (entry, middles, tail) = blockSplitAny blk
    entry_ins :: [LinearIns] -> [LinearIns]
    entry_ins = case entry of
                  JustC n -> (Fst n :)

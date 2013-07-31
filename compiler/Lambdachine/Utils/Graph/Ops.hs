@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
 -- Source code from GHC  (BSD3)
 -- Authors:  (c) Ben Lippmeier, Ian Lynagh, Simon Marlow

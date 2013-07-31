@@ -939,9 +939,9 @@ emitLinearIns bit_r lit_ids tgt_labels r ins_id ins = do
     Lst (Call Nothing (BcReg f _) args) ->
       assert (length args <= cMAX_CALL_ARGS) $ do
       assert (args == map (\n -> BcReg n VoidTy) [0 .. length args - 1]) $ do
-      let [ptrs] = bitsToWord32s (map isPtrReg args)
-      emitInsABC r opc_CALLT (i2b f) 0xff (i2b (length args))
-      emitWord32be r ptrs
+       let [ptrs] = bitsToWord32s (map isPtrReg args)
+       emitInsABC r opc_CALLT (i2b f) 0xff (i2b (length args))
+       emitWord32be r ptrs
       --emitBitSets bit_r (S.fromList args) r
     Lst (Call (Just (BcReg rslt _, _, lives)) (BcReg f _) args)      -> do
         let [ptrs] = bitsToWord32s (map isPtrReg args)
@@ -1260,9 +1260,9 @@ encodeModule' mdl =
          emitVarUInt r cltype_CONSTR
          emitVarUInt r (fromIntegral tag)
          assert (fields == length tys) $ do
-         emitPointerMask r tys
-         emitId r name
-         return 1
+          emitPointerMask r tys
+          emitId r name
+          return 1
        BcObject{ bcoType = ty }
          | BcoFun arity arg_tys <- ty -> do
             emitInfoTable_ (mkInfoTableId (idName name)) cltype_FUN
