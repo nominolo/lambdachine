@@ -118,6 +118,7 @@ TAGS/
 *.beam
 
 # Lambdachine
+.hsenv/
 asm_offsets.incl
 gen_offs
 .deps

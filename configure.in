@@ -14,11 +14,11 @@ AC_LANG([C++])
 AC_CXX_STL_HASH
 # AC_CXX_STL_HASH_FUN
 
-AC_CHECK_PROGS([HC], [ghc-7.0.4 ghc-7.0.3 ghc-7.0.2 ghc-7.0.1], no)
+AC_CHECK_PROGS([HC], [ghc-7.6.3 ghc-7.6.2 ghc-7.6.1 ghc-7.0.4 ghc-7.0.3 ghc-7.0.2 ghc-7.0.1], no)
 if test x"${HC}" == x"no" ; then
-  AC_MSG_ERROR([Lambdachine requires ghc-7.0])
+  AC_MSG_ERROR([Lambdachine requires ghc-7.6 or ghc-70])
 fi
-AC_CHECK_PROGS([HC_PKG], [ghc-pkg-7.0.4 ghc-pkg-7.0.3 ghc-pkg-7.0.2 ghc-pkg-7.0.1], no)
+AC_CHECK_PROGS([HC_PKG], [ghc-pkg-7.6.3 ghc-pkg-7.6.2 ghc-pkg-7.6.1 ghc-pkg-7.0.4 ghc-pkg-7.0.3 ghc-pkg-7.0.2 ghc-pkg-7.0.1], no)
 AC_SUBST(HC)
 
 AC_CHECK_LIB(rt, clock_gettime)

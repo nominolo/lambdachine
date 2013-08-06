@@ -70,6 +70,7 @@ import qualified MkId as Ghc ( realWorldPrimId )
 import qualified CoreUtils as Ghc
 import qualified Coercion as Ghc
 import TyCon ( TyCon )
+import Pair ( Pair(..) )
 import Outputable ( Outputable, alwaysQualify, showSDocOneLine )
 import DynFlags ( tracingDynFlags )
 import qualified Outputable as Out
@@ -1617,7 +1618,7 @@ applyContext ty (AppCtx ctx var) =
                   ++ showPpr (ty', var)
 applyContext ty (CastCtx ctx co) =
   let (!ty', !rebuild) = applyContext ty ctx in
-  let ty'' = snd (Ghc.coercionKind co) in
+  let Pair _ ty'' = Ghc.coercionKind co in
   (ty'', rebuild)
 
 
