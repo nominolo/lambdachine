@@ -88,7 +88,10 @@ main = do
     hsc_env <- getSession
     
     let hooks = defaultHooks
-                  { hookCodeGen = compileToBytecode' opts hsc_env }
+                  { hookCodeGen = compileToBytecode' opts hsc_env
+                  , hookPostBackendPhase =
+                      \_default _dflags _hssourc _target ->
+                         StopLn }
 
     out <- liftIO $ compileFile hsc_env hooks StopLn(file, Nothing)
     return ()

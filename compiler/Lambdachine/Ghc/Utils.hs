@@ -137,6 +137,7 @@ transType :: Ghc.Type -> OpTy
 transType ty0 = case Ghc.repType ty0 of
   Ghc.UnaryRep rep_ty ->
     case Ghc.tyConAppTyCon_maybe rep_ty of
+      Nothing -> PtrTy
       Just tycon
         | Ghc.isUnLiftedTyCon tycon
         -> case () of

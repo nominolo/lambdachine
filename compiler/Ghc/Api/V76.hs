@@ -589,7 +589,9 @@ runPhase Cmm input_fn dflags hooks
         PipeEnv{src_basename} <- getPipeEnv
         let hsc_lang = hscTarget dflags
 
-        let next_phase = hscPostBackendPhase dflags HsSrcFile hsc_lang
+        let next_phase =
+              hookPostBackendPhase hooks hscPostBackendPhase
+                dflags HsSrcFile hsc_lang
 
         output_fn <- phaseOutputFilename next_phase
 
