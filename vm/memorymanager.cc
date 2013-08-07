@@ -62,21 +62,47 @@ Region *Region::newRegion(RegionType regionType) {
   uint32_t attempts = 0;
 
   for (;;) {
-    // fprintf(stderr, "Trying mmap(%p, %ld, ...)\n", alloc_hint, size);
-    ptr = static_cast<char *>(mmap(alloc_hint, size, kMMapProtection, kMMapFlags, -1, 0));
-    if (ptr != MAP_FAILED && isAlignedAtPowerOf2(kRegionSizeLog2, ptr)) {
-      // Success!
-      alloc_hint += size;
-      break;
-    }
-    // fprintf(stderr, "fail: mmap (%p) %s\n", ptr,
-    //         ptr == MAP_FAILED ? "failed" : "not aligned");
+    DLOG("Trying mmap(%p-%p, %ld, ...)\n", alloc_hint, alloc_hint + size, size);
+
+    ptr = static_cast<char *>(mmap(alloc_hint, size, kMMapProtection,
+                                   kMMapFlags, -1, 0));
 
     if (ptr != MAP_FAILED) {
-      munmap(ptr, size);
-      alloc_hint = alignToRegionBoundary(ptr);
+      if (isAlignedAtPowerOf2(kRegionSizeLog2, ptr)) {   // Success!
+        alloc_hint += size;
+        break;
+      } else {
+        // Check if we have enough room to make it aligned.
+        char *next_aligned = alignToRegionBoundary(ptr);
+        char *region_end = next_aligned + kRegionSize;
+        char *alloc_end = ptr + size;
+
+        if (region_end <= alloc_end) {
+          // It fits.  Unmap the rest
+          DLOG("Allocated %p-%p\n", next_aligned, region_end);
+          DLOG("Trimming slop: munmap(%p-%p)\n", ptr, next_aligned);
+
+          munmap(ptr, next_aligned - ptr);
+
+          if (alloc_end > region_end) {
+            DLOG("Trimming slop: munmap(%p-%p)\n", region_end, alloc_end);
+            munmap(region_end, alloc_end - region_end);
+          }
+
+          alloc_hint = region_end;
+          ptr = next_aligned;
+          break;
+        } else {
+          munmap(ptr, size);
+          alloc_hint = ptr;
+          size = region_end - ptr;
+        }
+      }
     }
-    
+
+    DLOG("fail: mmap (%p) %s\n", ptr,
+         ptr == MAP_FAILED ? "failed" : "not aligned");
+
     ++attempts;
     if (attempts > 32) {
       fprintf(stderr, "FATAL: mmap failed after %u attempts.\n", attempts);
