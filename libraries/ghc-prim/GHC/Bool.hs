@@ -1,4 +1,4 @@
 {-# OPTIONS_GHC -XNoImplicitPrelude #-}
-module GHC.Bool (Bool(..)) where
+module GHC.Bool where --(Bool(..)) where
 
-data Bool = False | True
+--data Bool = False | True

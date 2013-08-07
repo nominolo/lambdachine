@@ -13,4 +13,4 @@ type signature.
 
 -- | The unit datatype @()@ has one non-undefined member, the nullary
 -- constructor @()@.
-data () = ()
+--data () = ()

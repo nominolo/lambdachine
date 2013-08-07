@@ -10,3 +10,5 @@ infixr 5 :
 data [] a = [] | a : [a]
 
 data Char = C# Char#
+
+data {-# CTYPE "HsBool" #-} Bool = False | True
