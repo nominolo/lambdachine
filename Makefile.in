@@ -322,7 +322,11 @@ distclean: clean
 
 .PHONY: install-deps
 install-deps:
-	sh install-deps.sh $(HC) $(HC_PKG) $(CABAL)
+	$(CABAL) install --only-dependencies --with-compiler=$(HC) \
+		--with-hc-pkg=$(HC_PKG) \
+		--disable-library-profiling --disable-documentation
+
+# sh install-deps.sh $(HC) $(HC_PKG) $(CABAL)
 
 
 

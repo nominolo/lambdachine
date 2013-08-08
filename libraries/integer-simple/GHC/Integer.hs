@@ -21,7 +21,7 @@ module GHC.Integer (
 
 import GHC.Integer.Type
 
-import GHC.Bool
+import GHC.Types
 import GHC.Ordering
 import GHC.Prim
 import GHC.Unit ()

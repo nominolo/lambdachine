@@ -26,7 +26,7 @@ fi
 ${HC_PKG} init ${PKG_DB}
 
 sed 's:\${DIR}:'"${DIR}"'/rts:g' <rts/recipe.in >rts/recipe
-${HC_PKG} register --global-conf=${PKG_DB} rts/recipe
+${HC_PKG} register --global-package-db=${PKG_DB} rts/recipe
 
 MODULES_ghc_prim="GHC/Bool.hs GHC/Ordering.hs GHC/Tuple.hs GHC/Unit.hs GHC/Types.hs"
 cd ghc-prim
@@ -37,7 +37,7 @@ done
 cd ..
 echo "Registering ${YELLOW}ghc-prim${NC}"
 sed 's:\${DIR}:'"${DIR}"'/ghc-prim:g' <ghc-prim/recipe.in >ghc-prim/recipe
-${HC_PKG} register --global-conf=${PKG_DB} ghc-prim/recipe --force
+${HC_PKG} register --global-package-db=${PKG_DB} ghc-prim/recipe --force
 
 
 MODULES_integer_simple="GHC/Integer/Type.hs GHC/Integer/Simple/Internals.hs GHC/Integer.hs"
@@ -51,7 +51,7 @@ touch libHSinteger-simple-0.1.0.0.a
 cd ..
 echo "Registering ${YELLOW}integer-simple${NC}"
 sed 's:\${DIR}:'"${DIR}"'/integer-simple:g' <integer-simple/recipe.in >integer-simple/recipe
-${HC_PKG} register --global-conf=${PKG_DB} --force integer-simple/recipe
+${HC_PKG} register --global-package-db=${PKG_DB} --force integer-simple/recipe
 
 
 MODULES_base="Control/Exception/Base.hs GHC/Classes.hs GHC/Show.hs-boot GHC/Err.hs-boot GHC/Base.hs Data/Tuple.hs GHC/Enum.hs Data/Maybe.hs GHC/List.hs GHC/Show.hs GHC/Num.hs GHC/Err.hs GHC/Real.hs GHC/Unicode.hs-boot GHC/Unicode.hs Data/Char.hs Data/Either.hs Data/List.hs Data/Monoid.hs Control/Monad.hs Text/ParserCombinators/ReadP.hs Text/ParserCombinators/ReadPrec.hs Text/Read/Lex.hs GHC/Read.hs Text/Read.hs"
@@ -64,7 +64,7 @@ touch libHSbase-4.3.1.0.a
 cd ..
 echo "Registering ${YELLOW}base${NC}"
 sed 's:\${DIR}:'"${DIR}"'/base:g' <base/recipe.in >base/recipe
-${HC_PKG} register --global-conf=${PKG_DB} --force base/recipe
+${HC_PKG} register --global-package-db=${PKG_DB} --force base/recipe
 
 
 MODULES_containers="Data/Set.hs Data/Map.hs"
@@ -77,6 +77,6 @@ touch libHScontainers-0.4.0.0.a
 cd ..
 echo "Registering ${YELLOW}containers${NC}"
 sed 's:\${DIR}:'"${DIR}"'/containers:g' <containers/recipe.in >containers/recipe
-${HC_PKG} register --global-conf=${PKG_DB} --force containers/recipe
+${HC_PKG} register --global-package-db=${PKG_DB} --force containers/recipe
 
 exit 0
