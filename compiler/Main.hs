@@ -10,6 +10,7 @@ module Main where
 import Lambdachine.Utils
 --import Lambdachine.Ghc.Pipeline
 import Lambdachine.Ghc.CoreToBC
+import Lambdachine.Ghc.StgToBytecode
 --import Lambdachine.Grin.Eval
 import Lambdachine.Grin.Bytecode
 import Lambdachine.Grin.Analyse
@@ -29,7 +30,7 @@ import GHC
 import HscTypes ( HscEnv(hsc_dflags), CgGuts(..) )
 import DynFlags ( setPackageName, updOptLevel, dopt_unset, DynFlags(..), Settings(..), PkgConfRef(..) )
 import GHC.Paths ( libdir )
-import Outputable
+import Outputable hiding ( showPpr )
 import MonadUtils ( liftIO )
 import Bag ( emptyBag )
 import qualified Data.Map as M
@@ -38,6 +39,8 @@ import CoreUtils as Ghc
 import CorePrep
 import TyCon ( isDataTyCon )
 import qualified Id as Ghc
+import CoreToStg        ( coreToStg )
+import SimplStg         ( stg2stg )
 
 import Data.Generics.Uniplate.Direct
 
@@ -88,7 +91,7 @@ main = do
     hsc_env <- getSession
     
     let hooks = defaultHooks
-                  { hookCodeGen = compileToBytecode' opts hsc_env
+                  { hookCodeGen = compileToBytecode2 opts hsc_env
                   , hookPostBackendPhase =
                       \_default _dflags _hssourc _target ->
                          StopLn }
@@ -161,6 +164,68 @@ compileToBytecode' options hsc_env _default modIface modDetails guts mod_summary
       return ((emptyBag, emptyBag), Just Nothing)
   
 
+compileToBytecode2 :: Cli.Options
+                   -> HscEnv
+                   -> Hook (ModIface -> ModDetails -> CgGuts -> ModSummary
+                                -> IO (Messages, Maybe (Maybe FilePath)))
+                   -- -> ModIface -> ModDetails -> CgGuts -> ModSummary
+                   -- -> IO (Messages, Maybe FilePath)
+compileToBytecode2 options hsc_env _default modIface modDetails guts mod_summary = liftIO $ do
+
+  let dflags = hsc_dflags hsc_env
+  let CgGuts{ -- This is the last use of the ModGuts in a compilation.
+              -- From now on, we just use the bits we need.
+        cg_module   = this_mod,
+        cg_binds    = core_binds,
+        cg_tycons   = tycons,
+        cg_foreign  = foreign_stubs0,
+        cg_dep_pkgs = dependencies,
+        cg_hpc_info = hpc_info } = guts
+                                   
+  let imports =
+        [ unLoc (ideclName imp)
+        | L _ imp <- ms_textual_imps mod_summary ++ ms_srcimps mod_summary ]
+
+  let data_tycons = filter isDataTyCon tycons
+
+  prepd_binds <- corePrepPgm dflags hsc_env core_binds data_tycons
+
+  stg_binds <- coreToStg dflags prepd_binds
+
+  (stg_binds2, cost_centre_info) <- stg2stg dflags this_mod stg_binds
+  let (stg_binds3, _) = unzip stg_binds2
+
+  when (Cli.dumpCoreBinds options) $ do
+    putStrLn "================================================="
+    putStrLn $ showPpr stg_binds2
+
+  s <- newUniqueSupply 'g'
+
+  let bcos = stgToBytecode s (moduleName this_mod) stg_binds3 data_tycons
+
+  when (Cli.dumpBytecode options) $ do
+    pprint $ bcos
+
+  let !bco_mdl =
+         allocRegs (moduleNameString (moduleName this_mod))
+                   (map moduleNameString imports)
+                   bcos
+
+  when (Cli.dumpBytecode options) $ do
+    pprint $ bco_mdl
+  
+  let file = ml_obj_file (ms_location mod_summary)
+  let ofile = file `replaceExtension` ".lcbc"
+  
+  putStrLn $ "Writing bytecode to " ++ show ofile
+  tmpdir <- getTemporaryDirectory
+  (tmpfile, hdl) <- openBinaryTempFile tmpdir "lcc.lcbc"
+  (`onException` (hClose hdl >> removeFile tmpfile)) $ do
+    hWriteModule hdl bco_mdl
+    hFlush hdl  -- just to be sure
+    hClose hdl
+    renameFile tmpfile ofile
+  return ((emptyBag, emptyBag), Just Nothing)
 
 {-
 compileToBytecode :: Cli.Options -> HscEnv -> ModSummary -> Bool -> Ghc HscStatus

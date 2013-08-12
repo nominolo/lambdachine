@@ -109,7 +109,8 @@ tracePpr :: Outputable a => a -> b -> b
 tracePpr o exp = trace (">>> " ++ showPpr o) exp
 
 showPpr1 :: Outputable a => a -> String
-showPpr1 o = Out.showDocWith Out.OneLineMode (Out.withPprStyleDoc tracingDynFlags Out.defaultUserStyle (Out.ppr o))
+showPpr1 o = Out.showDocWith Out.OneLineMode $
+  Out.withPprStyleDoc tracingDynFlags Out.defaultUserStyle (Out.ppr o)
 
 -- -------------------------------------------------------------------
 -- * Top-level Interface
@@ -1164,7 +1165,7 @@ transCase scrut bndr alt_ty [(altcon, vars, body)] env0 fvi locs0 ctxt
   (bcis, locs1, fvs0, Just result0) <- transBody scrut env0 fvi locs0 (BindC Nothing)
 
   if (bndr `isFreeExprVarIn` body) then
-    error "transCase: Binder in unboxed tuple is not a wildcard."
+    error $ "transCase: Binder in unboxed tuple is not a wildcard: " ++ showPpr (bndr, scrut, altcon, vars, body)
    else case nonVoidVars of
     [var] -> do  -- effectively only one value is actually returned
       let locs2 = updateLoc locs1 var (InVar result0)
