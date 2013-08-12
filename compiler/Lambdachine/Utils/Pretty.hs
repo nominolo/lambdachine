@@ -23,7 +23,7 @@ import qualified Data.IntMap as IM
 import qualified Data.IntSet as IS
 import qualified Data.Map as M
 import qualified Data.Set as S
-import qualified Data.ByteString.Lazy      as B
+import qualified Data.ByteString.Lazy.Char8 as B
 import qualified Data.ByteString.Lazy.UTF8 as B
 import qualified Data.Vector as V
 import Data.Monoid

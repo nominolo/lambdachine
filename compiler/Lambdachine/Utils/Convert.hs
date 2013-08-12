@@ -1,22 +1,23 @@
 module Lambdachine.Utils.Convert where
 
 import Data.Array.ST
+import Data.Array.Unsafe as Unsafe ( castSTUArray )
 import Control.Monad.ST
 import Data.Word
 
 -- * Converting floating-point literals to integrals for serialisation
 
 castFloatToWord8Array :: STUArray s Int Float -> ST s (STUArray s Int Word8)
-castFloatToWord8Array = castSTUArray
+castFloatToWord8Array = Unsafe.castSTUArray
 
 castDoubleToWord8Array :: STUArray s Int Double -> ST s (STUArray s Int Word8)
-castDoubleToWord8Array = castSTUArray
+castDoubleToWord8Array = Unsafe.castSTUArray
 
 castFloatToWord32Array :: STUArray s Int Float -> ST s (STUArray s Int Word32)
-castFloatToWord32Array = castSTUArray
+castFloatToWord32Array = Unsafe.castSTUArray
 
 castDoubleToWord32Array :: STUArray s Int Double -> ST s (STUArray s Int Word32)
-castDoubleToWord32Array = castSTUArray
+castDoubleToWord32Array = Unsafe.castSTUArray
 
 -- Note: This returns the result in host byte order.
 
