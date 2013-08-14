@@ -7,13 +7,18 @@ import GHC.Types ( Bool )
 
 data Int = I# Int#
 
-data List a = Nil -- | Cons a (List a)
+data List a = Nil | Cons a (List a)
 
 f x = x
 
 g f x = f x
 
 h y = Nil
+
+i (I# n) = n
+
+hd (Cons x _) = x
+hd Nil = I# 3#
 {-
 f :: Int# -> Int#
 f x = x

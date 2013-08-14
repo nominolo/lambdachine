@@ -23,7 +23,7 @@ import qualified IdInfo as Ghc
 import qualified Id as Ghc
 import qualified Type as Ghc
 import qualified DataCon as Ghc
-import DataCon ( DataCon, dataConWorkId, dataConRepType )
+import DataCon ( DataCon, dataConWorkId, dataConRepType, dataConOrigResTy )
 import qualified CoreSyn as Ghc ( Expr(..), mkConApp, isTypeArg )
 import qualified PrimOp as Ghc
 import qualified TysWiredIn as Ghc
@@ -40,7 +40,7 @@ import Outputable ( Outputable, alwaysQualify, showSDocOneLine )
 import DynFlags ( tracingDynFlags )
 import qualified Outputable as Out
 import qualified Pretty as Out
-import CoreSyn ( CoreBndr )
+import CoreSyn ( CoreBndr, AltCon(..) )
 import StgSyn
 import Var ( isTyVar )
 import Unique ( Uniquable(..), getKey )
@@ -432,11 +432,23 @@ transBody (StgConApp dcon []) env locs0 fvi ctxt = do
 transBody (StgConApp dcon args) env locs0 fvi ctxt = do
   (is0, locs1, regs) <- transArgs args env locs0 fvi
   (is1, locs2, con_reg) <- loadDataCon dcon env fvi locs1 (contextVar ctxt)
-  let Just (arg_tys, rslt_ty) =
-        splitFunTysN (length args) $ dataConRepType dcon
-  rslt <- mbFreshLocal rslt_ty (contextVar ctxt)
-  let is2 = (is0 <*> is1) <*> insAlloc rslt con_reg regs
-  maybeAddRet ctxt is2 locs2 rslt
+  trace (showPpr $ dataConOrigResTy dcon) $ do
+   rslt <- mbFreshLocal (dataConOrigResTy dcon) (contextVar ctxt)
+   let is2 = (is0 <*> is1) <*> insAlloc rslt con_reg regs
+   maybeAddRet ctxt is2 locs2 rslt
+
+transBody (StgCase expr _livesWhole _livesRhss bndr _srt altType alts)
+    env locs0 fvi ctxt = do
+  transCase expr bndr altType alts env locs0 fvi ctxt
+
+transBody (StgSCC _ _ _ _) _env _locs0 _fvi _ctxt = do
+  error $ "NYI: Cost centres"
+
+transBody (StgTick _ _ _) _env _locs0 _fvi _ctxt = do
+  error $ "NYI: Ticky ticky profiling"
+
+transBody (StgLam _ _) _env _locs0 _fvi _ctxt = do
+  error $ "INVARIANT: StgLam must not occur in final STG"
 
 --transBody _ env ctxt = return (emptyGraph, Nothing)
 
@@ -494,6 +506,82 @@ transArgs args env locs0 fvi = go args emptyGraph locs0 []
    go (StgLitArg lit : xs) is locs regs = do
      (is', r) <- transLiteral lit Nothing
      go xs (is <*> is') locs (r:regs)
+
+------------------------------------------------------------------------
+
+transCase :: StgExpr -> Ghc.Id -> AltType -> [StgAlt]
+          -> LocalEnv
+          -> KnownLocs
+          -> FreeVarsIndex
+          -> Context x
+          -> Trans (Bcis x, KnownLocs, Maybe BcVar)
+transCase expr bndr (AlgAlt tycon) alts@[(altcon, vars, used, body)]
+          env locs0 fvi ctxt = do
+  -- Only one case alternative means we're just unwrapping
+  (is0, locs1, Just r) <- transBody expr env locs0 fvi (BindC Nothing)
+  let locs2 = updateLoc locs1 bndr (InVar r)
+      env' = extendLocalEnv env bndr undefined
+  let locs3 = addMatchLocs locs2 r altcon (zip vars used)
+      env'' = extendLocalEnvList env vars
+  (is1, locs4, mb_r) <- transBody body env'' locs3 fvi ctxt
+  return (is0 <*> is1, locs4, mb_r)
+
+transCase expr bndr (AlgAlt tycon) alts env locs0 fvi ctxt = do
+  -- Standard pattern matching on an algebraic datatype
+  (is0, locs1, Just r) <- transBody expr env locs0 fvi (BindC Nothing)
+  let locs2 = updateLoc locs1 bndr (InVar r)
+      env' = extendLocalEnv env bndr undefined
+  let tags = length (Ghc.tyConDataCons tycon)
+  case ctxt of
+    RetC -> do
+      (alts, is2) <- transCaseAlts alts r env locs2 fvi RetC
+      return ((is0 <*> insCase (CaseOnTag tags) {- XXX: wrong? -} r alts)
+              `catGraphsC` is2, locs1, Nothing)
+    BindC mr -> do
+      let alt_ty = repType (Ghc.varType bndr)
+      r1 <- mbFreshLocal alt_ty mr
+      (alts, altIs) <- transCaseAlts alts r env locs2 fvi (BindC (Just r1))
+      let is3 =
+            withFresh $ \l ->
+              let is' = [ i <*> insGoto l | i <- altIs ] in
+              ((is0 <*> insCase (CaseOnTag tags) r alts) `catGraphsC` is')
+                  |*><*| mkLabel l  -- make sure we're open at the end
+      return (is3, locs1, Just r1)
+
+transCase expr bndr alt_ty alts env locs0 fvi ctxt = do
+   error $ "NYI: Case expression: " ++ showPpr (alt_ty, expr, alts)
+
+------------------------------------------------------------------------
+
+transCaseAlts :: [StgAlt] -> BcVar -> LocalEnv
+              -> KnownLocs -> FreeVarsIndex -> Context x
+              -> Trans ([(BcTag, BlockId)], [BcGraph C x])
+transCaseAlts alts match_var env locs0 fvi ctxt = do
+  (targets, bcis) <- unzip <$>
+    (forM alts $ \(altcon, vars, used, body) -> do
+      let locs1 = addMatchLocs locs0 match_var altcon (zip vars used)
+          env' = extendLocalEnvList env vars
+      (bcis, _locs2, _mb_var) <- transBody body env' locs1 fvi ctxt
+      l <- freshLabel
+      return ((dataConTag altcon, l), mkLabel l <*> bcis))
+  return (targets, bcis)
+
+------------------------------------------------------------------------
+
+type Used = Bool
+
+addMatchLocs :: KnownLocs -> BcVar -> AltCon -> [(Ghc.Id, Used)] -> KnownLocs
+addMatchLocs locs _base_reg DEFAULT [] = locs
+addMatchLocs locs _base_reg (LitAlt _) [] = locs
+addMatchLocs locs base_reg (DataAlt _) vars =
+  extendLocs locs [ (x, Field base_reg n t)
+                  | ((x,_used), n) <- zip vars [1..]
+                  , let t = repType (Ghc.varType x) ]
+
+dataConTag :: AltCon -> BcTag
+dataConTag DEFAULT = DefaultTag
+dataConTag (DataAlt dcon) = Tag $ Ghc.dataConTag dcon
+dataConTag (LitAlt (Ghc.MachInt n)) = LitT n
 
 ------------------------------------------------------------------------
 
