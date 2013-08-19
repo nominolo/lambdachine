@@ -3,7 +3,7 @@
 module Bc.Bc0001 where
 
 import GHC.Prim
-import GHC.Types ( Bool )
+import GHC.Types ( Bool(..) )
 
 data Int = I# Int#
 
@@ -19,6 +19,17 @@ i (I# n) = n
 
 hd (Cons x _) = x
 hd Nil = I# 3#
+
+a x y = case x ># y of
+  True -> 1#
+  False -> 2#
+
+b x y = x ># y
+
+c x = case x of
+  3# -> 4#
+  4# -> 5#
+  n -> n
 {-
 f :: Int# -> Int#
 f x = x

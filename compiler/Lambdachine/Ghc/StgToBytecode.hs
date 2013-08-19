@@ -2,6 +2,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Lambdachine.Ghc.StgToBytecode ( stgToBytecode ) where
 
 import Lambdachine.Builtin
@@ -424,7 +425,64 @@ transBody (StgApp x []) env locs0 fvi ctxt = do
 transBody (StgApp f args) env locs0 fvi ctxt =
   transApp f args env locs0 fvi ctxt
 
+transBody (StgOpApp (StgPrimOp primOp) args rslt_ty) env locs0 fvi ctxt = do
+  (is0, locs1, regs) <- transArgs args env locs0 fvi
+  case () of
+   _ | Just (op, ty) <- primOpToBinOp primOp, [r1, r2] <- regs
+     -> do
+       rslt <- mbFreshLocal rslt_ty (contextVar ctxt)
+       maybeAddRet ctxt (is0 <*> insBinOp op ty rslt r1 r2)
+                   locs1 rslt
+   _ | Just (cond, ty) <- isCondPrimOp primOp, [r1, r2] <- regs
+     -> do
+       -- A comparison op that does not appear within a 'case'.
+       -- We must now fabricate a 'Bool' into the result.
+       -- That is, `x ># y` is translated into:
+       --
+       -- >     if x > y then goto l1 else goto l2
+       -- > l1: loadlit rslt, True
+       -- >     goto l3:
+       -- > l2: loadlit rslt, False
+       -- > l3:
+       rslt <- mbFreshLocal rslt_ty (contextVar ctxt)
+       l1 <- freshLabel;  l2 <- freshLabel;  l3 <- freshLabel
+       let is1 =  -- shape: O/O
+             catGraphsC (is0 <*> insBranch cond ty r1 r2 l1 l2)
+               [ mkLabel l1 <*> insLoadGbl rslt trueDataConId
+                            <*> insGoto l3,
+                 mkLabel l2 <*> insLoadGbl rslt falseDataConId
+                            <*> insGoto l3]
+             |*><*| mkLabel l3
+       maybeAddRet ctxt is1 locs1 rslt
+
+   _ | Just (OpNop, [arg_ty], res_ty) <- primOpOther primOp
+     -> do
+         -- Nop-like-primitives translate into a Move which gets
+         -- optimised away by the register allocator (most
+         -- likely).
+         let [reg] = regs
+         result <- mbFreshLocal rslt_ty (contextVar ctxt)
+         maybeAddRet ctxt (is0 <*> insMove result reg) locs1 result
+
+   _ | Just (op, arg_tys, res_ty) <- primOpOther primOp
+     -> do
+       let arity = length arg_tys
+       when (arity /= length regs) $
+         error $ "Wrong number of primitive args.  Got = "
+                 ++ show (length regs) ++ " expected = " ++ show arity
+       -- TODO: We could type check the arguments as an extra assertion.
+       -- That's a bit tricky given the current setup, though.
+       result <- mbFreshLocal rslt_ty (contextVar ctxt)
+       maybeAddRet ctxt (is0 <*> insPrimOp op res_ty result regs)
+                   locs1 result
+
+   _ | otherwise
+     -> error $ "Unknown primop: " ++ showPpr primOp
+
 transBody (StgConApp dcon []) env locs0 fvi ctxt = do
+  -- Constructors without arguments are special.  Since they don't
+  -- have a payload, they don't need to be stored on the heap and
+  -- therefore we simply return a pointer to the static closure.
   let dcon_closure = dataConWorkId dcon
   (is, r, _, locs1) <- transVar dcon_closure env fvi locs0 (contextVar ctxt)
   maybeAddRet ctxt is locs1 r
@@ -509,7 +567,8 @@ transArgs args env locs0 fvi = go args emptyGraph locs0 []
 
 ------------------------------------------------------------------------
 
-transCase :: StgExpr -> Ghc.Id -> AltType -> [StgAlt]
+transCase :: forall x.
+             StgExpr -> Ghc.Id -> AltType -> [StgAlt]
           -> LocalEnv
           -> KnownLocs
           -> FreeVarsIndex
@@ -525,6 +584,25 @@ transCase expr bndr (AlgAlt tycon) alts@[(altcon, vars, used, body)]
       env'' = extendLocalEnvList env vars
   (is1, locs4, mb_r) <- transBody body env'' locs3 fvi ctxt
   return (is0 <*> is1, locs4, mb_r)
+
+transCase expr@(StgOpApp (StgPrimOp op) args alt_ty) bndr (AlgAlt tycon)
+          alts env locs0 fvi ctxt
+ | Just (cond, ty) <- isCondPrimOp op
+ = case alts of
+     [_,_] -> transBinaryCase cond ty args bndr alt_ty alts
+                              env fvi locs0 ctxt
+     [_] ->
+       error "NYI: turn primop result into Bool"
+ --       transBody build_bool_expr env fvi locs0 ctxt
+ -- where
+ --   build_bool_expr =
+ --     Ghc.Case
+ --       (Ghc.Case expr bndr Ghc.boolTy
+ --          [(DataAlt Ghc.trueDataCon,  [], Ghc.mkConApp Ghc.trueDataCon [])
+ --          ,(DataAlt Ghc.falseDataCon, [], Ghc.mkConApp Ghc.falseDataCon [])])
+ --       bndr
+ --       alt_ty
+ --       alts
 
 transCase expr bndr (AlgAlt tycon) alts env locs0 fvi ctxt = do
   -- Standard pattern matching on an algebraic datatype
@@ -548,6 +626,73 @@ transCase expr bndr (AlgAlt tycon) alts env locs0 fvi ctxt = do
                   |*><*| mkLabel l  -- make sure we're open at the end
       return (is3, locs1, Just r1)
 
+transCase expr bndr (PrimAlt tycon) alts env0 locs0 fvi ctxt = do
+  (bcis0, locs1, Just reg) <- transBody expr env0 locs0 fvi (BindC Nothing)
+
+  -- bndr gets bound to the literal
+  let locs2 = updateLoc locs1 bndr (InVar reg)
+      env = extendLocalEnv env0 bndr undefined
+  let (dflt, ty, tree) = buildCaseTree alts
+
+  -- If the context requires binding to a variable, then we have to
+  -- make sure all branches write their result into the same
+  -- variable.
+  ctxt' <- (case ctxt of
+             RetC -> return RetC
+             BindC mr ->
+               let alt_ty = repType (Ghc.varType bndr) in
+               BindC . Just <$> mbFreshLocal alt_ty mr)
+            :: Trans (Context x)
+
+  end_label <- freshLabel
+
+  let
+    transArm :: StgExpr -> Trans (Label, BcGraph C C)
+    transArm bdy = do
+      l <- freshLabel
+      (bcis, _locs', _mb_var) <- transBody bdy env locs2 fvi ctxt'
+      case ctxt' of
+        RetC -> 
+          return (l, mkLabel l <*> bcis)
+        BindC _ ->
+          return (l, mkLabel l <*> bcis <*> insGoto end_label)
+
+  (dflt_label, dflt_bcis) <- transArm dflt
+  
+  let
+    build_branches :: CaseTree
+                   -> Trans (Label, [BcGraph C C])
+
+    build_branches (Leaf Nothing) = do
+      return (dflt_label, [])
+    build_branches (Leaf (Just expr)) = do
+      (lbl, bci) <- transArm expr
+      return (lbl, [bci])
+
+    build_branches (Branch cmp lit true false) = do
+      (true_lbl, true_bcis) <- build_branches true
+      (false_lbl, false_bcis) <- build_branches false
+      -- Ensure the code blocks are closed at the end
+      (lit_bcis, lit_reg) <- transLiteral lit Nothing
+      l <- freshLabel
+      return (l, [mkLabel l <*> lit_bcis
+                  <*> insBranch cmp ty reg lit_reg true_lbl false_lbl]
+                 ++ true_bcis ++ false_bcis)
+
+  case ctxt' of
+    RetC -> do
+      (l_root, bcis) <- build_branches tree
+      return ((bcis0 <*> insGoto l_root) `catGraphsC` bcis
+               |*><*| dflt_bcis,
+              locs1, Nothing)
+    BindC (Just r) -> do
+      (l_root, bcis) <- build_branches tree
+      return ((bcis0 <*> insGoto l_root) `catGraphsC` bcis
+                |*><*| dflt_bcis |*><*| mkLabel end_label,
+              locs1, Just r)
+
+--  error "NYI: Case on literal"
+
 transCase expr bndr alt_ty alts env locs0 fvi ctxt = do
    error $ "NYI: Case expression: " ++ showPpr (alt_ty, expr, alts)
 
@@ -568,6 +713,48 @@ transCaseAlts alts match_var env locs0 fvi ctxt = do
 
 ------------------------------------------------------------------------
 
+data CaseTree
+  = Leaf (Maybe StgExpr)  -- execute this code (or default)
+  | Branch CmpOp Ghc.Literal CaseTree CaseTree
+    -- cmp + ty,  true_case, false_case
+
+-- | Given a list of literal pattern matches, builds a balanced tree.
+--
+-- The goal is for this tree to select among the @N@ alternatives in
+-- @log2(N)@ time.
+--
+-- TODO: Detect and take advantage of ranges.
+buildCaseTree :: [StgAlt]
+              -> (StgExpr, OpTy, CaseTree)
+                 -- ^ Default code, comparison type, and other cases
+buildCaseTree ((DEFAULT, [], _, dflt_expr):alts0) =
+  assert alts_is_sorted $ (dflt_expr, ty, buildTree alts)
+ where
+   alts = map simpl_lit alts0
+
+   alts_is_sorted =
+     map fst (sortBy (comparing fst) alts) == map fst alts
+
+   dflt = Leaf Nothing
+   leaf x = Leaf (Just x)
+
+   simpl_lit (LitAlt lit, [], [], expr) =
+     assert (ghcLiteralType lit == ty) $ (lit, expr)
+
+   ty = case alts0 of ((LitAlt l, _, _, _):_) -> ghcLiteralType l
+
+   buildTree [(l, body)] =
+     Branch CmpEq l (leaf body) dflt
+   buildTree [(l1, body1), (l2,body2)] =
+     Branch CmpEq l1 (leaf body1) (Branch CmpEq l2 (leaf body2) dflt)
+   buildTree alts1 =
+     let l = length alts1 in
+     case splitAt (l `div` 2) alts1 of
+       (lows, highs@((l, _):_)) ->
+         Branch CmpGe l (buildTree highs) (buildTree lows)
+
+------------------------------------------------------------------------
+
 type Used = Bool
 
 addMatchLocs :: KnownLocs -> BcVar -> AltCon -> [(Ghc.Id, Used)] -> KnownLocs
@@ -582,6 +769,65 @@ dataConTag :: AltCon -> BcTag
 dataConTag DEFAULT = DefaultTag
 dataConTag (DataAlt dcon) = Tag $ Ghc.dataConTag dcon
 dataConTag (LitAlt (Ghc.MachInt n)) = LitT n
+
+------------------------------------------------------------------------
+
+-- | Translate a binary case on a primop, i.e., a two-arm branch
+-- with alternatives @True@ or @False@.
+transBinaryCase :: forall x.
+                   BinOp -> OpTy -> [StgArg] -> CoreBndr
+                -> Ghc.Type -> [StgAlt]
+                -> LocalEnv -> FreeVarsIndex
+                -> KnownLocs -> Context x
+                -> Trans (Bcis x, KnownLocs, Maybe BcVar)
+transBinaryCase cond ty args bndr alt_ty alts@[_,_] env0 fvi locs0 ctxt = do
+  -- TODO: We may want to get the result of the comparison as a
+  -- Bool.  In the True branch we therefore want to have:
+  --
+  -- > bndr :-> loadLit True
+  --
+  (bcis, locs1, [r1, r2]) <- transArgs args env0 locs0 fvi
+--  let locs2 = updateLoc locs1 bndr (InVar r)
+  let env = extendLocalEnv env0 bndr undefined
+  -- let match_var = error "There must be no binders in comparison binops"
+  let (trueBody, falseBody) =
+        case alts of
+          [(DEFAULT, [], _, b1), (DataAlt c, [], _, b2)]
+           | c == Ghc.trueDataCon  -> (b2, b1)
+           | c == Ghc.falseDataCon -> (b1, b2)
+          [(DataAlt c1, [], _, b1), (DataAlt _, [], _, b2)]
+           | c1 == Ghc.trueDataCon  -> (b1, b2)
+           | c1 == Ghc.falseDataCon -> (b2, b1)
+  -- If the context requires binding to a variable, then we have to
+  -- make sure both branches write their result into the same
+  -- variable.
+  ctxt' <- (case ctxt of
+             RetC -> return RetC
+             BindC mr -> BindC . Just <$> mbFreshLocal alt_ty mr)
+            :: Trans (Context x)
+
+  let transUnaryConAlt body con_id = do
+        let locs2 = updateLoc locs1 bndr (Global con_id)
+        l <- freshLabel
+        (bcis, _locs1, _mb_var)
+          <- transBody body env locs2 fvi ctxt'
+        return (l, mkLabel l <*> bcis)
+
+  (tLabel, tBcis) <- transUnaryConAlt trueBody trueDataConId
+  (fLabel, fBcis) <- transUnaryConAlt falseBody falseDataConId
+
+  case ctxt' of
+    RetC -> do
+      return (bcis <*> insBranch cond ty r1 r2 tLabel fLabel
+                   |*><*| tBcis |*><*| fBcis,
+              locs1, Nothing)
+    BindC (Just r) -> do
+      l <- freshLabel
+      return (bcis <*> insBranch cond ty r1 r2 tLabel fLabel
+                |*><*| tBcis <*> insGoto l
+                |*><*| fBcis <*> insGoto l
+                |*><*| mkLabel l,
+              locs1, Just r)
 
 ------------------------------------------------------------------------
 
@@ -766,3 +1012,86 @@ ghcIdDataCon :: CoreBndr -> Ghc.DataCon
 ghcIdDataCon x
   | Ghc.DataConWorkId dcon <- Ghc.idDetails x = dcon
   | otherwise = error "ghcIdDataCon: Id is not a DataConWorkId"
+
+------------------------------------------------------------------------
+
+-- TODO: This needs more thought.
+primOpToBinOp :: Ghc.PrimOp -> Maybe (BinOp, OpTy)
+primOpToBinOp primop =
+  case primop of
+    Ghc.IntAddOp -> Just (OpAdd, IntTy)
+    Ghc.IntSubOp -> Just (OpSub, IntTy)
+    Ghc.IntMulOp -> Just (OpMul, IntTy)
+    Ghc.IntQuotOp -> Just (OpDiv, IntTy)
+    Ghc.IntRemOp  -> Just (OpRem, IntTy)
+
+    Ghc.WordAddOp -> Just (OpAdd, WordTy)
+    Ghc.WordSubOp -> Just (OpSub, WordTy)
+    Ghc.WordMulOp -> Just (OpMul, WordTy)
+    _ -> Nothing
+
+isCondPrimOp :: Ghc.PrimOp -> Maybe (BinOp, OpTy)
+isCondPrimOp primop =
+  case primop of
+    Ghc.IntGtOp -> Just (CmpGt, IntTy)
+    Ghc.IntGeOp -> Just (CmpGe, IntTy)
+    Ghc.IntEqOp -> Just (CmpEq, IntTy)
+    Ghc.IntNeOp -> Just (CmpNe, IntTy)
+    Ghc.IntLtOp -> Just (CmpLt, IntTy)
+    Ghc.IntLeOp -> Just (CmpLe, IntTy)
+
+    Ghc.CharGtOp -> Just (CmpGt, CharTy)
+    Ghc.CharGeOp -> Just (CmpGe, CharTy)
+    Ghc.CharEqOp -> Just (CmpEq, CharTy)
+    Ghc.CharNeOp -> Just (CmpNe, CharTy)
+    Ghc.CharLtOp -> Just (CmpLt, CharTy)
+    Ghc.CharLeOp -> Just (CmpLe, CharTy)
+
+    Ghc.WordGtOp -> Just (CmpGt, WordTy)
+    Ghc.WordGeOp -> Just (CmpGe, WordTy)
+    Ghc.WordEqOp -> Just (CmpEq, WordTy)
+    Ghc.WordNeOp -> Just (CmpNe, WordTy)
+    Ghc.WordLtOp -> Just (CmpLt, WordTy)
+    Ghc.WordLeOp -> Just (CmpLe, WordTy)
+
+    _ -> Nothing
+
+primOpOther :: Ghc.PrimOp -> Maybe (PrimOp, [OpTy], OpTy)
+primOpOther primop =
+  case primop of
+    Ghc.IndexOffAddrOp_Char -> Just (OpIndexOffAddrChar, [AddrTy, IntTy], CharTy)
+    Ghc.DataToTagOp -> Just (OpGetTag, [PtrTy], IntTy)
+    Ghc.IntNegOp -> Just (OpNegateInt, [IntTy], IntTy)
+
+    Ghc.AndOp -> Just (OpBitAnd, [WordTy, WordTy], WordTy)
+    Ghc.OrOp  -> Just (OpBitOr,  [WordTy, WordTy], WordTy)
+    Ghc.XorOp -> Just (OpBitXor, [WordTy, WordTy], WordTy)
+    Ghc.NotOp -> Just (OpBitNot, [WordTy], WordTy)
+
+    -- bit shifting
+    Ghc.SllOp -> Just (OpShiftLeft, [WordTy, IntTy], WordTy)
+    Ghc.SrlOp -> Just (OpShiftRightLogical, [WordTy, IntTy], WordTy)
+    Ghc.ISllOp -> Just (OpShiftLeft, [IntTy, IntTy], IntTy)
+    Ghc.ISraOp -> Just (OpShiftRightArith, [IntTy, IntTy], IntTy)
+    Ghc.ISrlOp -> Just (OpShiftRightLogical, [IntTy, IntTy], IntTy)
+
+    -- these are all NOPs
+    Ghc.OrdOp -> Just (OpNop, [CharTy], IntTy)
+    Ghc.ChrOp -> Just (OpNop, [IntTy], CharTy)
+    Ghc.Addr2IntOp -> Just (OpNop, [AddrTy], IntTy)
+    Ghc.Int2AddrOp -> Just (OpNop, [IntTy], AddrTy)
+    Ghc.Word2IntOp -> Just (OpNop, [WordTy], IntTy)
+    Ghc.Int2WordOp -> Just (OpNop, [IntTy], WordTy)
+
+    _ -> Nothing
+
+ghcLiteralType :: Ghc.Literal -> OpTy
+ghcLiteralType lit = case lit of
+  Ghc.MachInt _    -> IntTy
+  Ghc.MachInt64 _  -> Int64Ty
+  Ghc.MachChar _   -> CharTy
+  Ghc.MachWord _   -> WordTy
+  Ghc.MachWord64 _ -> Word64Ty
+  Ghc.MachStr _    -> AddrTy
+  Ghc.MachFloat _  -> FloatTy
+  Ghc.MachDouble _ -> DoubleTy
