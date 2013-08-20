@@ -1,4 +1,4 @@
-{-# LANGUAGE NoImplicitPrelude, MagicHash #-}
+{-# LANGUAGE NoImplicitPrelude, MagicHash, UnboxedTuples #-}
 -- RUN: %bc
 module Bc.Bc0001 where
 
@@ -29,7 +29,17 @@ b x y = x ># y
 c x = case x of
   3# -> 4#
   4# -> 5#
+  7# -> 3#
+  9# -> 8#
   n -> n
+
+d x = case (# x, x #) of
+  (# y, z #) -> y +# z
+
+{-# NOINLINE e #-}
+e :: Int# -> (# Int#, Int# #)
+e x = (# x, x #)
+
 {-
 f :: Int# -> Int#
 f x = x

@@ -487,7 +487,29 @@ transBody (StgConApp dcon []) env locs0 fvi ctxt = do
   (is, r, _, locs1) <- transVar dcon_closure env fvi locs0 (contextVar ctxt)
   maybeAddRet ctxt is locs1 r
 
-transBody (StgConApp dcon args) env locs0 fvi ctxt = do
+transBody (StgConApp dcon args) env locs0 fvi ctxt
+ | Ghc.isUnboxedTupleCon dcon
+ = case ctxt of
+     BindC _ -> error "Trying to bind an unboxed tuple to a variable"
+     RetC -> do
+       (is0, locs1, vars0) <- transArgs args env locs0 fvi
+       let vars = removeIf isVoid vars0
+       case vars of
+         [] ->
+           error "Unboxed tuple contained only void arguments"
+         [r] ->
+           return (is0 <*> insRet1 r, locs1, Nothing)
+         (_:_:_) -> do
+           -- Return all N vars in registers r0..r(N-1)
+           let resultRegs =
+                 [ BcReg n (transType (bcVarType var))
+                 | (n, var) <- zip [0..] vars ]
+           let is =
+                 is0 <*> catGraphs [ insMove reg var
+                                   | (reg, var) <- zip resultRegs vars ]
+           return (is <*> insRetN resultRegs, locs1, Nothing)
+
+ | otherwise = do
   (is0, locs1, regs) <- transArgs args env locs0 fvi
   (is1, locs2, con_reg) <- loadDataCon dcon env fvi locs1 (contextVar ctxt)
   trace (showPpr $ dataConOrigResTy dcon) $ do
