@@ -33,7 +33,7 @@ c x = case x of
   9# -> 8#
   n -> n
 
-d x = case (# x, x #) of
+d x = case e x of
   (# y, z #) -> y +# z
 
 {-# NOINLINE e #-}

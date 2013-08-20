@@ -114,6 +114,7 @@ data TransState = TransState
   , tsLocalBCOs  :: BCOs
   , tsModuleName :: !Ghc.ModuleName
   , tsParentFun  :: Maybe String
+  , tsStack      :: [StgExpr]
   }
 
 runTrans :: Ghc.ModuleName -> Supply Unique -> Trans a -> a
@@ -122,7 +123,8 @@ runTrans mdl us (Trans m) = evalState m s0
    s0 = TransState { tsUniques = us
                    , tsLocalBCOs = M.empty
                    , tsModuleName = mdl
-                   , tsParentFun = Nothing }
+                   , tsParentFun = Nothing
+                   , tsStack = [] }
 
 genUnique :: Trans (Supply Unique)
 genUnique = Trans $ do
@@ -134,6 +136,19 @@ genUnique = Trans $ do
 
 instance UniqueMonad Trans where
   freshUnique = hooplUniqueFromUniqueSupply `fmap` genUnique
+
+within :: StgExpr -> Trans a -> Trans a
+within e (Trans m) = Trans $ do
+  s <- get
+  let old = tsStack s
+  put $! s{ tsStack = e : old }
+  r <- m
+  s <- get
+  put $! s{ tsStack = old }
+  return r
+
+getStack :: Trans [StgExpr]
+getStack = Trans $ gets tsStack
 
 getThisModule :: Trans Ghc.ModuleName
 getThisModule = Trans $ gets tsModuleName
@@ -301,7 +316,8 @@ transTopLevelRhsClosure x0 x _bndrInfo upd args body = do
                      | (b, n) <- zip args [0..]
                      , let t = repType (Ghc.varType b) ]
 
-  (bcis, locs1, Nothing) <- withParentFun x0 $ transBody body env0 locs0 fvi0 RetC
+  (bcis, locs1, Nothing) <- withParentFun x0 $ within body $
+                              transBody body env0 locs0 fvi0 RetC
 
 
   g <- finaliseBcGraph bcis
@@ -422,8 +438,8 @@ transBody (StgApp x []) env locs0 fvi ctxt = do
     RetC -> return (is <*> insRet1 r, locs1, Nothing)
     BindC _ -> return (is, locs1, Just r)
 
-transBody (StgApp f args) env locs0 fvi ctxt =
-  transApp f args env locs0 fvi ctxt
+transBody e@(StgApp f args) env locs0 fvi ctxt =
+  within e $ transApp f args env locs0 fvi ctxt
 
 transBody (StgOpApp (StgPrimOp primOp) args rslt_ty) env locs0 fvi ctxt = do
   (is0, locs1, regs) <- transArgs args env locs0 fvi
@@ -490,7 +506,10 @@ transBody (StgConApp dcon []) env locs0 fvi ctxt = do
 transBody (StgConApp dcon args) env locs0 fvi ctxt
  | Ghc.isUnboxedTupleCon dcon
  = case ctxt of
-     BindC _ -> error "Trying to bind an unboxed tuple to a variable"
+     BindC _ -> do
+       st <- getStack
+       error $ "Trying to bind an unboxed tuple to a variable: " ++
+         showPpr st
      RetC -> do
        (is0, locs1, vars0) <- transArgs args env locs0 fvi
        let vars = removeIf isVoid vars0
@@ -517,9 +536,10 @@ transBody (StgConApp dcon args) env locs0 fvi ctxt
    let is2 = (is0 <*> is1) <*> insAlloc rslt con_reg regs
    maybeAddRet ctxt is2 locs2 rslt
 
-transBody (StgCase expr _livesWhole _livesRhss bndr _srt altType alts)
+transBody e@(StgCase expr _livesWhole _livesRhss bndr _srt altType alts)
     env locs0 fvi ctxt = do
-  transCase expr bndr altType alts env locs0 fvi ctxt
+  within e $
+    transCase expr bndr altType alts env locs0 fvi ctxt
 
 transBody (StgSCC _ _ _ _) _env _locs0 _fvi _ctxt = do
   error $ "NYI: Cost centres"
@@ -713,11 +733,94 @@ transCase expr bndr (PrimAlt tycon) alts env0 locs0 fvi ctxt = do
                 |*><*| dflt_bcis |*><*| mkLabel end_label,
               locs1, Just r)
 
---  error "NYI: Case on literal"
+-- See [Note: Unarisation Weirdness] below
+transCase (StgConApp dcon args) bndr (UbxTupAlt n) alts@[(_, vars, _, body)]
+          env locs0 fvi ctxt
+ | Ghc.isUnboxedTupleCon dcon
+ = do
+  -- args must be bound somewhere or be literals, so we just update
+  -- the locations to match
+  let match [] [] locs = locs
+      match (StgVarArg arg:args') (var:vars') locs =
+        let Just loc = lookupLoc locs arg in
+        let locs' = updateLoc locs var loc in
+        match args' vars' locs'
+  let locs1 = match args vars locs0
+  transBody body env locs1 fvi ctxt
+
+transCase expr bndr (UbxTupAlt n) alts@[(_, vars, _, body)] env
+          locs0 fvi ctxt = do
+
+  (bcis, locs1, Just r0) <- transBody expr env locs0 fvi (BindC Nothing)
+
+  -- Only non-void values are actually returned.
+  let nonVoidVars = removeIf isGhcVoid vars
+  case nonVoidVars of
+    [var] -> do  -- same as regular return, really
+      let locs2 = updateLoc locs1 var (InVar r0)
+          env' = extendLocalEnv env var undefined
+      (bcis', locs3, mb_r) <- transBody body env' locs2 fvi ctxt
+      return (bcis <*> bcis', locs3, mb_r)
+
+    resultVar0:(otherResultVars@(_:_)) -> do
+      -- Leave `bndr` undefined.  It should always be a wildcard.
+      let env' = extendLocalEnvList env nonVoidVars
+
+      -- Result variables don't survive across multiple CALL instructions
+      -- so we load them all into fresh variables.
+      regs <- mapM (\x -> mbFreshLocal (repType (Ghc.varType x)) Nothing)
+                   otherResultVars
+      let bcis1 = [ insLoadExtraResult r n | (r, n) <- zip regs [1..] ]
+      let locs2 = extendLocs locs1 [(resultVar0, InVar r0)]
+      let locs3 = extendLocs locs2
+                    [ (x, InVar r) | (x, r) <- zip otherResultVars regs ]
+
+      (bcis', locs4, mb_r) <- transBody body env' locs3 fvi ctxt
+      return (bcis <*> catGraphs bcis1 <*> bcis', locs4, mb_r)
+
+  -- error "NYI: Case on unboxed tuple"
 
 transCase expr bndr alt_ty alts env locs0 fvi ctxt = do
-   error $ "NYI: Case expression: " ++ showPpr (alt_ty, expr, alts)
+  error $ "NYI: Case expression: " ++ showPpr (alt_ty, expr, alts)
 
+------------------------------------------------------------------------
+{-
+* Note: Unarisation Weirdness
+
+The following program gives rise to some weird STG which doesn't actually
+pass the StgLint pass:
+
+    d x = case e x of
+      (# y, z #) -> y +# z
+
+    {-# NOINLINE e #-}
+    e :: Int# -> (# Int#, Int# #)
+    e x = (# x, x #)
+
+Is translated into STG as follows:
+
+    c.Bc0001.e [InlPrag=NOINLINE]
+      :: GHC.Prim.Int# -> (# GHC.Prim.Int#, GHC.Prim.Int# #)
+    [GblId, Arity=1, Caf=NoCafRefs, Unf=OtherCon []] =
+        \r [x_sP] (#,#) [x_sP x_sP];
+
+    SRT(Bc.Bc0001.e): []
+    Bc.Bc0001.d :: GHC.Prim.Int# -> GHC.Prim.Int#
+    [GblId, Arity=1, Caf=NoCafRefs, Unf=OtherCon []] =
+        \r [x_sR]
+            case Bc.Bc0001.e x_sR of ds_sV {
+              (#,#) ipv_s13 ipv1_s14 ->
+                  case (#,#) [ipv_s13 ipv1_s14] of _ {    --- (!)
+                    (#,#) y_sZ z_s10 -> +# [y_sZ z_s10];  --- (!)
+                  };
+            };
+    SRT(Bc.Bc0001.d): []
+
+This lines annotated with (!) are clearly unnecessary.  We thus
+use a custom hack and perform this known-case transformation
+during the translation to bytecode.
+
+-}
 ------------------------------------------------------------------------
 
 transCaseAlts :: [StgAlt] -> BcVar -> LocalEnv
