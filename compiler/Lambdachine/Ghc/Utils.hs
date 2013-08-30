@@ -22,11 +22,14 @@ import qualified Var as Ghc
 import qualified VarSet as Ghc
 import DynFlags ( tracingDynFlags )
 import Outputable ( Outputable, alwaysQualify )
-import qualified Outputable ( showPpr, showSDocForUser )
+import qualified Outputable ( showPpr, showSDocForUser, showSDocDebug, ppr )
 import Unique ( Uniquable(..), getKey )
 
 showPpr :: Outputable a => a -> String
 showPpr = Outputable.showPpr tracingDynFlags
+
+showPprDebug :: Outputable a => a -> String
+showPprDebug = Outputable.showSDocDebug tracingDynFlags . Outputable.ppr
 
 showSDocForUser :: Ghc.PrintUnqualified -> Ghc.SDoc -> String
 showSDocForUser = Outputable.showSDocForUser tracingDynFlags

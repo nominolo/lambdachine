@@ -100,8 +100,29 @@ stgToBytecode :: Supply Unique
               -> BCOs
 stgToBytecode uniques mdl bndrs0 data_tycons =
   runTrans mdl uniques $ do
+    mapM_ transTyCon data_tycons
     mapM_ transTopLevelBind bndrs0
     getBCOs
+
+------------------------------------------------------------------------
+
+transTyCon :: TyCon -> Trans ()
+transTyCon tycon = do
+  addBCO (tyConId (Ghc.tyConName tycon)) $
+    BcTyConInfo{ bcoDataCons =
+                    map dataConInfoTableId (Ghc.tyConDataCons tycon) }
+  forM_ (Ghc.tyConDataCons tycon) $ \dcon -> do
+    let dcon_id = dataConInfoTableId dcon
+        -- ty = transType (Ghc.dataConRepType dcon)
+        arg_tys = map transType (Ghc.dataConRepArgTys dcon)
+          -- | FunTy args _ <- ty = args
+                -- | otherwise = []
+        bco = BcConInfo { bcoConTag = Ghc.dataConTag dcon
+                        , bcoConFields = Ghc.dataConRepArity dcon
+                        , bcoConArgTypes = arg_tys }
+    -- error $ "TODO: dcon type: " ++ showPpr (dcon, Ghc.dataConRepType dcon)
+    --    ++ " " ++ pretty arg_tys
+    addBCO dcon_id bco
 
 ------------------------------------------------------------------------
 -- The bytecode translation generation monad
@@ -186,6 +207,9 @@ withParentFun x (Trans act) = Trans $ do
   put $! s'{ tsParentFun = pfun }
   return r
 
+getParentFun :: Trans (Maybe String)
+getParentFun = Trans (gets tsParentFun)
+
 ------------------------------------------------------------------------
 
 -- | Describes where to find the value of a variable.
@@ -264,6 +288,10 @@ transTopLevelBind :: StgBinding -> Trans ()
 transTopLevelBind (StgNonRec x rhs) = do
   x' <- (`toplevelId` x) <$> getThisModule
   transTopLevelRhs x x' rhs
+transTopLevelBind (StgRec recs) =
+  forM_ recs $ \(x, rhs) -> do
+    x' <- (`toplevelId` x) <$> getThisModule
+    transTopLevelRhs x x' rhs
 
 transTopLevelRhs :: Ghc.Id -> Id -> StgRhs -> Trans ()
 transTopLevelRhs bndr0 bndr rhs =
@@ -541,6 +569,19 @@ transBody e@(StgCase expr _livesWhole _livesRhss bndr _srt altType alts)
   within e $
     transCase expr bndr altType alts env locs0 fvi ctxt
 
+transBody e@(StgLet binds body) env locs0 fvi ctxt = do
+  (is0, locs1, _) <- within e $ transBinds binds env locs0 fvi
+  (is1, locs2, mb_r) <- {- withParentFun x $ -} transBody body env locs1 fvi ctxt
+  return (is0 <*> is1, locs2, mb_r)
+
+transBody e@(StgLetNoEscape _liveIn _liveRhss binds body)
+          env locs0 fvi ctxt = do
+  -- TODO: There may be something special we could do with
+  -- let-no-escapes.  E.g., access free variables via the stack frame.
+  (is0, locs1, _) <- within e $ transBinds binds env locs0 fvi
+  (is1, locs2, mb_r) <- transBody body env locs1 fvi ctxt
+  return (is0 <*> is1, locs2, mb_r)
+
 transBody (StgSCC _ _ _ _) _env _locs0 _fvi _ctxt = do
   error $ "NYI: Cost centres"
 
@@ -550,7 +591,230 @@ transBody (StgTick _ _ _) _env _locs0 _fvi _ctxt = do
 transBody (StgLam _ _) _env _locs0 _fvi _ctxt = do
   error $ "INVARIANT: StgLam must not occur in final STG"
 
+transBody body  _env _locs0 _fvi _ctxt = do
+  error $ "NYI: Translation of " ++ showPpr body
+
 --transBody _ env ctxt = return (emptyGraph, Nothing)
+
+------------------------------------------------------------------------
+
+transBinds :: StgBinding -> LocalEnv -> KnownLocs -> FreeVarsIndex
+           -> Trans (Bcis O, KnownLocs, [BcVar])
+
+transBinds (StgNonRec x rhs) env locs0 fvi = do
+  (is0, locs1, single_or_alloc, rslt_ty, [])
+    <- transRhs rhs x False [] env locs0 fvi
+  rslt <- mbFreshLocal rslt_ty Nothing
+  let locs2 = updateLoc locs1 x (InVar rslt)
+  case single_or_alloc of
+    Right (itbl_reg, arg_regs) -> do
+      return (is0 <*> insAlloc rslt itbl_reg arg_regs, locs2, [rslt])
+    Left clos_reg -> do
+      return (is0 <*> insMove rslt clos_reg, locs2, [rslt])
+
+transBinds (StgRec pairs) env locs0 fvi = do
+  let
+    go [] is locs alloced pending_fwd_refs =
+      if not (null (concatMap snd pending_fwd_refs)) then
+        error $ "NYI: Forward refs: " ++ show (map snd pending_fwd_refs)
+       else
+        return (is, locs, reverse alloced)
+    go ((x, rhs):binds) is locs alloced pending_fwd_refs = do
+      let fwds_for_x = map fst binds
+      let locs1 = extendLocs locs ((x, Self) : [ (x, Fwd) | (x, _) <- binds ])
+      (is1, locs2, single_or_alloc, rslt_ty, new_fwd_refs) <-
+        transRhs rhs x True fwds_for_x env locs1 fvi
+      rslt <- mbFreshLocal rslt_ty Nothing
+      let locs3 = updateLoc locs2 x (InVar rslt)
+      let is' =
+            case single_or_alloc of
+              Right (itbl_reg, arg_regs) ->
+                is <*> is1 <*> insAlloc rslt itbl_reg arg_regs
+              Left clos_reg ->
+                is <*> is1 <*> insMove rslt clos_reg
+      go binds is' locs3 (rslt:alloced) ((x, new_fwd_refs) : pending_fwd_refs)
+
+  go pairs emptyGraph locs0 [] []
+
+
+{-
+           
+transBinds (StgNonRec x (StgRhsCon _ccs dcon args)) env locs0 fvi = do
+  (is0, locs1, Just r) <- transStore dcon args env locs0 fvi (BindC Nothing)
+  let locs2 = updateLoc locs1 x (InVar r)
+  return (is0, locs2, [r])
+
+transBinds b@(StgNonRec x (StgRhsClosure _ccs _info frees _upd srt args body))
+           env locs0 fvi_outer = do
+  -- TODO: Add special case for ([x y z] \u [] -> f x y z), i.e.,
+  -- application thunk.
+
+  info_tbl0 <- do
+    let locs0 = mkLocs $ (x, Self) : [ (arg, InReg n t) |
+                                       (arg, n) <- zip args [0..],
+                                       let t = repType (Ghc.varType arg) ]
+
+    let fvi = Ghc.mkVarEnv (zip frees [(1::Int)..])
+    let env0 = mkLocalEnv (zip frees (repeat undefined))
+  
+    (is0, _locs, Nothing) <- withParentFun x $ transBody body env0 locs0 fvi RetC
+
+    this_mdl <- getThisModule
+    parent <- getParentFun
+    let cl_prefix | Nothing <- parent = ".cl_"
+                  | Just s  <- parent = ".cl_" ++ s ++ "_"
+
+    x' <- freshVar (showPpr this_mdl ++ cl_prefix ++ Ghc.getOccString x) mkTopLevelId
+
+    g <- finaliseBcGraph is0
+    let arity = length args
+        arg_types = map (transType . repType . Ghc.varType) args
+        free_vars = M.fromList [ (n, transType (Ghc.varType v))
+                                | (n, v) <- zip [1..] frees ]
+
+    let bco = BcObject
+              { bcoType = if arity > 0
+                           then BcoFun arity arg_types
+                           else if length frees > 0
+                                then Thunk else CAF
+              , bcoCode = g
+              , bcoConstants = []
+              , bcoGlobalRefs = [] -- TODO: What's this used for?
+              , bcoFreeVars = free_vars }
+
+    addBCO x' bco
+    return x'
+
+  let info_tbl = mkInfoTableId (idName info_tbl0)
+  (bcis1, locs1, regs) <- transArgs (map StgVarArg frees) env locs0 fvi_outer
+  let tag_type = Ghc.bcoPrimTy
+  tag_reg <- mbFreshLocal tag_type Nothing
+  rslt <- mbFreshLocal (repType (Ghc.varType x)) Nothing
+
+  let bcis2 = bcis1 <*> insLoadGbl tag_reg info_tbl <*>
+              insAlloc rslt tag_reg regs
+      locs2 = updateLoc locs1 x (InVar rslt)
+      --bcis3 = bcis2 <*> add_fw_refs x rslt locs2
+
+  return (bcis2, locs2, [rslt])
+  
+  -- error $ "NYI(alloc closure): " ++ showPpr (frees, args, body) ++ "\n" ++
+  --   showPprDebug b ++ "\n" ++ showSRT srt
+
+transBinds b@(StgRec pairs) env locs0_outer fvi_outer = do
+  let fwds0 = [ (x, Fwd) | (x, _) <- pairs ]
+  let
+    go [] [] locs = do
+      return ()
+    go ((x, rhs):pairs') ((x', _):fwds) locs = do
+      let locs0 = extendLocs locs ((x, Self) : fwds)
+      go pairs' fwds locs
+  error "Rec binding"
+
+-}
+
+data FwdRef = FwdRef !Int !Ghc.Id
+
+instance Show FwdRef where
+  show (FwdRef n x) = "Fwd " ++ show n ++ " " ++ showPpr x
+
+type IsRecursive = Bool
+
+transRhs :: StgRhs -> Ghc.Id -> IsRecursive -> [Ghc.Id]
+         -> LocalEnv -> KnownLocs -> FreeVarsIndex
+         -> Trans (Bcis O, KnownLocs, Either BcVar (BcVar, [BcVar]),
+                   Ghc.Type, [FwdRef])
+         -- ^ Returns:
+         -- 
+         --  * The code to load the arguments.
+         -- 
+         --  * Updated known locations
+         -- 
+         --  * Either a pointer to the closure or the variable that
+         --    holds the info table and he arguments to the allocation
+         --    instruction
+         -- 
+         --  * The type of the result of allocation
+         --  * Locations that need to be patched up later since they
+         --    referred to values that have not yet been allocated.
+transRhs (StgRhsCon _ccs dcon args) _self _isRec fwds0 env locs0 fvi = do
+  (is0, locs1, regs) <- transArgs args env locs0 fvi
+  (is1, locs2, rdcon) <- loadDataCon dcon env fvi locs1 Nothing
+  let rslt_ty = dataConOrigResTy dcon
+  let fwds = [ FwdRef n x | (StgVarArg x, n) <- zip args [0..]
+                          , x `elem` fwds0 ]
+  return (is0 <*> is1, locs2,
+          if null args then Left rdcon else Right (rdcon, regs),
+          rslt_ty, fwds)
+
+transRhs r@(StgRhsClosure _ccs _info frees0 _upd _srt args body)
+         self isRec fwds0 env locs0_outer fvi_outer = do
+
+  let frees | isRec = filter (/= self) frees0
+            | otherwise = frees0
+  -- TODO: Detect when args == [] and body is just a function application
+ --trace ("THUNK()" ++ showPpr (r, frees, self, isRec)) $ do
+
+  -- 1. Create a new BCO for the body of the closure.
+  info_tbl0 <- do
+    let locs0 = mkLocs [ (arg, InReg n t) |
+                         (arg, n) <- zip args [0..],
+                         let t = repType (Ghc.varType arg) ]
+        locs1 | isRec     = updateLoc locs0 self Self
+              | otherwise = locs0
+    let fvi = Ghc.mkVarEnv (zip frees [(1::Int)..])
+    let env0 = mkLocalEnv (zip frees (repeat undefined))
+  
+    (is0, _locs, Nothing) <- withParentFun self $ transBody body env0 locs1 fvi RetC
+
+    this_mdl <- getThisModule
+    parent <- getParentFun
+    let cl_prefix | Nothing <- parent = ".cl_"
+                  | Just s  <- parent = ".cl_" ++ s ++ "_"
+
+    x' <- freshVar (showPpr this_mdl ++ cl_prefix ++ Ghc.getOccString self) mkTopLevelId
+
+    g <- finaliseBcGraph is0
+    let arity = length args
+        arg_types = map (transType . repType . Ghc.varType) args
+        free_vars = M.fromList [ (n, transType (Ghc.varType v))
+                                | (n, v) <- zip [1..] frees ]
+
+    let bco = BcObject
+              { bcoType = if arity > 0
+                           then BcoFun arity arg_types
+                           else if length frees > 0
+                                then Thunk else CAF
+              , bcoCode = g
+              , bcoConstants = []
+              , bcoGlobalRefs = [] -- TODO: What's this used for?
+              , bcoFreeVars = free_vars }
+
+    addBCO x' bco
+    return x'
+
+  if null frees then do
+    let info_tbl = mkTopLevelId (idName info_tbl0)
+    tag_reg <- mbFreshLocal (repType (Ghc.varType self)) Nothing
+    return (insLoadGbl tag_reg info_tbl, locs0_outer, Left tag_reg,
+            repType (Ghc.varType self), [])
+   else do
+     let info_tbl = mkInfoTableId (idName info_tbl0)
+     (bcis1, locs1, regs) <- transArgs (map StgVarArg frees)
+                                       env locs0_outer fvi_outer
+     let tag_type = Ghc.bcoPrimTy
+     tag_reg <- mbFreshLocal tag_type Nothing
+     let fwds = [ FwdRef n x | (x, n) <- zip frees [0..]
+                             , x `elem` fwds0 ]
+     return (bcis1 <*> insLoadGbl tag_reg info_tbl, locs1,
+             Right (tag_reg, regs), repType (Ghc.varType self), fwds)
+
+type Fixup = [(BcVar, Int, BcVar)]
+
+showSRT :: SRT -> String
+showSRT NoSRT = "NoSRT"
+showSRT (SRTEntries idset) = showPpr idset
+showSRT (SRT ofs len bitmap) = "<bitmap>"
 
 ------------------------------------------------------------------------
 
@@ -609,6 +873,10 @@ transArgs args env locs0 fvi = go args emptyGraph locs0 []
 
 ------------------------------------------------------------------------
 
+isUbxAlt :: AltType -> Bool
+isUbxAlt (UbxTupAlt _) = True
+isUbxAlt _ = False
+
 transCase :: forall x.
              StgExpr -> Ghc.Id -> AltType -> [StgAlt]
           -> LocalEnv
@@ -616,8 +884,9 @@ transCase :: forall x.
           -> FreeVarsIndex
           -> Context x
           -> Trans (Bcis x, KnownLocs, Maybe BcVar)
-transCase expr bndr (AlgAlt tycon) alts@[(altcon, vars, used, body)]
-          env locs0 fvi ctxt = do
+transCase expr bndr altty alts@[(altcon, vars, used, body)]
+          env locs0 fvi ctxt
+  | not (isUbxAlt altty) = do
   -- Only one case alternative means we're just unwrapping
   (is0, locs1, Just r) <- transBody expr env locs0 fvi (BindC Nothing)
   let locs2 = updateLoc locs1 bndr (InVar r)
@@ -635,6 +904,10 @@ transCase expr@(StgOpApp (StgPrimOp op) args alt_ty) bndr (AlgAlt tycon)
                               env fvi locs0 ctxt
      [_] ->
        error "NYI: turn primop result into Bool"
+
+transCase expr@(StgOpApp (StgPrimOp op) args alt_ty) bndr (PrimAlt y)
+          alts env locs0 fvi ctxt
+ = error $ "ZZZ " ++ showPpr y
  --       transBody build_bool_expr env fvi locs0 ctxt
  -- where
  --   build_bool_expr =
@@ -1072,6 +1345,19 @@ loadDataCon dcon env fvi locs0 mr = do
       return (insLoadGbl r x',
               updateItblLoc locs0 x (InVar r),
               r)-- TODO: only if CAF
+
+------------------------------------------------------------------------
+
+transStore :: DataCon -> [StgArg] -> LocalEnv -> KnownLocs -> FreeVarsIndex
+           -> Context x
+           -> Trans (Bcis x, KnownLocs, Maybe BcVar)
+transStore dcon args env locs0 fvi ctxt = do
+  (is0, locs1, regs) <- transArgs args env locs0 fvi
+  (is1, locs2, rdcon) <- loadDataCon dcon env fvi locs1 (contextVar ctxt)
+  let rslt_ty = dataConOrigResTy dcon
+  rslt <- mbFreshLocal rslt_ty (contextVar ctxt)
+  let is = (is0 <*> is1) <*> insAlloc rslt rdcon regs
+  maybeAddRet ctxt is locs2 rslt
 
 ------------------------------------------------------------------------
 
