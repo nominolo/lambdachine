@@ -340,9 +340,10 @@ transTopLevelRhsClosure x0 x _bndrInfo upd args body = do
 
   let env0 = mkLocalEnv [(x, undefined) | x <- args]
       fvi0 = Ghc.emptyVarEnv
-      locs0 = mkLocs [ (b, InReg n t)
-                     | (b, n) <- zip args [0..]
-                     , let t = repType (Ghc.varType b) ]
+      locs0 = mkLocs $ (x0, Self) :
+                       [ (b, InReg n t)
+                       | (b, n) <- zip args [0..]
+                       , let t = repType (Ghc.varType b) ]
 
   (bcis, locs1, Nothing) <- withParentFun x0 $ within body $
                               transBody body env0 locs0 fvi0 RetC
@@ -615,13 +616,14 @@ transBinds (StgNonRec x rhs) env locs0 fvi = do
 transBinds (StgRec pairs) env locs0 fvi = do
   let
     go [] is locs alloced pending_fwd_refs =
-      if not (null (concatMap snd pending_fwd_refs)) then
-        error $ "NYI: Forward refs: " ++ show (map snd pending_fwd_refs)
+      if not (null pending_fwd_refs) then
+        error $ "NYI: Forward refs: " ++ show pending_fwd_refs
        else
         return (is, locs, reverse alloced)
-    go ((x, rhs):binds) is locs alloced pending_fwd_refs = do
+
+  go ((x, rhs):binds) is locs alloced pending_fwd_refs = do
       let fwds_for_x = map fst binds
-      let locs1 = extendLocs locs ((x, Self) : [ (x, Fwd) | (x, _) <- binds ])
+      let locs1 = extendLocs locs ([ (x, Fwd) | (x, _) <- binds ])
       (is1, locs2, single_or_alloc, rslt_ty, new_fwd_refs) <-
         transRhs rhs x True fwds_for_x env locs1 fvi
       rslt <- mbFreshLocal rslt_ty Nothing
@@ -632,91 +634,24 @@ transBinds (StgRec pairs) env locs0 fvi = do
                 is <*> is1 <*> insAlloc rslt itbl_reg arg_regs
               Left clos_reg ->
                 is <*> is1 <*> insMove rslt clos_reg
-      go binds is' locs3 (rslt:alloced) ((x, new_fwd_refs) : pending_fwd_refs)
+      let fwds' = map (\fwd -> (rslt, fwd)) new_fwd_refs ++ pending_fwd_refs
+      let (fixable_fwds, fwds'') = partition ((==x) . fwdId . snd) fwds'
+      let bcis_fix = [ insStore lhs offs rslt
+                     | (lhs, FwdRef offs _) <- fixable_fwds ]
+
+      go binds (is' <*> catGraphs bcis_fix) locs3 (rslt:alloced) fwds''
 
   go pairs emptyGraph locs0 [] []
 
-
-{-
-           
-transBinds (StgNonRec x (StgRhsCon _ccs dcon args)) env locs0 fvi = do
-  (is0, locs1, Just r) <- transStore dcon args env locs0 fvi (BindC Nothing)
-  let locs2 = updateLoc locs1 x (InVar r)
-  return (is0, locs2, [r])
-
-transBinds b@(StgNonRec x (StgRhsClosure _ccs _info frees _upd srt args body))
-           env locs0 fvi_outer = do
-  -- TODO: Add special case for ([x y z] \u [] -> f x y z), i.e.,
-  -- application thunk.
-
-  info_tbl0 <- do
-    let locs0 = mkLocs $ (x, Self) : [ (arg, InReg n t) |
-                                       (arg, n) <- zip args [0..],
-                                       let t = repType (Ghc.varType arg) ]
-
-    let fvi = Ghc.mkVarEnv (zip frees [(1::Int)..])
-    let env0 = mkLocalEnv (zip frees (repeat undefined))
-  
-    (is0, _locs, Nothing) <- withParentFun x $ transBody body env0 locs0 fvi RetC
-
-    this_mdl <- getThisModule
-    parent <- getParentFun
-    let cl_prefix | Nothing <- parent = ".cl_"
-                  | Just s  <- parent = ".cl_" ++ s ++ "_"
-
-    x' <- freshVar (showPpr this_mdl ++ cl_prefix ++ Ghc.getOccString x) mkTopLevelId
-
-    g <- finaliseBcGraph is0
-    let arity = length args
-        arg_types = map (transType . repType . Ghc.varType) args
-        free_vars = M.fromList [ (n, transType (Ghc.varType v))
-                                | (n, v) <- zip [1..] frees ]
-
-    let bco = BcObject
-              { bcoType = if arity > 0
-                           then BcoFun arity arg_types
-                           else if length frees > 0
-                                then Thunk else CAF
-              , bcoCode = g
-              , bcoConstants = []
-              , bcoGlobalRefs = [] -- TODO: What's this used for?
-              , bcoFreeVars = free_vars }
-
-    addBCO x' bco
-    return x'
-
-  let info_tbl = mkInfoTableId (idName info_tbl0)
-  (bcis1, locs1, regs) <- transArgs (map StgVarArg frees) env locs0 fvi_outer
-  let tag_type = Ghc.bcoPrimTy
-  tag_reg <- mbFreshLocal tag_type Nothing
-  rslt <- mbFreshLocal (repType (Ghc.varType x)) Nothing
-
-  let bcis2 = bcis1 <*> insLoadGbl tag_reg info_tbl <*>
-              insAlloc rslt tag_reg regs
-      locs2 = updateLoc locs1 x (InVar rslt)
-      --bcis3 = bcis2 <*> add_fw_refs x rslt locs2
-
-  return (bcis2, locs2, [rslt])
-  
-  -- error $ "NYI(alloc closure): " ++ showPpr (frees, args, body) ++ "\n" ++
-  --   showPprDebug b ++ "\n" ++ showSRT srt
-
-transBinds b@(StgRec pairs) env locs0_outer fvi_outer = do
-  let fwds0 = [ (x, Fwd) | (x, _) <- pairs ]
-  let
-    go [] [] locs = do
-      return ()
-    go ((x, rhs):pairs') ((x', _):fwds) locs = do
-      let locs0 = extendLocs locs ((x, Self) : fwds)
-      go pairs' fwds locs
-  error "Rec binding"
-
--}
-
-data FwdRef = FwdRef !Int !Ghc.Id
+data FwdRef = FwdRef
+  { fwdOffset :: !Int
+  , fwdId     :: !Ghc.Id
+  } deriving Eq
 
 instance Show FwdRef where
   show (FwdRef n x) = "Fwd " ++ show n ++ " " ++ showPpr x
+
+------------------------------------------------------------------------
 
 type IsRecursive = Bool
 
@@ -737,12 +672,14 @@ transRhs :: StgRhs -> Ghc.Id -> IsRecursive -> [Ghc.Id]
          --  * The type of the result of allocation
          --  * Locations that need to be patched up later since they
          --    referred to values that have not yet been allocated.
-transRhs (StgRhsCon _ccs dcon args) _self _isRec fwds0 env locs0 fvi = do
+transRhs (StgRhsCon _ccs dcon args) self isRec fwds0 env locs00 fvi = do
+  let locs0 | isRec     = updateLoc locs00 self Fwd
+            | otherwise = locs00
   (is0, locs1, regs) <- transArgs args env locs0 fvi
   (is1, locs2, rdcon) <- loadDataCon dcon env fvi locs1 Nothing
   let rslt_ty = dataConOrigResTy dcon
-  let fwds = [ FwdRef n x | (StgVarArg x, n) <- zip args [0..]
-                          , x `elem` fwds0 ]
+  let fwds = [ FwdRef n x | (StgVarArg x, n) <- zip args [1..]
+                          , x `elem` fwds0 || (isRec && x == self) ]
   return (is0 <*> is1, locs2,
           if null args then Left rdcon else Right (rdcon, regs),
           rslt_ty, fwds)
@@ -804,7 +741,7 @@ transRhs r@(StgRhsClosure _ccs _info frees0 _upd _srt args body)
                                        env locs0_outer fvi_outer
      let tag_type = Ghc.bcoPrimTy
      tag_reg <- mbFreshLocal tag_type Nothing
-     let fwds = [ FwdRef n x | (x, n) <- zip frees [0..]
+     let fwds = [ FwdRef n x | (x, n) <- zip frees [1..]
                              , x `elem` fwds0 ]
      return (bcis1 <*> insLoadGbl tag_reg info_tbl, locs1,
              Right (tag_reg, regs), repType (Ghc.varType self), fwds)
