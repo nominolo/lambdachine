@@ -438,9 +438,8 @@ bool Loader::checkNoForwardRefs() {
 }
 
 void Loader::loadModuleBody(BytecodeFile &f, Module *mdl) {
-  bool module_header_magic_ok = f.magic("BCCL");
-  if (!module_header_magic_ok) {
-    fprintf(stderr, "Wrong magic for closure\n");
+  if (!f.magic("BCCL")) {
+    fprintf(stderr, "Wrong magic for module body\n");
     exit(1);
   }
 
@@ -740,8 +739,10 @@ void Loader::fixInfoTableForwardReference(const char *name, InfoTable *info) {
 
 void Loader::loadClosure(BytecodeFile &f,
                          const StringTabEntry *strings) {
-  if (!f.magic("CLOS"))
+  if (!f.magic("CLOS")) {
+    fprintf(stderr, "Wrong magic for closure\n");
     exit(2);
+  }
   const char *clos_name = loadId(f, strings, ".");
   u4 payloadsize = f.get_varuint();
   const char *itbl_name = loadId(f, strings, ".");
