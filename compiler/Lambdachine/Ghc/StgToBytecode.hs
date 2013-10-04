@@ -370,11 +370,11 @@ transTopLevelRhsClosure x0 x _bndrInfo upd args body = do
 -- result should be written into a fresh local variable.
 data Context x where
   RetC :: Context C
-  BindC :: Maybe BcVar -> Context O
+  BindC :: Ghc.Type -> Maybe BcVar -> Context O
 
 contextVar :: Context x -> Maybe BcVar
 contextVar RetC = Nothing
-contextVar (BindC mx) = mx
+contextVar (BindC _ mx) = mx
 
 ------------------------------------------------------------------------
 
@@ -456,16 +456,17 @@ transBody (StgLit lit) env locs0 fvi ctxt = do
   (is, r) <- transLiteral lit (contextVar ctxt)
   case ctxt of
     RetC -> return (is <*> insRet1 r, locs0, Nothing)
-    BindC _ -> return (is, locs0, Just r)
+    BindC _ _ -> return (is, locs0, Just r)
 
 transBody (StgApp x []) env locs0 fvi ctxt = do
+  -- variable reference (not a call)
   (is0, r, eval'd, locs1) <- transVar x env fvi locs0 (contextVar ctxt)
   let is | eval'd = is0
          | otherwise = withFresh $ \l ->
                          is0 <*> insEval l r |*><*| mkLabel l
   case ctxt of
     RetC -> return (is <*> insRet1 r, locs1, Nothing)
-    BindC _ -> return (is, locs1, Just r)
+    BindC _ _ -> return (is, locs1, Just r)
 
 transBody e@(StgApp f args) env locs0 fvi ctxt =
   within e $ transApp f args env locs0 fvi ctxt
@@ -535,7 +536,7 @@ transBody (StgConApp dcon []) env locs0 fvi ctxt = do
 transBody (StgConApp dcon args) env locs0 fvi ctxt
  | Ghc.isUnboxedTupleCon dcon
  = case ctxt of
-     BindC _ -> do
+     BindC _ _ -> do
        st <- getStack
        error $ "Trying to bind an unboxed tuple to a variable: " ++
          showPpr st
@@ -621,7 +622,7 @@ transBinds (StgRec pairs) env locs0 fvi = do
        else
         return (is, locs, reverse alloced)
 
-  go ((x, rhs):binds) is locs alloced pending_fwd_refs = do
+    go ((x, rhs):binds) is locs alloced pending_fwd_refs = do
       let fwds_for_x = map fst binds
       let locs1 = extendLocs locs ([ (x, Fwd) | (x, _) <- binds ])
       (is1, locs2, single_or_alloc, rslt_ty, new_fwd_refs) <-
@@ -767,7 +768,7 @@ transApp f args env locs0 fvi ctxt
        (is1, fr, _, locs2) <- transVar f env fvi locs1 Nothing
        let is2 = is0 <*> is1
        case ctxt of
-         RetC -> -- tailcal
+         RetC -> -- tail call
            -- Ensure that tailcalls always use registers r0..r(N-1)
            -- for arguments.  This allows zero-copy function call.
            let typed_regs = [ BcReg n (transType (bcVarType r))
@@ -779,17 +780,19 @@ transApp f args env locs0 fvi ctxt
            in
            return (is4, locs2, Nothing)
 
-         BindC opt_reg -> do
+         BindC rslt_ty0 opt_reg -> do
            -- need to ensure that x = O, so we need to emit
            -- a fresh label after the call
-           let rslt_ty0 =
-                 case splitFunTysN (length args) $
-                        repType (Ghc.varType f) of
-                   Just (_arg_tys, rslt_ty_) -> rslt_ty_
-                   Nothing -> error $ "Result type for: " ++
-                                ghcPretty (f, repType (Ghc.varType f),
-                                           Ghc.varType f, length args)
-               rslt_ty:_ = splitUnboxedTuples rslt_ty0
+           -- st <- getStack
+           -- let rslt_ty0 =
+           --       case splitFunTysN (length args) $
+           --              repType (Ghc.varType f) of
+           --         Just (_arg_tys, rslt_ty_) -> rslt_ty_
+           --         Nothing -> error $ "Result type for: " ++
+           --                      ghcPretty (f, repType (Ghc.varType f),
+           --                                 Ghc.varType f, length args)
+           --                      ++ "\n" ++ ghcPretty st
+           let rslt_ty:_ = splitUnboxedTuples rslt_ty0
            r <- mbFreshLocal rslt_ty opt_reg
            let ins = withFresh $ \l ->
                        is2 <*> insCall (Just (r, l)) fr regs
@@ -814,6 +817,9 @@ isUbxAlt :: AltType -> Bool
 isUbxAlt (UbxTupAlt _) = True
 isUbxAlt _ = False
 
+bndrType :: Ghc.Id -> Ghc.Type
+bndrType x = repType (Ghc.varType x)
+
 transCase :: forall x.
              StgExpr -> Ghc.Id -> AltType -> [StgAlt]
           -> LocalEnv
@@ -825,7 +831,8 @@ transCase expr bndr altty alts@[(altcon, vars, used, body)]
           env locs0 fvi ctxt
   | not (isUbxAlt altty) = do
   -- Only one case alternative means we're just unwrapping
-  (is0, locs1, Just r) <- transBody expr env locs0 fvi (BindC Nothing)
+  (is0, locs1, Just r) <- transBody expr env locs0 fvi $!
+                            BindC (bndrType bndr) Nothing
   let locs2 = updateLoc locs1 bndr (InVar r)
       env' = extendLocalEnv env bndr undefined
   let locs3 = addMatchLocs locs2 r altcon (zip vars used)
@@ -858,7 +865,8 @@ transCase expr@(StgOpApp (StgPrimOp op) args alt_ty) bndr (PrimAlt y)
 
 transCase expr bndr (AlgAlt tycon) alts env locs0 fvi ctxt = do
   -- Standard pattern matching on an algebraic datatype
-  (is0, locs1, Just r) <- transBody expr env locs0 fvi (BindC Nothing)
+  (is0, locs1, Just r) <- transBody expr env locs0 fvi $!
+                            BindC (bndrType bndr) Nothing
   let locs2 = updateLoc locs1 bndr (InVar r)
       env' = extendLocalEnv env bndr undefined
   let tags = length (Ghc.tyConDataCons tycon)
@@ -867,10 +875,19 @@ transCase expr bndr (AlgAlt tycon) alts env locs0 fvi ctxt = do
       (alts, is2) <- transCaseAlts alts r env locs2 fvi RetC
       return ((is0 <*> insCase (CaseOnTag tags) {- XXX: wrong? -} r alts)
               `catGraphsC` is2, locs1, Nothing)
-    BindC mr -> do
-      let alt_ty = repType (Ghc.varType bndr)
-      r1 <- mbFreshLocal alt_ty mr
-      (alts, altIs) <- transCaseAlts alts r env locs2 fvi (BindC (Just r1))
+    BindC ty mr -> do
+      -- We must be in a context:
+      --
+      --     case [[case ... of x1 { Ci -> ei; ... }]] of x2 { ... }
+      --
+      -- Note that x1 and x2 do not necessarily have the same type.  The return
+      -- type of the case-alternatives `ei` is the same type as the type of
+      -- `x1`.
+      --
+      -- The result of the case alternatives must be the type of the context.
+      --
+      r1 <- mbFreshLocal ty mr
+      (alts, altIs) <- transCaseAlts alts r env locs2 fvi (BindC ty (Just r1))
       let is3 =
             withFresh $ \l ->
               let is' = [ i <*> insGoto l | i <- altIs ] in
@@ -879,7 +896,8 @@ transCase expr bndr (AlgAlt tycon) alts env locs0 fvi ctxt = do
       return (is3, locs1, Just r1)
 
 transCase expr bndr (PrimAlt tycon) alts env0 locs0 fvi ctxt = do
-  (bcis0, locs1, Just reg) <- transBody expr env0 locs0 fvi (BindC Nothing)
+  (bcis0, locs1, Just reg) <- transBody expr env0 locs0 fvi $!
+                                BindC (bndrType bndr) Nothing
 
   -- bndr gets bound to the literal
   let locs2 = updateLoc locs1 bndr (InVar reg)
@@ -891,9 +909,9 @@ transCase expr bndr (PrimAlt tycon) alts env0 locs0 fvi ctxt = do
   -- variable.
   ctxt' <- (case ctxt of
              RetC -> return RetC
-             BindC mr ->
-               let alt_ty = repType (Ghc.varType bndr) in
-               BindC . Just <$> mbFreshLocal alt_ty mr)
+             BindC ty mr ->
+               -- let alt_ty = repType (Ghc.varType bndr) in
+               BindC ty . Just <$> mbFreshLocal ty mr)
             :: Trans (Context x)
 
   end_label <- freshLabel
@@ -906,7 +924,7 @@ transCase expr bndr (PrimAlt tycon) alts env0 locs0 fvi ctxt = do
       case ctxt' of
         RetC -> 
           return (l, mkLabel l <*> bcis)
-        BindC _ ->
+        BindC _ _ ->
           return (l, mkLabel l <*> bcis <*> insGoto end_label)
 
   (dflt_label, dflt_bcis) <- transArm dflt
@@ -937,7 +955,7 @@ transCase expr bndr (PrimAlt tycon) alts env0 locs0 fvi ctxt = do
       return ((bcis0 <*> insGoto l_root) `catGraphsC` bcis
                |*><*| dflt_bcis,
               locs1, Nothing)
-    BindC (Just r) -> do
+    BindC _ (Just r) -> do
       (l_root, bcis) <- build_branches tree
       return ((bcis0 <*> insGoto l_root) `catGraphsC` bcis
                 |*><*| dflt_bcis |*><*| mkLabel end_label,
@@ -961,7 +979,8 @@ transCase (StgConApp dcon args) bndr (UbxTupAlt n) alts@[(_, vars, _, body)]
 transCase expr bndr (UbxTupAlt n) alts@[(_, vars, _, body)] env
           locs0 fvi ctxt = do
 
-  (bcis, locs1, Just r0) <- transBody expr env locs0 fvi (BindC Nothing)
+  (bcis, locs1, Just r0) <- transBody expr env locs0 fvi $!
+                              BindC (bndrType bndr) Nothing
 
   -- Only non-void values are actually returned.
   let nonVoidVars = removeIf isGhcVoid vars
@@ -1138,7 +1157,7 @@ transBinaryCase cond ty args bndr alt_ty alts@[_,_] env0 fvi locs0 ctxt = do
   -- variable.
   ctxt' <- (case ctxt of
              RetC -> return RetC
-             BindC mr -> BindC . Just <$> mbFreshLocal alt_ty mr)
+             BindC ty mr -> BindC ty . Just <$> mbFreshLocal ty mr)
             :: Trans (Context x)
 
   let transUnaryConAlt body con_id = do
@@ -1156,7 +1175,7 @@ transBinaryCase cond ty args bndr alt_ty alts@[_,_] env0 fvi locs0 ctxt = do
       return (bcis <*> insBranch cond ty r1 r2 tLabel fLabel
                    |*><*| tBcis |*><*| fBcis,
               locs1, Nothing)
-    BindC (Just r) -> do
+    BindC _ (Just r) -> do
       l <- freshLabel
       return (bcis <*> insBranch cond ty r1 r2 tLabel fLabel
                 |*><*| tBcis <*> insGoto l
@@ -1301,7 +1320,7 @@ transStore dcon args env locs0 fvi ctxt = do
 -- | Append a @Ret1@ instruction if needed and return.
 maybeAddRet :: Context x -> Bcis O -> KnownLocs -> BcVar
             -> Trans (Bcis x, KnownLocs, Maybe BcVar)
-maybeAddRet (BindC _) is locs r =
+maybeAddRet (BindC _ _) is locs r =
   return (is, locs, Just r)
 maybeAddRet RetC is locs r =
   return (is <*> insRet1 r, locs, Nothing)
