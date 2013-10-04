@@ -439,7 +439,10 @@ bool Loader::checkNoForwardRefs() {
 
 void Loader::loadModuleBody(BytecodeFile &f, Module *mdl) {
   bool module_header_magic_ok = f.magic("BCCL");
-  assert(module_header_magic_ok);
+  if (!module_header_magic_ok) {
+    fprintf(stderr, "Wrong magic for closure\n");
+    exit(1);
+  }
 
   DLOG("Loading module body...");
 
