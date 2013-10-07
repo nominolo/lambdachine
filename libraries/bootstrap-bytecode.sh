@@ -28,7 +28,8 @@ ${HC_PKG} init ${PKG_DB}
 sed 's:\${DIR}:'"${DIR}"'/rts:g' <rts/recipe.in >rts/recipe
 ${HC_PKG} register --global-package-db=${PKG_DB} rts/recipe
 
-MODULES_ghc_prim="GHC/Bool.hs GHC/Ordering.hs GHC/Tuple.hs GHC/Unit.hs GHC/Types.hs"
+MODULES_ghc_prim="GHC/Types.hs GHC/Tuple.hs GHC/Magic.hs GHC/Classes.hs
+                  GHC/CString.hs"
 cd ghc-prim
 for module in ${MODULES_ghc_prim}; do
   echo "Compiling ${YELLOW}ghc-prim:${module}${NC}";
