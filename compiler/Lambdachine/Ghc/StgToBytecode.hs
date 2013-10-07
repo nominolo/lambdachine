@@ -813,9 +813,9 @@ transArgs args env locs0 fvi = go args emptyGraph locs0 []
 
 ------------------------------------------------------------------------
 
-isUbxAlt :: AltType -> Bool
-isUbxAlt (UbxTupAlt _) = True
-isUbxAlt _ = False
+isUnboxedTupleAlt :: AltType -> Bool
+isUnboxedTupleAlt (UbxTupAlt _) = True
+isUnboxedTupleAlt _ = False
 
 bndrType :: Ghc.Id -> Ghc.Type
 bndrType x = repType (Ghc.varType x)
@@ -829,7 +829,7 @@ transCase :: forall x.
           -> Trans (Bcis x, KnownLocs, Maybe BcVar)
 transCase expr bndr altty alts@[(altcon, vars, used, body)]
           env locs0 fvi ctxt
-  | not (isUbxAlt altty) = do
+  | not (isUnboxedTupleAlt altty) = do
   -- Only one case alternative means we're just unwrapping
   (is0, locs1, Just r) <- transBody expr env locs0 fvi $!
                             BindC (bndrType bndr) Nothing
@@ -849,9 +849,15 @@ transCase expr@(StgOpApp (StgPrimOp op) args alt_ty) bndr (AlgAlt tycon)
      [_] ->
        error "NYI: turn primop result into Bool"
 
-transCase expr@(StgOpApp (StgPrimOp op) args alt_ty) bndr (PrimAlt y)
-          alts env locs0 fvi ctxt
- = error $ "ZZZ " ++ showPpr y
+-- transCase expr@(StgOpApp (StgPrimOp op) args alt_ty) bndr (PrimAlt y)
+--           alts env locs0 fvi ctxt
+--  = assert (length alts >= 2) $ do
+--   (is0, locs1, Just r) <- transBody expr env locs0 fvi $!
+--                             BindC (bndrType bndr) Nothing
+--   mb_dflt <- case alts of
+--     (DEFAULT:other -> 
+--   st <- getStack
+--   error $ "NYI " ++ showPpr (expr, st)
  --       transBody build_bool_expr env fvi locs0 ctxt
  -- where
  --   build_bool_expr =
@@ -884,7 +890,8 @@ transCase expr bndr (AlgAlt tycon) alts env locs0 fvi ctxt = do
       -- type of the case-alternatives `ei` is the same type as the type of
       -- `x1`.
       --
-      -- The result of the case alternatives must be the type of the context.
+      -- The result of the case alternatives must be the type of the context
+      -- (i.e., the type of x2).
       --
       r1 <- mbFreshLocal ty mr
       (alts, altIs) <- transCaseAlts alts r env locs2 fvi (BindC ty (Just r1))
