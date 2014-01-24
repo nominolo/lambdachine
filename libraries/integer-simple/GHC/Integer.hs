@@ -3,23 +3,28 @@
 #define WORD_SIZE_IN_BITS  64
 
 module GHC.Integer (
-    Integer,
-    smallInteger, wordToInteger, integerToWord, toInt#,
+    Integer, mkInteger,
+    smallInteger, wordToInteger, integerToWord, integerToInt,
 #if WORD_SIZE_IN_BITS < 64
-    compileError_NoSupportFor32BitYet,
+    integerToWord64, word64ToInteger,
+    integerToInt64, int64ToInteger,
 #endif
     plusInteger, minusInteger, timesInteger, negateInteger,
     eqInteger, neqInteger, absInteger, signumInteger,
     leInteger, gtInteger, ltInteger, geInteger, compareInteger,
     divModInteger, quotRemInteger, quotInteger, remInteger,
+    divInteger, modInteger,
     -- encodeFloatInteger, decodeFloatInteger, floatFromInteger,
     -- encodeDoubleInteger, decodeDoubleInteger, doubleFromInteger,
+    -- gcdInteger, lcmInteger, -- XXX
     andInteger, orInteger, xorInteger, complementInteger,
     shiftLInteger, shiftRInteger,
     hashInteger,
-) where
+ ) where
 
 import GHC.Integer.Type
+
+{-
 
 import GHC.Types
 import GHC.Ordering
@@ -164,6 +169,7 @@ n `divModInteger` d =
             then (# q `minusInteger` oneInteger, r `plusInteger` d #)
             else (# q, r #)
 
+{-# NOINLINE quotRemInteger #-}
 quotRemInteger :: Integer -> Integer -> (# Integer, Integer #)
 Naught      `quotRemInteger` (!_)        = (# Naught, Naught #)
 (!_)        `quotRemInteger` Naught
@@ -534,3 +540,4 @@ xorDigits None          (!ds)         = ds
 xorDigits (!ds)         None          = ds
 xorDigits (Some w1 ds1) (Some w2 ds2) = Some (w1 `xor#` w2) (xorDigits ds1 ds2)
 
+ -}

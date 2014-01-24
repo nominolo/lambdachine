@@ -2,8 +2,6 @@
 module GHC.Num (module GHC.Num, module GHC.Integer) where
 
 import GHC.Base
-import GHC.Enum
-import GHC.Show
 import GHC.Integer
 
 #define DIGITS       18
@@ -15,7 +13,7 @@ infixl 6  +, -
 default ()              -- Double isn't available yet,
                         -- and we shouldn't be using defaults anyway
 
-class  (Eq a) => Num a  where
+class  Num a  where
     (+), (-), (*)       :: a -> a -> a
     -- | Unary negation.
     negate              :: a -> a
@@ -61,8 +59,19 @@ instance  Num Int  where
         if n `eqInt` 0 then 0 else 1
 
     {-# INLINE fromInteger #-}	 -- Just to be sure!
-    fromInteger i = I# (toInt# i)
+    fromInteger i = I# (integerToInt i)
 
+instance Num Word where
+    (W# x#) + (W# y#)      = W# (x# `plusWord#` y#)
+    (W# x#) - (W# y#)      = W# (x# `minusWord#` y#)
+    (W# x#) * (W# y#)      = W# (x# `timesWord#` y#)
+    negate (W# x#)         = W# (int2Word# (negateInt# (word2Int# x#)))
+    abs x                  = x
+    signum 0               = 0
+    signum _               = 1
+    fromInteger i          = W# (integerToWord i)
+
+{-
 quotRemInt :: Int -> Int -> (Int, Int)
 quotRemInt a@(I# _) b@(I# _) = (a `quotInt` b, a `remInt` b)
 
@@ -156,7 +165,7 @@ integerToString n0 cs0
              c@(C# _) -> jblock' (d - 1) q (c : cs)
         where
         (q, r) = n `quotRemInt` 10
-
+-}
 instance  Num Integer  where
     (+) = plusInteger
     (-) = minusInteger
@@ -166,7 +175,7 @@ instance  Num Integer  where
 
     abs = absInteger
     signum = signumInteger
-
+{-
 instance  Enum Integer  where
     succ x               = x + 1
     pred x               = x - 1
@@ -220,3 +229,4 @@ dn_list x0 delta lim = go (x0 :: Integer)
                     where
                         go x | x < lim   = []
                              | otherwise = x : go (x+delta)
+-}

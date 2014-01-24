@@ -1,25 +1,24 @@
-{-# LANGUAGE MagicHash, NoImplicitPrelude, Rank2Types #-}
+{-# LANGUAGE MagicHash, NoImplicitPrelude, Rank2Types, BangPatterns, UnboxedTuples #-}
 module GHC.Base
   ( module GHC.Base
-  , module GHC.Bool
   , module GHC.Types
   , module GHC.Classes
-  , module GHC.Ordering
+  , module GHC.CString
   , module GHC.Prim
   , module GHC.Err
   )
 where
 
-import GHC.Prim
 import GHC.Types
-import GHC.Bool
 import GHC.Classes
-import GHC.Ordering
-import {-# SOURCE #-} GHC.Show
+import GHC.CString
+import GHC.Prim
+-- import {-# SOURCE #-} GHC.Show
 import {-# SOURCE #-} GHC.Err
 
 import GHC.Tuple ()
-import GHC.Unit ()
+--import GHC.Unit ()
+import GHC.Integer ()
 
 
 infixr 9  .
@@ -112,40 +111,40 @@ type String = [Char]
 -- error :: String -> a
 -- error = error
 
-{-# INLINE eqInt #-}
-{-# INLINE neInt #-}
-{-# INLINE gtInt #-}
-{-# INLINE geInt #-}
-{-# INLINE ltInt #-}
-{-# INLINE leInt #-}
+{- # INLINE eqInt #-}
+{- # INLINE neInt #-}
+{- # INLINE gtInt #-}
+{- # INLINE geInt #-}
+{- # INLINE ltInt #-}
+{- # INLINE leInt #-}
 
-gtInt, geInt, eqInt, neInt, ltInt, leInt :: Int -> Int -> Bool
-(I# x) `gtInt` (I# y) = x >#  y
-(I# x) `geInt` (I# y) = x >=# y
-(I# x) `eqInt` (I# y) = x ==# y
-(I# x) `neInt` (I# y) = x /=# y
-(I# x) `ltInt` (I# y) = x <#  y
-(I# x) `leInt` (I# y) = x <=# y
+-- gtInt, geInt, eqInt, neInt, ltInt, leInt :: Int -> Int -> Bool
+-- (I# x) `gtInt` (I# y) = x >#  y
+-- (I# x) `geInt` (I# y) = x >=# y
+-- (I# x) `eqInt` (I# y) = x ==# y
+-- (I# x) `neInt` (I# y) = x /=# y
+-- (I# x) `ltInt` (I# y) = x <#  y
+-- (I# x) `leInt` (I# y) = x <=# y
 
-instance Eq Int where
-  (==) = eqInt
-  (/=) = neInt
+-- instance Eq Int where
+--   (==) = eqInt
+--   (/=) = neInt
 
-instance Ord Int where
-    compare = compareInt
-    (<)     = ltInt
-    (<=)    = leInt
-    (>=)    = geInt
-    (>)     = gtInt
+-- instance Ord Int where
+--     compare = compareInt
+--     (<)     = ltInt
+--     (<=)    = leInt
+--     (>=)    = geInt
+--     (>)     = gtInt
 
-compareInt :: Int -> Int -> Ordering
-(I# x#) `compareInt` (I# y#) = compareInt# x# y#
+-- compareInt :: Int -> Int -> Ordering
+-- (I# x#) `compareInt` (I# y#) = compareInt# x# y#
 
-compareInt# :: Int# -> Int# -> Ordering
-compareInt# x# y#
-    | x# <#  y# = LT
-    | x# ==# y# = EQ
-    | otherwise = GT
+-- compareInt# :: Int# -> Int# -> Ordering
+-- compareInt# x# y#
+--     | x# <#  y# = LT
+--     | x# ==# y# = EQ
+--     | otherwise = GT
 
 
 {-# INLINE plusInt #-}
@@ -153,37 +152,33 @@ compareInt# x# y#
 {-# INLINE timesInt #-}
 {-# INLINE negateInt #-}
 
-plusInt, minusInt, timesInt, modInt :: Int -> Int -> Int
+plusInt, minusInt, timesInt :: Int -> Int -> Int
 (I# x) `plusInt`  (I# y) = I# (x +# y)
 (I# x) `minusInt` (I# y) = I# (x -# y)
 (I# x) `timesInt` (I# y) = I# (x *# y)
-(I# x) `modInt`   (I# y) = I# (x `modInt#` y)
-(I# x) `quotInt`  (I# y) = I# (x `quotInt#` y)
-(I# x) `remInt`   (I# y) = I# (x `remInt#`  y)
-(I# x) `divInt`   (I# y) = I# (x `divInt#`  y)
 
 -- XXX: Not quite correct, might overflow
 negateInt :: Int -> Int
 negateInt (I# n) = I# (negateInt# n)
 
-modInt# :: Int# -> Int# -> Int#
-x# `modInt#` y#
-  | (x# ># 0#) && (y# <# 0#) ||
-    (x# <# 0#) && (y# ># 0#)    = if r# /=# 0# then r# +# y# else 0#
-  | otherwise                   = r#
- where
-   !r# = x# `remInt#` y#
+-- modInt# :: Int# -> Int# -> Int#
+-- x# `modInt#` y#
+--   | (x# ># 0#) && (y# <# 0#) ||
+--     (x# <# 0#) && (y# ># 0#)    = if r# /=# 0# then r# +# y# else 0#
+--   | otherwise                   = r#
+--  where
+--    !r# = x# `remInt#` y#
 
-divInt# :: Int# -> Int# -> Int#
-x# `divInt#` y#
-        -- Be careful NOT to overflow if we do any additional arithmetic
-        -- on the arguments...  the following  previous version of this
-        -- code has problems with overflow:
---    | (x# ># 0#) && (y# <# 0#) = ((x# -# y#) -# 1#) `quotInt#` y#
---    | (x# <# 0#) && (y# ># 0#) = ((x# -# y#) +# 1#) `quotInt#` y#
-    | (x# ># 0#) && (y# <# 0#) = ((x# -# 1#) `quotInt#` y#) -# 1#
-    | (x# <# 0#) && (y# ># 0#) = ((x# +# 1#) `quotInt#` y#) -# 1#
-    | otherwise                = x# `quotInt#` y#
+-- divInt# :: Int# -> Int# -> Int#
+-- x# `divInt#` y#
+--         -- Be careful NOT to overflow if we do any additional arithmetic
+--         -- on the arguments...  the following  previous version of this
+--         -- code has problems with overflow:
+-- --    | (x# ># 0#) && (y# <# 0#) = ((x# -# y#) -# 1#) `quotInt#` y#
+-- --    | (x# <# 0#) && (y# ># 0#) = ((x# -# y#) +# 1#) `quotInt#` y#
+--     | (x# ># 0#) && (y# <# 0#) = ((x# -# 1#) `quotInt#` y#) -# 1#
+--     | (x# <# 0#) && (y# ># 0#) = ((x# +# 1#) `quotInt#` y#) -# 1#
+--     | otherwise                = x# `quotInt#` y#
 
 
 (++) :: [a] -> [a] -> [a]
@@ -227,11 +222,11 @@ augment g xs = g (:) xs
 "foldr/id"                        foldr (:) [] = \x  -> x
  #-}
 
-chr :: Int -> Char
-chr i@(I# i#)
- | int2Word# i# `leWord#` int2Word# 0x10FFFF# = C# (chr# i#)
- | otherwise
-    = error ("Prelude.chr: bad argument: " ++ showSignedInt (I# 9#) i "")
+-- chr :: Int -> Char
+-- chr i@(I# i#)
+--  | int2Word# i# `leWord#` int2Word# 0x10FFFF# = C# (chr# i#)
+--  | otherwise
+--     = error ("Prelude.chr: bad argument: " ++ showSignedInt (I# 9#) i "")
 
 unsafeChr :: Int -> Char
 unsafeChr (I# i#) = C# (chr# i#)
@@ -259,7 +254,7 @@ eqString _        _        = False
 getTag :: a -> Int#
 getTag x = x `seq` dataToTag# x
 {-# INLINE getTag #-}
-
+{-
 -- This code is needed for virtually all programs, since it's used for
 -- unpacking the strings of error messages.
 
@@ -288,7 +283,7 @@ unpackAppendCString# addr rest
       | otherwise          = C# ch : unpack (nh +# 1#)
       where
         !ch = indexCharOffAddr# addr nh
-
+-}
 maxInt, minInt :: Int
 {- Seems clumsy. Should perhaps put minInt and MaxInt directly into MachDeps.h -}
 minInt  = I# (-0x8000000000000000#)
@@ -303,4 +298,28 @@ twoInt  = I# 2#
 until                   :: (a -> Bool) -> (a -> a) -> a -> a
 until p f x | p x       =  x
             | otherwise =  until p f (f x)
+
+quotInt, remInt, divInt, modInt :: Int -> Int -> Int
+(I# x) `quotInt`  (I# y) = I# (x `quotInt#` y)
+(I# x) `remInt`   (I# y) = I# (x `remInt#`  y)
+(I# x) `divInt`   (I# y) = I# (x `divInt#`  y)
+(I# x) `modInt`   (I# y) = I# (x `modInt#`  y)
+
+quotRemInt :: Int -> Int -> (Int, Int)
+(I# x) `quotRemInt` (I# y) = case x `quotRemInt#` y of
+                             (# q, r #) ->
+                                 (I# q, I# r)
+
+divModInt :: Int -> Int -> (Int, Int)
+(I# x) `divModInt` (I# y) = case x `divModInt#` y of
+                            (# q, r #) -> (I# q, I# r)
+
+divModInt# :: Int# -> Int# -> (# Int#, Int# #)
+x# `divModInt#` y#
+ | (x# ># 0#) && (y# <# 0#) = case (x# -# 1#) `quotRemInt#` y# of
+                              (# q, r #) -> (# q -# 1#, r +# y# +# 1# #)
+ | (x# <# 0#) && (y# ># 0#) = case (x# +# 1#) `quotRemInt#` y# of
+                              (# q, r #) -> (# q -# 1#, r +# y# -# 1# #)
+ | otherwise                = x# `quotRemInt#` y#
+
 

@@ -15,7 +15,7 @@ infixl 7  %
 default ()              -- Double isn't available yet,
                         -- and we shouldn't be using defaults anyway
 
-data  (Integral a)      => Ratio a = !a :% !a  deriving (Eq)
+data  Ratio a = !a :% !a  deriving (Eq)
 
 type  Rational          =  Ratio Integer
 

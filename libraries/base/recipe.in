@@ -1,6 +1,6 @@
 name: base
-version: 4.3.1.0
-id: base-4.3.1.0-inplace
+version: 4.6.0.1
+id: base-4.6.0.1-inplace
 license: BSD3
 copyright:
 maintainer: libraries@haskell.org
@@ -13,7 +13,7 @@ description: This package contains the Prelude and its support libraries,
 category:
 author:
 exposed: True
-exposed-modules: GHC.Base GHC.Classes GHC.Enum GHC.Err GHC.List GHC.Num GHC.Real
+exposed-modules: GHC.Base GHC.Enum GHC.Char GHC.Err GHC.List GHC.Num GHC.Real
                  GHC.Show GHC.Unicode Control.Exception.Base Data.Char Data.Either
                  Data.List Data.Maybe Data.Monoid Data.Tuple Control.Monad
                  Text.ParserCombinators.ReadP Text.ParserCombinators.ReadPrec
@@ -21,12 +21,12 @@ exposed-modules: GHC.Base GHC.Classes GHC.Enum GHC.Err GHC.List GHC.Num GHC.Real
 hidden-modules:
 import-dirs: ${DIR}
 library-dirs: ${DIR}
-hs-libraries: HSbase-4.3.1.0
+hs-libraries: HSbase-4.6.0.1
 extra-libraries:
 extra-ghci-libraries:
 include-dirs: 
 includes: 
-depends: ghc-prim-0.2.0.0-inplace integer-simple-0.1.0.0-inplace
+depends: ghc-prim-0.3.0.0-inplace integer-simple-0.1.0.1-inplace
          builtin_rts
 hugs-options:
 cc-options:

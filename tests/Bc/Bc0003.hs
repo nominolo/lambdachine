@@ -3,9 +3,9 @@
 module Bc.Bc0003 where
 
 import GHC.Prim
-import GHC.Bool
+import GHC.Types
 
-data Int = I# Int#
+-- data Int = I# Int#
 
 data List a = Nil | Cons a (List a)
 

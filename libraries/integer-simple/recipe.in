@@ -1,6 +1,6 @@
 name: integer-simple
-version: 0.1.0.0
-id: integer-simple-0.1.0.0-inplace
+version: 0.1.0.1
+id: integer-simple-0.1.0.1-inplace
 license: BSD3
 copyright:
 maintainer: igloo@earth.li
@@ -15,12 +15,12 @@ exposed-modules: GHC.Integer GHC.Integer.Simple.Internals
 hidden-modules: GHC.Integer.Type
 import-dirs: ${DIR}
 library-dirs: ${DIR}
-hs-libraries: HSinteger-simple-0.1.0.0
+hs-libraries: HSinteger-simple-0.1.0.1
 extra-libraries:
 extra-ghci-libraries:
 include-dirs:
 includes:
-depends: ghc-prim-0.2.0.0-inplace
+depends: ghc-prim-0.3.0.0-inplace
 hugs-options:
 cc-options:
 ld-options:
