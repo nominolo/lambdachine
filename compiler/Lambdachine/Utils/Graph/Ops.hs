@@ -260,7 +260,8 @@ freezeNode k graph = modifyGraphMap graph $ \fm ->
 -- the least key and be second in the pair.
 --
 coalesceGraph :: (Uniquable k, Ord k, Eq cls, Pretty k, Pretty cls, Pretty colour) =>
-     Bool -- ^ If True, coalesce nodes even if this might make the
+     GlobalEnv
+  -> Bool -- ^ If True, coalesce nodes even if this might make the
           -- graph less colourable (aggressive coalescing)
   -> Triv k cls colour
   -> Graph k cls colour
@@ -268,10 +269,10 @@ coalesceGraph :: (Uniquable k, Ord k, Eq cls, Pretty k, Pretty cls, Pretty colou
      -- ^ pairs of nodes that were coalesced, in the order that the
      -- coalescing was applied.
 
-coalesceGraph aggressive triv graph =
-  coalesceGraph' aggressive triv graph []
+coalesceGraph env aggressive triv graph =
+  coalesceGraph' env aggressive triv graph []
 
-coalesceGraph' aggressive triv graph kkPairsAcc =
+coalesceGraph' env aggressive triv graph kkPairsAcc =
   let
     -- Find all the nodes that have coalescence edges
     cNodes = scanGraph graph (not . nullUS . nodeCoalesce)
@@ -293,7 +294,7 @@ coalesceGraph' aggressive triv graph kkPairsAcc =
     -- do the coalescing, returning the new graph and a list of pairs of keys
     --	that got coalesced together.
     (graph', mPairs)
-      = mapAccumL (coalesceNodes aggressive triv) graph cList
+      = mapAccumL (coalesceNodes env aggressive triv) graph cList
 
 	-- keep running until there are no more coalesces can be found
    in
@@ -301,7 +302,7 @@ coalesceGraph' aggressive triv graph kkPairsAcc =
        [] ->
          (graph', reverse kkPairsAcc)
        pairs ->
-         coalesceGraph' aggressive triv graph'
+         coalesceGraph' env aggressive triv graph'
                         (reverse pairs ++ kkPairsAcc)
 
 -- | Coalesce this pair of nodes unconditionally \/ agressively.
@@ -317,14 +318,15 @@ coalesceGraph' aggressive triv graph kkPairsAcc =
 --  * @Nothing@ if either of the nodes weren't in the graph
 --
 coalesceNodes :: (Uniquable k, Ord k, Eq cls, Pretty k, Pretty cls, Pretty colour) =>
-     Bool -- ^ If True, coalesce nodes even if this might make the
+     GlobalEnv
+  -> Bool -- ^ If True, coalesce nodes even if this might make the
           -- graph less colourable (aggressive coalescing)
   -> Triv  k cls colour
   -> Graph k cls colour
   -> (k, k) -- ^ keys of the nodes to be coalesced
   -> (Graph k cls colour, Maybe (k, k))
 
-coalesceNodes aggressive triv graph (k1, k2)
+coalesceNodes env aggressive triv graph (k1, k2)
   | (kMin, kMax) <- if k1 < k2 then (k1, k2) else (k2, k1)
 
     -- the nodes being coalesced must be in the graph
@@ -341,25 +343,25 @@ coalesceNodes aggressive triv graph (k1, k2)
     -- At least one node must be uncoloured
   , isNothing (nodeColour nMin) || isNothing (nodeColour nMax)
 
-  = coalesceNodes_merge aggressive triv graph kMin kMax nMin nMax
+  = coalesceNodes_merge env aggressive triv graph kMin kMax nMin nMax
 
    -- don't do the coalescing after all
   | otherwise
   = (graph, Nothing)
 
-coalesceNodes_merge aggressive triv graph kMin kMax nMin nMax
+coalesceNodes_merge env aggressive triv graph kMin kMax nMin nMax
   -- sanity checks
   | nodeClass nMin /= nodeClass nMax
   = error "coalesceNodes: can't coalesce nodes of different classes."
 
   | not (isNothing (nodeColour nMin) && isNothing (nodeColour nMax))
   = error $ "coalesceNodes: can't coalesce coloured nodes.\n" ++
-            pretty (nMin, nMax)
+            pretty env (nMin, nMax)
 
   -- TODO: Does this break some invariant elsewhere?
   -- Let nMin be the coloured node (if any)
   | Nothing <- nodeColour nMin, Just _ <- nodeColour nMax
-  = coalesceNodes_merge aggressive triv graph kMax kMin nMax nMin
+  = coalesceNodes_merge env aggressive triv graph kMax kMin nMax nMin
 
   | otherwise
   = let
@@ -385,9 +387,9 @@ coalesceNodes_merge aggressive triv graph kMin kMax nMin nMax
 	         nodeCoalesce nMin `mappend` nodeCoalesce nMax
              }
     in
-      coalesceNodes_check aggressive triv graph kMin kMax node
+      coalesceNodes_check env aggressive triv graph kMin kMax node
 
-coalesceNodes_check aggressive triv graph kMin kMax node
+coalesceNodes_check env aggressive triv graph kMin kMax node
   -- Unless we're coalescing aggressively, if the result node is not
   -- trivially colourable then don't do the coalescing.
   | not aggressive

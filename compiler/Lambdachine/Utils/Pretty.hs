@@ -17,6 +17,8 @@ where
 
 import qualified Text.PrettyPrint.ANSI.Leijen as P
 
+import Control.Applicative
+import Data.Functor.Identity
 import Data.Map ( Map )
 import Data.Set ( Set )
 import qualified Data.IntMap as IM
@@ -27,8 +29,40 @@ import qualified Data.ByteString.Lazy.Char8 as B
 import qualified Data.ByteString.Lazy.UTF8 as B
 import qualified Data.Vector as V
 import Data.Monoid
+import DynFlags ( DynFlags )
+
 
 import Debug.Trace
+
+------------------------------------------------------------------------
+-- * Global Environment Stuff
+
+newtype GlobalEnv = GlobalEnv 
+  { envDynFlags :: DynFlags }
+
+class HasGlobalEnv env where
+  -- | A lens for reading and writing the global environment.  Use
+  -- 'mkGlobalEnvL' to construct a lens from a getter and a setter.
+  --
+  -- You may can use this with the utilities from the @lens@ package, but for
+  -- convenience, there are also simple getter and setter utilities via
+  -- 'viewGlobalEnv' and 'setGlobalEnv'.
+  globalEnvL :: Functor f => (GlobalEnv -> f GlobalEnv) -> env -> f env
+
+mkGlobalEnvL :: Functor f =>
+                (env -> GlobalEnv) -> (env -> GlobalEnv -> env)
+             -> (GlobalEnv -> f GlobalEnv) -> env -> f env
+mkGlobalEnvL getE setE f env = setE env <$> f (getE env)
+
+viewGlobalEnv :: HasGlobalEnv env => env -> GlobalEnv
+viewGlobalEnv env = getConst $ globalEnvL Const env
+
+setGlobalEnv :: HasGlobalEnv env => env -> GlobalEnv -> env
+setGlobalEnv env newE = runIdentity $ globalEnvL (Identity . const newE) env
+
+instance HasGlobalEnv PDocContext where
+  globalEnvL = mkGlobalEnvL pdocGlobalEnv (\ctx ge -> ctx{ pdocGlobalEnv = ge })
+
 
 ------------------------------------------------------------------------
 -- * The @Pretty@ Class
@@ -36,53 +70,72 @@ import Debug.Trace
 class Pretty a where
   ppr :: a -> PDoc
 
-{-
-instance Monoid P.Doc where
-  mempty = P.empty
-  mappend = (P.<>)
--}
-
-type PDoc = PrettyStyle -> P.Doc
-
-instance Show PDoc where show = render
-instance Eq PDoc where x == y = show x == show y
+data PDocContext = PDocContext
+  { pdocStyle     :: !PrettyStyle
+  , pdocGlobalEnv :: !GlobalEnv
+  }
 
 data PrettyStyle
   = DebugStyle
   | UserStyle
+  deriving (Eq, Ord, Show)
 
-pretty :: Pretty a => a -> String
-pretty x = P.displayS (P.renderPretty 0.8 100 (ppr x UserStyle)) ""
---pretty x = show (ppr x UserStyle)a
+newtype PDoc = PDoc{ runPDoc :: PDocContext -> P.Doc }
 
-pprint :: Pretty a => a -> IO ()
-pprint x = B.putStrLn $ B.fromString $ pretty x --render (ppr x)
+instance Monoid PDoc where
+  mempty = PDoc $ \_ -> P.empty
+  mappend d1 d2 = PDoc $ \env -> runPDoc d1 env P.<> runPDoc d2 env
 
-debugPrint :: Pretty a => a -> IO ()
-debugPrint x = B.putStrLn $ B.fromString $ show $ ppr x DebugStyle
+{-
+instance Show PDoc where show = render
+instance Eq PDoc where x == y = show x == show y
+-}
 
-render :: PDoc -> String
-render d = show (d UserStyle)
 
-debugRender :: PDoc -> String
-debugRender d = show (d DebugStyle)
+pretty :: Pretty a => GlobalEnv -> a -> String
+pretty env x = render env (ppr x)
+
+pprint :: Pretty a => GlobalEnv -> a -> IO ()
+pprint env x = B.putStrLn $ B.fromString $ pretty env x
+
+debugPrint :: Pretty a => GlobalEnv -> a -> IO ()
+debugPrint env x = B.putStrLn $ B.fromString $ pretty env (withDebugStyle (ppr x))
+
+render :: GlobalEnv -> PDoc -> String
+render env d = P.displayS (P.renderPretty 0.8 100 $ 
+               runPDoc d $! PDocContext UserStyle env) ""
+
+debugRender :: GlobalEnv -> PDoc -> String
+debugRender env d = render env (withDebugStyle d)
 
 ------------------------------------------------------------------------
 -- * Combinators
 
 -- ** Primitives
 
+liftP :: P.Doc -> PDoc
+liftP doc = PDoc $ \_ -> doc
+
+liftP1 :: (P.Doc -> P.Doc) -> PDoc -> PDoc
+liftP1 f d1 = PDoc $ \env -> f (runPDoc d1 env)
+
+liftP2 :: (P.Doc -> P.Doc -> P.Doc) -> PDoc -> PDoc -> PDoc
+liftP2 f d1 d2 = PDoc $ \env -> runPDoc d1 env `f` runPDoc d2 env
+
+liftPn :: ([P.Doc] -> P.Doc) -> [PDoc] -> PDoc
+liftPn f ds = PDoc $ \env -> f [ runPDoc d env | d <- ds ]
+
 empty :: PDoc
-empty _ = P.empty
+empty = liftP P.empty
 
 char :: Char -> PDoc
-char c _ = P.char c
+char c = liftP $ P.char c
 
 text :: String -> PDoc
-text s _ = P.text s
+text s = liftP $ P.text s
 
 int :: Int -> PDoc
-int i _ = P.int i
+int i = liftP $ P.int i
 
 -- infixr 6 <>   -- same as Data.Monoid.<>
 infixr 6 <+>
@@ -93,57 +146,59 @@ infixr 5 $$, $+$, <//>, </>
 -- (<>) d1 d2 sty = d1 sty P.<> d2 sty
 
 (<+>) :: PDoc -> PDoc -> PDoc
-(<+>) d1 d2 sty = d1 sty P.<+> d2 sty
+(<+>) = liftP2 (P.<+>)
 
 ($$) :: PDoc -> PDoc -> PDoc
-($$) d1 d2 sty = d1 sty P.<$> d2 sty
+($$) = liftP2 (P.<$>)
 
 ($+$) :: PDoc -> PDoc -> PDoc
-($+$) d1 d2 sty = d1 sty P.<$$> d2 sty
+($+$) = liftP2 (P.<$$>)
 
 (<//>) :: PDoc -> PDoc -> PDoc
-(<//>) d1 d2 sty = d1 sty P.<//> d2 sty
+(<//>) = liftP2 (P.<//>)
 
 (</>) :: PDoc -> PDoc -> PDoc
-(</>) d1 d2 sty = d1 sty P.</> d2 sty
+(</>) = liftP2 (P.</>)
 
 linebreak :: PDoc
-linebreak _ = P.linebreak
+linebreak = liftP $ P.linebreak
 
 hcat :: [PDoc] -> PDoc
-hcat ds sty = P.hcat (map ($ sty) ds)
+hcat = liftPn P.hcat
 
 hsep   :: [PDoc] -> PDoc
-hsep ds sty = P.hsep (map ($ sty) ds)
+hsep = liftPn P.hsep
 
 vcat   :: [PDoc] -> PDoc
-vcat ds sty = P.vcat (map ($ sty) ds)
+vcat = liftPn P.vcat
 
 cat    :: [PDoc] -> PDoc
-cat ds sty = P.cat (map ($ sty) ds)
+cat = liftPn P.cat
 
 sep    :: [PDoc] -> PDoc
-sep ds sty = P.sep (map ($ sty) ds)
+sep = liftPn P.sep
 
 fillCat   :: [PDoc] -> PDoc
-fillCat ds sty = P.fillCat (map ($ sty) ds)
+fillCat = liftPn P.fillCat
 
 fillSep   :: [PDoc] -> PDoc
-fillSep ds sty = P.fillSep (map ($ sty) ds)
+fillSep = liftPn P.fillSep
 
 nest   :: Int -> PDoc -> PDoc
-nest n d sty = P.nest n (d sty)
+nest n = liftP1 $ P.nest n
 
 align :: PDoc -> PDoc
-align d sty = P.align (d sty)
+align = liftP1 P.align
+
 -- | @hang d1 n d2 = sep [d1, nest n d2]@
 hang :: Int -> PDoc -> PDoc
-hang n d sty = P.hang n (d sty)
+hang n = liftP1 $ P.hang n
 
 indent :: Int -> PDoc -> PDoc
-indent n d sty = P.indent n (d sty)
+indent n = liftP1 $ P.indent n
+
 fillBreak :: Int -> PDoc -> PDoc
-fillBreak n d sty = P.fillBreak n (d sty)
+fillBreak n = liftP1 $ P.fillBreak n
 
 -- | @punctuate p [d1, ... dn] = [d1 \<> p, d2 \<> p, ... dn-1 \<> p, dn]@
 punctuate :: PDoc -> [PDoc] -> [PDoc]
@@ -155,13 +210,13 @@ punctuate p (d:ds) = go d ds
 -- ** Parenthesis
 
 parens :: PDoc -> PDoc
-parens d sty = P.parens (d sty)
+parens = liftP1 P.parens
 
 braces :: PDoc -> PDoc
-braces d sty = P.braces (d sty)
+braces = liftP1 P.braces
 
 brackets :: PDoc -> PDoc
-brackets d sty = P.brackets (d sty)
+brackets = liftP1 P.brackets
 
 angleBrackets :: PDoc -> PDoc
 angleBrackets d = char '<' <> d <> char '>'
@@ -169,16 +224,16 @@ angleBrackets d = char '<' <> d <> char '>'
 -- ** Symbols
 
 comma :: PDoc
-comma _ = P.comma
+comma = liftP P.comma
 
 arrow :: PDoc
-arrow _ = P.text "->"
+arrow = text "->"
 
 colon :: PDoc
-colon _ = P.colon
+colon = char ':'
 
 semi :: PDoc
-semi _ = P.semi
+semi = char ';'
 
 -- | A string where words are automatically wrapped.
 wrappingText :: String -> PDoc
@@ -192,7 +247,7 @@ textWords msg = map text (words msg)
 -- ** Terminal Styles
 
 withStyle :: (P.Doc -> P.Doc) -> PDoc -> PDoc
-withStyle f d s = f (d s)
+withStyle = liftP1
 
 -- ansiTermStyle :: String -> PDoc -> PDoc
 -- ansiTermStyle ansi d sty =
@@ -207,7 +262,7 @@ withStyle f d s = f (d s)
 --   P.zeroWidthText ("\027[" ++ end ++ "m")
 
 bold :: PDoc -> PDoc
-bold d s = P.bold (d s)
+bold = withStyle P.bold
 
 underline :: PDoc -> PDoc
 underline = withStyle P.underline
@@ -236,11 +291,16 @@ dconcolour = withStyle P.blue
 -- ** Style-specific Combinators
 
 ifDebugStyle :: PDoc -> PDoc
-ifDebugStyle d sty@DebugStyle = P.dullwhite (d sty)
-ifDebugStyle _d _ = P.empty
+ifDebugStyle d = PDoc $ \env ->
+  case pdocStyle env of
+    DebugStyle -> P.dullwhite (runPDoc d env)
+    _          -> P.empty
 
 withDebugStyle :: PDoc -> PDoc
-withDebugStyle d _ = d DebugStyle
+withDebugStyle d = PDoc $ \env -> runPDoc d env{ pdocStyle = DebugStyle }
+
+withGlobalEnv :: (GlobalEnv -> PDoc) -> PDoc
+withGlobalEnv k = PDoc $ \env -> runPDoc (k (viewGlobalEnv env)) env
 
 -- ** Utils
 

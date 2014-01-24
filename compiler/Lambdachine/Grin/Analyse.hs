@@ -66,11 +66,12 @@ analyseAndRewriteBCOBwd bco@BcObject{} pass exitfacts = do
                    (bcoCode bco) exitfacts
   return (bco{ bcoCode = g' }, f')
 
-livenessAnalysis2 :: {- FuelMonad m => -} Monad m => BwdPass m BcIns LiveVars
-livenessAnalysis2 = --debugBwdJoins trace (const True) $
+livenessAnalysis2 :: {- FuelMonad m => -} Monad m => 
+                     GlobalEnv -> BwdPass m BcIns LiveVars
+livenessAnalysis2 env = --debugBwdJoins trace (const True) $
   BwdPass { bp_lattice = livenessLattice
           , bp_transfer = liveness
-          , bp_rewrite = voidAssignmentElim
+          , bp_rewrite = voidAssignmentElim env
           -- noBwdRewrite --deadAssignmentElim
           }
 
@@ -167,17 +168,17 @@ mkBRewrite f = mkBRewrite3 f f f
 voidAssignmentElim ::
 --  forall m. FuelMonad m =>
     Monad m =>
-    BwdRewrite m BcIns LiveVars
-voidAssignmentElim = mkBRewrite rewrite
+    GlobalEnv -> BwdRewrite m BcIns LiveVars
+voidAssignmentElim env = mkBRewrite rewrite
  where
    rewrite :: Monad m => BcIns e x -> Fact x LiveVars -> m (Maybe (Graph BcIns e x))
    rewrite (Assign dst (Move src)) _fact
-     | isVoid dst = return (Just emptyGraph)
+     | isVoid env dst = return (Just emptyGraph)
    rewrite _ins _fact = return Nothing
 
-isVoid :: BcVar -> Bool
-isVoid (BcVar _ ty) = transType ty == VoidTy
-isVoid (BcReg _ ty) = ty == VoidTy
+isVoid :: GlobalEnv -> BcVar -> Bool
+isVoid env (BcVar _ ty) = transType env ty == VoidTy
+isVoid _   (BcReg _ ty) = ty == VoidTy
 
 deadAssignmentElim :: 
   forall m. FuelMonad m => 

@@ -20,49 +20,58 @@ import qualified CoreSyn as Ghc
 import qualified CoreFVs as Ghc
 import qualified Var as Ghc
 import qualified VarSet as Ghc
-import DynFlags ( tracingDynFlags )
+--import DynFlags ( tracingDynFlags )
 import Outputable ( Outputable, alwaysQualify )
 import qualified Outputable ( showPpr, showSDocForUser, showSDocDebug, ppr )
 import Unique ( Uniquable(..), getKey )
 
-showPpr :: Outputable a => a -> String
-showPpr = Outputable.showPpr tracingDynFlags
 
+showPpr :: Outputable a => GlobalEnv -> a -> String
+showPpr env = Outputable.showPpr (envDynFlags env)
+
+{-
 showPprDebug :: Outputable a => a -> String
 showPprDebug = Outputable.showSDocDebug tracingDynFlags . Outputable.ppr
+-}
 
-showSDocForUser :: Ghc.PrintUnqualified -> Ghc.SDoc -> String
-showSDocForUser = Outputable.showSDocForUser tracingDynFlags
+showSDocForUser :: GlobalEnv -> Ghc.PrintUnqualified -> Ghc.SDoc -> String
+showSDocForUser env = Outputable.showSDocForUser (envDynFlags env)
 
+{-
 ghcPretty :: Ghc.Outputable a => a -> String
 ghcPretty = Ghc.showSDoc tracingDynFlags . Ghc.ppr
+-}
+
+prettyGhc :: Ghc.Outputable a => a -> PDoc
+prettyGhc a = withGlobalEnv $ \env ->
+  text $ Ghc.showSDoc (envDynFlags env) $ Ghc.ppr a
 
 -- | Directly turn GHC 'Ghc.Id' into 'Id'.
 --
 -- Reuses the 'Unique' from GHC.
-toplevelId :: Ghc.ModuleName -> Ghc.Id -> Id
-toplevelId mdl x = --  | Ghc.VanillaId <- Ghc.idDetails x =
+toplevelId :: GlobalEnv -> Ghc.ModuleName -> Ghc.Id -> Id
+toplevelId env mdl x = --  | Ghc.VanillaId <- Ghc.idDetails x =
   mkTopLevelId $
     N.mkBuiltinName (fromGhcUnique x) $
       mdl_str ++ "." ++ occ_part
  where
-   occ_part0 = showSDocForUser alwaysQualify (Ghc.ppr (Ghc.getOccName name))
+   occ_part0 = showSDocForUser env alwaysQualify (Ghc.ppr (Ghc.getOccName name))
    occ_part
      -- FIXME: Dirty, dirty hack.
-     | occ_part0 == "sat" = showSDocForUser alwaysQualify (Ghc.ppr name)
+     | occ_part0 == "sat" = showSDocForUser env alwaysQualify (Ghc.ppr name)
      | otherwise = occ_part0
    name = Ghc.getName x
    mdl_str
      | Just m <- Ghc.nameModule_maybe name
-     = showSDocForUser alwaysQualify (Ghc.ppr (Ghc.moduleName m))
+     = Ghc.moduleNameString $! Ghc.moduleName m
      | otherwise
-     = showSDocForUser alwaysQualify (Ghc.ppr mdl)
+     = Ghc.moduleNameString mdl
 
-dataConInfoTableId :: Ghc.DataCon -> Id
-dataConInfoTableId dcon =
+dataConInfoTableId :: GlobalEnv -> Ghc.DataCon -> Id
+dataConInfoTableId env dcon =
   mkDataConInfoTableId $
    N.mkBuiltinName (fromGhcUnique dcon)
-      (showSDocForUser alwaysQualify (Ghc.ppr dcon))
+      (showSDocForUser env alwaysQualify (Ghc.ppr dcon))
 
 splitFunTysN :: Int -> Ghc.Type -> Maybe ([Ghc.Type], Ghc.Type)
 splitFunTysN n ty = split n ty []
@@ -73,12 +82,12 @@ splitFunTysN n ty = split n ty []
        Nothing         -> Nothing
        Just (arg, ty') -> split (n - 1) ty' (arg:acc)
 
-isGhcVoid :: Ghc.CoreBndr -> Bool
-isGhcVoid x = isGhcVoidType (Ghc.varType x)
+isGhcVoid :: GlobalEnv -> Ghc.CoreBndr -> Bool
+isGhcVoid env x = isGhcVoidType env (Ghc.varType x)
 
-isGhcVoidType :: Ghc.Type -> Bool
+isGhcVoidType :: GlobalEnv -> Ghc.Type -> Bool
 --isGhcVoidType ty = transType (Ghc.repType ty) == VoidTy
-isGhcVoidType ty = transType ty == VoidTy
+isGhcVoidType env ty = transType env ty == VoidTy
 
 -- | Split unboxed tuples into their non-void components.  Leave
 -- everything else untouched.
@@ -88,10 +97,10 @@ isGhcVoidType ty = transType ty == VoidTy
 -- > { State# s }  ~~>  [{ State# s #}]
 -- > { Maybe Int }  ~~>  [{ Maybe Int }]
 -- > { Char }  ~~>  [{ Char }]
-splitUnboxedTuples :: Ghc.Type -> [Ghc.Type]
-splitUnboxedTuples ty = case Ghc.splitTyConApp_maybe ty of
+splitUnboxedTuples :: GlobalEnv -> Ghc.Type -> [Ghc.Type]
+splitUnboxedTuples env ty = case Ghc.splitTyConApp_maybe ty of
   Just (tc, args)
-    | Ghc.isUnboxedTupleTyCon tc -> removeIf isGhcVoidType args
+    | Ghc.isUnboxedTupleTyCon tc -> removeIf (isGhcVoidType env) args
   _ -> [ty]
 
 isFreeExprVarIn :: Ghc.Id -> Ghc.CoreExpr -> Bool
@@ -102,11 +111,11 @@ isFreeExprVarIn x expr =
 ghcFreeExprVars :: Ghc.CoreExpr -> Ghc.IdSet
 ghcFreeExprVars = Ghc.exprFreeIds
 
-tyConId :: Ghc.Name -> Id
-tyConId x =
+tyConId :: GlobalEnv -> Ghc.Name -> Id
+tyConId env x =
   mkTopLevelId $
     N.mkBuiltinName (fromGhcUnique x)
-      (showSDocForUser alwaysQualify (Ghc.ppr x))
+      (showSDocForUser env alwaysQualify (Ghc.ppr x))
 
 -- | Take a GHC 'Unique.Unique' and turn it into a 'Unique'.
 --
@@ -136,8 +145,8 @@ ghcAnyType = Ghc.anyPrimTy
 --
 -- TODO: How to deal with 'void' types, like @State#@?
 --
-transType :: Ghc.Type -> OpTy
-transType ty0 = case Ghc.repType ty0 of
+transType :: GlobalEnv -> Ghc.Type -> OpTy
+transType env ty0 = case Ghc.repType ty0 of
   Ghc.UnaryRep rep_ty ->
     case Ghc.tyConAppTyCon_maybe rep_ty of
       Nothing -> PtrTy
@@ -154,17 +163,17 @@ transType ty0 = case Ghc.repType ty0 of
               | tycon == Ghc.wordPrimTyCon  -> WordTy
               | tycon == Ghc.statePrimTyCon -> VoidTy
               | otherwise ->
-                  error $ "Unknown primitive type: " ++ showPpr tycon
+                  error $ "Unknown primitive type: " ++ showPpr env tycon
 
         | Ghc.isAbstractTyCon tycon
         -> PtrTy
 
         | Ghc.isAlgTyCon tycon
-        -> AlgTy (tyConId (Ghc.tyConName tycon))
+        -> AlgTy (tyConId env (Ghc.tyConName tycon))
 
         | otherwise
         -> if not (Ghc.isFunTyCon tycon || Ghc.isPrimTyCon tycon || Ghc.isFamilyTyCon tycon)
-             then error $ "Unexpected tycon" ++ showPpr tycon
+             then error $ "Unexpected tycon" ++ showPpr env tycon
              else PtrTy
 
 {-

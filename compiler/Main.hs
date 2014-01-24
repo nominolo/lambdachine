@@ -9,7 +9,7 @@ module Main where
 
 import Lambdachine.Utils
 --import Lambdachine.Ghc.Pipeline
-import Lambdachine.Ghc.CoreToBC
+--import Lambdachine.Ghc.CoreToBC
 import Lambdachine.Ghc.StgToBytecode
 --import Lambdachine.Grin.Eval
 import Lambdachine.Grin.Bytecode
@@ -22,8 +22,14 @@ import Lambdachine.Ghc.Utils
 import Lambdachine.Serialise
 import qualified Lambdachine.Options as Cli
 
+#if __GLASGOW_HASKELL__ == 706
 import Ghc.Api.V76
 import Ghc.Api.V76Hsc
+#elif __GLASGOW_HASKELL__ >= 707 && __GLASGOW_HASKELL__ < 709
+import Ghc.Api.V78
+#else
+#error "This version of GHC is not supported. Sorry."
+#endif
 
 import ErrUtils ( Messages )
 import GHC

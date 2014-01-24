@@ -49,23 +49,27 @@ newtype Build a =
   Build { unBuild :: forall r.
                      M.Map B.ByteString Word
                   -> Word
+                  -> GlobalEnv
                   -> (M.Map B.ByteString Word
                         -> Word
                         -> a
                         -> R.BuildM r)
                   -> R.BuildM r }
 
-runBuild :: Build a -> R.BuildM (M.Map B.ByteString Word, a)
-runBuild b = unBuild b M.empty 0 (\str _ a -> return (str, a))
+runBuild :: GlobalEnv -> Build a -> R.BuildM (M.Map B.ByteString Word, a)
+runBuild env b = unBuild b M.empty 0 env (\str _ a -> return (str, a))
 
 getStringTable' :: Build (M.Map B.ByteString Word)
-getStringTable' = Build (\st n k -> k st n st)
+getStringTable' = Build (\st n env k -> k st n st)
+
+askGlobalEnv :: Build GlobalEnv
+askGlobalEnv = Build $ \st sti env k -> k st sti env
 
 instance Monad Build where
-  return a = Build (\st sti k -> k st sti a)
-  Build f >>= kont = Build (\st sti k ->
-    f st sti (\st' sti' a ->
-      unBuild (kont a) st' sti' k))
+  return a = Build (\st sti env k -> k st sti a)
+  Build f >>= kont = Build (\st sti env k ->
+    f st sti env (\st' sti' a ->
+      unBuild (kont a) st' sti' env k))
 
 instance Applicative Build where
   pure = return
@@ -78,6 +82,7 @@ newtype BuildM a =
   BuildM { unBuildM :: forall r.
                        M.Map B.ByteString Word
                     -> Word
+                    -> GlobalEnv
                     -> (Builder -> Builder)
                     -> (M.Map B.ByteString Word
                           -> Word
@@ -87,9 +92,9 @@ newtype BuildM a =
                     -> r }
 
 instance Monad BuildM where
-  return x = BuildM $ \s n b k -> k s n b x
-  BuildM f >>= kont = BuildM $ \s n b k ->
-    f s n b (\s' n' b' a -> unBuildM (kont a) s' n' b' k)
+  return x = BuildM $ \s n e b k -> k s n b x
+  BuildM f >>= kont = BuildM $ \s n e b k ->
+    f s n e b (\s' n' b' a -> unBuildM (kont a) s' n' e b' k)
 
 instance Functor BuildM where fmap = liftM
 instance Applicative BuildM where pure = return; (<*>) = ap
@@ -98,23 +103,23 @@ instance Applicative BuildM where pure = return; (<*>) = ap
 --   put :: a -> BuildM ()
 
 addString :: B.ByteString -> BuildM Word
-addString s = BuildM $ \tbl n b k ->
+addString s = BuildM $ \tbl n _env b k ->
   case M.lookup s tbl of
     Just m -> k tbl n b m
     Nothing -> let !m = n + 1 in k (M.insert s n tbl) m b n
 
 getStringTable :: BuildM (M.Map B.ByteString Word)
-getStringTable = BuildM $ \tbl n b k -> k tbl n b tbl
+getStringTable = BuildM $ \tbl n _env b k -> k tbl n b tbl
 
 emit :: Builder -> BuildM ()
-emit b' = BuildM $ \tbl n bf k -> k tbl n (\b -> bf b `mappend` b') ()
+emit b' = BuildM $ \tbl n _env bf k -> k tbl n (\b -> bf b `mappend` b') ()
 
-runBuildM :: BuildM a -> (a, M.Map B.ByteString Word, Builder)
-runBuildM m = unBuildM m M.empty 0 id (\tbl _ bf a -> (a, tbl, bf mempty))
+runBuildM :: GlobalEnv -> BuildM a -> (a, M.Map B.ByteString Word, Builder)
+runBuildM env m = unBuildM m M.empty 0 env id (\tbl _ bf a -> (a, tbl, bf mempty))
 
 captureOutput :: BuildM a -> BuildM (a, Builder)
-captureOutput (BuildM f) = BuildM $ \tbl n bf0 k ->
-  f tbl n id $ \tbl' n' bf a ->
+captureOutput (BuildM f) = BuildM $ \tbl n env bf0 k ->
+  f tbl n env id $ \tbl' n' bf a ->
   k tbl' n' bf0 (a, bf mempty)
 
 {-
@@ -128,14 +133,14 @@ test1 = (tbl, L.unpack $ toLazyByteString b, L.unpack $ toLazyByteString o)
       putIns 42
       return o0
 -}
-writeModule :: FilePath -> BytecodeModule -> IO ()
-writeModule path bcos = L.writeFile path (encodeModule bcos)
+writeModule :: GlobalEnv -> FilePath -> BytecodeModule -> IO ()
+writeModule env path bcos = L.writeFile path (encodeModule env bcos)
 
-hWriteModule :: Handle -> BytecodeModule -> IO ()
-hWriteModule hdl bcos = L.hPut hdl (encodeModule bcos)
+hWriteModule :: GlobalEnv -> Handle -> BytecodeModule -> IO ()
+hWriteModule env hdl bcos = L.hPut hdl (encodeModule env bcos)
 
-encodeModule :: BytecodeModule -> L.ByteString
-encodeModule mdl = encodeModule' mdl
+encodeModule :: GlobalEnv -> BytecodeModule -> L.ByteString
+encodeModule env mdl = encodeModule' env mdl
 {-
    let out = toLazyByteString builder
        out' = encodeModule' mdl
@@ -332,9 +337,10 @@ br_bias = branch_BIAS
 --putIns :: Word32 -> BuildM ()
 --putIns w = emit $ fromWrite (writeWord32be w)
 
-encodeInstructions :: LiteralIds
+{-
+encodeInstructions :: GlobalEnv -> LiteralIds
                    -> FinalCode -> BuildM Int
-encodeInstructions lits code = do
+encodeInstructions env lits code = do
   let (len, addrs) = newAddresses code
   let inss = zip [0..] (V.toList (fc_code code))
 
@@ -348,10 +354,11 @@ encodeInstructions lits code = do
     error $ "Size mismatch. expected: " ++ show (len * 4) ++ " got: "
             ++ show (L.length bs) ++ "\n"
             ++ show (L.unpack bs) ++ "\n"
-            ++ pretty code
+            ++ pretty env code
    else do
      emit $ fromLazyByteString bs
      return len
+-}
 
 -- | Encode a pointer bitmap for use by the garbage collector.
 -- Prefixed by the total size of the object (length of the input
@@ -372,12 +379,12 @@ encodePointerMask ops = do
                 | otherwise     = acc
        in pointer_bitmap acc' (shift + 1) ts
 
-test_encodePointerMask1 =
-  let (_, _, b) = runBuildM (encodePointerMask [PtrTy, IntTy, FloatTy, PtrTy, FunTy [IntTy] IntTy])
+test_encodePointerMask1 env =
+  let (_, _, b) = runBuildM env (encodePointerMask [PtrTy, IntTy, FloatTy, PtrTy, FunTy [IntTy] IntTy])
   in L.unpack (toLazyByteString b) == [5, 0,0,0,25]
 
-test_encodePointerMask2 =
-  let (_, _, b) = runBuildM (encodePointerMask [])
+test_encodePointerMask2 env =
+  let (_, _, b) = runBuildM env (encodePointerMask [])
   in L.unpack (toLazyByteString b) -- == [5, 0,0,0,25]
 
 -- IMPORTANT: must match implementation of putLinearIns
@@ -452,6 +459,7 @@ viewCaseAlts (CaseOnTag ntags) alts0 =
    fst3 (t,_,_) = t
 
 
+{-
 putLinearIns :: LiteralIds
              -> NewAddresses
              -> Int
@@ -535,7 +543,9 @@ putLinearIns lit_ids new_addrs ins_id ins = case ins of
     putIns $ insABC opc_INITF (i2b ptr) (i2b src) (i2b offs)
   Mid (Assign (BcReg dst _) (HiResult n)) ->
     putIns $ insABC opc_MOV_RES (i2b dst) 0 (i2b n)
-  Mid m -> error $ "Cannot serialise: " ++ pretty m
+  Mid m -> do
+    env <- askGlobalEnv
+    error $ "Cannot serialise: " ++ pretty m
 
  where
    binOpOpcode :: OpTy -> BinOp -> Word8
@@ -565,6 +575,7 @@ putLinearIns lit_ids new_addrs ins_id ins = case ins of
      CmpLt -> opc_ISLTU
      CmpEq -> opc_ISEQ
      CmpNe -> opc_ISNE
+-}
 
 -- | Encode a case instruction.
 --
@@ -633,7 +644,7 @@ data InsState = InsState (IM.IntMap Int)  -- length of each instr
                          !Int
 
 newtype InsBuildM a = InsBuildM (StateT InsState BuildM a)
-  deriving (Monad)
+  deriving (Functor, Applicative, Monad)
 
 putIns :: Word32 -> InsBuildM ()
 putIns w = InsBuildM $ do
@@ -683,8 +694,8 @@ putWord8s ws = go 0 ws 0
      | otherwise =
        putIns acc >> go 0 bs0 0
 
-test_putArgs =
-  let (_, _, b) =  runBuildM $ runInsBuildM $
+test_putArgs env =
+  let (_, _, b) =  runBuildM env $ runInsBuildM $
                      putArgs (map (\n -> BcReg n VoidTy) [1..6]) in
   L.unpack (toLazyByteString b) == [4,3,2,1,0,0,6,5]
 
@@ -776,16 +787,16 @@ test_bitsToWord32s =
    bitsToWord32s [] == []]
 
 addString_ :: B.ByteString -> Build Word
-addString_ s = Build $ \tbl n k ->
+addString_ s = Build $ \tbl n _env k ->
   case M.lookup s tbl of
     Just m -> k tbl n m
     Nothing -> let !m = n + 1 in k (M.insert s n tbl) m n
 
 getStringTable_ :: Build (M.Map B.ByteString Word)
-getStringTable_ = Build $ \tbl n k -> k tbl n tbl
+getStringTable_ = Build $ \tbl n _env k -> k tbl n tbl
 
 liftBuildM :: R.BuildM a -> Build a
-liftBuildM bm = Build $ \tbl n k -> bm >>= k tbl n
+liftBuildM bm = Build $ \tbl n _env k -> bm >>= k tbl n
 
 emitWord8s :: R.Region -> [Word8] -> Build ()
 emitWord8s r = liftBuildM . R.emitWord8s r
@@ -1037,7 +1048,9 @@ emitLinearIns bit_r lit_ids tgt_labels r ins_id ins = do
       emitInsABC r opc_BSAR (i2b dst) (i2b src1) (i2b src2)
     Mid (Store (BcReg ptr _) offs (BcReg src _)) | offs <= 255 ->
       emitInsABC r opc_INITF (i2b ptr) (i2b src) (i2b offs)
-    Mid m -> error $ "Don't know how to serialise " ++ pretty m
+    Mid m -> do
+      env <- askGlobalEnv
+      error $ "Don't know how to serialise " ++ pretty env m
 
  where
    binOpOpcode :: OpTy -> BinOp -> Word8
@@ -1161,9 +1174,9 @@ emitCase r casetype (BcReg reg regty) alts0 tgt_labels = do
      mapMWord16s $
        map (liftBuildM . dense_case_offset) $ targets
     where
-      missing_default = error $ "No default target in non-exhaustive case: " ++
-                          show ([ (x, y) | (x,_,y) <- alts0 ],
-                                IM.toList tgt_labels, pretty reg, pretty regty)
+      -- missing_default = error $ "No default target in non-exhaustive case: " ++
+      --                     show ([ (x, y) | (x,_,y) <- alts0 ],
+      --                           IM.toList tgt_labels, pretty reg, pretty regty)
       dense_case_offset Nothing =
         R.offset' R.S2 R.BE (`shiftR` 2) r post_case_label impossible_label
       dense_case_offset (Just target) =
@@ -1212,14 +1225,14 @@ test_word16sToWord32s =
     word16sToWord32s [1, 2, 3] == [ 0x00020001, 0x3 ]
   ]
 
-encodeModule' :: BytecodeModule -> L.ByteString
-encodeModule' mdl =
+encodeModule' :: GlobalEnv -> BytecodeModule -> L.ByteString
+encodeModule' env mdl =
   R.toLazyByteString id $ do
     -- regions (must be in the order in which they appear in the output)
     rheader <- R.newRegion
     rmodinfo <- R.newRegion
 
-    (_, _) <- runBuild $ do
+    (_, _) <- runBuild env $ do
       emitIdString rmodinfo (bcm_name mdl)
       mapM_ (emitIdString rmodinfo) imports
 
@@ -1328,8 +1341,9 @@ encodeModule' mdl =
        BcTyConInfo{ } ->
          return 0
        BcConInfo _ _ _ -> return 0
-       _ ->
-         error $ "UNIMPL: encodeClosure: " ++ pretty bco
+       _ -> do
+         env <- askGlobalEnv
+         error $ "UNIMPL: encodeClosure: " ++ pretty env bco
 
 
    emitField :: R.Region -> Either BcConst Id -> Build ()

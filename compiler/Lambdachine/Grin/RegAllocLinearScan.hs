@@ -24,28 +24,28 @@ import Data.Generics.Uniplate.Operations
 
 import Debug.Trace
 
-allocRegs :: String -> [String] -> BCOs
+allocRegs :: GlobalEnv -> String -> [String] -> BCOs
           -> BytecodeModule
-allocRegs module_name module_imports bcos0 =
-  let !bcos = M.mapWithKey allocRegsBco bcos0 in
+allocRegs env module_name module_imports bcos0 =
+  let !bcos = M.mapWithKey (allocRegsBco env) bcos0 in
   BytecodeModule
     { bcm_name = module_name
     , bcm_imports = module_imports
     , bcm_bcos = bcos
     }
 
-allocRegsBco :: Id -> BytecodeObject -> BytecodeObject' FinalCode
-allocRegsBco _name bco@BcoCon{} = -- this is just silly
+allocRegsBco :: GlobalEnv -> Id -> BytecodeObject -> BytecodeObject' FinalCode
+allocRegsBco _env _name bco@BcoCon{} = -- this is just silly
   BcoCon{ bcoType = bcoType bco
         , bcoDataCon = bcoDataCon bco
         , bcoFields = bcoFields bco }
-allocRegsBco _name bco@BcConInfo{} =
+allocRegsBco _env _name bco@BcConInfo{} =
   BcConInfo{ bcoConTag = bcoConTag bco
            , bcoConFields = bcoConFields bco
            , bcoConArgTypes = bcoConArgTypes bco }
-allocRegsBco _name bco@BcTyConInfo{} =
+allocRegsBco _env _name bco@BcTyConInfo{} =
   BcTyConInfo{ bcoDataCons = bcoDataCons bco }
-allocRegsBco name bco0@BcObject{} =
+allocRegsBco env name bco0@BcObject{} =
   BcObject{ bcoType = bcoType bco
           , bcoCode = code'
           , bcoGlobalRefs = bcoGlobalRefs bco
@@ -55,8 +55,8 @@ allocRegsBco name bco0@BcObject{} =
    (bco, live_facts) =
      runM $ analyseAndRewriteBCOBwd
               ({- trace ("INPUT_GRAPH:"++pretty name++"\n\n"++pretty (bcoCode bco0)) -} bco0)
-              livenessAnalysis2 noFacts
-   !code' = allocRegsGraph (bcoArity bco0) live_facts (bcoCode bco)
+              (livenessAnalysis2 env) noFacts
+   !code' = allocRegsGraph env (bcoArity bco0) live_facts (bcoCode bco)
 
 data LinearCode = LinearCode !(Vector LinearIns) !(Vector LiveOuts)
 
@@ -65,42 +65,44 @@ instance Pretty LinearCode where
     vcat [ fillBreak 30 (ppr ins) <+> ppr outs
          | (ins, outs) <- zip (Vec.toList inss) (Vec.toList live_outs) ]
 
-allocRegsGraph :: Int -> FactBase LiveVars -> Graph BcIns O C -> FinalCode
-allocRegsGraph arity !livenessInfo !graph =
-  let (live_ins, linearInstructions) = lineariseGraph livenessInfo graph in
+allocRegsGraph :: GlobalEnv -> Int -> FactBase LiveVars -> Graph BcIns O C -> FinalCode
+allocRegsGraph env arity !livenessInfo !graph =
+  let (live_ins, linearInstructions) = lineariseGraph env livenessInfo graph in
   -- trace ("GRAPH:\n" ++ pretty graph ++ "\n\n" ++
   --        "LINEAR:\n" ++ pretty (vcat [ ppr ins $$ indent 4 (colour1 (ppr lives))
   --                                    | (ins, lives) <- linearInstructions])
   --         ++ "\n\n") $
-  let !allocated = allocRegsLinearScan graph live_ins linearInstructions in
-  finaliseCode arity allocated
+  let !allocated = allocRegsLinearScan env graph live_ins linearInstructions in
+  finaliseCode env arity allocated
 
 type LiveOuts = LiveVars
 type LiveIns = LiveVars
 
-finaliseCode :: Int -> [LinearIns] -> FinalCode
-finaliseCode arity final = -- trace ("FINAL:\n"++pretty (vcat (map ppr final))) $
+finaliseCode :: GlobalEnv -> Int -> [LinearIns] -> FinalCode
+finaliseCode env arity final = -- trace ("FINAL:\n"++pretty (vcat (map ppr final))) $
   let !all_regs = S.fromList (concatMap universeBi final :: [BcVar])
       isReg (BcReg _ _) = True
       isReg _ = False
   in if not (all isReg (S.toList all_regs)) then
        error $ "Register allocator did not assign a register for a variable: " ++
-         pretty (vcat (map ppr final))
+         pretty env (vcat (map ppr final))
       else
         let !framesize = maximum [ r + 1 | BcReg r _ <- S.toList all_regs ]
-            !code = fixJumpTargets (Vec.fromList final)
+            !code = fixJumpTargets env (Vec.fromList final)
         in FinalCode (arity `max` framesize) code
 
-fixJumpTargets :: Vector LinearIns -> Vector (LinearIns' Int)
-fixJumpTargets code0 =
+fixJumpTargets :: GlobalEnv -> Vector LinearIns -> Vector (LinearIns' Int)
+fixJumpTargets env code0 =
    -- trace ("LABELS: " ++ show labelToCode0Index) $
    code1
  where
    -- maps label to offset into code0
    labelToCode0Index :: M.Map Label Int
    labelToCode0Index = Vec.ifoldl' add_label M.empty code0
-     where add_label lbls idx (Fst (Label l)) = M.insert l idx lbls
-           add_label lbls _   _               = lbls
+     where 
+       add_label :: M.Map Label Int -> Int -> LinearIns -> M.Map Label Int
+       add_label lbls idx (Fst (Label l)) = M.insert l idx lbls
+       add_label lbls _   _               = lbls
 
    !code0_len = Vec.length code0
 
@@ -128,7 +130,7 @@ fixJumpTargets code0 =
    lookupLabelCode1 l = 
      case M.lookup l labelToCode1Index of
        Just i -> i
-       Nothing -> error $ "fixJumpTargets: label missing: " ++ pretty l
+       Nothing -> error $ "fixJumpTargets: label missing: " ++ pretty env l
    
    updateLabel (Fst ins) = Fst (mapLabels lookupLabelCode1 ins)
    updateLabel (Mid ins) = Mid (mapLabels lookupLabelCode1 ins)
@@ -137,24 +139,24 @@ fixJumpTargets code0 =
    code1 = Vec.map updateLabel (Vec.ifilter (\idx _ -> keep_code Vec.! idx) code0)
                             
 
-lineariseGraph :: FactBase LiveVars -> Graph BcIns O C
+lineariseGraph :: GlobalEnv -> FactBase LiveVars -> Graph BcIns O C
                -> (LiveIns, [(LinearIns, LiveOuts)])
-lineariseGraph livenessInfo graph@(GMany (JustO entry) body NothingO) =
+lineariseGraph env livenessInfo graph@(GMany (JustO entry) body NothingO) =
   (entry_live_ins, zip (Vec.toList linear_code') (Vec.toList live_outs))
  where
    body_blocks = postorder_dfs graph  -- excludes entry sequence
    !linear_code =
         Vec.fromList $ 
-          concat (lineariseBlock livenessInfo entry :
-                  map (lineariseBlock livenessInfo) body_blocks)
-   !live_outs = liveOuts livenessInfo linear_code
-   !linear_code' = annotateAllocationsWithLiveIns live_outs linear_code
+          concat (lineariseBlock env livenessInfo entry :
+                  map (lineariseBlock env livenessInfo) body_blocks)
+   !live_outs = liveOuts env livenessInfo linear_code
+   !linear_code' = annotateAllocationsWithLiveIns env live_outs linear_code
 
    entry_live_ins
      | Vec.length linear_code == 0 = S.empty
      | otherwise = 
-        nonVoid (liveIns livenessInfo (Vec.head linear_code)
-                         (Vec.head live_outs))
+        nonVoid env (liveIns livenessInfo (Vec.head linear_code)
+                             (Vec.head live_outs))
 
 liveIns :: FactBase LiveVars -> LinearIns -> LiveOuts -> LiveIns
 liveIns global_live_outs ins0 live_out =
@@ -163,19 +165,20 @@ liveIns global_live_outs ins0 live_out =
     Mid ins -> live ins live_out
     Fst ins -> live ins live_out
 
-annotateAllocationsWithLiveIns :: Vector LiveOuts -> Vector LinearIns
+annotateAllocationsWithLiveIns :: GlobalEnv -> 
+                                  Vector LiveOuts -> Vector LinearIns
                                -> Vector LinearIns
-annotateAllocationsWithLiveIns lives inss = Vec.imap annotate inss
+annotateAllocationsWithLiveIns env lives inss = Vec.imap annotate inss
  where
    annotate :: Int -> LinearIns -> LinearIns
    annotate n (Mid ins@(Assign d (Alloc t args _))) =
-     Mid (Assign d (Alloc t args (nonVoid (live ins (lives Vec.! n)))))
+     Mid (Assign d (Alloc t args (nonVoid env (live ins (lives Vec.! n)))))
    annotate n (Mid ins@(Assign d (AllocAp args _))) =
-     Mid (Assign d (AllocAp args (nonVoid (live ins (lives Vec.! n)))))
+     Mid (Assign d (AllocAp args (nonVoid env (live ins (lives Vec.! n)))))
    annotate n i = i
 
-lineariseBlock :: FactBase LiveVars -> Block BcIns e x -> [LinearIns]
-lineariseBlock live_facts block =
+lineariseBlock :: GlobalEnv -> FactBase LiveVars -> Block BcIns e x -> [LinearIns]
+lineariseBlock env live_facts block =
   entry_inss ++ map (Mid . force) (blockToList middles) ++ tail_inss
  where
    (entry, middles, tail) = blockSplitAny block
@@ -197,18 +200,18 @@ lineariseBlock live_facts block =
      | NothingC <- tail
      = []
 
-   livesAt label = nonVoid $ fromMaybe S.empty (lookupFact label live_facts)
+   livesAt label = nonVoid env $ fromMaybe S.empty (lookupFact label live_facts)
 
-nonVoid :: LiveVars -> LiveVars
-nonVoid lives = S.filter (not . isVoid) lives
+nonVoid :: GlobalEnv -> LiveVars -> LiveVars
+nonVoid env lives = S.filter (not . isVoid env) lives
 
-allocRegsLinearScan :: Graph BcIns O C -> LiveVars -> [(LinearIns, LiveOuts)] -> [LinearIns]
-allocRegsLinearScan _ _ [] = []
-allocRegsLinearScan graph liveIns linearInstructions@((entry, outs):_) =
+allocRegsLinearScan :: GlobalEnv -> Graph BcIns O C -> LiveVars -> [(LinearIns, LiveOuts)] -> [LinearIns]
+allocRegsLinearScan _ _ _ [] = []
+allocRegsLinearScan env graph liveIns linearInstructions@((entry, outs):_) =
   runAllocM liveIns graph (go linearInstructions)
  where
    go ((!ins, !liveOuts):inss) = do
-     allocRegsSingle ins liveOuts
+     allocRegsSingle env ins liveOuts
      go inss
    go [] = return ()
 
@@ -340,37 +343,37 @@ recallState lbl = do
 regOwner :: FinalReg -> AllocM (Maybe BcVar)
 regOwner reg = M.lookup reg . reg2var <$> gets current
 
-allocRef1 :: BcVar -> AllocM BcVar
-allocRef1 var | isVoid var =
-  return (BcReg 0 (varType var))
-allocRef1 var = do
+allocRef1 :: GlobalEnv -> BcVar -> AllocM BcVar
+allocRef1 env var | isVoid env var =
+  return (BcReg 0 (varType env var))
+allocRef1 env var = do
   mb_reg <- currentAlloc var
   case mb_reg of
-    Just (R r) -> return (BcReg r (varType var))
+    Just (R r) -> return (BcReg r (varType env var))
     Nothing -> do
       gr <- gets graph
       inss <- reverse <$> gets emitted
       rms <- gets current
-      error $ "allocRef1 found an unallocated variable: " ++ pretty var
+      error $ "allocRef1 found an unallocated variable: " ++ pretty env var
             -- ++ "\nin graph:\n" ++ pretty gr
-            ++ "\n\nallocated:\n" ++ pretty (vcat (map ppr inss))
+            ++ "\n\nallocated:\n" ++ pretty env (vcat (map ppr inss))
             ++ "\ninvariant = " ++ show (prop_RegMapState_invariant rms)
-            ++ "\n\nstate =\n" ++ pretty rms
+            ++ "\n\nstate =\n" ++ pretty env rms
 
 whenJust :: Monad m => Maybe a -> (a -> m ()) -> m ()
 whenJust m f = maybe (return ()) f m
 
-allocDest :: BcVar -> AllocM BcVar
-allocDest var@(BcVar _ _) = do
+allocDest :: GlobalEnv -> BcVar -> AllocM BcVar
+allocDest env var@(BcVar _ _) = do
   reg@(R r) <- getFreeReg
   setAlloc var reg
-  return (BcReg r (varType var))
-allocDest var@(BcReg r t) = do
+  return (BcReg r (varType env var))
+allocDest env var@(BcReg r t) = do
   mb_owner <- regOwner (R r)
   whenJust mb_owner $ \owner -> do
     rms <- gets current
     error ("Precoloured register not available: R" ++ show r
-           ++ "\nstate:\n" ++ pretty rms)
+           ++ "\nstate:\n" ++ pretty env rms)
   setAlloc var (R r)
   return var
 
@@ -407,9 +410,9 @@ allocDest var@(BcReg r t) = do
 -- tail-call which cannot lead to merging control-flow inside the
 -- allocation unit.
 --
-ensurePrecolouredDestAvail :: BcVar -> LiveOuts -> AllocM ()
-ensurePrecolouredDestAvail (BcVar _ _) _ = return ()
-ensurePrecolouredDestAvail (BcReg r t) liveOuts = do
+ensurePrecolouredDestAvail :: GlobalEnv -> BcVar -> LiveOuts -> AllocM ()
+ensurePrecolouredDestAvail _env (BcVar _ _) _ = return ()
+ensurePrecolouredDestAvail env (BcReg r t) liveOuts = do
   opt_owner <- regOwner (R r)
   case opt_owner of
     Just owner | owner `S.member` liveOuts -> do
@@ -418,7 +421,7 @@ ensurePrecolouredDestAvail (BcReg r t) liveOuts = do
       -- register (our notion of "spilling")
       R new <- getFreeReg
       let old = r
-      let ty = varType owner
+      let ty = varType env owner
       let ins = (Mid (Assign (BcReg new ty) (Move (BcReg old ty))))
       --trace ("EMITTING MOVE: " ++ pretty ins) $ do
       emit ins
@@ -427,52 +430,52 @@ ensurePrecolouredDestAvail (BcReg r t) liveOuts = do
     _ ->
       return ()
 
-varType :: BcVar -> OpTy
-varType (BcReg _ t) = t
-varType (BcVar _ t) = transType t
+varType :: GlobalEnv -> BcVar -> OpTy
+varType _env (BcReg _ t) = t
+varType env  (BcVar _ t) = transType env t
 
 --detectDeaths :: LiveOuts -> 
 
-allocRef1' :: LiveOuts -> BcVar -> AllocM BcVar
-allocRef1' liveOuts var = do
-  var'@(BcReg r _) <- allocRef1 var
+allocRef1' :: GlobalEnv -> LiveOuts -> BcVar -> AllocM BcVar
+allocRef1' env liveOuts var = do
+  var'@(BcReg r _) <- allocRef1 env var
   -- trace ("ALLOC_REF: " ++ pretty var ++ " => " ++ pretty var') $ do
   when (not (S.member var liveOuts)) $
     -- trace ("FREEING: " ++ pretty r ++ " OUTS=" ++ pretty liveOuts) $ do
     markAsFree (R r)
   return var'
 
-allocRefs :: LiveOuts -> [BcVar] -> AllocM [BcVar]
-allocRefs liveOuts vars = do
-  vars' <- mapM allocRef1 vars
-  pruneDeads liveOuts vars
+allocRefs :: GlobalEnv -> LiveOuts -> [BcVar] -> AllocM [BcVar]
+allocRefs env liveOuts vars = do
+  vars' <- mapM (allocRef1 env) vars
+  pruneDeads env liveOuts vars
   return vars'
 
-pruneDeads :: LiveOuts -> [BcVar] -> AllocM ()
-pruneDeads liveOuts vars = do
+pruneDeads :: GlobalEnv -> LiveOuts -> [BcVar] -> AllocM ()
+pruneDeads env liveOuts vars = do
   forM_ (S.toList (S.fromList vars)) $ \var -> do
-    when (not (S.member var liveOuts) && not (isVoid var)) $ do
+    when (not (S.member var liveOuts) && not (isVoid env var)) $ do
       Just r <- currentAlloc var
       markAsFree r
 
-allocDest' :: LiveOuts -> BcVar -> AllocM BcVar
-allocDest' liveOuts var = do
-  var'@(BcReg r _) <- allocDest var
+allocDest' :: GlobalEnv -> LiveOuts -> BcVar -> AllocM BcVar
+allocDest' env liveOuts var = do
+  var'@(BcReg r _) <- allocDest env var
   -- trace ("ALLOC_DEST: " ++ pretty var ++ " => " ++ pretty var') $ do
   when (not (S.member var liveOuts)) $
     -- trace ("FREEING: " ++ pretty r ++ " OUTS=" ++ pretty liveOuts) $ do
     markAsFree (R r)
   return var'
 
-allocRegsSingle :: LinearIns -> LiveOuts -> AllocM ()
+allocRegsSingle :: GlobalEnv -> LinearIns -> LiveOuts -> AllocM ()
 -- allocRegsSingle ins liveOuts
   -- | trace ("INS: " ++ pretty ins ++ "\n  " ++
   --          pretty (colour1 (ppr liveOuts))) False = return ()
-allocRegsSingle (Fst (Label l)) liveOuts = do
+allocRegsSingle _env (Fst (Label l)) liveOuts = do
   recallState l
   setLiveOuts liveOuts
   emit (Fst (Label l))
-allocRegsSingle (Mid ins) liveOuts = do
+allocRegsSingle env (Mid ins) liveOuts = do
   case ins of
     -- Assign dest (Alloc c xs lives) -> do
     --   ensurePrecolouredDestAvail dest liveOuts
@@ -487,58 +490,58 @@ allocRegsSingle (Mid ins) liveOuts = do
     --   lives' <- S.fromList <$> mapM allocRef1 (S.toList lives)
     --   emit (Mid (Assign dest' (AllocAp xs' lives')))     
     Assign dest rhs -> do
-      ensurePrecolouredDestAvail dest liveOuts
-      rhs' <- descendBiM allocRef1 rhs
-      pruneDeads liveOuts (universeBi rhs)
-      dest' <- allocDest' liveOuts dest
+      ensurePrecolouredDestAvail env dest liveOuts
+      rhs' <- descendBiM (allocRef1 env) rhs
+      pruneDeads env liveOuts (universeBi rhs)
+      dest' <- allocDest' env liveOuts dest
       emit (Mid (Assign dest' rhs'))
     Store s1 n s2 -> do
-      ins' <- Store <$> allocRef1 s1 <*> pure n <*> allocRef1 s2
-      pruneDeads liveOuts [s1, s2]
+      ins' <- Store <$> allocRef1 env s1 <*> pure n <*> allocRef1 env s2
+      pruneDeads env liveOuts [s1, s2]
       emit (Mid ins')
                                
-allocRegsSingle (Lst ins) liveOuts = do
+allocRegsSingle env (Lst ins) liveOuts = do
   case ins of
     Goto l -> do
       rememberState l liveOuts
       emit (Lst ins)
     Ret1 x -> do
-      emit =<< (Lst . Ret1 <$> allocRef1' liveOuts x)
+      emit =<< (Lst . Ret1 <$> allocRef1' env liveOuts x)
     RetN xs -> do
-      xs' <- allocRefs liveOuts xs
+      xs' <- allocRefs env liveOuts xs
       emit (Lst (RetN xs'))
     Call Nothing f xs -> do
-      ins <- descendBiM (allocRef1' liveOuts) ins
+      ins <- descendBiM (allocRef1' env liveOuts) ins
       emit (Lst ins)
     Call (Just (res, lbl, lives)) f xs -> do
       rms <- gets current
       -- trace ("STATE1:\n"++pretty rms) $ do
-      ensurePrecolouredDestAvail res liveOuts
-      f':xs' <- allocRefs liveOuts (f:xs)
-      res' <- allocDest' liveOuts res
+      ensurePrecolouredDestAvail env res liveOuts
+      f':xs' <- allocRefs env liveOuts (f:xs)
+      res' <- allocDest' env liveOuts res
       -- trace ("STATE2:" ++ pretty lives ++ " / " ++ pretty liveOuts ) $ do
-      lives' <- S.fromList <$> mapM allocRef1 (S.toList lives)
+      lives' <- S.fromList <$> mapM (allocRef1 env) (S.toList lives)
       -- trace ("STATE3") $ do
       emit (Lst (Call (Just (res', lbl, lives')) f' xs'))
       rememberState lbl lives
     CondBranch op ty x y lbl1 lbl2 -> do
-      x' <- allocRef1 x
-      y' <- allocRef1 y
-      pruneDeads liveOuts [x, y]
+      x' <- allocRef1 env x
+      y' <- allocRef1 env y
+      pruneDeads env liveOuts [x, y]
       rememberState lbl1 liveOuts
       rememberState lbl2 liveOuts
       emit (Lst (CondBranch op ty x' y' lbl1 lbl2))
     Eval lbl lives x -> do
-      x' <- allocRef1' liveOuts x
+      x' <- allocRef1' env liveOuts x
       rememberState lbl lives
-      lives' <- S.fromList <$> mapM allocRef1 (S.toList lives)
+      lives' <- S.fromList <$> mapM (allocRef1 env) (S.toList lives)
       emit (Lst (Eval lbl lives' x'))
     Case ctype x targets -> do
       -- trace ("CASE: " ++ pretty ins) $ do
       let realLiveOuts = liveOuts -- S.unions [ lives | (_, lives, _) <- targets ]
-      x' <- allocRef1' realLiveOuts x
+      x' <- allocRef1' env realLiveOuts x
       targets' <- forM targets $ \(tag, lives, lbl) -> do
-                    lives' <- S.fromList <$> mapM allocRef1 (S.toList lives)
+                    lives' <- S.fromList <$> mapM (allocRef1 env) (S.toList lives)
                     rememberState lbl lives
                     return (tag, lives', lbl)
       emit (Lst (Case ctype x' targets'))
@@ -546,11 +549,11 @@ allocRegsSingle (Lst ins) liveOuts = do
       emit (Lst Update)
     Stop -> do
       emit (Lst Stop)
-    _ -> error $ "NYI: " ++ pretty ins
+    _ -> error $ "NYI: " ++ pretty env ins
 
-liveOuts :: FactBase LiveVars -> Vector LinearIns -> Vector LiveVars
-liveOuts liveInsAtLabels inss =
-  -- Vec.map nonVoid $
+liveOuts :: GlobalEnv -> FactBase LiveVars -> Vector LinearIns -> Vector LiveVars
+liveOuts env liveInsAtLabels inss =
+  -- Vec.map (nonVoid env) $
      Vec.modify loop (Vec.replicate (Vec.length inss) S.empty)
  where
    loop :: MVec.MVector s LiveOuts -> ST s ()
@@ -577,16 +580,16 @@ liveOuts liveInsAtLabels inss =
      case inss Vec.! i of
        Fst ins -> do
          live_ins_next <- liveInsAt liveOuts (i + 1)
-         MVec.write liveOuts i (nonVoid live_ins_next)
+         MVec.write liveOuts i (nonVoid env live_ins_next)
        Mid ins -> do
          live_ins_next <- liveInsAt liveOuts (i + 1)
-         MVec.write liveOuts i (nonVoid live_ins_next)
+         MVec.write liveOuts i (nonVoid env live_ins_next)
        Lst ins -> do
          let ls = successors ins
          let live_outs =
                S.unions [ fromMaybe S.empty (lookupFact l liveInsAtLabels)
                         | l <- ls ]
-         MVec.write liveOuts i (nonVoid live_outs)
+         MVec.write liveOuts i (nonVoid env live_outs)
      go liveOuts (i - 1)
 
 {-

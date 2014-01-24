@@ -32,10 +32,9 @@ import Data.Binary
 
 #include "../../Opcodes.h"
 
-instance Show Ghc.Type where show = Ghc.showSDoc Ghc.tracingDynFlags . Ghc.ppr
-
-instance Pretty Ghc.Type where ppr t = text (show t)
-
+instance Pretty Ghc.Type where
+  ppr t = withGlobalEnv $ \env ->
+            text $ Ghc.showSDoc (envDynFlags env) $ Ghc.ppr t
 
 type BlockId = Label
 
@@ -201,7 +200,7 @@ instance Eq BcVar where
 instance Ord BcVar where
   compare = compareBcVar
 
-instance Show BcVar where show v = pretty v
+-- instance Show BcVar where show v = pretty v
 
 instance U.Uniquable BcVar where
   getUnique (BcVar x _) = U.getUnique x

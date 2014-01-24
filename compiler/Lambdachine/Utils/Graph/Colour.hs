@@ -28,7 +28,8 @@ colourGraph ::
      (Uniquable k, Uniquable cls, Uniquable colour,
       Eq colour, Eq cls, Ord k,
       Pretty k, Pretty cls, Pretty colour) =>
-     Bool -- ^ whether to do iterative coalescing
+     GlobalEnv
+  -> Bool -- ^ whether to do iterative coalescing
   -> Int
      -- ^ how many times we've tried to colour this graph so far.
   -> UniqueMap cls (UniqueSet colour)
@@ -52,7 +53,7 @@ colourGraph ::
      --  * map of regs @r1 -> r2@ that were coalesced; @r1@ should be
      --    replaced by @r2@ in the source.
 
-colourGraph iterative spinCount colours triv spill graph0 =
+colourGraph env iterative spinCount colours triv spill graph0 =
   let
     -- If we're not doing iterative coalescing then do an aggressive
     -- coalescing first time around and then conservative coalescing
@@ -65,13 +66,13 @@ colourGraph iterative spinCount colours triv spill graph0 =
     -- of cycles.
     (graph_coalesced, kksCoalesce1)
       | iterative      = (graph0, [])
-      | spinCount == 0 = coalesceGraph True  triv graph0
-      | otherwise      = coalesceGraph False triv graph0
+      | spinCount == 0 = coalesceGraph env True  triv graph0
+      | otherwise      = coalesceGraph env False triv graph0
 
     -- run the scanner to slurp out all the trivially colourable nodes
     -- (and do coalescing if iterative coalescing is enabled)
     (ksTriv, ksProblems, kksCoalesce2) =
-      colourScan iterative triv spill graph_coalesced
+      colourScan env iterative triv spill graph_coalesced
 
     -- If iterative coalescing is enabled, the scanner will coalesce
     -- the graph as does its business.  We need to apply all the
@@ -83,7 +84,7 @@ colourGraph iterative spinCount colours triv spill graph0 =
     -- coalescences found during scanning.
     --
     (graph_scan_coalesced, _) =
-      mapAccumL (coalesceNodes True triv) graph_coalesced kksCoalesce2
+      mapAccumL (coalesceNodes env True triv) graph_coalesced kksCoalesce2
 
     -- Colour the trivially colourable nodes.
     --
@@ -92,7 +93,7 @@ colourGraph iterative spinCount colours triv spill graph0 =
     -- order, as required by the algorithm.
     (graph_triv, ksNoTriv) =
        --trace ("coalesced: " ++ pretty graph_scan_coalesced) $
-       assignColours colours graph_scan_coalesced ksTriv
+       assignColours env colours graph_scan_coalesced ksTriv
 
     -- Try and colour the problem nodes.
     --
@@ -100,7 +101,7 @@ colourGraph iterative spinCount colours triv spill graph0 =
     -- they weren't triv.  theres a change we can colour them here
     -- anyway.
     (graph_prob, ksNoColour) =
-       assignColours colours graph_triv ksProblems
+       assignColours env colours graph_triv ksProblems
 
     -- if the trivially colourable nodes didn't colour then something is
     -- probably wrong with the provided triv function.
@@ -109,12 +110,12 @@ colourGraph iterative spinCount colours triv spill graph0 =
     if not $ null ksNoTriv
       then
         error $ "colourGraph: trivially colourable nodes didn't colour!" -- empty
-	  ++ pretty (  empty
+	  ++ pretty env (  empty
 		$$ text "ksTriv    = " <> ppr ksTriv
 		$$ text "ksNoTriv  = " <> ppr ksNoTriv
 		$$ text "colours    = " <> ppr colours
 		$$ empty
-                $$ text (dotGraph graph_triv))
+                $$ text (dotGraph env graph_triv))
 --		$$ dotGraph (\_ -> text "white") triv graph_triv) -- -}
 
       else
@@ -125,8 +126,8 @@ colourGraph iterative spinCount colours triv spill graph0 =
 	    else fromListUM kksCoalesce1)
 
 dotGraph :: forall k cls colour. (Ord k, Pretty k, Pretty cls, Pretty colour) =>
-            Graph k cls colour -> String
-dotGraph g = unlines $ [ "graph G {" ] ++ edges ++ [ "}" ]
+            GlobalEnv -> Graph k cls colour -> String
+dotGraph env g = unlines $ [ "graph G {" ] ++ edges ++ [ "}" ]
  where
    nodes :: [Node k cls colour]
    nodes = elementsUM (graphMap g)
@@ -139,7 +140,7 @@ dotGraph g = unlines $ [ "graph G {" ] ++ edges ++ [ "}" ]
    edges = removeDuplicates edges0  -- remove duplicates
    
    edges0 = 
-     [ show (pretty n_id) ++ " -- " ++ show (pretty c_id)
+     [ show (pretty env n_id) ++ " -- " ++ show (pretty env c_id)
      | n@Node{ nodeId = n_id0 } <- nodes
      , c_id0 <- elementsUS (nodeConflicts n)
      , let (n_id, c_id) = ordered_edge n_id0 c_id0
@@ -167,16 +168,17 @@ dotGraph g = unlines $ [ "graph G {" ] ++ edges ++ [ "}" ]
 colourScan ::
      (Uniquable k, Uniquable cls, Uniquable colour,
       Ord k, Eq cls, Pretty k, Pretty cls, Pretty colour) =>
-     Bool -- ^ whether to do iterative coalescing
+     GlobalEnv
+  -> Bool -- ^ whether to do iterative coalescing
   -> Triv k cls colour		-- ^ fn to decide whether a node is trivially colourable
   -> (Graph k cls colour -> k)	-- ^ fn to choose a node to potentially leave uncoloured if nothing is trivially colourable.
   -> Graph k cls colour		-- ^ the graph to scan
   -> ([k], [k], [(k, k)]) -- ^ triv colourable nodes, problem nodes, pairs of nodes to coalesce
 
-colourScan iterative triv spill graph =
-  colourScan_spin iterative triv spill graph [] [] []
+colourScan env iterative triv spill graph =
+  colourScan_spin env iterative triv spill graph [] [] []
 
-colourScan_spin iterative triv spill graph
+colourScan_spin env iterative triv spill graph
                ksTriv ksSpill kksCoalesce
   -- if the graph is empty then we're done
   | nullUM $ graphMap graph
@@ -196,7 +198,7 @@ colourScan_spin iterative triv spill graph
   , ksTrivFound <- map nodeId nsTrivFound
   , graph2 <- foldr (\k g -> let Just g' = delNode k g in g')
 	            graph ksTrivFound
-  = colourScan_spin iterative triv spill graph2
+  = colourScan_spin env iterative triv spill graph2
                    (ksTrivFound ++ ksTriv)
                    ksSpill
                    kksCoalesce
@@ -206,11 +208,11 @@ colourScan_spin iterative triv spill graph
  -- If we're doing iterative coalescing and no triv nodes are
  -- avaliable then it's time for a coalescing pass.
   | iterative
-  = case coalesceGraph False triv graph of
+  = case coalesceGraph env False triv graph of
       -- we were able to coalesce something; go back to Simplify and
       -- see if this frees up more nodes to be trivially colourable.
       (graph2, kksCoalesceFound @(_:_)) ->
-        colourScan_spin iterative triv spill graph2
+        colourScan_spin env iterative triv spill graph2
 		       ksTriv ksSpill (reverse kksCoalesceFound ++ kksCoalesce)
 
       -- Freeze:
@@ -222,18 +224,18 @@ colourScan_spin iterative triv spill graph
 	  -- we were able to freeze something hopefully this will free
 	  -- up something for Simplify
 	  (graph3, True) ->
-	    colourScan_spin iterative triv spill graph3
+	    colourScan_spin env iterative triv spill graph3
 			   ksTriv ksSpill kksCoalesce
 
 	  -- we couldn't find something to freeze either
 	  --	time for a spill
 	  (graph3, False) ->
-	    colourScan_spill iterative triv spill graph3
+	    colourScan_spill env iterative triv spill graph3
 			    ksTriv ksSpill kksCoalesce
 
   -- spill time
   | otherwise
-  = colourScan_spill iterative triv spill graph
+  = colourScan_spill env iterative triv spill graph
                     ksTriv ksSpill kksCoalesce
 
 -- Select:
@@ -242,25 +244,26 @@ colourScan_spin iterative triv spill graph
 -- and the graph isn't empty yet.. We'll have to choose a spill
 -- candidate and leave it uncoloured.
 --
-colourScan_spill iterative triv spill graph
+colourScan_spill env iterative triv spill graph
                 ksTriv ksSpill kksCoalesce =
   let kSpill      = spill graph
       Just graph' = delNode kSpill graph
-  in colourScan_spin iterative triv spill graph'
+  in colourScan_spin env iterative triv spill graph'
                     ksTriv (kSpill : ksSpill) kksCoalesce
 
 -- | Try to assign a colour to all these nodes.
 assignColours ::
      (Uniquable k, Uniquable cls, Uniquable colour,
       Eq colour, Pretty cls) =>
-     UniqueMap cls (UniqueSet colour)
+     GlobalEnv
+  -> UniqueMap cls (UniqueSet colour)
      -- ^ map of (node class -> set of colours available for this
      -- class).
   -> Graph k cls colour -- ^ the graph
   -> [k]               -- ^ nodes to assign a colour to.
   -> (Graph k cls colour, [k])
      -- ^ The coloured graph, and the nodes that didn't colour.
-assignColours colours graph ks =
+assignColours env colours graph ks =
   assignColours' colours graph [] ks
 
  where
@@ -275,7 +278,7 @@ assignColours colours graph ks =
    	Just graph' -> assignColours' colours graph' prob ks
 
    assignColour colours u graph
-     | Just c <- selectColour colours graph u
+     | Just c <- selectColour env colours graph u
      = Just (setColour u c graph)
 
      | otherwise
@@ -290,21 +293,23 @@ assignColours colours graph ks =
 selectColour ::
      (Uniquable k, Uniquable cls, Uniquable colour,
       Eq colour, Pretty cls) =>
-     UniqueMap cls (UniqueSet colour)
+     GlobalEnv
+  -> UniqueMap cls (UniqueSet colour)
      -- ^ map of (node class -> set of colours available for this
      -- class).
   -> Graph k cls colour -- ^ the graph
   -> k                 -- ^ key of the node to select a colour for.
   -> Maybe colour
 
-selectColour colours graph u =
+selectColour env colours graph u =
   let
     Just node = lookupNode u graph
 
     -- lookup the available colours for the class of this node.
     colours_avail =
       case lookupUM (nodeClass node) colours of
-        Nothing	-> error $ "selectColour: no colours available for class " ++ (pretty (nodeClass node))
+        Nothing	-> error $ "selectColour: no colours available for class "
+                            ++ (pretty env $! nodeClass node)
         Just cs	-> cs
 
     -- Find colours we can't use because they're already being used by
@@ -388,7 +393,8 @@ instance Pretty Class where
 instance Uniquable Class where
   getUnique _ = unsafeMkUnique 1
 
-test = pretty $ colourGraph True 0 classes triv spill gr
+{-
+test = pretty _env $ colourGraph True 0 classes triv spill gr
   where
     [a,b,c,d,e,f] = zipWith Var [1..6] (map (:[]) ['a'..])
 
@@ -417,4 +423,4 @@ test = pretty $ colourGraph True 0 classes triv spill gr
 
     gr :: Graph Var Class Reg
     gr = foldr (\n g -> addNode (nodeId n) n g) newGraph nodes
-
+-}

@@ -19,27 +19,27 @@ import qualified Data.Set as S
 import qualified Data.Map as M
 import Data.Generics.Uniplate.Direct
 
-allocRegs :: String -> [String] -> BCOs
+allocRegs :: GlobalEnv -> String -> [String] -> BCOs
           -> BytecodeModule
-allocRegs mdl_name mdl_imports bcos0 =
-  let !bcos = M.map allocRegsBco bcos0 in
+allocRegs env mdl_name mdl_imports bcos0 =
+  let !bcos = M.map (allocRegsBco env) bcos0 in
   BytecodeModule
     { bcm_name = mdl_name
     , bcm_imports = mdl_imports
     , bcm_bcos = bcos }
 
-allocRegsBco :: BytecodeObject -> BytecodeObject' FinalCode
-allocRegsBco bco@BcoCon{} = -- this is just silly
+allocRegsBco :: GlobalEnv -> BytecodeObject -> BytecodeObject' FinalCode
+allocRegsBco _env bco@BcoCon{} = -- this is just silly
   BcoCon{ bcoType = bcoType bco
         , bcoDataCon = bcoDataCon bco
         , bcoFields = bcoFields bco }
-allocRegsBco bco@BcConInfo{} =
+allocRegsBco _env bco@BcConInfo{} =
   BcConInfo{ bcoConTag = bcoConTag bco
            , bcoConFields = bcoConFields bco
            , bcoConArgTypes = bcoConArgTypes bco }
-allocRegsBco bco@BcTyConInfo{} =
+allocRegsBco _env bco@BcTyConInfo{} =
   BcTyConInfo{ bcoDataCons = bcoDataCons bco }
-allocRegsBco bco0@BcObject{ bcoCode = code } =
+allocRegsBco env bco0@BcObject{ bcoCode = code } =
   BcObject{ bcoType = bcoType bco
           , bcoCode = finaliseCode (bcoArity bco0) code'
           , bcoGlobalRefs = bcoGlobalRefs bco
@@ -48,13 +48,13 @@ allocRegsBco bco0@BcObject{ bcoCode = code } =
  where
    (bco, live_facts) =
      runM $ analyseAndRewriteBCOBwd bco0
-              livenessAnalysis2 noFacts
-   code' = allocRegsGraph live_facts (bcoCode bco)
+              (livenessAnalysis2 env) noFacts
+   code' = allocRegsGraph env live_facts (bcoCode bco)
 
 -- | Allocate registers and linearise bytecode.
-allocRegsGraph :: FactBase LiveVars -> Graph BcIns O C -> LinearCode
-allocRegsGraph lives g =
-   assignRegs (lineariseCode lives g)
+allocRegsGraph :: GlobalEnv -> FactBase LiveVars -> Graph BcIns O C -> LinearCode
+allocRegsGraph env lives g =
+   assignRegs env (lineariseCode env lives g)
 
 -- | Finalise step in generating executable bytecode.  Does the
 -- following:
@@ -128,13 +128,14 @@ instance Pretty LinearCode where
     vcat (Vec.toList (Vec.zipWith pp is ls))
    where pp i l = fillBreak 30 (ppr i) <+> ppr l
 
-lineariseCode :: FactBase LiveVars -> Graph BcIns O C -> LinearCode
-lineariseCode live_facts g@(GMany (JustO entry) body NothingO) =
-   LinearCode (annotateWithLiveouts live_ins lin_code)
+lineariseCode :: GlobalEnv -> FactBase LiveVars -> Graph BcIns O C -> LinearCode
+lineariseCode env live_facts g@(GMany (JustO entry) body NothingO) =
+   LinearCode (annotateWithLiveouts env live_ins lin_code)
               live_ins live_outs labels
  where
    lin_code = Vec.fromList $ concat $ 
-                lineariseBlock live_facts entry : map (lineariseBlock live_facts) body_blocks
+                lineariseBlock env live_facts entry :
+                map (lineariseBlock env live_facts) body_blocks
    live_ins = liveIns live_facts lin_code
    live_outs = liveOuts live_facts lin_code
    body_blocks = postorder_dfs g  -- excludes entry sequence
@@ -148,8 +149,9 @@ lineariseCode live_facts g@(GMany (JustO entry) body NothingO) =
 --
 -- Annotates various instructions with the live variables.
 --
-lineariseBlock :: FactBase LiveVars -> Block BcIns e x -> [LinearIns]
-lineariseBlock live_facts blk = entry_ins (map Mid (blockToList middles) ++ tail_ins)
+lineariseBlock :: GlobalEnv -> FactBase LiveVars -> Block BcIns e x -> [LinearIns]
+lineariseBlock env live_facts blk =
+  entry_ins (map Mid (blockToList middles) ++ tail_ins)
  where
    (entry, middles, tail) = blockSplitAny blk
    entry_ins :: [LinearIns] -> [LinearIns]
@@ -169,10 +171,10 @@ lineariseBlock live_facts blk = entry_ins (map Mid (blockToList middles) ++ tail
                 JustC x -> [Lst x]
                 NothingC -> []
 
-   livesAt label = nonVoid $ fromMaybe S.empty (lookupFact label live_facts)
+   livesAt label = nonVoid env $ fromMaybe S.empty (lookupFact label live_facts)
 
-nonVoid :: LiveVars -> LiveVars
-nonVoid lives = S.filter (not . isVoid) lives
+nonVoid :: GlobalEnv -> LiveVars -> LiveVars
+nonVoid env lives = S.filter (not . isVoid env) lives
 
 -- | Calculate the live-in variables at each instruction.
 liveIns :: FactBase LiveVars -> Vector LinearIns -> Vector LiveVars
@@ -191,14 +193,15 @@ liveOuts global_live_outs inss =
    calcLives (Mid ins) live_out = live ins live_out
    calcLives (Fst ins) live_out = live ins live_out
 
-annotateWithLiveouts :: Vector LiveVars -> Vector LinearIns -> Vector LinearIns
-annotateWithLiveouts lives inss = Vec.imap annotate inss
+annotateWithLiveouts :: GlobalEnv 
+                     -> Vector LiveVars -> Vector LinearIns -> Vector LinearIns
+annotateWithLiveouts env lives inss = Vec.imap annotate inss
  where
    annotate :: Int -> LinearIns -> LinearIns
    annotate n (Mid (Assign d (Alloc t args _))) =
-     Mid (Assign d (Alloc t args (nonVoid $ lives Vec.! n)))
+     Mid (Assign d (Alloc t args (nonVoid env $ lives Vec.! n)))
    annotate n (Mid (Assign d (AllocAp args _))) =
-     Mid (Assign d (AllocAp args (nonVoid $ lives Vec.! n)))
+     Mid (Assign d (AllocAp args (nonVoid env $ lives Vec.! n)))
    annotate n i = i
 
 allRegs :: S.Set BcVar
@@ -260,13 +263,14 @@ type IGraph = Gr.Graph BcVar RegClass FinalReg
 --  * Variables that are live at the same time are allocated to
 --    different registers (the register allocation invariant).
 --
-assignRegs :: LinearCode -> LinearCode
-assignRegs lc@(LinearCode code lives live_outs lbls) =
-  let !assign1 = colourGraph (buildInterferenceGraph lc)
+assignRegs :: GlobalEnv -> LinearCode -> LinearCode
+assignRegs env lc@(LinearCode code lives live_outs lbls) =
+  let !assign1 = colourGraph env (buildInterferenceGraph lc)
       !code' = Vec.map (transformBi assign1) code
   in
     if not (verifyAlloc assign1 lives) then
-      error $ "BUG-IN-REGALLOC1\n" ++ pretty code ++ "\n\n" ++ pretty code' ++ "\n\n"
+      error $ "BUG-IN-REGALLOC1\n" ++ pretty env code ++ "\n\n" ++
+               pretty env code' ++ "\n\n"
 --            ++ pretty ig
      else
        LinearCode code' lives live_outs lbls
@@ -277,9 +281,9 @@ assignRegs lc@(LinearCode code lives live_outs lbls) =
      Vec.and (Vec.map (\l -> S.size (S.map assign1 l)
                                == S.size l) lives)
 
-colourGraph :: IGraph -> (BcVar -> BcVar)
-colourGraph igraph =
-  case Gr.colourGraph True 0 classes triv spill igraph of
+colourGraph :: GlobalEnv -> IGraph -> (BcVar -> BcVar)
+colourGraph env igraph =
+  case Gr.colourGraph env True 0 classes triv spill igraph of
     (igraph', uncoloured, coalesced)
       | nullUS uncoloured -> get_alloc igraph' coalesced
  where
@@ -290,7 +294,7 @@ colourGraph igraph =
 
    spill gr = error "Cannot spill"
 
-   get_alloc ig co x@(BcVar _ t) = get_alloc' ig co (transType t) x
+   get_alloc ig co x@(BcVar _ t) = get_alloc' ig co (transType env t) x
    get_alloc ig co x@(BcReg _ ot) = get_alloc' ig co ot x
    get_alloc' ig co ot x =
      case Gr.lookupNode x ig of
@@ -300,7 +304,7 @@ colourGraph igraph =
             case x of
               BcReg n _ -> if fromIntegral n /= r then
                              error $ "Invalid colouring for pre-assigned colour: "
-                               ++ pretty x
+                               ++ pretty env x
                            else x
               _ -> BcReg (fromIntegral r) ot
 
@@ -372,14 +376,15 @@ buildInterferenceGraph lc@(LinearCode code0 lives live_outs lbls) =
        _ -> node
 
 -- | The linear-scan register allocator.
-mkAllocMap :: LinearCode -> LinearCode -- M.Map BcVar BcVar
-mkAllocMap lc@(LinearCode code0 lives liveouts lbls) =
+mkAllocMap :: GlobalEnv -> LinearCode -> LinearCode -- M.Map BcVar BcVar
+mkAllocMap env lc@(LinearCode code0 lives liveouts lbls) =
   let (alloc, _, _) = Vec.foldl' alloc1 (M.empty, allRegs, S.empty) lives
       code' = assignRegs alloc code0
   in
     if not (verifyAlloc alloc lives) then
       let lc' = LinearCode code' (Vec.map (S.map (alloc M.!)) lives) liveouts lbls in
-      error ("BUG-IN-REGALLOC2\n" ++ pretty lc ++ "\n\n" ++ pretty alloc ++ "\n" ++ pretty lc')
+      error ("BUG-IN-REGALLOC2\n" ++ pretty env lc ++ "\n\n" 
+             ++ pretty env alloc ++ "\n" ++ pretty env lc')
      else
        LinearCode code' lives liveouts lbls
  where

@@ -38,7 +38,7 @@ import qualified Coercion as Ghc
 import TyCon ( TyCon )
 import Pair ( Pair(..) )
 import Outputable ( Outputable, alwaysQualify, showSDocOneLine )
-import DynFlags ( tracingDynFlags )
+-- import DynFlags ( tracingDynFlags )
 import qualified Outputable as Out
 import qualified Pretty as Out
 import CoreSyn ( CoreBndr, AltCon(..) )
@@ -47,6 +47,7 @@ import Var ( isTyVar )
 import Unique ( Uniquable(..), getKey )
 import FastString ( unpackFS )
 
+import qualified Data.ByteString.Char8 as BC8
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Control.Applicative hiding ( (<*>) )
@@ -73,12 +74,12 @@ invariant :: Applicative m => String -> Bool -> m ()
 invariant msg check =
   if not check then error ("FATAL: " ++ msg) else pure ()
 
-tracePpr :: Outputable a => a -> b -> b
-tracePpr o exp = trace (">>> " ++ showPpr o) exp
+-- tracePpr :: Outputable a => a -> b -> b
+-- tracePpr o exp = trace (">>> " ++ showPpr o) exp
 
-showPpr1 :: Outputable a => a -> String
-showPpr1 o = Out.showDocWith Out.OneLineMode $
-  Out.withPprStyleDoc tracingDynFlags Out.defaultUserStyle (Out.ppr o)
+-- showPpr1 :: Outputable a => a -> String
+-- showPpr1 o = Out.showDocWith Out.OneLineMode $
+--   Out.withPprStyleDoc tracingDynFlags Out.defaultUserStyle (Out.ppr o)
 
 ------------------------------------------------------------------------
 -- * Other utilities
@@ -93,13 +94,14 @@ lengthIs _ _  = False
 -- * Top-level Interface
 type Bcis x = BcGraph O x
 
-stgToBytecode :: Supply Unique
+stgToBytecode :: GlobalEnv
+              -> Supply Unique
               -> Ghc.ModuleName
               -> [StgBinding]
               -> [TyCon]
               -> BCOs
-stgToBytecode uniques mdl bndrs0 data_tycons =
-  runTrans mdl uniques $ do
+stgToBytecode env uniques mdl bndrs0 data_tycons =
+  runTrans env mdl uniques $ do
     mapM_ transTyCon data_tycons
     mapM_ transTopLevelBind bndrs0
     getBCOs
@@ -108,13 +110,14 @@ stgToBytecode uniques mdl bndrs0 data_tycons =
 
 transTyCon :: TyCon -> Trans ()
 transTyCon tycon = do
-  addBCO (tyConId (Ghc.tyConName tycon)) $
+  env <- askGlobalEnv
+  addBCO (tyConId env (Ghc.tyConName tycon)) $
     BcTyConInfo{ bcoDataCons =
-                    map dataConInfoTableId (Ghc.tyConDataCons tycon) }
+                    map (dataConInfoTableId env) (Ghc.tyConDataCons tycon) }
   forM_ (Ghc.tyConDataCons tycon) $ \dcon -> do
-    let dcon_id = dataConInfoTableId dcon
+    let dcon_id = dataConInfoTableId env dcon
         -- ty = transType (Ghc.dataConRepType dcon)
-        arg_tys = map transType (Ghc.dataConRepArgTys dcon)
+        arg_tys = map (transType env) (Ghc.dataConRepArgTys dcon)
           -- | FunTy args _ <- ty = args
                 -- | otherwise = []
         bco = BcConInfo { bcoConTag = Ghc.dataConTag dcon
@@ -127,7 +130,7 @@ transTyCon tycon = do
 ------------------------------------------------------------------------
 -- The bytecode translation generation monad
 
-newtype Trans a = Trans { unTrans :: State TransState a }
+newtype Trans a = Trans { unTrans :: ReaderT GlobalEnv (State TransState) a }
   deriving (Functor, Applicative, Monad, MonadFix)
 
 data TransState = TransState
@@ -138,8 +141,8 @@ data TransState = TransState
   , tsStack      :: [StgExpr]
   }
 
-runTrans :: Ghc.ModuleName -> Supply Unique -> Trans a -> a
-runTrans mdl us (Trans m) = evalState m s0
+runTrans :: GlobalEnv -> Ghc.ModuleName -> Supply Unique -> Trans a -> a
+runTrans env mdl us (Trans m) = evalState (runReaderT m env) s0
  where
    s0 = TransState { tsUniques = us
                    , tsLocalBCOs = M.empty
@@ -147,8 +150,11 @@ runTrans mdl us (Trans m) = evalState m s0
                    , tsParentFun = Nothing
                    , tsStack = [] }
 
+askGlobalEnv :: Trans GlobalEnv
+askGlobalEnv = Trans $ ask
+
 genUnique :: Trans (Supply Unique)
-genUnique = Trans $ do
+genUnique = Trans $ lift $ do
   s <- get
   case split2 (tsUniques s) of
     (us, us') -> do
@@ -193,19 +199,21 @@ addBCO x bco = Trans $
 -- will generate three closures named @M.foo@, @M.foo_bar@, and
 -- @M.foo_bar_quux@.
 withParentFun :: Ghc.Id -> Trans a -> Trans a
-withParentFun x (Trans act) = Trans $ do
-  s <- get
-  let x_occ = showSDocForUser Ghc.neverQualify (Ghc.ppr (Ghc.getOccName x))
-      pfun = tsParentFun s
-  put $! (case pfun of
-           Nothing ->
-             s{ tsParentFun = Just x_occ }
-           Just p ->
-             s{ tsParentFun = Just (p ++ "_" ++ x_occ) })
-  r <- act
-  s' <- get
-  put $! s'{ tsParentFun = pfun }
-  return r
+withParentFun x (Trans act) = do
+  genv <- askGlobalEnv
+  Trans $ do
+    s <- get
+    let x_occ = showSDocForUser genv Ghc.neverQualify (Ghc.ppr (Ghc.getOccName x))
+        pfun = tsParentFun s
+    put $! (case pfun of
+             Nothing ->
+               s{ tsParentFun = Just x_occ }
+             Just p ->
+               s{ tsParentFun = Just (p ++ "_" ++ x_occ) })
+    r <- act
+    s' <- get
+    put $! s'{ tsParentFun = pfun }
+    return r
 
 getParentFun :: Trans (Maybe String)
 getParentFun = Trans (gets tsParentFun)
@@ -232,7 +240,16 @@ data ValueLocation
     -- ^ The value is a top-level ID.
   | Void
     -- ^ The value does not have a representation.
-  deriving Show
+
+instance Pretty ValueLocation where
+  ppr (InVar x)     = text "InVar" <+> ppr x
+  ppr (Field x n t) = text "Field" <+> ppr x <+> ppr n <+> prettyGhc t
+  ppr (InReg n t)   = text "InReg" <+> ppr n <+> prettyGhc t
+  ppr (FreeVar n)   = text "FreeVar" <+> ppr n
+  ppr Fwd           = text "Fwd"
+  ppr Self          = text "Self"
+  ppr (Global x)    = text "Global" <+> ppr x
+  ppr Void          = text "Void"
 
 -- | Maps GHC Ids to their (current) location in bytecode.
 --
@@ -286,22 +303,25 @@ instance Monoid KnownLocs where
 
 transTopLevelBind :: StgBinding -> Trans ()
 transTopLevelBind (StgNonRec x rhs) = do
-  x' <- (`toplevelId` x) <$> getThisModule
+  env <- askGlobalEnv
+  x' <- (\mdl -> toplevelId env mdl x) <$> getThisModule
   transTopLevelRhs x x' rhs
-transTopLevelBind (StgRec recs) =
+transTopLevelBind (StgRec recs) = do
+  env <- askGlobalEnv
   forM_ recs $ \(x, rhs) -> do
-    x' <- (`toplevelId` x) <$> getThisModule
+    x' <- (\mdl -> toplevelId env mdl x) <$> getThisModule
     transTopLevelRhs x x' rhs
 
 transTopLevelRhs :: Ghc.Id -> Id -> StgRhs -> Trans ()
-transTopLevelRhs bndr0 bndr rhs =
+transTopLevelRhs bndr0 bndr rhs = do
+  genv <- askGlobalEnv
   case rhs of
     StgRhsCon _ccs dcon args ->
       transTopLevelRhsConstr bndr dcon args
 
     StgRhsClosure _ccs bndrInfo frees upd _srt args body -> do
       invariant ("Toplevel closure cannot have any free variables" ++
-                 showPpr rhs)$
+                 showPpr genv rhs)$
         null frees
       transTopLevelRhsClosure bndr0 bndr bndrInfo upd args body
 
@@ -309,13 +329,14 @@ transTopLevelRhs bndr0 bndr rhs =
 
 transTopLevelRhsConstr :: Id -> DataCon -> [StgArg] -> Trans ()
 transTopLevelRhsConstr x dcon args = do
+  env <- askGlobalEnv
   invariant ("Datacon arity must match given no. of args: " ++
-             showPpr1 (dcon, args)) $
+             showPpr env (dcon, args)) $
     args `lengthIs` Ghc.dataConRepRepArity dcon
 
   this_mdl <- getThisModule
-  let dcon' = dataConInfoTableId dcon
-      fields = transFields (toplevelId this_mdl) args
+  let dcon' = dataConInfoTableId env dcon
+      fields = transFields (toplevelId env this_mdl) args
   addBCO x $! BcoCon Con dcon' fields
 
 transFields :: (Ghc.Id -> a) -> [StgArg] -> [Either BcConst a]
@@ -334,8 +355,9 @@ transTopLevelRhsClosure :: Ghc.Id
                         -> StgExpr
                         -> Trans ()
 transTopLevelRhsClosure x0 x _bndrInfo upd args body = do
+  genv <- askGlobalEnv
   let bco_type
-        | (_:_) <- args = BcoFun (length args) (map (transType . {- Ghc.repType .-}  Ghc.varType) args)
+        | (_:_) <- args = BcoFun (length args) (map (transType genv . {- Ghc.repType .-}  Ghc.varType) args)
         | otherwise     = CAF
 
   let env0 = mkLocalEnv [(x, undefined) | x <- args]
@@ -472,6 +494,7 @@ transBody e@(StgApp f args) env locs0 fvi ctxt =
   within e $ transApp f args env locs0 fvi ctxt
 
 transBody (StgOpApp (StgPrimOp primOp) args rslt_ty) env locs0 fvi ctxt = do
+  genv <- askGlobalEnv
   (is0, locs1, regs) <- transArgs args env locs0 fvi
   case () of
    _ | Just (op, ty) <- primOpToBinOp primOp, [r1, r2] <- regs
@@ -494,9 +517,9 @@ transBody (StgOpApp (StgPrimOp primOp) args rslt_ty) env locs0 fvi ctxt = do
        l1 <- freshLabel;  l2 <- freshLabel;  l3 <- freshLabel
        let is1 =  -- shape: O/O
              catGraphsC (is0 <*> insBranch cond ty r1 r2 l1 l2)
-               [ mkLabel l1 <*> insLoadGbl rslt trueDataConId
+               [ mkLabel l1 <*> insLoadGbl rslt (trueDataConId genv)
                             <*> insGoto l3,
-                 mkLabel l2 <*> insLoadGbl rslt falseDataConId
+                 mkLabel l2 <*> insLoadGbl rslt (falseDataConId genv)
                             <*> insGoto l3]
              |*><*| mkLabel l3
        maybeAddRet ctxt is1 locs1 rslt
@@ -523,7 +546,7 @@ transBody (StgOpApp (StgPrimOp primOp) args rslt_ty) env locs0 fvi ctxt = do
                    locs1 result
 
    _ | otherwise
-     -> error $ "Unknown primop: " ++ showPpr primOp
+     -> error $ "Unknown primop: " ++ showPpr genv primOp
 
 transBody (StgConApp dcon []) env locs0 fvi ctxt = do
   -- Constructors without arguments are special.  Since they don't
@@ -535,14 +558,16 @@ transBody (StgConApp dcon []) env locs0 fvi ctxt = do
 
 transBody (StgConApp dcon args) env locs0 fvi ctxt
  | Ghc.isUnboxedTupleCon dcon
- = case ctxt of
+ = do
+   genv <- askGlobalEnv
+   case ctxt of
      BindC _ _ -> do
        st <- getStack
        error $ "Trying to bind an unboxed tuple to a variable: " ++
-         showPpr st
+         showPpr genv st
      RetC -> do
        (is0, locs1, vars0) <- transArgs args env locs0 fvi
-       let vars = removeIf isVoid vars0
+       let vars = removeIf (isVoid genv) vars0
        case vars of
          [] ->
            error "Unboxed tuple contained only void arguments"
@@ -551,7 +576,7 @@ transBody (StgConApp dcon args) env locs0 fvi ctxt
          (_:_:_) -> do
            -- Return all N vars in registers r0..r(N-1)
            let resultRegs =
-                 [ BcReg n (transType (bcVarType var))
+                 [ BcReg n (transType genv (bcVarType var))
                  | (n, var) <- zip [0..] vars ]
            let is =
                  is0 <*> catGraphs [ insMove reg var
@@ -561,10 +586,10 @@ transBody (StgConApp dcon args) env locs0 fvi ctxt
  | otherwise = do
   (is0, locs1, regs) <- transArgs args env locs0 fvi
   (is1, locs2, con_reg) <- loadDataCon dcon env fvi locs1 (contextVar ctxt)
-  trace (showPpr $ dataConOrigResTy dcon) $ do
-   rslt <- mbFreshLocal (dataConOrigResTy dcon) (contextVar ctxt)
-   let is2 = (is0 <*> is1) <*> insAlloc rslt con_reg regs
-   maybeAddRet ctxt is2 locs2 rslt
+   -- trace (showPpr $ dataConOrigResTy dcon) $ do 
+  rslt <- mbFreshLocal (dataConOrigResTy dcon) (contextVar ctxt)
+  let is2 = (is0 <*> is1) <*> insAlloc rslt con_reg regs
+  maybeAddRet ctxt is2 locs2 rslt
 
 transBody e@(StgCase expr _livesWhole _livesRhss bndr _srt altType alts)
     env locs0 fvi ctxt = do
@@ -594,7 +619,8 @@ transBody (StgLam _ _) _env _locs0 _fvi _ctxt = do
   error $ "INVARIANT: StgLam must not occur in final STG"
 
 transBody body  _env _locs0 _fvi _ctxt = do
-  error $ "NYI: Translation of " ++ showPpr body
+  genv <- askGlobalEnv
+  error $ "NYI: Translation of " ++ showPpr genv body
 
 --transBody _ env ctxt = return (emptyGraph, Nothing)
 
@@ -615,10 +641,13 @@ transBinds (StgNonRec x rhs) env locs0 fvi = do
       return (is0 <*> insMove rslt clos_reg, locs2, [rslt])
 
 transBinds (StgRec pairs) env locs0 fvi = do
+  genv <- askGlobalEnv
   let
     go [] is locs alloced pending_fwd_refs =
       if not (null pending_fwd_refs) then
-        error $ "NYI: Forward refs: " ++ show pending_fwd_refs
+        error $ "NYI: Forward refs: " ++ 
+          unlines [ pretty genv x ++ ": " ++ showFwdRef genv fwd_ref
+                  | (x, fwd_ref) <- pending_fwd_refs ]
        else
         return (is, locs, reverse alloced)
 
@@ -649,8 +678,10 @@ data FwdRef = FwdRef
   , fwdId     :: !Ghc.Id
   } deriving Eq
 
-instance Show FwdRef where
-  show (FwdRef n x) = "Fwd " ++ show n ++ " " ++ showPpr x
+showFwdRef :: GlobalEnv -> FwdRef -> String
+showFwdRef genv (FwdRef n x) = "Fwd " ++ show n ++ " " ++ showPpr genv x
+-- instance Show FwdRef where
+--   show (FwdRef n x) = "Fwd " ++ show n ++ " " ++ showPpr x
 
 ------------------------------------------------------------------------
 
@@ -693,6 +724,8 @@ transRhs r@(StgRhsClosure _ccs _info frees0 _upd _srt args body)
   -- TODO: Detect when args == [] and body is just a function application
  --trace ("THUNK()" ++ showPpr (r, frees, self, isRec)) $ do
 
+  genv <- askGlobalEnv
+
   -- 1. Create a new BCO for the body of the closure.
   info_tbl0 <- do
     let locs0 = mkLocs [ (arg, InReg n t) |
@@ -710,12 +743,12 @@ transRhs r@(StgRhsClosure _ccs _info frees0 _upd _srt args body)
     let cl_prefix | Nothing <- parent = ".cl_"
                   | Just s  <- parent = ".cl_" ++ s ++ "_"
 
-    x' <- freshVar (showPpr this_mdl ++ cl_prefix ++ Ghc.getOccString self) mkTopLevelId
+    x' <- freshVar (showPpr genv this_mdl ++ cl_prefix ++ Ghc.getOccString self) mkTopLevelId
 
     g <- finaliseBcGraph is0
     let arity = length args
-        arg_types = map (transType . repType . Ghc.varType) args
-        free_vars = M.fromList [ (n, transType (Ghc.varType v))
+        arg_types = map (transType genv . repType . Ghc.varType) args
+        free_vars = M.fromList [ (n, transType genv (Ghc.varType v))
                                 | (n, v) <- zip [1..] frees ]
 
     let bco = BcObject
@@ -749,10 +782,10 @@ transRhs r@(StgRhsClosure _ccs _info frees0 _upd _srt args body)
 
 type Fixup = [(BcVar, Int, BcVar)]
 
-showSRT :: SRT -> String
-showSRT NoSRT = "NoSRT"
-showSRT (SRTEntries idset) = showPpr idset
-showSRT (SRT ofs len bitmap) = "<bitmap>"
+showSRT :: GlobalEnv -> SRT -> String
+showSRT _env NoSRT                = "NoSRT"
+showSRT env  (SRTEntries idset)   = showPpr env idset
+showSRT _env (SRT ofs len bitmap) = "<bitmap>"
 
 ------------------------------------------------------------------------
 
@@ -761,17 +794,19 @@ transApp :: Ghc.Id -> [StgArg] -> LocalEnv -> KnownLocs
          -> Trans (Bcis x, KnownLocs, Maybe BcVar)
 transApp f args env locs0 fvi ctxt
   | length args > cMAX_CALL_ARGS
-  = error $ "Call with too many args: " ++ showPpr f ++ " (" ++
-            show (length args) ++ ")"
+  = do genv <- askGlobalEnv
+       error $ "Call with too many args: " ++ showPpr genv f ++ " (" ++
+               show (length args) ++ ")"
   | otherwise
   = do (is0, locs1, regs) <- transArgs args env locs0 fvi
        (is1, fr, _, locs2) <- transVar f env fvi locs1 Nothing
+       genv <- askGlobalEnv
        let is2 = is0 <*> is1
        case ctxt of
          RetC -> -- tail call
            -- Ensure that tailcalls always use registers r0..r(N-1)
            -- for arguments.  This allows zero-copy function call.
-           let typed_regs = [ BcReg n (transType (bcVarType r))
+           let typed_regs = [ BcReg n (transType genv (bcVarType r))
                             | (n,r) <- zip [0..] regs ]
                is3 = is2 <*>
                       catGraphs [ insMove tr r
@@ -792,7 +827,7 @@ transApp f args env locs0 fvi ctxt
            --                      ghcPretty (f, repType (Ghc.varType f),
            --                                 Ghc.varType f, length args)
            --                      ++ "\n" ++ ghcPretty st
-           let rslt_ty:_ = splitUnboxedTuples rslt_ty0
+           let rslt_ty:_ = splitUnboxedTuples genv rslt_ty0
            r <- mbFreshLocal rslt_ty opt_reg
            let ins = withFresh $ \l ->
                        is2 <*> insCall (Just (r, l)) fr regs
@@ -989,8 +1024,10 @@ transCase expr bndr (UbxTupAlt n) alts@[(_, vars, _, body)] env
   (bcis, locs1, Just r0) <- transBody expr env locs0 fvi $!
                               BindC (bndrType bndr) Nothing
 
+  genv <- askGlobalEnv
+
   -- Only non-void values are actually returned.
-  let nonVoidVars = removeIf isGhcVoid vars
+  let nonVoidVars = removeIf (isGhcVoid genv) vars
   case nonVoidVars of
     [var] -> do  -- same as regular return, really
       let locs2 = updateLoc locs1 var (InVar r0)
@@ -1017,7 +1054,8 @@ transCase expr bndr (UbxTupAlt n) alts@[(_, vars, _, body)] env
   -- error "NYI: Case on unboxed tuple"
 
 transCase expr bndr alt_ty alts env locs0 fvi ctxt = do
-  error $ "NYI: Case expression: " ++ showPpr (alt_ty, expr, alts)
+  genv <- askGlobalEnv
+  error $ "NYI: Case expression: " ++ showPpr genv (alt_ty, expr, alts)
 
 ------------------------------------------------------------------------
 {-
@@ -1147,6 +1185,7 @@ transBinaryCase cond ty args bndr alt_ty alts@[_,_] env0 fvi locs0 ctxt = do
   --
   -- > bndr :-> loadLit True
   --
+  genv <- askGlobalEnv
   (bcis, locs1, [r1, r2]) <- transArgs args env0 locs0 fvi
 --  let locs2 = updateLoc locs1 bndr (InVar r)
   let env = extendLocalEnv env0 bndr undefined
@@ -1174,8 +1213,8 @@ transBinaryCase cond ty args bndr alt_ty alts@[_,_] env0 fvi locs0 ctxt = do
           <- transBody body env locs2 fvi ctxt'
         return (l, mkLabel l <*> bcis)
 
-  (tLabel, tBcis) <- transUnaryConAlt trueBody trueDataConId
-  (fLabel, fBcis) <- transUnaryConAlt falseBody falseDataConId
+  (tLabel, tBcis) <- transUnaryConAlt trueBody (trueDataConId genv)
+  (fLabel, fBcis) <- transUnaryConAlt falseBody (falseDataConId genv)
 
   case ctxt' of
     RetC -> do
@@ -1227,13 +1266,14 @@ transVar ::
 --                            ++ showPpr (Ghc.idType x) ++ " / "
 --                            ++ show (not (Ghc.isUnLiftedType (Ghc.idType x))))
 --                     False = undefined
-transVar x env fvi locs0 mr =
+transVar x env fvi locs0 mr = do
+  genv <- askGlobalEnv
   case lookupLoc locs0 x of
     Just (InVar x') -> {- trace ("inVAR: (" ++ pretty x' ++ ") <> " ++ ppVar x) $ do -}
       return (mbMove mr x', fromMaybe x' mr, in_whnf, locs0)
     Just (InReg r ty) -> do -- trace "inREG" $
       x' <- mbFreshLocal ty mr
-      return (insMove x' (BcReg r (transType ty)), x', in_whnf,
+      return (insMove x' (BcReg r (transType genv ty)), x', in_whnf,
               updateLoc locs0 x (InVar x'))
     Just (Field p n ty) -> do -- trace "inFLD" $ do
       --trace ("Field:" ++ show (p,bcVarType p,n) ++ ":" ++ ghcPretty ty) $ do
@@ -1259,7 +1299,7 @@ transVar x env fvi locs0 mr =
           -- Note: To avoid keeping track of two environments we must
           -- only reach this case if the variable is bound outside the
           -- current closure.
-          if isGhcVoid x then
+          if isGhcVoid genv x then
             error "Free variables of type void not yet supported."
            else do
             r <- mbFreshLocal (repType (Ghc.varType x)) mr
@@ -1270,13 +1310,13 @@ transVar x env fvi locs0 mr =
 
       | otherwise -> do  -- global variable
           this_mdl <- getThisModule
-          let x' = toplevelId this_mdl x
+          let x' = toplevelId genv this_mdl x
           r <- mbFreshLocal (repType (Ghc.varType x)) mr
           {- trace ("VARadd:" ++ ppVar x ++ " : " ++ pretty x') $ do -}
           return (insLoadGbl r x', r, isGhcConWorkId x,  -- TODO: only if CAF
                   updateLoc locs0 x (InVar r))
-    r -> error $ "transVar: unhandled case: " ++ show r ++ " "
-              ++ showPpr x
+    r -> error $ "transVar: unhandled case: " ++ pretty genv r ++ " "
+              ++ showPpr genv x
  where
    in_whnf = Ghc.isUnLiftedType (Ghc.idType x)
 
@@ -1286,6 +1326,7 @@ loadDataCon :: DataCon -> LocalEnv -> FreeVarsIndex -> KnownLocs
             -> Maybe BcVar
             -> Trans (Bcis O, KnownLocs, BcVar)
 loadDataCon dcon env fvi locs0 mr = do
+  genv <- askGlobalEnv
   let x = dataConWorkId dcon
   case lookupItblLoc locs0 x of
     Just (InVar x') ->
@@ -1294,13 +1335,13 @@ loadDataCon dcon env fvi locs0 mr = do
     Just (InReg r ty) -> do
       -- trace ("DCONinREG (" ++ pretty r ++ ") <> " ++ ppVar  x) $
       x' <- mbFreshLocal ty mr
-      return (insMove x' (BcReg r (transType ty)),
+      return (insMove x' (BcReg r (transType genv ty)),
               updateItblLoc locs0 x (InVar x'), x')
     Nothing -> do
       this_mdl <- getThisModule
       let is_nullary = Ghc.isNullarySrcDataCon dcon
-      let x' | is_nullary = toplevelId this_mdl x
-             | otherwise  = dataConInfoTableId dcon
+      let x' | is_nullary = toplevelId genv this_mdl x
+             | otherwise  = dataConInfoTableId genv dcon
       let ty | is_nullary = ghcAnyType
              | otherwise  = Ghc.bcoPrimTy
       -- trace ("DCONadd: " ++ ppVar x ++ " : " ++ pretty x') $ do
@@ -1357,7 +1398,11 @@ transLiteral lit mbvar = do
 
 fromGhcLiteral :: Ghc.Literal -> BcConst
 fromGhcLiteral lit = case lit of
+#if __GLASGOW_HASKELL__ <= 706
   Ghc.MachStr fs   -> CStr (unpackFS fs)
+#elif __GLASGOW_HASKELL__ >= 707 && __GLASGOW_HASKELL__ < 709
+  Ghc.MachStr bs   -> CStr (BC8.unpack bs)  -- UTF8 encoded
+#endif
   Ghc.MachChar c   -> CChar c
   Ghc.MachInt n    -> CInt n
   Ghc.MachInt64 n  -> CInt64 n
