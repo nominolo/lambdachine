@@ -26,17 +26,20 @@ import qualified Lambdachine.Options as Cli
 import Ghc.Api.V76
 import Ghc.Api.V76Hsc
 #elif __GLASGOW_HASKELL__ >= 707 && __GLASGOW_HASKELL__ < 709
-import Ghc.Api.V78
+import DriverPipeline -- ( runPhase )
+import Hooks
+import DriverPhases ( Phase(..) )
 #else
 #error "This version of GHC is not supported. Sorry."
 #endif
 
 import ErrUtils ( Messages )
 import GHC
-import HscTypes ( HscEnv(hsc_dflags), CgGuts(..) )
+import HscTypes ( HscEnv(hsc_dflags), CgGuts(..), HscStatus(..) )
 import DynFlags ( setPackageName, updOptLevel, dopt_unset, DynFlags(..), Settings(..), PkgConfRef(..) )
 import GHC.Paths ( libdir )
 import Outputable hiding ( showPpr )
+import qualified Outputable as Out
 import MonadUtils ( liftIO )
 import Bag ( emptyBag )
 import qualified Data.Map as M
@@ -47,6 +50,7 @@ import TyCon ( isDataTyCon )
 import qualified Id as Ghc
 import CoreToStg        ( coreToStg )
 import SimplStg         ( stg2stg )
+import qualified SysTools
 
 import Data.Generics.Uniplate.Direct
 
@@ -55,10 +59,10 @@ import Control.Exception ( onException )
 import Control.Monad ( when, unless )
 import Data.List ( isSuffixOf )
 import System.Environment ( getArgs )
-import System.Directory ( getTemporaryDirectory, renameFile, removeFile )
+import System.Directory ( getTemporaryDirectory, renameFile, removeFile, createDirectoryIfMissing )
 import System.IO ( openTempFile, hPutStr, hFlush, hClose )
-import System.Cmd ( rawSystem )
-import System.FilePath ( replaceExtension )
+--import System.Cmd ( rawSystem )
+import System.FilePath ( replaceExtension, takeDirectory )
 import System.IO.Temp
 
 dbPath :: String
@@ -89,13 +93,136 @@ main = do
         isNotUser UserPkgConf = False
         isNotUser _ = True
 
-        dflags = dflags3{ extraPkgConfs = filter isNotUser . extraPkgConfs dflags3 }
+        dflags4 = dflags3{ extraPkgConfs = filter isNotUser . extraPkgConfs dflags3 }
+
+        dflags = dflags4{ hooks = (hooks dflags4){ runPhaseHook = Just (lcPhaseHook opts) } }
 
         --dopt_unset dflags3 Opt_ReadUserPackageConf
     setSessionDynFlags dflags
     let file = Cli.inputFile opts
     hsc_env <- getSession
-    
+
+    out <- liftIO $ compileFile hsc_env StopLn (file, Nothing)
+    return ()
+
+
+lcPhaseHook :: Cli.Options -> PhasePlus -> FilePath -> DynFlags -> CompPipeline (PhasePlus, FilePath)
+lcPhaseHook options (HscOut src_flavour mod_name result) _ dflags = do
+  -- Copied from GHC's DriverPipeline implementation
+  location <- getLocation src_flavour mod_name
+  setModLocation location
+
+  let o_file = ml_obj_file location -- The real object file
+      hsc_lang = hscTarget dflags
+      next_phase = hscPostBackendPhase dflags src_flavour hsc_lang
+
+  case result of
+    HscNotGeneratingCode ->
+      return (RealPhase StopLn,
+              panic "No output filename from Hsc when no-code")
+    HscUpToDate ->
+        do liftIO $ touchObjectFile dflags o_file
+           -- The .o file must have a later modification date
+           -- than the source file (else we wouldn't get Nothing)
+           -- but we touch it anyway, to keep 'make' happy (we think).
+           return (RealPhase StopLn, o_file)
+    HscUpdateBoot ->
+        do -- In the case of hs-boot files, generate a dummy .o-boot
+           -- stamp file for the benefit of Make
+           liftIO $ touchObjectFile dflags o_file
+           return (RealPhase next_phase, o_file)
+    HscRecomp cgguts mod_summary
+      -> do output_fn <- phaseOutputFilename next_phase
+
+            PipeState{hsc_env=hsc_env'} <- getPipeState
+
+            (outputFilename, mStub) <- liftIO $ genBytecode options hsc_env' cgguts mod_summary output_fn
+
+            -- TODO: We don't support stubs yet
+            -- case mStub of
+            --   Nothing -> return ()
+            --   Just stub_c -> do
+            --     stub_o <- liftIO $ compileStub hsc_env' stub_c
+            --     setStubO stub_o
+
+            -- TODO: No linking at this point
+            return (RealPhase StopLn, outputFilename)
+
+lcPhaseHook _options pp path dflags = do
+  --liftIO $ putStrLn $ Out.showPpr dflags pp
+  runPhase pp path dflags
+
+
+
+genBytecode :: Cli.Options -> HscEnv -> CgGuts -> ModSummary -> FilePath -> IO (FilePath, ())
+genBytecode options hsc_env guts mod_summary outputFilename = do
+  
+  let dflags = hsc_dflags hsc_env
+  let CgGuts{ -- This is the last use of the ModGuts in a compilation.
+              -- From now on, we just use the bits we need.
+        cg_module   = this_mod,
+        cg_binds    = core_binds,
+        cg_tycons   = tycons,
+        cg_foreign  = foreign_stubs0,
+        cg_dep_pkgs = dependencies,
+        cg_hpc_info = hpc_info } = guts
+                                   
+  let imports =
+        [ unLoc (ideclName imp)
+        | L _ imp <- ms_textual_imps mod_summary ++ ms_srcimps mod_summary ]
+
+  let data_tycons = filter isDataTyCon tycons
+
+  prepd_binds <- corePrepPgm dflags hsc_env core_binds data_tycons
+
+  stg_binds <- coreToStg dflags this_mod prepd_binds
+
+  (stg_binds2, cost_centre_info) <- stg2stg dflags this_mod stg_binds
+  let stg_binds3 = stg_binds2
+
+  when (Cli.dumpCoreBinds options) $ do
+    putStrLn "================================================="
+    putStrLn $ Out.showPpr dflags stg_binds2
+
+  s <- newUniqueSupply 'g'
+
+  let genv = GlobalEnv dflags
+  let bcos = stgToBytecode genv s (moduleName this_mod) stg_binds3 data_tycons
+
+  when (Cli.dumpBytecode options) $ do
+    pprint genv bcos
+
+  let !bco_mdl =
+         allocRegs genv
+                   (moduleNameString (moduleName this_mod))
+                   (map moduleNameString imports)
+                   bcos
+
+  when (Cli.dumpBytecode options) $ do
+    pprint genv bco_mdl
+  
+  let file = ml_obj_file (ms_location mod_summary)
+  let ofile = file `replaceExtension` ".lcbc"
+  
+  putStrLn $ "Writing bytecode to " ++ show ofile
+  tmpdir <- getTemporaryDirectory
+  (tmpfile, hdl) <- openBinaryTempFile tmpdir "lcc.lcbc"
+  (`onException` (hClose hdl >> removeFile tmpfile)) $ do
+    hWriteModule genv hdl bco_mdl
+    hFlush hdl  -- just to be sure
+    hClose hdl
+    renameFile tmpfile ofile
+
+  return (ofile, ())
+
+
+touchObjectFile :: DynFlags -> FilePath -> IO ()
+touchObjectFile dflags path = do
+  createDirectoryIfMissing True $ takeDirectory path
+  SysTools.touch dflags "Touching object file" path
+
+
+{-    
     let hooks = defaultHooks
                   { hookCodeGen = compileToBytecode2 opts hsc_env
                   , hookPostBackendPhase =
@@ -104,7 +231,7 @@ main = do
 
     out <- liftIO $ compileFile hsc_env hooks StopLn(file, Nothing)
     return ()
-
+-}
     -- let hooks = defaultPhaseImplementations
     --               { runHsCompiler = compileToBytecode opts }
     -- _ <- compileFile hsc_env hooks StopLn (Source file Nothing)
@@ -113,7 +240,7 @@ main = do
 
 -- hscRecompiled :: HscStatus
 -- hscRecompiled = HscRecomp False ()
-
+{-
 compileToBytecode' :: Cli.Options
                    -> HscEnv
                    -> Hook (ModIface -> ModDetails -> CgGuts -> ModSummary
@@ -381,4 +508,5 @@ main = do
     --let entry:_ = filter ((=="test") . show) (M.keys bcos')
     --pprint $ fst $ interp entry bcos'
     --test_record1 bcos'
+-}
 -}
