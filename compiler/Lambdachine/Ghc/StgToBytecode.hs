@@ -546,7 +546,10 @@ transBody (StgOpApp (StgPrimOp primOp) args rslt_ty) env locs0 fvi ctxt = do
                    locs1 result
 
    _ | otherwise
-     -> error $ "Unknown primop: " ++ showPpr genv primOp
+     -> do
+      st <- getStack
+      error $ "Unknown primop: " ++ showPpr genv primOp ++ "\n" ++
+        showPpr genv st
 
 transBody (StgConApp dcon []) env locs0 fvi ctxt = do
   -- Constructors without arguments are special.  Since they don't
@@ -793,46 +796,61 @@ transApp :: Ghc.Id -> [StgArg] -> LocalEnv -> KnownLocs
          -> FreeVarsIndex -> Context x
          -> Trans (Bcis x, KnownLocs, Maybe BcVar)
 transApp f args env locs0 fvi ctxt
+  = do (is0, locs1, arg_regs) <- transArgs args env locs0 fvi
+       (is1, f_reg, _, locs2) <- transVar f env fvi locs1 Nothing
+       (is2, locs3, mb_r) <- transApp' f_reg arg_regs env locs2 fvi ctxt
+       return (is0 <*> is1 <*> is2, locs3, mb_r)
+
+transApp' :: BcVar -> [BcVar]
+          -> LocalEnv -> KnownLocs
+          -> FreeVarsIndex -> Context x
+          -> Trans (Bcis x, KnownLocs, Maybe BcVar)
+transApp' f args env locs0 fvi ctxt
   | length args > cMAX_CALL_ARGS
   = do genv <- askGlobalEnv
-       error $ "Call with too many args: " ++ showPpr genv f ++ " (" ++
-               show (length args) ++ ")"
+
+       -- A call with more than cMAX_CALL_ARGS is translated as follows:
+       --
+       --     C[f x1 ... xN y1 ... yM]
+       --
+       --         =>
+       --
+       --     g <- call f x1 ... xN
+       --     t1 <- call g y1 ... yM
+       --     C[t1]
+       --
+       let (args1, args2) = splitAt cMAX_CALL_ARGS args
+       let g_type = Ghc.anyTy
+       (is0, locs1, Just g_reg) <- transApp' f args1 env locs0 fvi (BindC g_type Nothing)
+       (is1, locs2, mb_rslt) <- transApp' g_reg args2 env locs1 fvi ctxt
+       return (is0 <*> is1, locs2, mb_rslt)
+       -- error $ "Call with too many args: " ++ showPpr genv f ++ " (" ++
+       --         show (length args) ++ ", max: " ++ show cMAX_CALL_ARGS ++ ")\n" ++ 
+       --         showPpr genv g_type
+
   | otherwise
-  = do (is0, locs1, regs) <- transArgs args env locs0 fvi
-       (is1, fr, _, locs2) <- transVar f env fvi locs1 Nothing
-       genv <- askGlobalEnv
-       let is2 = is0 <*> is1
+  = do genv <- askGlobalEnv
        case ctxt of
          RetC -> -- tail call
            -- Ensure that tailcalls always use registers r0..r(N-1)
            -- for arguments.  This allows zero-copy function call.
            let typed_regs = [ BcReg n (transType genv (bcVarType r))
-                            | (n,r) <- zip [0..] regs ]
-               is3 = is2 <*>
-                      catGraphs [ insMove tr r
-                                | (tr,r) <- zip typed_regs regs ]
-               is4 = is3 <*> insCall Nothing fr typed_regs
+                            | (n,r) <- zip [0..] args ]
+               is0 = catGraphs [ insMove tr r
+                               | (tr,r) <- zip typed_regs args ]
+               is1 = is0 <*> insCall Nothing f typed_regs
            in
-           return (is4, locs2, Nothing)
+           return (is1, locs0, Nothing)
 
          BindC rslt_ty0 opt_reg -> do
            -- need to ensure that x = O, so we need to emit
            -- a fresh label after the call
-           -- st <- getStack
-           -- let rslt_ty0 =
-           --       case splitFunTysN (length args) $
-           --              repType (Ghc.varType f) of
-           --         Just (_arg_tys, rslt_ty_) -> rslt_ty_
-           --         Nothing -> error $ "Result type for: " ++
-           --                      ghcPretty (f, repType (Ghc.varType f),
-           --                                 Ghc.varType f, length args)
-           --                      ++ "\n" ++ ghcPretty st
            let rslt_ty:_ = splitUnboxedTuples genv rslt_ty0
            r <- mbFreshLocal rslt_ty opt_reg
            let ins = withFresh $ \l ->
-                       is2 <*> insCall (Just (r, l)) fr regs
+                       insCall (Just (r, l)) f args
                        |*><*| mkLabel l
-           return (ins, locs2, Just r)
+           return (ins, locs0, Just r)
 
 transArgs :: [StgArg] -> LocalEnv -> KnownLocs -> FreeVarsIndex
           -> Trans (Bcis O, KnownLocs, [BcVar])
