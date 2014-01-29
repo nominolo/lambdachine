@@ -2,7 +2,8 @@
 module GHC.Types (
         Bool(..), Char(..), Int(..), Word(..),
 --        Float(..), Double(..),
-        Ordering(..), IO(..)
+        Ordering(..), IO(..),
+        isTrue#
     ) where
 
 -- module GHC.Types where
@@ -75,3 +76,10 @@ newtype IO a = IO (State# RealWorld -> (# State# RealWorld, a #))
 -- has kind (? -> ? -> Fact) rather than (* -> * -> *)
 --data (~) a b = Eq# ((~#) a b)
 
+isTrue# :: Int# -> Bool
+isTrue# 1# = True
+isTrue# _  = False
+
+-- isFalse# :: Int# -> Bool
+-- isFalse# 0# = True
+-- isFalse# _  = False
