@@ -52,13 +52,13 @@ errorPositive = Some 47## None -- Random number
 
 {-# NOINLINE smallInteger #-}
 smallInteger :: Int# -> Integer
-smallInteger i = if i >=# 0# then wordToInteger (int2Word# i)
+smallInteger i = if isTrue# (i >=# 0#) then wordToInteger (int2Word# i)
                  else -- XXX is this right for -minBound?
                       negateInteger (wordToInteger (int2Word# (negateInt# i)))
 
 {-# NOINLINE wordToInteger #-}
 wordToInteger :: Word# -> Integer
-wordToInteger w = if w `eqWord#` 0##
+wordToInteger w = if isTrue# (w `eqWord#` 0##)
                   then Naught
                   else Positive (Some w None)
 
@@ -82,7 +82,7 @@ integerToWord64 i = int64ToWord64# (integerToInt64 i)
 
 {-# NOINLINE word64ToInteger #-}
 word64ToInteger:: Word64# -> Integer
-word64ToInteger w = if w `eqWord64#` wordToWord64# 0##
+word64ToInteger w = if isTrue# (w `eqWord64#` wordToWord64# 0##)
                     then Naught
                     else Positive (word64ToPositive w)
 
@@ -96,9 +96,9 @@ integerToInt64 (Negative p)
 {-# NOINLINE int64ToInteger #-}
 int64ToInteger :: Int64# -> Integer
 int64ToInteger i
- = if i `eqInt64#` intToInt64# 0#
+ = if isTrue# (i `eqInt64#` intToInt64# 0#)
    then Naught
-   else if i `gtInt64#` intToInt64# 0#
+   else if isTrue# (i `gtInt64#` intToInt64# 0#)
    then Positive (word64ToPositive (int64ToWord64# i))
    else Negative (word64ToPositive (int64ToWord64# (negateInt64# i)))
 #else
@@ -509,7 +509,7 @@ digitsToNegativeInteger ds = case removeZeroTails ds of
                              ds' -> Negative ds'
 
 removeZeroTails :: Digits -> Digits
-removeZeroTails (Some w ds) = if w `eqWord#` 0##
+removeZeroTails (Some w ds) = if isTrue# (w `eqWord#` 0##)
                               then case removeZeroTails ds of
                                    None -> None
                                    ds' -> Some w ds'
@@ -519,7 +519,7 @@ removeZeroTails None = None
 #if WORD_SIZE_IN_BITS < 64
 word64ToPositive :: Word64# -> Positive
 word64ToPositive w
- = if w `eqWord64#` wordToWord64# 0##
+ = if isTrue# (w `eqWord64#` wordToWord64# 0##)
    then None
    else Some (word64ToWord# w) (word64ToPositive (w `uncheckedShiftRL64#` 32#))
 
@@ -533,8 +533,8 @@ positiveToWord64 (Some low (Some high _))
 -- Note [Avoid patError]
 comparePositive :: Positive -> Positive -> Ordering
 Some x xs `comparePositive` Some y ys = case xs `comparePositive` ys of
-                                        EQ ->      if x `ltWord#` y then LT
-                                              else if x `gtWord#` y then GT
+                                        EQ ->      if isTrue# (x `ltWord#` y) then LT
+                                              else if isTrue# (x `gtWord#` y) then GT
                                               else                       EQ
                                         res -> res
 None      `comparePositive` None      = EQ
@@ -550,9 +550,9 @@ plusPositive x0 y0 = addWithCarry 0## x0 y0
        addWithCarry c xs@(Some {})    None            = addOnCarry c xs
        addWithCarry c None            ys@(Some {})    = addOnCarry c ys
        addWithCarry c xs@(Some x xs') ys@(Some y ys')
-        = if x `ltWord#` y then addWithCarry c ys xs
+        = if isTrue# (x `ltWord#` y) then addWithCarry c ys xs
           -- Now x >= y
-          else if y `geWord#` halfBoundUp ()
+          else if isTrue# (y `geWord#` halfBoundUp ())
                -- So they are both at least halfBoundUp, so we subtract
                -- halfBoundUp from each and thus carry 1
                then case x `minusWord#` halfBoundUp () of
@@ -562,14 +562,14 @@ plusPositive x0 y0 = addWithCarry 0## x0 y0
                       case x' `plusWord#` y' `plusWord#` c of
                       this ->
                        Some this withCarry
-          else if x `geWord#` halfBoundUp ()
+          else if isTrue# (x `geWord#` halfBoundUp ())
                then case x `minusWord#` halfBoundUp () of
                     x' ->
                      case x' `plusWord#` y `plusWord#` c of
                      z ->
                       -- We've taken off halfBoundUp, so now we need to
                       -- add it back on
-                      if z `ltWord#` halfBoundUp ()
+                      if isTrue# (z `ltWord#` halfBoundUp ())
                        then Some (z `plusWord#`  halfBoundUp ()) withoutCarry
                        else Some (z `minusWord#` halfBoundUp ()) withCarry
           else Some (x `plusWord#` y `plusWord#` c) withoutCarry
@@ -578,14 +578,14 @@ plusPositive x0 y0 = addWithCarry 0## x0 y0
 
        -- digit `elem` [0, 1]
        addOnCarry :: Digit -> Positive -> Positive
-       addOnCarry (!c) (!ws) = if c `eqWord#` 0##
+       addOnCarry (!c) (!ws) = if isTrue# (c `eqWord#` 0##)
                                then ws
                                else succPositive ws
 
 -- digit `elem` [0, 1]
 succPositive :: Positive -> Positive
 succPositive None = Some 1## None
-succPositive (Some w ws) = if w `eqWord#` fullBound ()
+succPositive (Some w ws) = if isTrue# (w `eqWord#` fullBound ())
                            then Some 0## (succPositive ws)
                            else Some (w `plusWord#` 1##) ws
 
@@ -594,11 +594,11 @@ succPositive (Some w ws) = if w `eqWord#` fullBound ()
 -- Note [Avoid patError]
 minusPositive :: Positive -> Positive -> Positive
 Some x xs `minusPositive` Some y ys
- = if x `eqWord#` y
+ = if isTrue# (x `eqWord#` y)
    then case xs `minusPositive` ys of
         None -> None
         s -> Some 0## s
-   else if x `gtWord#` y then
+   else if isTrue# (x `gtWord#` y) then
         Some (x `minusWord#` y) (xs `minusPositive` ys)
    else case (fullBound () `minusWord#` y) `plusWord#` 1## of
         z -> -- z = 2^n - y, calculated without overflow
@@ -632,7 +632,7 @@ xs@(Some x xs') `timesPositive` ys@(Some y ys')
            let zs = Some 0## (xs' `timesPositive` ys)
            in -- We could actually skip this test, and everything would
               -- turn out OK. We already play tricks like that in timesPositive.
-              if x `eqWord#` 0##
+              if isTrue# (x `eqWord#` 0##)
               then zs
               else (x `timesDigit` y) `plusPositive` zs
        Some {} ->
@@ -683,7 +683,7 @@ timesDigit (!x) (!y)
             let low = Some xhyll' None `plusPositive`
                       Some xlyhl' None `plusPositive`
                       Some xlyl   None
-            in if high `eqWord#` 0##
+            in if isTrue# (high `eqWord#` 0##)
                then low
                else Some 0## (Some high None) `plusPositive` low
 
@@ -694,7 +694,7 @@ splitHalves (!x) = (# x `uncheckedShiftRL#` highHalfShift (),
 -- Assumes 0 <= i
 shiftLPositive :: Positive -> Int# -> Positive
 shiftLPositive p i
-    = if i >=# WORD_SIZE_IN_BITS#
+    = if isTrue# (i >=# WORD_SIZE_IN_BITS#)
       then shiftLPositive (Some 0## p) (i -# WORD_SIZE_IN_BITS#)
       else smallShiftLPositive p i
 
@@ -703,7 +703,7 @@ smallShiftLPositive :: Positive -> Int# -> Positive
 smallShiftLPositive (!p) 0# = p
 smallShiftLPositive (!p) (!i) =
     case WORD_SIZE_IN_BITS# -# i of
-    j -> let f carry None = if carry `eqWord#` 0##
+    j -> let f carry None = if isTrue# (carry `eqWord#` 0##)
                             then None
                             else Some carry None
              f carry (Some w ws) = case w `uncheckedShiftRL#` j of
@@ -717,14 +717,14 @@ smallShiftLPositive (!p) (!i) =
 shiftRPositive :: Positive -> Int# -> Integer
 shiftRPositive None _ = Naught
 shiftRPositive p@(Some _ q) i
-    = if i >=# WORD_SIZE_IN_BITS#
+    = if isTrue# (i >=# WORD_SIZE_IN_BITS#)
       then shiftRPositive q (i -# WORD_SIZE_IN_BITS#)
       else smallShiftRPositive p i
 
 -- Assumes 0 <= i < WORD_SIZE_IN_BITS#
 smallShiftRPositive :: Positive -> Int# -> Integer
 smallShiftRPositive (!p) (!i) =
-    if i ==# 0#
+    if isTrue# (i ==# 0#)
     then Positive p
     else case smallShiftLPositive p (WORD_SIZE_IN_BITS# -# i) of
          Some _ p'@(Some _ _) -> Positive p'
@@ -740,7 +740,7 @@ quotRemPositive :: Positive -> Positive -> (# Integer, Integer #)
           subtractors :: Positives
           subtractors = mkSubtractors (WORD_SIZE_IN_BITS# -# 1#)
 
-          mkSubtractors (!n) = if n ==# 0#
+          mkSubtractors (!n) = if isTrue# (n ==# 0#)
                                then Cons ys Nil
                                else Cons (ys `smallShiftLPositive` n)
                                          (mkSubtractors (n -# 1#))
@@ -770,7 +770,7 @@ quotRemPositive :: Positive -> Positive -> (# Integer, Integer #)
                          (m `minusPositive` sub)
 
 some :: Digit -> Digits -> Digits
-some (!w) None  = if w `eqWord#` 0## then None else Some w None
+some (!w) None  = if isTrue# (w `eqWord#` 0##) then None else Some w None
 some (!w) (!ws) = Some w ws
 
 -- Note [Avoid patError]
