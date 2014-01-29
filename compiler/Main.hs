@@ -64,6 +64,7 @@ import System.IO ( openTempFile, hPutStr, hFlush, hClose )
 --import System.Cmd ( rawSystem )
 import System.FilePath ( replaceExtension, takeDirectory )
 import System.IO.Temp
+import System.Exit
 
 dbPath :: String
 dbPath = PACKAGE_CONF_STRING
@@ -102,7 +103,10 @@ main = do
     let file = Cli.inputFile opts
     hsc_env <- getSession
 
-    out <- liftIO $ compileFile hsc_env StopLn (file, Nothing)
+    out <- handleSourceError (\e -> do
+               GHC.printException e
+               liftIO $ exitWith (ExitFailure 1)) $ 
+             liftIO $ compileFile hsc_env StopLn (file, Nothing)
     return ()
 
 
