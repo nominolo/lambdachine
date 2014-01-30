@@ -51,7 +51,7 @@ data BcIns' b e x where
 
   -- O/C stuff
   Goto   :: !b                       -> BcIns' b O C
-  CondBranch :: !BinOp -> !OpTy -> !BcVar -> !BcVar
+  CondBranch :: !CmpOp -> !OpTy -> !BcVar -> !BcVar
              -> !b -> !b             -> BcIns' b O C
   Case :: !CaseType -> !BcVar 
        -> [(BcTag, LiveSet, b)]   -> BcIns' b O C
@@ -130,10 +130,12 @@ data CompOp
 -}
 data BinOp
   = OpAdd | OpSub | OpMul | OpDiv | OpRem
-  | CmpGt | CmpLe | CmpGe | CmpLt | CmpEq | CmpNe
+  -- Comparison operators that return 0 or 1
+  | CmpGtI | CmpLeI | CmpGeI | CmpLtI | CmpEqI | CmpNeI
   deriving (Eq, Ord, Show)
 
-type CmpOp = BinOp
+data CmpOp
+  = CmpGt | CmpLe | CmpGe | CmpLt | CmpEq | CmpNe
 
 data PrimOp
   = OpIndexOffAddrChar
@@ -244,6 +246,14 @@ instance Pretty BinOp where
   ppr OpMul = char '*'
   ppr OpDiv = char '/'
   ppr OpRem = char '%'
+  ppr CmpGtI = text ">#"
+  ppr CmpLeI = text "<=#"
+  ppr CmpGeI = text ">=#"
+  ppr CmpLtI = text "<#"
+  ppr CmpEqI = text "==#"
+  ppr CmpNeI = text "/=#"
+
+instance Pretty CmpOp where
   ppr CmpGt = char '>'
   ppr CmpLe = text "<="
   ppr CmpGe = text ">="

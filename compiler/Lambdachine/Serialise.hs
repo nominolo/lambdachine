@@ -1062,6 +1062,12 @@ emitLinearIns bit_r lit_ids tgt_labels r ins_id ins = do
    binOpOpcode WordTy OpAdd = opc_ADDRR
    binOpOpcode WordTy OpSub = opc_SUBRR
    binOpOpcode WordTy OpMul = opc_MULRR
+   binOpOpcode t CmpGtI = if isSigned t then opc_CMPGT else opc_CMPGTU
+   binOpOpcode t CmpLeI = if isSigned t then opc_CMPLE else opc_CMPLEU
+   binOpOpcode t CmpGeI = if isSigned t then opc_CMPGE else opc_CMPGEU
+   binOpOpcode t CmpLtI = if isSigned t then opc_CMPLT else opc_CMPLTU
+   binOpOpcode t CmpEqI = opc_CMPEQ
+   binOpOpcode t CmpNeI = opc_CMPNE
 
    isSigned :: OpTy -> Bool
    isSigned IntTy = True

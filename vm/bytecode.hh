@@ -36,6 +36,17 @@ _START_LAMBDACHINE_NAMESPACE
   _(MULRR,   RRR) \
   _(DIVRR,   RRR) \
   _(REMRR,   RRR) \
+  /* Comparisons ops producing an integer */ \
+  _(CMPLT,   RRR) \
+  _(CMPGE,   RRR) \
+  _(CMPLE,   RRR) \
+  _(CMPGT,   RRR) \
+  _(CMPEQ,   RRR) \
+  _(CMPNE,   RRR) \
+  _(CMPLTU,  RRR) \
+  _(CMPGEU,  RRR) \
+  _(CMPLEU,  RRR) \
+  _(CMPGTU,  RRR) \
   /* Bitwise ops */ \
   _(BNOT,    RR) \
   _(BAND,    RRR) \
@@ -104,6 +115,7 @@ class BcIns {
   BcIns() : raw_(kSTOP) {}
   
   static const int32_t kBranchBias = 0x8000;
+
   static const u4 kMaxCallArgs = 13;
 
   typedef enum {

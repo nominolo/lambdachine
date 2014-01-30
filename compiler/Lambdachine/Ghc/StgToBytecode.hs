@@ -1192,7 +1192,7 @@ dataConTag (LitAlt (Ghc.MachInt n)) = LitT n
 -- | Translate a binary case on a primop, i.e., a two-arm branch
 -- with alternatives @True@ or @False@.
 transBinaryCase :: forall x.
-                   BinOp -> OpTy -> [StgArg] -> CoreBndr
+                   CmpOp -> OpTy -> [StgArg] -> CoreBndr
                 -> Ghc.Type -> [StgAlt]
                 -> LocalEnv -> FreeVarsIndex
                 -> KnownLocs -> Context x
@@ -1465,11 +1465,34 @@ primOpToBinOp primop =
     Ghc.WordAddOp -> Just (OpAdd, WordTy)
     Ghc.WordSubOp -> Just (OpSub, WordTy)
     Ghc.WordMulOp -> Just (OpMul, WordTy)
+
+    Ghc.IntGtOp -> Just (CmpGtI, IntTy)
+    Ghc.IntGeOp -> Just (CmpGeI, IntTy)
+    Ghc.IntEqOp -> Just (CmpEqI, IntTy)
+    Ghc.IntNeOp -> Just (CmpNeI, IntTy)
+    Ghc.IntLtOp -> Just (CmpLtI, IntTy)
+    Ghc.IntLeOp -> Just (CmpLeI, IntTy)
+
+    Ghc.CharGtOp -> Just (CmpGtI, CharTy)
+    Ghc.CharGeOp -> Just (CmpGeI, CharTy)
+    Ghc.CharEqOp -> Just (CmpEqI, CharTy)
+    Ghc.CharNeOp -> Just (CmpNeI, CharTy)
+    Ghc.CharLtOp -> Just (CmpLtI, CharTy)
+    Ghc.CharLeOp -> Just (CmpLeI, CharTy)
+
+    Ghc.WordGtOp -> Just (CmpGtI, WordTy)
+    Ghc.WordGeOp -> Just (CmpGeI, WordTy)
+    Ghc.WordEqOp -> Just (CmpEqI, WordTy)
+    Ghc.WordNeOp -> Just (CmpNeI, WordTy)
+    Ghc.WordLtOp -> Just (CmpLtI, WordTy)
+    Ghc.WordLeOp -> Just (CmpLeI, WordTy)
+
     _ -> Nothing
 
-isCondPrimOp :: Ghc.PrimOp -> Maybe (BinOp, OpTy)
+isCondPrimOp :: Ghc.PrimOp -> Maybe (CmpOp, OpTy)
 isCondPrimOp primop =
   case primop of
+{-
     Ghc.IntGtOp -> Just (CmpGt, IntTy)
     Ghc.IntGeOp -> Just (CmpGe, IntTy)
     Ghc.IntEqOp -> Just (CmpEq, IntTy)
@@ -1490,12 +1513,34 @@ isCondPrimOp primop =
     Ghc.WordNeOp -> Just (CmpNe, WordTy)
     Ghc.WordLtOp -> Just (CmpLt, WordTy)
     Ghc.WordLeOp -> Just (CmpLe, WordTy)
-
+-}
     _ -> Nothing
 
 primOpOther :: Ghc.PrimOp -> Maybe (PrimOp, [OpTy], OpTy)
 primOpOther primop =
   case primop of
+{-
+    Ghc.IntGtOp -> Just (CmpGtI, [IntTy, IntTy], IntTy)
+    Ghc.IntGeOp -> Just (CmpGeI, [IntTy, IntTy], IntTy)
+    Ghc.IntEqOp -> Just (CmpEqI, [IntTy, IntTy], IntTy)
+    Ghc.IntNeOp -> Just (CmpNeI, [IntTy, IntTy], IntTy)
+    Ghc.IntLtOp -> Just (CmpLtI, [IntTy, IntTy], IntTy)
+    Ghc.IntLeOp -> Just (CmpLeI, [IntTy, IntTy], IntTy)
+
+    Ghc.CharGtOp -> Just (CmpGtI, [CharTy, CharTy], IntTy)
+    Ghc.CharGeOp -> Just (CmpGeI, [CharTy, CharTy], IntTy)
+    Ghc.CharEqOp -> Just (CmpEqI, [CharTy, CharTy], IntTy)
+    Ghc.CharNeOp -> Just (CmpNeI, [CharTy, CharTy], IntTy)
+    Ghc.CharLtOp -> Just (CmpLtI, [CharTy, CharTy], IntTy)
+    Ghc.CharLeOp -> Just (CmpLeI, [CharTy, CharTy], IntTy)
+
+    Ghc.WordGtOp -> Just (CmpGtI, [WordTy, WordTy], IntTy)
+    Ghc.WordGeOp -> Just (CmpGeI, [WordTy, WordTy], IntTy)
+    Ghc.WordEqOp -> Just (CmpEqI, [WordTy, WordTy], IntTy)
+    Ghc.WordNeOp -> Just (CmpNeI, [WordTy, WordTy], IntTy)
+    Ghc.WordLtOp -> Just (CmpLtI, [WordTy, WordTy], IntTy)
+    Ghc.WordLeOp -> Just (CmpLeI, [WordTy, WordTy], IntTy)
+-}
     Ghc.IndexOffAddrOp_Char -> Just (OpIndexOffAddrChar, [AddrTy, IntTy], CharTy)
     Ghc.DataToTagOp -> Just (OpGetTag, [PtrTy], IntTy)
     Ghc.IntNegOp -> Just (OpNegateInt, [IntTy], IntTy)

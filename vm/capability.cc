@@ -448,6 +448,56 @@ op_REMRR:
   base[opA] = (WordInt)base[opB] % (WordInt)base[opC];
   DISPATCH_NEXT;
 
+op_CMPLT:
+  DECODE_BC;
+  base[opA] = (WordInt)base[opB] < (WordInt)base[opC] ? 1 : 0;
+  DISPATCH_NEXT;
+
+op_CMPGE:
+  DECODE_BC;
+  base[opA] = (WordInt)base[opB] >= (WordInt)base[opC] ? 1 : 0;
+  DISPATCH_NEXT;
+
+op_CMPLE:
+  DECODE_BC;
+  base[opA] = (WordInt)base[opB] <= (WordInt)base[opC] ? 1 : 0;
+  DISPATCH_NEXT;
+
+op_CMPGT:
+  DECODE_BC;
+  base[opA] = (WordInt)base[opB] > (WordInt)base[opC] ? 1 : 0;
+  DISPATCH_NEXT;
+
+op_CMPEQ:
+  DECODE_BC;
+  base[opA] = (WordInt)base[opB] == (WordInt)base[opC] ? 1 : 0;
+  DISPATCH_NEXT;
+
+op_CMPNE:
+  DECODE_BC;
+  base[opA] = (WordInt)base[opB] != (WordInt)base[opC] ? 1 : 0;
+  DISPATCH_NEXT;
+
+op_CMPLTU:
+  DECODE_BC;
+  base[opA] = (Word)base[opB] < (Word)base[opC] ? 1 : 0;
+  DISPATCH_NEXT;
+
+op_CMPGEU:
+  DECODE_BC;
+  base[opA] = (Word)base[opB] >= (Word)base[opC] ? 1 : 0;
+  DISPATCH_NEXT;
+
+op_CMPLEU:
+  DECODE_BC;
+  base[opA] = (Word)base[opB] <= (Word)base[opC] ? 1 : 0;
+  DISPATCH_NEXT;
+
+op_CMPGTU:
+  DECODE_BC;
+  base[opA] = (Word)base[opB] > (Word)base[opC] ? 1 : 0;
+  DISPATCH_NEXT;
+
 op_BNOT:
   DECODE_AD;
   base[opA] = ~base[opC];
