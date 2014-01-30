@@ -76,6 +76,7 @@ newtype IO a = IO (State# RealWorld -> (# State# RealWorld, a #))
 -- has kind (? -> ? -> Fact) rather than (* -> * -> *)
 --data (~) a b = Eq# ((~#) a b)
 
+{-# INLINE isTrue# #-}
 isTrue# :: Int# -> Bool
 isTrue# 1# = True
 isTrue# _  = False
