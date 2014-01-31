@@ -142,8 +142,8 @@ take (I# n#) xs = takeUInt n# xs
 
 takeUInt :: Int# -> [b] -> [b]
 takeUInt n xs
-  | n >=# 0#  =  take_unsafe_UInt n xs
-  | otherwise =  []
+  | isTrue# (n >=# 0#)  =  take_unsafe_UInt n xs
+  | otherwise           =  []
 
 take_unsafe_UInt :: Int# -> [b] -> [b]
 take_unsafe_UInt 0#  _  = []
@@ -154,7 +154,7 @@ take_unsafe_UInt m   ls =
 
 drop                   :: Int -> [a] -> [a]
 drop (I# n#) ls
-  | n# <# 0#    = ls
+  | isTrue# (n# <# 0#)    = ls
   | otherwise   = drop# n# ls
     where
         drop# :: Int# -> [a] -> [a]
@@ -170,7 +170,7 @@ splitAt (I# n#) ls@(x:xs)
                 (x:xs', xs'')
 -}
 splitAt (I# n#) ls
-  | n# <# 0#    = ([], ls)
+  | isTrue# (n# <# 0#)    = ([], ls)
   | otherwise   = splitAt# n# ls
     where
         splitAt# :: Int# -> [a] -> ([a], [a])
@@ -188,12 +188,12 @@ span p xs@(x:xs')
 
 (!!)                    :: [a] -> Int -> a
 xs !! (I# n0)
-  | n0 <# 0# = undef
+  | isTrue# (n0 <# 0#) = undef
   | otherwise = sub xs n0
      where
        sub :: [a] -> Int# -> a
        sub []     _ = undef
-       sub (y:ys) n = if n ==# 0#
+       sub (y:ys) n = if isTrue# (n ==# 0#)
                       then y
                       else sub ys (n -# 1#)
 
