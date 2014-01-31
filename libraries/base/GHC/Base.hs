@@ -203,6 +203,8 @@ foldr k z = go
     go []     = z
     go (y:ys) = y `k` go ys
 
+{-# INLINE [0] foldr #-}
+
 build :: (forall b. (a -> b -> b) -> b -> b) -> [a]
 build g = g k []
  where k x xs = x : xs
