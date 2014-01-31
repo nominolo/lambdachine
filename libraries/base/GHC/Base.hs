@@ -239,7 +239,7 @@ ord (C# c#) = I# (ord# c#)
 
 eqString :: String -> String -> Bool
 eqString []       []       = True
-eqString (C# c1:cs1) (C# c2:cs2) = c1 `eqChar#` c2 && cs1 `eqString` cs2
+eqString (c1:cs1) (c2:cs2) = c1 == c2 && cs1 `eqString` cs2
 eqString _        _        = False
 
 -- | Returns the 'tag' of a constructor application; this function is used
@@ -308,20 +308,46 @@ quotInt, remInt, divInt, modInt :: Int -> Int -> Int
 (I# x) `modInt`   (I# y) = I# (x `modInt#`  y)
 
 quotRemInt :: Int -> Int -> (Int, Int)
-(I# x) `quotRemInt` (I# y) = case x `quotRemInt#` y of
-                             (# q, r #) ->
-                                 (I# q, I# r)
+(I# x) `quotRemInt` (I# y) = 
+  case x `quotInt#` y of
+    q ->
+      case x `remInt#` y of
+        r -> (I# q, I# r)
+ -- case x `quotRemInt#` y of
+ --                             (# q, r #) ->
+ --                                 (I# q, I# r)
 
 divModInt :: Int -> Int -> (Int, Int)
 (I# x) `divModInt` (I# y) = case x `divModInt#` y of
                             (# q, r #) -> (I# q, I# r)
 
+
+
 divModInt# :: Int# -> Int# -> (# Int#, Int# #)
 x# `divModInt#` y#
- | (x# ># 0#) && (y# <# 0#) = case (x# -# 1#) `quotRemInt#` y# of
-                              (# q, r #) -> (# q -# 1#, r +# y# +# 1# #)
- | (x# <# 0#) && (y# ># 0#) = case (x# +# 1#) `quotRemInt#` y# of
-                              (# q, r #) -> (# q -# 1#, r +# y# -# 1# #)
- | otherwise                = x# `quotRemInt#` y#
+ | isTrue# (x# ># 0#) && isTrue# (y# <# 0#)
+ = case (x# -# 1#) `quotInt#` y# of
+     q ->
+       case (x# -# 1#) `remInt#` y# of
+         r -> (# q -# 1#, r +# y# +# 1# #)
+
+-- case (x# -# 1#) `quotRemInt#` y# of
+--      (# q, r #) -> (# q -# 1#, r +# y# +# 1# #)
+
+ | isTrue# (x# <# 0#) && isTrue# (y# ># 0#)
+ = case (x# +# 1#) `quotInt#` y# of
+     q ->
+       case (x# +# 1#) `remInt#` y# of
+         r -> (# q -# 1#, r +# y# -# 1# #)
+
+ -- = case (x# +# 1#) `quotRemInt#` y# of
+ --     (# q, r #) -> (# q -# 1#, r +# y# -# 1# #)
+
+ | otherwise
+ = case x# `quotInt#` y# of
+     q ->
+       case x# `remInt#` y# of
+         r -> (# q, r #)
+ -- = x# `quotRemInt#` y#
 
 
