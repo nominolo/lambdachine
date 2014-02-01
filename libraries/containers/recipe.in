@@ -23,7 +23,7 @@ extra-libraries:
 extra-ghci-libraries:
 include-dirs: 
 includes:
-depends: base-4.3.1.0-inplace
+depends: base-4.6.0.1-inplace
 hugs-options:
 cc-options:
 ld-options:

@@ -35,7 +35,7 @@ import GHC.Tuple
 -- data constructors of `(,)' are in scope when we do
 -- the standalone deriving instance for Eq (a,b) etc
 
-import GHC.Unit ()
+-- import GHC.Unit ()
 
 default ()              -- Double isn't available yet
 

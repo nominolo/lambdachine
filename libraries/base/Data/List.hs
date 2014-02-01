@@ -480,6 +480,7 @@ insertBy cmp x ys@(y:ys')
 -- It is a special case of 'Data.List.maximumBy', which allows the
 -- programmer to supply their own comparison function.
 maximum                 :: (Ord a) => [a] -> a
+{-# NOINLINE [1] maximum #-}
 maximum []              =  error "maximum: empty list"
 maximum xs              =  foldl1 max xs
 
@@ -500,6 +501,7 @@ strictMaximum xs        =  foldl1' max xs
 -- It is a special case of 'Data.List.minimumBy', which allows the
 -- programmer to supply their own comparison function.
 minimum                 :: (Ord a) => [a] -> a
+{-# NOINLINE [1] minimum #-}
 minimum []              =  error "minimum: empty list"
 minimum xs              =  foldl1 min xs
 
@@ -539,6 +541,7 @@ minimumBy cmp xs        =  foldl1 minBy xs
 -- particular, instead of returning an 'Int', it returns any type which is
 -- an instance of 'Num'.  It is, however, less efficient than 'length'.
 genericLength           :: (Num i) => [b] -> i
+{-# NOINLINE [1] genericLength #-}
 genericLength []        =  0
 genericLength (_:l)     =  1 + genericLength l
 
