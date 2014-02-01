@@ -67,7 +67,7 @@ ${HC_PKG} register --global-package-db=${PKG_DB} --force integer-simple/recipe
 MODULES_base="GHC/Err.hs-boot Control/Exception/Base.hs GHC/Base.hs
   Data/Maybe.hs GHC/List.hs GHC/Char.hs GHC/Num.hs GHC/Show.hs GHC/Enum.hs 
   GHC/Exception.hs-boot
-  GHC/Real.hs
+  GHC/Real.hs GHC/Unicode.hs Data/Char.hs 
   GHC/Err.hs"
 
 # " GHC/Classes.hs GHC/Show.hs-boot GHC/Err.hs-boot GHC/Base.hs Data/Tuple.hs GHC/Enum.hs Data/Maybe.hs GHC/List.hs GHC/Show.hs GHC/Num.hs GHC/Err.hs GHC/Real.hs GHC/Unicode.hs-boot GHC/Unicode.hs Data/Char.hs Data/Either.hs Data/List.hs Data/Monoid.hs Control/Monad.hs Text/ParserCombinators/ReadP.hs Text/ParserCombinators/ReadPrec.hs Text/Read/Lex.hs GHC/Read.hs Text/Read.hs"

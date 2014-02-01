@@ -41,6 +41,7 @@ module Data.Char
     ) where
 
 import GHC.Base
+import GHC.Char
 import GHC.Show
 import GHC.Unicode
 import GHC.Num

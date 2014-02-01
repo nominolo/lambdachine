@@ -305,6 +305,7 @@ instance  (Integral a)  => Enum (Ratio a)  where
 
 -- Coercions ---------------------------------------------------------
 
+{-# NOINLINE [1] fromIntegral #-}
 fromIntegral :: (Integral a, Num b) => a -> b
 fromIntegral = fromInteger . toInteger
 
@@ -314,6 +315,7 @@ fromIntegral = fromInteger . toInteger
 
 -- | general coercion to fractional types
 realToFrac :: (Real a, Fractional b) => a -> b
+{-# NOINLINE [1] realToFrac #-}
 realToFrac = fromRational . toRational
 
 {-# RULES
