@@ -968,6 +968,12 @@ op_JFUNC: {
     DISPATCH_NEXT;
   }
 
+ op_RAISE:
+  {
+    fprintf(stderr, "Exception raised. BAD!\n");
+    exit(3);
+  }
+
 op_LOADBH:
   {
     DECODE_AD;

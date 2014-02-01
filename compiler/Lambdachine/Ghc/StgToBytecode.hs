@@ -1564,6 +1564,7 @@ primOpOther primop =
     Ghc.Int2AddrOp -> Just (OpNop, [IntTy], AddrTy)
     Ghc.Word2IntOp -> Just (OpNop, [WordTy], IntTy)
     Ghc.Int2WordOp -> Just (OpNop, [IntTy], WordTy)
+    Ghc.RaiseOp -> Just (OpRaise, [PtrTy], VoidTy)
 
     _ -> Nothing
 

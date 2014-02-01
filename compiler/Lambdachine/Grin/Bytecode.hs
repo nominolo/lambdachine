@@ -148,6 +148,7 @@ data PrimOp
   | OpShiftLeft
   | OpShiftRightLogical
   | OpShiftRightArith
+  | OpRaise  -- TODO: Just stops the program, for now.
   | OpNop  -- See Note "Primitive Nops"
   deriving (Eq, Ord, Show)
 
@@ -321,6 +322,7 @@ instance Pretty PrimOp where
   ppr OpShiftLeft = text "shiftLeft#"
   ppr OpShiftRightLogical = text "shiftRightLogical#"
   ppr OpShiftRightArith = text "shiftRightArith#"
+  ppr OpRaise = text "raise#"
   ppr OpNop = text "nop"
 
 instance Pretty OpTy where

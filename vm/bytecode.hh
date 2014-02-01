@@ -77,6 +77,8 @@ _START_LAMBDACHINE_NAMESPACE
   _(EVAL,    ___) \
   _(CASE,    ___) \
   _(CASE_S,  ___) \
+  /* Exception stuff */ \
+  _(RAISE,   R) \
   /* Function headers */ \
   _(FUNC,    R) \
   _(IFUNC,   R) \

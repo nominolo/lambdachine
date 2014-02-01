@@ -1046,6 +1046,9 @@ emitLinearIns bit_r lit_ids tgt_labels r ins_id ins = do
     Mid (Assign (BcReg dst _)
         (PrimOp OpShiftRightArith _ty [BcReg src1 _, BcReg src2 _])) ->
       emitInsABC r opc_BSAR (i2b dst) (i2b src1) (i2b src2)
+    Mid (Assign (BcReg dst _)
+         (PrimOp OpRaise _ty [BcReg src _])) ->
+      emitInsAD r opc_RAISE (i2b 0) (i2h src)
     Mid (Store (BcReg ptr _) offs (BcReg src _)) | offs <= 255 ->
       emitInsABC r opc_INITF (i2b ptr) (i2b src) (i2b offs)
     Mid m -> do
