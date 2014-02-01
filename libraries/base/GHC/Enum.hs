@@ -28,6 +28,7 @@ module GHC.Enum(
 import GHC.Base
 import GHC.Char
 import GHC.Integer
+import GHC.Num
 import GHC.Show
 default ()              -- Double isn't available yet
 
@@ -289,6 +290,79 @@ instance  Enum Char  where
     
     {-# INLINE enumFromThenTo #-}
     enumFromThenTo (C# x1) (C# x2) (C# y) = efdtChar (ord# x1) (ord# x2) (ord# y)
+
+------------------------------------------------------------------------------
+
+instance  Enum Integer  where
+    succ x               = x + 1
+    pred x               = x - 1
+    toEnum (I# n)        = smallInteger n
+    fromEnum n           = I# (integerToInt n)
+
+    {-# INLINE enumFrom #-}
+    {-# INLINE enumFromThen #-}
+    {-# INLINE enumFromTo #-}
+    {-# INLINE enumFromThenTo #-}
+    enumFrom x             = enumDeltaInteger   x 1
+    enumFromThen x y       = enumDeltaInteger   x (y-x)
+    enumFromTo x lim       = enumDeltaToInteger x 1     lim
+    enumFromThenTo x y lim = enumDeltaToInteger x (y-x) lim
+
+{-# RULES
+"enumDeltaInteger"      [~1] forall x y.  enumDeltaInteger x y     = build (\c _ -> enumDeltaIntegerFB c x y)
+"efdtInteger"           [~1] forall x y l.enumDeltaToInteger x y l = build (\c n -> enumDeltaToIntegerFB c n x y l)
+"enumDeltaInteger"      [1] enumDeltaIntegerFB   (:)    = enumDeltaInteger
+"enumDeltaToInteger"    [1] enumDeltaToIntegerFB (:) [] = enumDeltaToInteger
+ #-}
+
+{-# NOINLINE [0] enumDeltaIntegerFB #-}
+enumDeltaIntegerFB :: (Integer -> b -> b) -> Integer -> Integer -> b
+enumDeltaIntegerFB c x d = x `seq` (x `c` enumDeltaIntegerFB c (x+d) d)
+
+{-# NOINLINE [1] enumDeltaInteger #-}
+enumDeltaInteger :: Integer -> Integer -> [Integer]
+enumDeltaInteger x d = x `seq` (x : enumDeltaInteger (x+d) d)
+-- strict accumulator, so
+--     head (drop 1000000 [1 .. ]
+-- works
+
+{-# NOINLINE [0] enumDeltaToIntegerFB #-}
+-- Don't inline this until RULE "enumDeltaToInteger" has had a chance to fire
+enumDeltaToIntegerFB :: (Integer -> a -> a) -> a
+                     -> Integer -> Integer -> Integer -> a
+enumDeltaToIntegerFB c n x delta lim
+  | delta >= 0 = up_fb c n x delta lim
+  | otherwise  = dn_fb c n x delta lim
+
+{-# NOINLINE [1] enumDeltaToInteger #-}
+enumDeltaToInteger :: Integer -> Integer -> Integer -> [Integer]
+enumDeltaToInteger x delta lim
+  | delta >= 0 = up_list x delta lim
+  | otherwise  = dn_list x delta lim
+
+up_fb :: (Integer -> a -> a) -> a -> Integer -> Integer -> Integer -> a
+up_fb c n x0 delta lim = go (x0 :: Integer)
+                      where
+                        go x | x > lim   = n
+                             | otherwise = x `c` go (x+delta)
+dn_fb :: (Integer -> a -> a) -> a -> Integer -> Integer -> Integer -> a
+dn_fb c n x0 delta lim = go (x0 :: Integer)
+                      where
+                        go x | x < lim   = n
+                             | otherwise = x `c` go (x+delta)
+
+up_list :: Integer -> Integer -> Integer -> [Integer]
+up_list x0 delta lim = go (x0 :: Integer)
+                    where
+                        go x | x > lim   = []
+                             | otherwise = x : go (x+delta)
+dn_list :: Integer -> Integer -> Integer -> [Integer]
+dn_list x0 delta lim = go (x0 :: Integer)
+                    where
+                        go x | x < lim   = []
+                             | otherwise = x : go (x+delta)
+
+------------------------------------------------------------------------------
 
 instance  Bounded Int where
     minBound =  minInt

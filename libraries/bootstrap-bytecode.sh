@@ -65,7 +65,8 @@ sed 's:\${DIR}:'"${DIR}"'/integer-simple:g' <integer-simple/recipe.in >integer-s
 ${HC_PKG} register --global-package-db=${PKG_DB} --force integer-simple/recipe
 
 MODULES_base="GHC/Err.hs-boot Control/Exception/Base.hs GHC/Base.hs
-  Data/Maybe.hs GHC/List.hs GHC/Show.hs GHC/Char.hs GHC/Enum.hs GHC/Num.hs
+  Data/Maybe.hs GHC/List.hs GHC/Char.hs GHC/Num.hs GHC/Show.hs GHC/Enum.hs 
+  GHC/Exception.hs-boot
   GHC/Real.hs
   GHC/Err.hs"
 

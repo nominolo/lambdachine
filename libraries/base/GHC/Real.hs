@@ -6,11 +6,22 @@ import GHC.Num
 import GHC.Enum
 import GHC.Show
 import GHC.List ( takeWhile )
-import GHC.Err
+import {-# SOURCE #-} GHC.Exception
+       ( divZeroException, overflowException, ratioZeroDenomException )
+--import GHC.Err
 
 infixr 8  ^, ^^
 infixl 7  /, `quot`, `rem`, `div`, `mod`
 infixl 7  %
+
+{-# NOINLINE divZeroError #-}
+divZeroError :: a
+divZeroError = raise# divZeroException
+
+{-# NOINLINE overflowError #-}
+overflowError :: a
+overflowError = raise# overflowException
+
 
 default ()              -- Double isn't available yet,
                         -- and we shouldn't be using defaults anyway
