@@ -1,10 +1,29 @@
-# Building
+# Lambdachine
+
+Lambdachine is virtual machine for Haskell which uses a trace-based
+JIT compiler.  Lambdachine consists of two components:
+
+  - `lcc`: A bytecode compiler that uses GHC to compile Haskell to
+    Lambdachine bytecode files.
+
+  - `lcvm`: The virtual machine which loads bytecode files and
+    executes it.
+
+## Caveats
+
+Lambdachine currently only supports the pure subset of Haskell.
+User-defined datatypes and operations on integers and characters are
+supported, but mutable references, arrays, or I/O operations are not
+yet supported.  The runtime system is single-threaded and no
+concurrency primitives are supported.
+
+## Building
 
 You need:
 
-  - GHC 7.0.* (newer versions not yet supported)
+  - GHC 7.8 compiled with `integer-simple` for integers
   - A C compiler, either `gcc` or `clang`
-  
+
 All dependencies are on Hackage and can be installed via `cabal`,
   
 Installation steps:
@@ -18,7 +37,7 @@ Installation steps:
 This should build the bytecode compiler `lcc`, the test suite and the
 actual VM, called `lcvm`.  To run the test suite use:
 
-    $ make test
+    $ make check
 
 See `Makefile.in` for more targets.  The benchmarks are in directory
 `tests/Bench/`.  Benchmarks use the C preprocessor to compile a
