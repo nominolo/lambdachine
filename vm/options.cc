@@ -8,7 +8,8 @@ _START_LAMBDACHINE_NAMESPACE
 
 typedef enum {
   OPT_PRINT_LOADER_STATE = 0x1000,
-  OPT_TRACE_INTERPRETER
+  OPT_TRACE_INTERPRETER,
+  OPT_PRINT_STATS
 } OptionFlags;
 
 #define MAX_CLOSURE_NAME_LEN 512
@@ -21,6 +22,7 @@ Options::Options()
   : entry_("test"),
     printLoaderState_(false),
     traceInterpreter_(false),
+    printStats_(false),
     enableAsm_(1),
     stackSize_(MIN_STACK_SIZE)
 {
@@ -47,6 +49,7 @@ Options *OptionParser::parse(int argc, char *argv[]) {
     {"step",               required_argument, 0, 'S'},
     {"stack",              required_argument, 0, 's'},
     {"trace",              no_argument, NULL, OPT_TRACE_INTERPRETER},
+    {"print-stats",        no_argument, NULL, OPT_PRINT_STATS},
     {0, 0, 0, 0}
   };
 
@@ -68,6 +71,9 @@ Options *OptionParser::parse(int argc, char *argv[]) {
       if (optarg != NULL) {
         opts()->printLoaderStateFile_ = optarg;
       }
+      break;
+    case OPT_PRINT_STATS:
+      opts()->printStats_ = true;
       break;
     case OPT_TRACE_INTERPRETER:
       opts()->traceInterpreter_ = true;
@@ -107,6 +113,8 @@ Options *OptionParser::parse(int argc, char *argv[]) {
              "     --no-run     Load module only.\n"
              "     --print-loader-state[=FILE]\n"
              "                  Print static closures and info tables after loading (to stderr or given file).\n"
+             "     --print-stats\n"
+             "                  Print performance stats after program finished\n"
              "     --no-jit     Don't enable JIT.\n"
              "     --asm        Generate native code.\n"
              "  -B --base       Set loader base dir (default: cwd).\n"

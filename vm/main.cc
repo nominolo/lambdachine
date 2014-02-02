@@ -16,6 +16,8 @@ void formatTime(FILE *out, const char *label, Time time);
 void formatWithThousands(char *str, uint64_t n);
 void printGCStats(FILE *out, MemoryManager *mm, Time mut_time);
 void printTraceStats(FILE *out);
+void printStats(FILE *out, MemoryManager *mm, Capability *cap,
+                Time startup_time, Time start_time, Time stop_time);
 
 inline double percent(double num, double denom) {
   return (num * 100) / denom;
@@ -84,64 +86,16 @@ int main(int argc, char *argv[]) {
   }
 
   Closure *result = (Closure*)T->slot(0);
+  cout << "@Result@ ";
   printClosure(cout, result, true);
 
   Time stop_time = getProcessElapsedTime();
-  Time run_time = stop_time - start_time;
-  Time total_time = stop_time - startup_time;
-  Time mut_time = run_time - jit_time - gc_time;
 
   delete T;
 
-  printf("\n\n");
-  printLoggedNYIs(stdout);
-
-  printf("\n\n");
-  printGCStats(stdout, &mm, mut_time);
-
-#ifdef LC_TRACE_STATS
-  printf("\n\n");
-  printTraceStats(stdout);
-#endif
-
-  printf("  Traces Attempted (Completed:Aborted)  %" FMT_Word64 " "
-         "(%d:%" FMT_Word64 ")\n",
-         recordings_started, Jit::numFragments(), record_aborts);
-  printf("    Abort Reasons\n"
-         "      trace stack too deep   %10" FMT_Word64 "\n"
-         "      trace too long         %10" FMT_Word64 "\n"
-         "      always failing guard   %10" FMT_Word64 "\n"
-         "      interrupted (e.g. GC)  %10" FMT_Word64 "\n"
-         "      unimplemented feature  %10" FMT_Word64 "\n\n",
-         record_abort_reasons[AR_ABSTRACT_STACK_OVERFLOW],
-         record_abort_reasons[AR_TRACE_TOO_LONG],
-         record_abort_reasons[AR_KNOWN_TO_FAIL_GUARD],
-         record_abort_reasons[AR_INTERPRETER_REQUEST],
-         record_abort_reasons[AR_NYI]);
-  
-  printf("  Interpreter->MCode Switches         %" FMT_Word64
-         " (%5.1f per MUT second)\n\n",
-         switch_interp_to_asm,
-         (double)switch_interp_to_asm / ((double)mut_time / 1000000000));
-
-  MachineCode *mcode = cap.jit()->mcode();
-  char buf[50];
-  formatWithThousands(buf, (uint64_t)(mcode->end() - mcode->start()));
-  printf("  Compiled code: %20s bytes \n\n", buf);
-
-  formatTime(stdout, "  Startup ", start_time - startup_time);
-  formatTime(stdout, "    LOAD  ", loader_time);
-  formatTime(stdout, "  Runtime ", run_time);
-  formatTime(stdout, "    MUT   ", mut_time);
-  formatTime(stdout, "     REC  ", record_time - jit_time);
-  formatTime(stdout, "    JIT   ", jit_time);
-  formatTime(stdout, "    GC    ", gc_time);
-  formatTime(stdout, "\n  Total   ", total_time);
-  printf("\n" "    %%GC      %5.1f%%\n", percent(gc_time, run_time)); 
-  printf("    %%JIT     %5.1f%%  (  # traces      %5d  )" "\n\n",
-         percent(jit_time, run_time), Jit::numFragments());
-
-  //  cerr << mm << endl;
+  if (opts->printStats()) {
+    printStats(stdout, &mm, &cap, startup_time, start_time, stop_time);
+  }
 
   return 0;
 }
@@ -187,7 +141,8 @@ void
 printTraceStats(FILE *out)
 {
 #ifdef LC_TRACE_STATS
-  fprintf(out, "Trace Statistics:\n"
+  fprintf(out,
+          "Trace Statistics:\n"
           " TRACE     Completions  C.Rate          Exits"
           "  Exit Points\n");
   for (uint32_t traceId = 0; traceId < Jit::numFragments(); ++traceId) {
@@ -218,4 +173,75 @@ printTraceStats(FILE *out)
 #else
   UNUSED(out);
 #endif
+}
+
+void
+printBasicStats(FILE *out, Capability *cap,
+                Time startup_time, Time start_time, Time stop_time)
+{
+  Time run_time = stop_time - start_time;
+  Time total_time = stop_time - startup_time;
+  Time mut_time = run_time - jit_time - gc_time;
+
+  fprintf(out,
+          "  Traces Attempted (Completed:Aborted)  %" FMT_Word64 " "
+         "(%d:%" FMT_Word64 ")\n",
+         recordings_started, Jit::numFragments(), record_aborts);
+  fprintf(out,
+          "    Abort Reasons\n"
+          "      trace stack too deep   %10" FMT_Word64 "\n"
+          "      trace too long         %10" FMT_Word64 "\n"
+          "      always failing guard   %10" FMT_Word64 "\n"
+          "      interrupted (e.g. GC)  %10" FMT_Word64 "\n"
+          "      unimplemented feature  %10" FMT_Word64 "\n\n",
+          record_abort_reasons[AR_ABSTRACT_STACK_OVERFLOW],
+          record_abort_reasons[AR_TRACE_TOO_LONG],
+          record_abort_reasons[AR_KNOWN_TO_FAIL_GUARD],
+          record_abort_reasons[AR_INTERPRETER_REQUEST],
+          record_abort_reasons[AR_NYI]);
+  
+  fprintf(out,
+          "  Interpreter->MCode Switches         %" FMT_Word64
+          " (%5.1f per MUT second)\n\n",
+          switch_interp_to_asm,
+          (double)switch_interp_to_asm / ((double)mut_time / 1000000000));
+
+  MachineCode *mcode = cap->jit()->mcode();
+  char buf[50];
+  formatWithThousands(buf, (uint64_t)(mcode->end() - mcode->start()));
+  fprintf(out, "  Compiled code: %20s bytes \n\n", buf);
+
+  formatTime(out, "  Startup ", start_time - startup_time);
+  formatTime(out, "    LOAD  ", loader_time);
+  formatTime(out, "  Runtime ", run_time);
+  formatTime(out, "    MUT   ", mut_time);
+  formatTime(out, "     REC  ", record_time - jit_time);
+  formatTime(out, "    JIT   ", jit_time);
+  formatTime(out, "    GC    ", gc_time);
+  formatTime(out, "\n  Total   ", total_time);
+  fprintf(out, "\n" "    %%GC      %5.1f%%\n", percent(gc_time, run_time));
+  fprintf(out, "    %%JIT     %5.1f%%  (  # traces      %5d  )" "\n\n",
+          percent(jit_time, run_time), Jit::numFragments());
+}
+
+void
+printStats(FILE *out, MemoryManager *mm, Capability *cap,
+           Time startup_time, Time start_time, Time stop_time)
+{
+    printf("\n\n");
+    printLoggedNYIs(out);
+
+    Time run_time = stop_time - start_time;
+    Time mut_time = run_time - jit_time - gc_time;
+
+    printf("\n\n");
+    printGCStats(out, mm, mut_time);
+
+#ifdef LC_TRACE_STATS
+    printf("\n\n");
+    printTraceStats(out);
+#endif
+
+    printBasicStats(out, cap, startup_time, start_time, stop_time);
+
 }

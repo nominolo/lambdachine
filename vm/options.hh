@@ -16,6 +16,7 @@ public:
   inline const std::string basePath() const { return basePath_; }
   inline long stackSize() const { return stackSize_; }
   inline bool printLoaderState() const { return printLoaderState_; }
+  inline bool printStats() const { return printStats_; }
   inline bool traceInterpreter() const { return traceInterpreter_; }
   virtual ~Options();
 
@@ -28,6 +29,7 @@ private:
   std::string basePath_;
   bool printLoaderState_;
   bool traceInterpreter_;
+  bool printStats_;
   std::string printLoaderStateFile_;
   int enableAsm_;
   long stackSize_;
