@@ -236,8 +236,10 @@ data ValueLocation
     -- ^ A forward reference.
   | Self
     -- ^ The value is the contents of the @Node@ pointer.
-  | Global Id
+  | Global Ghc.Type Id
     -- ^ The value is a top-level ID.
+  | Literal Ghc.Type BcConst
+    -- ^ The variable is known to have this value.
   | Void
     -- ^ The value does not have a representation.
 
@@ -248,7 +250,7 @@ instance Pretty ValueLocation where
   ppr (FreeVar n)   = text "FreeVar" <+> ppr n
   ppr Fwd           = text "Fwd"
   ppr Self          = text "Self"
-  ppr (Global x)    = text "Global" <+> ppr x
+  ppr (Global _ x)  = text "Global" <+> ppr x
   ppr Void          = text "Void"
 
 -- | Maps GHC Ids to their (current) location in bytecode.
@@ -902,6 +904,15 @@ transCase expr@(StgOpApp (StgPrimOp op) args alt_ty) bndr (AlgAlt tycon)
      [_] ->
        error "NYI: turn primop result into Bool"
 
+transCase expr@(StgOpApp (StgPrimOp op) args alt_ty) bndr (PrimAlt tycon)
+          alts env locs0 fvi ctxt
+  | Just (cond, ty) <- isCondIntPrimOp op
+  = case alts of
+      [_,_] -> transBoolIntCase cond ty args bndr alt_ty alts
+                                env fvi locs0 ctxt
+      _ ->
+        error "FATAL: unexpected case alternatives for primitive operation"
+
 -- transCase expr@(StgOpApp (StgPrimOp op) args alt_ty) bndr (PrimAlt y)
 --           alts env locs0 fvi ctxt
 --  = assert (length alts >= 2) $ do
@@ -1224,15 +1235,15 @@ transBinaryCase cond ty args bndr alt_ty alts@[_,_] env0 fvi locs0 ctxt = do
              BindC ty mr -> BindC ty . Just <$> mbFreshLocal ty mr)
             :: Trans (Context x)
 
-  let transUnaryConAlt body con_id = do
-        let locs2 = updateLoc locs1 bndr (Global con_id)
+  let transUnaryConAlt body dcon con_id = do
+        let locs2 = updateLoc locs1 bndr (Global (dataConVarType dcon) con_id)
         l <- freshLabel
         (bcis, _locs1, _mb_var)
           <- transBody body env locs2 fvi ctxt'
         return (l, mkLabel l <*> bcis)
 
-  (tLabel, tBcis) <- transUnaryConAlt trueBody (trueDataConId genv)
-  (fLabel, fBcis) <- transUnaryConAlt falseBody (falseDataConId genv)
+  (tLabel, tBcis) <- transUnaryConAlt trueBody Ghc.trueDataCon (trueDataConId genv)
+  (fLabel, fBcis) <- transUnaryConAlt falseBody Ghc.falseDataCon (falseDataConId genv)
 
   case ctxt' of
     RetC -> do
@@ -1244,6 +1255,58 @@ transBinaryCase cond ty args bndr alt_ty alts@[_,_] env0 fvi locs0 ctxt = do
       return (bcis <*> insBranch cond ty r1 r2 tLabel fLabel
                 |*><*| tBcis <*> insGoto l
                 |*><*| fBcis <*> insGoto l
+                |*><*| mkLabel l,
+              locs1, Just r)
+
+-- | Translate a binary case on a primop which returns 0 or 1.
+transBoolIntCase :: forall x.
+                    CmpOp -> OpTy -> [StgArg] -> CoreBndr
+                 -> Ghc.Type -> [StgAlt]
+                 -> LocalEnv -> FreeVarsIndex
+                 -> KnownLocs -> Context x
+                 -> Trans (Bcis x, KnownLocs, Maybe BcVar)
+transBoolIntCase cond ty args bndr alt_ty alts@[_,_] env0 fvi locs0 ctxt = do
+
+  genv <- askGlobalEnv
+  (is0, locs1, [r1, r2]) <- transArgs args env0 locs0 fvi
+  let env1 = extendLocalEnv env0 bndr undefined
+  -- Normalise case alternatives
+  let (trueBody, falseBody) =
+        case alts of
+          [(DEFAULT, [], _, body1), (LitAlt (Ghc.MachInt n), [], _, body2)]
+           | n == 1 -> (body2, body1)
+           | n == 0 -> (body1, body2)
+          [(LitAlt (Ghc.MachInt n1), [], _, body1),
+           (LitAlt (Ghc.MachInt n2), [], _, body2)]
+           | n1 == 0, n2 == 1 -> (body2, body1)
+           | n1 == 1, n2 == 0 -> (body1, body2)
+          _ -> error $ "Unexpected int-boolean alternatives" <>
+                       showPpr genv alts
+
+  ctxt' <- (case ctxt of
+              RetC -> return RetC
+              BindC ty mr -> BindC ty . Just <$> mbFreshLocal ty mr)
+             :: Trans (Context x)
+
+  let transUnaryConAlt body n = do
+        let locs2 = updateLoc locs1 bndr (Literal Ghc.intPrimTy (CInt n))
+        l <- freshLabel
+        (bcis, _locs1, _mb_var) <- transBody body env1 locs1 fvi ctxt'
+        return (l, mkLabel l <*> bcis)
+
+  (tLabel, t_is) <- transUnaryConAlt trueBody 1
+  (fLabel, f_is) <- transUnaryConAlt falseBody 0
+
+  case ctxt' of
+    RetC ->
+      return (is0 <*> insBranch cond ty r1 r2 tLabel fLabel
+                |*><*| t_is |*><*| f_is,
+              locs1, Nothing)
+    BindC _ (Just r) -> do
+      l <- freshLabel
+      return (is0 <*> insBranch cond ty r1 r2 tLabel fLabel
+                |*><*| t_is <*> insGoto l
+                |*><*| f_is <*> insGoto l
                 |*><*| mkLabel l,
               locs1, Just r)
 
@@ -1312,6 +1375,12 @@ transVar x env fvi locs0 mr = do
     Just Void -> do
       r <- mbFreshLocal Ghc.realWorldStatePrimTy mr
       return (emptyGraph, r, True, locs0)
+    Just (Global ty g) -> do
+      r <- mbFreshLocal ty mr
+      return (insLoadGbl r g, r, True, updateLoc locs0 x (InVar r))
+    Just (Literal ty c) -> do
+      r <- mbFreshLocal ty mr
+      return (insLoadLit r c, r, True, updateLoc locs0 x (InVar r))
     Nothing
       | Just x' <- lookupLocalEnv env x -> do
           -- Note: To avoid keeping track of two environments we must
@@ -1340,6 +1409,13 @@ transVar x env fvi locs0 mr = do
 
 ------------------------------------------------------------------------
 
+dataConVarType :: DataCon -> Ghc.Type
+dataConVarType dcon
+  | Ghc.isNullarySrcDataCon dcon = ghcAnyType
+  | otherwise                    = Ghc.bcoPrimTy
+    -- We use BCO# as the type of "pointers to things that the GC doesn't have
+    -- to traverse" (yes, it's hacky)
+
 loadDataCon :: DataCon -> LocalEnv -> FreeVarsIndex -> KnownLocs
             -> Maybe BcVar
             -> Trans (Bcis O, KnownLocs, BcVar)
@@ -1360,8 +1436,7 @@ loadDataCon dcon env fvi locs0 mr = do
       let is_nullary = Ghc.isNullarySrcDataCon dcon
       let x' | is_nullary = toplevelId genv this_mdl x
              | otherwise  = dataConInfoTableId genv dcon
-      let ty | is_nullary = ghcAnyType
-             | otherwise  = Ghc.bcoPrimTy
+      let ty = dataConVarType dcon
       -- trace ("DCONadd: " ++ ppVar x ++ " : " ++ pretty x') $ do
       r <- mbFreshLocal ty mr
       return (insLoadGbl r x',
@@ -1492,7 +1567,13 @@ primOpToBinOp primop =
 isCondPrimOp :: Ghc.PrimOp -> Maybe (CmpOp, OpTy)
 isCondPrimOp primop =
   case primop of
-{-
+    _ -> Nothing
+
+-- | Is the given prim-op a "boolean" prim-op that returns @1@ if true and @0@
+-- if false?  Examples: @eqWord# :: Word# -> Word# -> Int#@
+isCondIntPrimOp :: Ghc.PrimOp -> Maybe (CmpOp, OpTy)
+isCondIntPrimOp primop =
+  case primop of
     Ghc.IntGtOp -> Just (CmpGt, IntTy)
     Ghc.IntGeOp -> Just (CmpGe, IntTy)
     Ghc.IntEqOp -> Just (CmpEq, IntTy)
@@ -1513,8 +1594,9 @@ isCondPrimOp primop =
     Ghc.WordNeOp -> Just (CmpNe, WordTy)
     Ghc.WordLtOp -> Just (CmpLt, WordTy)
     Ghc.WordLeOp -> Just (CmpLe, WordTy)
--}
+
     _ -> Nothing
+
 
 primOpOther :: Ghc.PrimOp -> Maybe (PrimOp, [OpTy], OpTy)
 primOpOther primop =
