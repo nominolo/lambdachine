@@ -1,8 +1,11 @@
 {-# LANGUAGE NoImplicitPrelude, MagicHash, UnboxedTuples #-}
-module Bc.Basic0006 where
+-- RUN: %bc_vm_chk
+-- CHECK: @Result@ IND -> Test.Basic0006.I#`con_info 1
+module Test.Basic0006 where
 
 import GHC.Prim
-import GHC.Types
+
+data Int = I# Int#
 
 -- Test code gen for function calls with very many arguments:
 
@@ -24,4 +27,4 @@ g x =
         1# 2# 3# 4# 5# 1# 2# 3# 4# 5#
         1# 2# 3# 4# 5# 1# 2# 3# 4# 5# ==# x
 
-test = isTrue# (g -30#)
+test = I# (g -30#)
