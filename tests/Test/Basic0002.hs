@@ -1,9 +1,9 @@
 {-# LANGUAGE NoImplicitPrelude, MagicHash, UnboxedTuples #-}
-module Bc.Basic0001 where
+-- RUN: %bc
+module Test.Basic0002 where
 
 import GHC.Prim
 
 -- Define a datatype with a payload
 
 data X = X Int#
-

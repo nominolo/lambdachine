@@ -1,5 +1,7 @@
 {-# LANGUAGE NoImplicitPrelude, MagicHash, UnboxedTuples #-}
-module Bc.Basic0001 where
+-- RUN: %bc
+
+module Test.Basic0001 where
 
 import GHC.Prim
 
