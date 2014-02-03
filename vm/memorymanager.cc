@@ -117,41 +117,48 @@ Region *Region::newRegion(RegionType regionType) {
   DLOG("Allocated region %p-%p\n", ptr, ptr + size);
 
   Region *region = reinterpret_cast<Region *>(ptr);
-  region->magic_ = REGION_MAGIC;
-  region->region_info_ = regionType;
-  region->region_link_ = NULL;
-  region->initBlocks();
+
+  // Need to initialise header first (otherwise some assertions may fail).
+  region->meta_.magic_ = REGION_MAGIC;
+  region->meta_.region_info_ = regionType;
+  region->meta_.region_link_ = NULL;
+
+  SmallObjectRegionData *r = region->smallSelf();
+  region->initBlocks(r);
 
   return region;
 }
 
-void Region::initBlocks() {
+void Region::initBlocks(SmallObjectRegionData *r) {
   // Mark all blocks as free.
-  char *ptr = reinterpret_cast<char *>(this) + sizeof(Region);
 
-  // If the block size is very small, the first few blocks may not be available since
-  // that is where the meta data is stored.
-  Word first_avail = sizeof(Region) / Block::kBlockSize;
+  // Block data starts after region meta data.
+  char *ptr = reinterpret_cast<char *>(r) + sizeof(Region);
+
+  // If the block size is very small, the first few blocks may not be
+  // available since that is where the meta data is stored.  We simply
+  // mark them as unavailable.
+  Word first_avail = sizeof(SmallObjectRegionData) / Block::kBlockSize;
   
-  char *metadata = reinterpret_cast<char *>(this);
+  char *metadata = reinterpret_cast<char *>(r);
   for (Word i = 0; i < first_avail; i++) {
-    blocks_[i].flags_ = Block::kMetadata;
-    blocks_[i].start_ = metadata;
+    r->blocks_[i].flags_ = Block::kMetadata;
+    r->blocks_[i].start_ = metadata;
     metadata = alignToBlockBoundary(metadata + 1);
-    blocks_[i].end_ = metadata;
-    blocks_[i].free_ = metadata;
-    blocks_[i].link_ = NULL;
+    r->blocks_[i].end_ = metadata;
+    r->blocks_[i].free_ = metadata;
+    r->blocks_[i].link_ = NULL;
   }
   for (Word i = first_avail; i < kBlocksPerRegion; i++) {
-    blocks_[i].flags_ = Block::kUninitialized;
-    blocks_[i].start_ = ptr;
-    blocks_[i].free_ = ptr;
+    r->blocks_[i].flags_ = Block::kUninitialized;
+    r->blocks_[i].start_ = ptr;
+    r->blocks_[i].free_ = ptr;
     ptr = alignToBlockBoundary(ptr + 1);
-    blocks_[i].end_ = ptr;
-    blocks_[i].link_ = &blocks_[i + 1];
+    r->blocks_[i].end_ = ptr;
+    r->blocks_[i].link_ = &r->blocks_[i + 1];
   }
-  blocks_[kBlocksPerRegion - 1].link_ = NULL; // Overwrite last link
-  next_free_ = &blocks_[first_avail];
+  r->blocks_[kBlocksPerRegion - 1].link_ = NULL; // Overwrite last link
+  r->next_free_ = &r->blocks_[first_avail];
 }
 
 void Region::operator delete(void *) {
@@ -166,10 +173,11 @@ Region::~Region() {
 }
 
 Block *Region::grabFreeBlock() {
-  if (next_free_ == NULL) return NULL;
+  SmallObjectRegionData *r = smallSelf();
+  if (r->next_free_ == NULL) return NULL;
 
-  Block *b = next_free_;
-  next_free_ = b->link_;
+  Block *b = r->next_free_;
+  r->next_free_ = b->link_;
   b->link_ = NULL;
 
   // DLOG("Returning block %p-%p\n", b->start(), b->end());
@@ -199,7 +207,7 @@ MemoryManager::MemoryManager()
 MemoryManager::~MemoryManager() {
   Region *r = region_;
   while (r != NULL) {
-    Region *next = r->region_link_;
+    Region *next = r->meta_.region_link_;
     delete r;
     r = next;
   }
@@ -224,7 +232,7 @@ Block *MemoryManager::grabFreeBlock(Block::Flags flags) {
   while (b == NULL) {
     // 3. If that failed, request more memory from the OS.
     Region *r = Region::newRegion(Region::kSmallObjectRegion);
-    r->region_link_ = region_;
+    r->meta_.region_link_ = region_;
     region_ = r;
     b = r->grabFreeBlock();
   }
@@ -387,11 +395,17 @@ std::ostream &operator<<(std::ostream &out, const Block &b) {
 }
 
 std::ostream &operator<<(std::ostream &out, const Region &r) {
-  const char *ptr = r.regionId();
-  out << "Region [" << (void *)ptr << "-"
-      << (void *)(ptr + Region::kRegionSize) << "]" << endl;
-  for (Word i = 0; i < Region::kBlocksPerRegion; i++) {
-    out << "  " << r.blocks_[i] << endl;
+
+  if (r.isSmallObjectRegion()) {
+    Region::SmallObjectRegionData *rd = r.smallSelf();
+    const char *ptr = r.regionId();
+    out << "Region [" << (void *)ptr << "-"
+        << (void *)(ptr + Region::kRegionSize) << "]" << endl;
+    for (Word i = 0; i < Region::kBlocksPerRegion; i++) {
+      out << "  " << rd->blocks_[i] << endl;
+    }
+  } else {
+    out << "LargeObjectRegion[]" << endl;
   }
   return out;
 }
@@ -400,7 +414,7 @@ std::ostream &operator<<(std::ostream &out, const MemoryManager &mm) {
   Region *r = mm.region_;
   while (r != NULL) {
     out << *r;
-    r = r->region_link_;
+    r = r->meta_.region_link_;
   }
   return out;
 }
@@ -926,7 +940,7 @@ MemoryManager::inRegions(void *p)
   while (r) {
     if (r->inRegion(p))
       return true;
-    r = r->region_link_;
+    r = r->meta_.region_link_;
   }
   return false;
 }

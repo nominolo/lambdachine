@@ -109,8 +109,8 @@ private:
 class Region {
 public:
   typedef enum {
-    kSmallObjectRegion = 1 // The region is subdivided into blocks.
-    //    kLargeObjectRegion,	// The region contains large objects.
+    kSmallObjectRegion = 1, // The region is subdivided into blocks.
+    kLargeObjectRegion	// The region contains large objects.
   } RegionType;
 
   static const int kRegionSizeLog2 = 20; /* 1MB */
@@ -140,9 +140,11 @@ public:
 
   static inline Block *blockFromPointer(void *p) {
     Region *r = regionFromPointer(p);
+    LC_ASSERT(r->isSmallObjectRegion());
+    SmallObjectRegionData *rd = r->smallSelf();
     Word index = ((Word)p & kRegionMask) >> Block::kBlockSizeLog2;
     LC_ASSERT(0 <= index && index < kBlocksPerRegion);
-    return &r->blocks_[index];
+    return &rd->blocks_[index];
   }
 
   // Unlink and return a free block from the region.
@@ -160,19 +162,50 @@ public:
 
 private:
   Region() {}  // Hidden
-  void initBlocks();
+
+  typedef struct {
+    Word magic_;
+    Word region_info_;
+    Region *region_link_;
+  } RegionHeader;
+
+  typedef struct _SmallObjectRegionData {
+    RegionHeader header_;
+    Block blocks_[Region::kBlocksPerRegion];
+    Block *next_free_;
+  } SmallObjectRegionData;
+
+  typedef struct {
+    RegionHeader header_;
+    char *end_;
+    char *free_;
+  } LargeObjectRegionData;
+
+  inline bool isSmallObjectRegion() const {
+    return meta_.region_info_ == kSmallObjectRegion;
+  }
+
+  static void initBlocks(SmallObjectRegionData *);
+
   inline bool inRegion(void *p) {
     return (void *)this <= p &&
       p < (void *)((char *)this + kRegionSize);
   }
 
+  inline SmallObjectRegionData *smallSelf() const {
+    LC_ASSERT(isSmallObjectRegion());
+    return (SmallObjectRegionData *)&meta_;
+  }
+
+  inline LargeObjectRegionData *largeSelf() const {
+    LC_ASSERT(!isSmallObjectRegion());
+    return (LargeObjectRegionData *)&meta_;
+  }
+
 #define REGION_MAGIC 0x7413828213897431UL
 
-  Word magic_;
-  Word region_info_;
-  Block blocks_[kBlocksPerRegion];
-  Region *region_link_;
-  Block *next_free_;
+  // Pointers Regions are cast to the proper region metadata type.
+  RegionHeader meta_;
 
   friend class MemoryManager;
 };
