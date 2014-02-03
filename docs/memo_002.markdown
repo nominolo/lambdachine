@@ -1,4 +1,4 @@
-Memo 8: Biased Pointers
+Memo 2: Biased Pointers
 =======================
 
 This is just a quick note on an implementation technique used by
