@@ -190,6 +190,10 @@ Time gc_time = 0;
 MemoryManager::MemoryManager()
   : free_(NULL), old_heap_(NULL), topOfStackMask_(kNoMask),
     beginAllocInfoTableLevel_(0),
+    largeObjects_(NULL),
+    evacuatedLargeObjects_(NULL),
+    scavengedLargeObjects_(NULL),
+    freeLargeRegions_(NULL),
     minHeapSize_(2), 
     nextGC_(minHeapSize_),
     allocated_(0), num_gcs_(0)
@@ -448,6 +452,8 @@ void MemoryManager::performGC(Capability *cap) {
   scavengeStack(base, top, pc);
   scavengeStaticRoots(cap->staticRoots());
 
+  // TODO: We need to alternate scavenge a block and scavenging large blocks until both have no more work left.
+
   // Scavenging allocates into closures_ and pushes filled blocks onto
   // the front of the list.  So we repeatedly traverse closures_ until
   // we reach the end of a list or a block that we've already
@@ -585,12 +591,107 @@ loop:
               - wordsof(ClosureHeader);
     dout << " -PAP(" << pap->info_.nargs_ << ")-> " << pap;
     copy(this, p, info, size);
+    break;
   }
-  break;
+
+    // Don't copy large objects.  Just mark them.
+  case LARGE: {
+    evacuateLarge(q);
+    break;
+  }
 
   default:
     dout << " -cannot evacuate yet: " << info->type() << endl;
     exit(44);
+  }
+}
+
+// The "colour" of large objects:
+//
+//  - white: it's in the largeObjects_ list and mark is clear
+//  - grey: it's in the evacuatedLargeObjects_ list and it is marked
+//  - black: it's in the scavengedLargeObjects_ list
+//
+
+void
+MemoryManager::evacuateLarge(Closure *c)
+{
+  LargeObject *q = largeObjectFromClosure(c);
+
+  if (q->getMark()) {  // Already evacuated
+    return;
+  }
+
+  q->setMark();
+
+  // Remove from large objects list.
+  unlinkLargeObject(q, &largeObjects_);
+
+  // Add to list of evacuated objects. These still need to be
+  // scavenged.
+  q->next_ = evacuatedLargeObjects_;
+  q->prev_ = NULL;
+  evacuatedLargeObjects_ = q;
+}
+
+void
+MemoryManager::scavengeLarge()
+{
+  LargeObject *obj = evacuatedLargeObjects_;
+
+  // Process all evacuated (i.e., grey) large objects.  Note that
+  // during the processing of one object, new objects may get added to
+  // the front of the list.
+  for ( ; obj != NULL; obj = evacuatedLargeObjects_) {
+
+    // Remove the object from the list.  New objects may get pushed
+    // onto the front of the list while we scavenge this one.
+    evacuatedLargeObjects_ = obj->next_;
+
+    // TODO: Actually scavenge something, once we have large objects
+    // with pointers in them.
+
+    // We're done scavenging.  Mark the object as black by adding it
+    // to the scavengedLargeObjects_ list.
+    obj->next_ = scavengedLargeObjects_;
+    scavengedLargeObjects_ = obj;
+  }
+}
+
+
+void
+MemoryManager::sweepLargeObjects()
+{
+  // TODO: We need much better free list management.  Look at what
+  // modern malloc implementations do.
+
+  // All objects remaining in the large objects after evacuation and
+  // scavenging are free.  Add to existing free list.
+  if (largeObjects_) {
+    if (freeLargeRegions_) {
+      // Append both lists.  Let's assume the newly-freed object list
+      // is a bit shorter than the existing free regions.
+      LargeObject *p = largeObjects_;
+      while (p->next_ != NULL) {
+        p = p->next_;
+      }
+      freeLargeRegions_->prev_ = p;
+      p->next_ = freeLargeRegions_;
+      freeLargeRegions_ = p;
+    } else {
+      freeLargeRegions_ = largeObjects_;
+    }
+    largeObjects_ = NULL;
+  }
+
+  // Traverse the scavenged large objects. Re-enlist them in the
+  // largeObjects_ list and clear their mark bits.
+  LargeObject *p = scavengedLargeObjects_;
+  while (p != NULL) {
+    LargeObject *n = p->next_;
+    linkLargeObject(p, &largeObjects_);
+    p->clearMark();
+    p = n;
   }
 }
 

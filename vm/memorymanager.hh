@@ -326,8 +326,11 @@ private:
   void scavengeFrame(Word *base, Word *top, const u2 *bitmask);
   void scavengeBlock(Block *);
   void scavengeStaticRoots(Closure *);
+  void scavengeLarge();
+  void sweepLargeObjects();
 
   void evacuate(Closure **);
+  void evacuateLarge(Closure *);
 
   // Sanity check stuff
 # define SEEN_SET_TYPE std::tr1::unordered_set<void*>
@@ -354,6 +357,10 @@ private:
   Block *old_heap_; // Only non-NULL during GC
   u4 topOfStackMask_;
   int beginAllocInfoTableLevel_;
+  LargeObject *largeObjects_;
+  LargeObject *evacuatedLargeObjects_;
+  LargeObject *scavengedLargeObjects_;
+  LargeObject *freeLargeRegions_;
 
   uint64_t minHeapSize_;  // in blocks
   u4 nextGC_;  // if zero, a GC gets triggered.

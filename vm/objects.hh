@@ -59,6 +59,7 @@ typedef union {
   _(IND,            IND) \
   _(CAF,            THU) \
   _(PAP,            HNF) \
+  _(LARGE,          HNF) \
   _(AP_CONT,        HNF) \
   _(STATIC_IND,     IND) \
   _(UPDATE_FRAME,   ___) \
@@ -190,6 +191,59 @@ public:
 LC_STATIC_ASSERT(is_word_aligned(PAP_PAYLOAD_OFFSET));
 LC_STATIC_ASSERT(is_word_aligned(PAP_FUNCTION_OFFSET));
 LC_STATIC_ASSERT(is_word_aligned(PAP_INFO_OFFSET));
+
+typedef struct _LargeObject {
+public:
+  struct _LargeObject *prev_;
+  struct _LargeObject *next_;
+  Word flags_;  // TODO: Currently this is only the mark bitmap.
+                // Better move that out of the object.
+  Word payloadSize_;   // How many bytes follow this object?
+  ClosureHeader header_;
+
+  inline bool getMark() const { return flags_ & 1; }
+  inline void setMark() { flags_ |= 1L; }
+  inline void clearMark() { flags_ &= ~1L; }
+} LargeObject;
+
+inline Closure *
+closureFromLargeObject(LargeObject *lobj)
+{
+  return (Closure *)(((char *)lobj) + offsetof(LargeObject, header_));
+}
+
+
+inline LargeObject *
+largeObjectFromClosure(Closure *c) {
+  // LC_ASSERT(c->info()->type() == LARGE);
+  return (LargeObject *)(((char *)c) - offsetof(LargeObject, header_));
+}
+
+inline void
+linkLargeObject(LargeObject *obj, LargeObject **list)
+{
+  // INVARIANT: if (*list) then (*list)->prev_ = NULL;
+  obj->next_ = *list;
+  obj->prev_ = NULL;
+  if (*list) {
+    (*list)->prev_ = obj;
+  }
+  *list = obj;
+}
+
+inline void
+unlinkLargeObject(LargeObject *obj, LargeObject **list)
+{
+  if (obj->prev_) {
+    obj->prev_->next_ = obj->next_;
+  } else {
+    // It's the first element of the list
+    *list = obj->next_;
+  }
+  if (obj->next_) {
+    obj->next_->prev_ = obj->prev_;
+  }
+}
 
 bool isConstructor(Closure *cl);
 void printClosure(std::ostream &out, Closure *cl, bool oneline);
