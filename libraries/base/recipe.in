@@ -14,7 +14,8 @@ category:
 author:
 exposed: True
 exposed-modules: GHC.Base GHC.Enum GHC.Char GHC.Err GHC.List GHC.Num GHC.Real
-                 GHC.Show GHC.Unicode Control.Exception.Base Data.Char Data.Either
+                 GHC.Show GHC.Unicode Control.Exception.Base Data.Char
+                 GHC.ST Data.Either
                  Data.List Data.Maybe Data.Monoid Data.Tuple Control.Monad
                  Text.ParserCombinators.ReadP Text.ParserCombinators.ReadPrec
                  Text.Read.Lex GHC.Read Text.Read

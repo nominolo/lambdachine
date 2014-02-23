@@ -68,7 +68,8 @@ MODULES_base="GHC/Err.hs-boot Control/Exception/Base.hs GHC/Base.hs
   Data/Maybe.hs GHC/List.hs GHC/Num.hs GHC/Show.hs GHC/Char.hs GHC/Enum.hs 
   GHC/Exception.hs-boot
   GHC/Real.hs GHC/Unicode.hs-boot GHC/Unicode.hs Data/Char.hs 
-  GHC/Err.hs Data/Either.hs Data/List.hs Data/Monoid.hs Data/Tuple.hs
+  GHC/Err.hs GHC/ST.hs
+  Data/Either.hs Data/List.hs Data/Monoid.hs Data/Tuple.hs
   Control/Monad.hs
   Text/ParserCombinators/ReadP.hs Text/ParserCombinators/ReadPrec.hs Text/Read/Lex.hs GHC/Read.hs Text/Read.hs"
 
