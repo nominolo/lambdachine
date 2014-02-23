@@ -407,6 +407,10 @@ libraries/built: lcc $(BOOT_SRCS)
 clean-bytecode:
 	rm -f $(PRIM_MODULES)
 	$(MAKE) -C tests clean
+	find libraries -name '*.lcbc' -delete
+	find libraries -name '*.o' -delete
+	find libraries -name '*.hi' -delete
+	rm -f libraries/built
 
 .PHONY: gtest
 gtest: $(GTEST_A)
