@@ -1063,10 +1063,11 @@ transCase expr bndr (UbxTupAlt n) alts@[(_, vars, _, body)] env
   genv <- askGlobalEnv
 
   -- Only non-void values are actually returned.
-  let nonVoidVars = removeIf (isGhcVoid genv) vars
+  let (voidVars, nonVoidVars) = partition (isGhcVoid genv) vars
   case nonVoidVars of
     [var] -> do  -- same as regular return, really
       let locs2 = updateLoc locs1 var (InVar r0)
+                   `extendLocs` [ (x, Void) | x <- voidVars ]
           env' = extendLocalEnv env var undefined
       (bcis', locs3, mb_r) <- transBody body env' locs2 fvi ctxt
       return (bcis <*> bcis', locs3, mb_r)
@@ -1080,7 +1081,9 @@ transCase expr bndr (UbxTupAlt n) alts@[(_, vars, _, body)] env
       regs <- mapM (\x -> mbFreshLocal (repType (Ghc.varType x)) Nothing)
                    otherResultVars
       let bcis1 = [ insLoadExtraResult r n | (r, n) <- zip regs [1..] ]
-      let locs2 = extendLocs locs1 [(resultVar0, InVar r0)]
+      let locs2 = (locs1
+                    `extendLocs` [(resultVar0, InVar r0)])
+                    `extendLocs` [ (x, Void) | x <- voidVars ]
       let locs3 = extendLocs locs2
                     [ (x, InVar r) | (x, r) <- zip otherResultVars regs ]
 
