@@ -24,7 +24,7 @@ module GHC.ST (
     ) where
 
 import GHC.Base
-import GHC.Show
+--import GHC.Show
 
 default ()
 
