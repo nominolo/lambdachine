@@ -87,7 +87,7 @@ Loader::~Loader() {
 
 bool Loader::loadWiredInModules() {
   AllocInfoTableHandle h(*mm_); // Prevent lots of mprotect calls
-  bool result = loadModule("GHC.Types"); // && loadModule("Control.Exception.Base");
+  bool result = loadModule("GHC.Types") && loadModule("Control.Exception.Base");
   return result;
 }
 
