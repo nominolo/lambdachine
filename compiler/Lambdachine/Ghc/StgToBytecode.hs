@@ -724,23 +724,28 @@ transRhs (StgRhsCon _ccs dcon args) self isRec fwds0 env locs00 fvi = do
 transRhs r@(StgRhsClosure _ccs _info frees0 _upd _srt args body)
          self isRec fwds0 env locs0_outer fvi_outer = do
 
-  let frees | isRec = filter (/= self) frees0
-            | otherwise = frees0
+  genv <- askGlobalEnv
+
+  let allFrees | isRec = filter (/= self) frees0
+               | otherwise = frees0
+
+  let (voidFrees, nonVoidFrees) = partition (isGhcVoid genv) allFrees
+
   -- TODO: Detect when args == [] and body is just a function application
  --trace ("THUNK()" ++ showPpr (r, frees, self, isRec)) $ do
-
-  genv <- askGlobalEnv
 
   -- 1. Create a new BCO for the body of the closure.
   info_tbl0 <- do
     let locs0 = mkLocs [ (arg, InReg n t) |
                          (arg, n) <- zip args [0..],
                          let t = repType (Ghc.varType arg) ]
+                 `extendLocs` [ (x, Void) | x <- voidFrees ]
         locs1 | isRec     = updateLoc locs0 self Self
               | otherwise = locs0
-    let fvi = Ghc.mkVarEnv (zip frees [(1::Int)..])
-    let env0 = mkLocalEnv (zip frees (repeat undefined))
-  
+
+    let fvi = Ghc.mkVarEnv (zip nonVoidFrees [(1::Int)..])
+    let env0 = mkLocalEnv (zip nonVoidFrees (repeat undefined))
+
     (is0, _locs, Nothing) <- withParentFun self $ transBody body env0 locs1 fvi RetC
 
     this_mdl <- getThisModule
@@ -754,13 +759,15 @@ transRhs r@(StgRhsClosure _ccs _info frees0 _upd _srt args body)
     let arity = length args
         arg_types = map (transType genv . repType . Ghc.varType) args
         free_vars = M.fromList [ (n, transType genv (Ghc.varType v))
-                                | (n, v) <- zip [1..] frees ]
+                                | (n, v) <- zip [1..] nonVoidFrees ]
 
     let bco = BcObject
               { bcoType = if arity > 0
                            then BcoFun arity arg_types
-                           else if length frees > 0
+                           else if length allFrees > 0
                                 then Thunk else CAF
+                                     -- TODO: If we only have void free
+                                     -- variables, should it be a CAF?
               , bcoCode = g
               , bcoConstants = []
               , bcoGlobalRefs = [] -- TODO: What's this used for?
@@ -769,18 +776,18 @@ transRhs r@(StgRhsClosure _ccs _info frees0 _upd _srt args body)
     addBCO x' bco
     return x'
 
-  if null frees then do
+  if null nonVoidFrees then do
     let info_tbl = mkTopLevelId (idName info_tbl0)
     tag_reg <- mbFreshLocal (repType (Ghc.varType self)) Nothing
     return (insLoadGbl tag_reg info_tbl, locs0_outer, Left tag_reg,
             repType (Ghc.varType self), [])
    else do
      let info_tbl = mkInfoTableId (idName info_tbl0)
-     (bcis1, locs1, regs) <- transArgs (map StgVarArg frees)
+     (bcis1, locs1, regs) <- transArgs (map StgVarArg nonVoidFrees)
                                        env locs0_outer fvi_outer
      let tag_type = Ghc.bcoPrimTy
      tag_reg <- mbFreshLocal tag_type Nothing
-     let fwds = [ FwdRef n x | (x, n) <- zip frees [1..]
+     let fwds = [ FwdRef n x | (x, n) <- zip nonVoidFrees [1..]
                              , x `elem` fwds0 ]
      return (bcis1 <*> insLoadGbl tag_reg info_tbl, locs1,
              Right (tag_reg, regs), repType (Ghc.varType self), fwds)
@@ -1386,8 +1393,11 @@ transVar x env fvi locs0 mr = do
           -- Note: To avoid keeping track of two environments we must
           -- only reach this case if the variable is bound outside the
           -- current closure.
-          if isGhcVoid genv x then
-            error "Free variables of type void not yet supported."
+          if isGhcVoid genv x then do
+            st <- getStack
+            error $ "Free variables of type void not yet supported.\n"
+              ++ "Var: " ++ showPpr genv x ++ "\nStack: "
+              ++ showPpr genv st
            else do
             r <- mbFreshLocal (repType (Ghc.varType x)) mr
             -- Do not force @i@ -- must remain a thunk
