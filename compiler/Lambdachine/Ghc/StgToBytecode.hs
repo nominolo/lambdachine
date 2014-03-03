@@ -498,7 +498,16 @@ transBody e@(StgApp f args) env locs0 fvi ctxt =
 transBody (StgOpApp (StgPrimOp primOp) args rslt_ty) env locs0 fvi ctxt = do
   genv <- askGlobalEnv
   (is0, locs1, regs) <- transArgs args env locs0 fvi
-  case () of
+
+  let arrCtx = case ctxt of
+                 BindC ty mbVar -> BindC ty mbVar
+                 RetC           -> BindC rslt_ty Nothing
+  mbArrayOp <- maybeTransArrayOp primOp regs locs1 arrCtx
+
+  case mbArrayOp of
+   Just (is1, locs2, rslt)
+     -> maybeAddRet ctxt (is0 <*> is1) locs2 rslt
+
    _ | Just (op, ty) <- primOpToBinOp primOp, [r1, r2] <- regs
      -> do
        rslt <- mbFreshLocal rslt_ty (contextVar ctxt)
@@ -1609,6 +1618,144 @@ isCondIntPrimOp primop =
     Ghc.WordLeOp -> Just (CmpLe, WordTy)
 
     _ -> Nothing
+
+maybeTransArrayOp :: Ghc.PrimOp
+          -> [BcVar]
+          -> KnownLocs
+          -> Context O
+          -> Trans (Maybe (Bcis O, KnownLocs, BcVar))
+maybeTransArrayOp primop args locs0 ctx = case primop of
+
+  Ghc.NewByteArrayOp_Char
+    | [size, _state] <- args -> newByteArray size
+  Ghc.NewPinnedByteArrayOp_Char
+    | [size, _state] <- args -> newByteArray size
+
+  Ghc.SameMutableByteArrayOp  -> nyi  -- TODO: That's just pointer equality?
+  Ghc.UnsafeFreezeByteArrayOp -> nyi     -- TODO: That's just a move
+  Ghc.SizeofByteArrayOp       -> nyi  -- Just a field lookup
+  Ghc.ByteArrayContents_Char  -> nyi -- ByteArray# -> Addr#
+  Ghc.NewAlignedPinnedByteArrayOp_Char -> nyi
+
+  Ghc.IndexByteArrayOp_Char
+    | [arr, offs] <- args -> indexArray arr offs 1 Ghc.charPrimTy
+  Ghc.IndexByteArrayOp_WideChar
+    | [arr, offs] <- args -> indexArray arr offs 4 Ghc.charPrimTy
+  Ghc.IndexByteArrayOp_Int
+    | [arr, offs] <- args -> indexArray arr offs wordSize Ghc.intPrimTy
+  Ghc.IndexByteArrayOp_Word
+    | [arr, offs] <- args -> indexArray arr offs wordSize Ghc.wordPrimTy
+  Ghc.IndexByteArrayOp_Addr
+    | [arr, offs] <- args -> indexArray arr offs wordSize Ghc.addrPrimTy
+  Ghc.IndexByteArrayOp_Float
+    | [arr, offs] <- args -> indexArray arr offs 4 Ghc.floatPrimTy
+  Ghc.IndexByteArrayOp_Double
+    | [arr, offs] <- args -> indexArray arr offs 8 Ghc.doublePrimTy
+  Ghc.IndexByteArrayOp_Int8
+    | [arr, offs] <- args -> indexArray arr offs 1 Ghc.intPrimTy
+  Ghc.IndexByteArrayOp_Int16
+    | [arr, offs] <- args -> indexArray arr offs 2 Ghc.intPrimTy
+  Ghc.IndexByteArrayOp_Int32
+    | [arr, offs] <- args -> indexArray arr offs 4 Ghc.intPrimTy
+  Ghc.IndexByteArrayOp_Int64
+    | [arr, offs] <- args -> indexArray arr offs 8 Ghc.intPrimTy
+  Ghc.IndexByteArrayOp_Word8
+    | [arr, offs] <- args -> indexArray arr offs 1 Ghc.wordPrimTy
+  Ghc.IndexByteArrayOp_Word16
+    | [arr, offs] <- args -> indexArray arr offs 2 Ghc.wordPrimTy
+  Ghc.IndexByteArrayOp_Word32
+    | [arr, offs] <- args -> indexArray arr offs 4 Ghc.wordPrimTy
+  Ghc.IndexByteArrayOp_Word64
+    | [arr, offs] <- args -> indexArray arr offs 8 Ghc.wordPrimTy
+  Ghc.IndexByteArrayOp_StablePtr -> nyi
+
+  Ghc.ReadByteArrayOp_Char
+    | [arr, offs, _state] <- args -> indexArray arr offs 1 Ghc.charPrimTy
+  Ghc.ReadByteArrayOp_WideChar
+    | [arr, offs, _state] <- args -> indexArray arr offs 4 Ghc.charPrimTy
+  Ghc.ReadByteArrayOp_Int
+    | [arr, offs, _state] <- args -> indexArray arr offs wordSize Ghc.intPrimTy
+  Ghc.ReadByteArrayOp_Word
+    | [arr, offs, _state] <- args -> indexArray arr offs wordSize Ghc.wordPrimTy
+  Ghc.ReadByteArrayOp_Addr
+    | [arr, offs, _state] <- args -> indexArray arr offs wordSize Ghc.addrPrimTy
+  Ghc.ReadByteArrayOp_Float
+    | [arr, offs, _state] <- args -> indexArray arr offs 4 Ghc.floatPrimTy
+  Ghc.ReadByteArrayOp_Double
+    | [arr, offs, _state] <- args -> indexArray arr offs 8 Ghc.doublePrimTy
+  Ghc.ReadByteArrayOp_Int8
+    | [arr, offs, _state] <- args -> indexArray arr offs 1 Ghc.intPrimTy
+  Ghc.ReadByteArrayOp_Int16
+    | [arr, offs, _state] <- args -> indexArray arr offs 2 Ghc.intPrimTy
+  Ghc.ReadByteArrayOp_Int32
+    | [arr, offs, _state] <- args -> indexArray arr offs 4 Ghc.intPrimTy
+  Ghc.ReadByteArrayOp_Int64
+    | [arr, offs, _state] <- args -> indexArray arr offs 8 Ghc.intPrimTy
+  Ghc.ReadByteArrayOp_Word8
+    | [arr, offs, _state] <- args -> indexArray arr offs 1 Ghc.wordPrimTy
+  Ghc.ReadByteArrayOp_Word16
+    | [arr, offs, _state] <- args -> indexArray arr offs 2 Ghc.wordPrimTy
+  Ghc.ReadByteArrayOp_Word32
+    | [arr, offs, _state] <- args -> indexArray arr offs 4 Ghc.wordPrimTy
+  Ghc.ReadByteArrayOp_Word64
+    | [arr, offs, _state] <- args -> indexArray arr offs 8 Ghc.wordPrimTy
+  Ghc.ReadByteArrayOp_StablePtr -> nyi
+
+  Ghc.WriteByteArrayOp_Char
+    | [arr, offs, val, _state] <- args -> writeArray arr offs val 1
+  Ghc.WriteByteArrayOp_WideChar
+    | [arr, offs, val, _state] <- args -> writeArray arr offs val 4
+  Ghc.WriteByteArrayOp_Int
+    | [arr, offs, val, _state] <- args -> writeArray arr offs val wordSize
+  Ghc.WriteByteArrayOp_Word
+    | [arr, offs, val, _state] <- args -> writeArray arr offs val wordSize
+  Ghc.WriteByteArrayOp_Addr
+    | [arr, offs, val, _state] <- args -> writeArray arr offs val wordSize
+  Ghc.WriteByteArrayOp_Float
+    | [arr, offs, val, _state] <- args -> writeArray arr offs val 4
+  Ghc.WriteByteArrayOp_Double
+    | [arr, offs, val, _state] <- args -> writeArray arr offs val 8
+  Ghc.WriteByteArrayOp_Int8
+    | [arr, offs, val, _state] <- args -> writeArray arr offs val 1
+  Ghc.WriteByteArrayOp_Int16
+    | [arr, offs, val, _state] <- args -> writeArray arr offs val 2
+  Ghc.WriteByteArrayOp_Int32
+    | [arr, offs, val, _state] <- args -> writeArray arr offs val 4
+  Ghc.WriteByteArrayOp_Int64
+    | [arr, offs, val, _state] <- args -> writeArray arr offs val 8
+  Ghc.WriteByteArrayOp_Word8
+    | [arr, offs, val, _state] <- args -> writeArray arr offs val 1
+  Ghc.WriteByteArrayOp_Word16
+    | [arr, offs, val, _state] <- args -> writeArray arr offs val 2
+  Ghc.WriteByteArrayOp_Word32
+    | [arr, offs, val, _state] <- args -> writeArray arr offs val 4
+  Ghc.WriteByteArrayOp_Word64
+    | [arr, offs, val, _state] <- args -> writeArray arr offs val 8
+  Ghc.WriteByteArrayOp_StablePtr -> nyi
+
+  _ -> return Nothing
+
+ where
+   wordSize = 8
+
+   nyi = do
+     env <- askGlobalEnv
+     error $ "NYI: " ++ showPpr env primop
+
+   newByteArray size = do
+     result <- mbFreshLocal Ghc.byteArrayPrimTy (contextVar ctx)
+     let inss = insPrimOp OpNewByteArray PtrTy result [size]
+     return $ Just (inss, locs0, result)
+
+   indexArray arr offs sz rsltTy = do
+     result <- mbFreshLocal rsltTy (contextVar ctx)
+     let inss = insFetchBA result arr offs sz
+     return $ Just (inss, locs0, result)
+
+   writeArray arr offs arg sz = do
+     result <- mbFreshLocal (Ghc.mkStatePrimTy Ghc.anyTy) (contextVar ctx)
+     let inss = insStoreBA arr offs arg sz
+     return $ Just (inss, locs0, result)
 
 
 primOpOther :: Ghc.PrimOp -> Maybe (PrimOp, [OpTy], OpTy)

@@ -97,13 +97,14 @@ liveness = mkBTransfer live
 -- arbitrarily many successors, so we have to use lookup.
 live :: BcIns e x -> Fact x LiveVars -> LiveVars
 live ins f = case ins of
-  Label _     -> f
-  Assign x r  -> addLives (S.delete x f) (universeBi r)
-  Store b _ v -> addOne b (addOne v f)
-  Eval l _ r  -> addOne r (fact f l)
-  Goto l      -> fact f l
-  Ret1 r      -> addOne r (fact_bot livenessLattice)
-  RetN rs     -> addLives (fact_bot livenessLattice) rs
+  Label _         -> f
+  Assign x r      -> addLives (S.delete x f) (universeBi r)
+  Store b _ v     -> addOne b (addOne v f)
+  StoreBA a o v _ -> addOne a (addOne o (addOne v f))
+  Eval l _ r      -> addOne r (fact f l)
+  Goto l          -> fact f l
+  Ret1 r          -> addOne r (fact_bot livenessLattice)
+  RetN rs         -> addLives (fact_bot livenessLattice) rs
   CondBranch _ _ r1 r2 tl fl ->
     addLives (fact f tl `S.union` fact f fl) [r1, r2]
   Case _ r targets ->
@@ -133,15 +134,16 @@ insDefines ins = case ins of
   _ -> S.empty
 
 insUses :: BcIns e x -> [BcVar]
-insUses (Assign _ rhs)   = universeBi rhs
-insUses (Eval _ _ x)     = [x]
-insUses (Store _ _ x)    = [x]
-insUses (Ret1 x)         = [x]
-insUses (RetN xs)        = xs
+insUses (Assign _ rhs)    = universeBi rhs
+insUses (Eval _ _ x)      = [x]
+insUses (Store _ _ x)     = [x]
+insUses (StoreBA a o v _) = [a, o, v]
+insUses (Ret1 x)          = [x]
+insUses (RetN xs)         = xs
 insUses (CondBranch _ _ x y _ _) = [x, y]
-insUses (Case _ x _)     = [x]
-insUses (Call _ fn args) = fn : args
-insUses _                = []
+insUses (Case _ x _)      = [x]
+insUses (Call _ fn args)  = fn : args
+insUses _                 = []
 
 mkBRewrite3 :: forall n f m. Monad m =>
                (n C O -> f          -> m (Maybe (Graph n C O)))

@@ -1047,6 +1047,15 @@ emitLinearIns bit_r lit_ids tgt_labels r ins_id ins = do
         (PrimOp OpShiftRightArith _ty [BcReg src1 _, BcReg src2 _])) ->
       emitInsABC r opc_BSAR (i2b dst) (i2b src1) (i2b src2)
     Mid (Assign (BcReg dst _)
+         (PrimOp OpNewByteArray _ty [BcReg src1 _])) ->
+      emitInsABC r opc_NEWBYTEA (i2b dst) (i2b src1) 0
+    Mid (Assign (BcReg dst _)
+         (FetchBA (BcReg arr _) (BcReg offs _) valSize)) ->
+      emitInsABC r (opcGetABySize valSize) (i2b dst) (i2b arr) (i2b offs)
+    Mid (StoreBA (BcReg arr _) (BcReg offs _) (BcReg val _) valSize) ->
+      emitInsABC r (opcSetABySize valSize) (i2b val) (i2b arr) (i2b offs)
+
+    Mid (Assign (BcReg dst _)
          (PrimOp OpRaise _ty [BcReg src _])) ->
       emitInsAD r opc_RAISE (i2b 0) (i2h src)
     Mid (Store (BcReg ptr _) offs (BcReg src _)) | offs <= 255 ->
@@ -1071,6 +1080,18 @@ emitLinearIns bit_r lit_ids tgt_labels r ins_id ins = do
    binOpOpcode t CmpLtI = if isSigned t then opc_CMPLT else opc_CMPLTU
    binOpOpcode t CmpEqI = opc_CMPEQ
    binOpOpcode t CmpNeI = opc_CMPNE
+
+   opcGetABySize 1 = opc_GETA1
+   opcGetABySize 2 = opc_GETA2
+   opcGetABySize 4 = opc_GETA4
+   opcGetABySize 8 = opc_GETA8
+   opcGetABySize n = error $ "Unsupported array stride size: " <> show n
+
+   opcSetABySize 1 = opc_SETA1
+   opcSetABySize 2 = opc_SETA2
+   opcSetABySize 4 = opc_SETA4
+   opcSetABySize 8 = opc_SETA8
+   opcSetABySize n = error $ "Unsupported array stride size: " <> show n
 
    isSigned :: OpTy -> Bool
    isSigned IntTy = True

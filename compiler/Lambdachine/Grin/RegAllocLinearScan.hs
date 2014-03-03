@@ -499,6 +499,11 @@ allocRegsSingle env (Mid ins) liveOuts = do
       ins' <- Store <$> allocRef1 env s1 <*> pure n <*> allocRef1 env s2
       pruneDeads env liveOuts [s1, s2]
       emit (Mid ins')
+    StoreBA s1 s2 s3 n -> do
+      ins' <- StoreBA <$> allocRef1 env s1 <*> allocRef1 env s2
+                      <*> allocRef1 env s3 <*> pure n
+      pruneDeads env liveOuts [s1, s2, s3]
+      emit (Mid ins')
                                
 allocRegsSingle env (Lst ins) liveOuts = do
   case ins of

@@ -2,6 +2,7 @@
 {-# LANGUAGE GADTs, TypeFamilies, ScopedTypeVariables, RankNTypes #-}
 {-# LANGUAGE TypeSynonymInstances, FlexibleContexts, MultiParamTypeClasses,
              FlexibleInstances, CPP #-}
+
 module Lambdachine.Grin.Bytecode
   ( module Lambdachine.Grin.Bytecode,
     (<*>), (|*><*|), O, C, emptyGraph, catGraphs, MaybeO(..),
@@ -11,12 +12,12 @@ where
 
 import Lambdachine.Id
 import Lambdachine.Utils.Pretty
-import Lambdachine.Utils ( second, snd3 )
+import Lambdachine.Utils ( snd3 )
 import qualified Lambdachine.Utils.Unique as U
 
 import qualified Type as Ghc
 import qualified Outputable as Ghc
-import qualified DynFlags as Ghc
+--import qualified DynFlags as Ghc
 
 import Compiler.Hoopl
 import Control.Monad.State
@@ -46,8 +47,10 @@ instance NFData Label
 data BcIns' b e x where
   Label  :: !b -> BcIns' b C O
   -- O/O stuff
-  Assign :: !BcVar -> !BcRhs         -> BcIns' b O O
-  Store  :: !BcVar -> !Int -> !BcVar -> BcIns' b O O
+  Assign  :: !BcVar -> !BcRhs         -> BcIns' b O O
+  Store   :: !BcVar -> !Int -> !BcVar -> BcIns' b O O
+  StoreBA :: !BcVar -> !BcVar -> !BcVar -> !Int -> BcIns' b O O
+           -- array     offset    value     operandWidth
 
   -- O/C stuff
   Goto   :: !b                       -> BcIns' b O C
@@ -107,6 +110,7 @@ data BcRhs
   | Load !BcLoadOperand
   | BinOp !BinOp !OpTy !BcVar !BcVar
   | Fetch !BcVar Int
+  | FetchBA !BcVar !BcVar !Int  -- array offset accessSize
   | Alloc !BcVar ![BcVar] !LiveSet
   | AllocAp ![BcVar] !LiveSet
   | PrimOp !PrimOp !OpTy ![BcVar]
@@ -122,6 +126,7 @@ data BcLoadOperand
 
 instance NFData BcLoadOperand where
   rnf (LoadClosureVar !idx) = ()
+  rnf x = ()  -- The rest is already strict
 
 {-
 data CompOp
@@ -148,6 +153,7 @@ data PrimOp
   | OpShiftLeft
   | OpShiftRightLogical
   | OpShiftRightArith
+  | OpNewByteArray
   | OpRaise  -- TODO: Just stops the program, for now.
   | OpNop  -- See Note "Primitive Nops"
   deriving (Eq, Ord, Show)
@@ -210,14 +216,16 @@ instance U.Uniquable BcVar where
   getUnique (BcReg n _) = U.unsafeMkUniqueNS 'R' n
 
 instance NonLocal (BcIns' Label) where
-  entryLabel (Label l) = l
-  successors (Goto l) = [l]
+  entryLabel (Label l)    = l
+  successors (Goto l)     = [l]
+  successors (Ret1 _)     = []
+  successors (RetN _)     = []
+  successors (Eval l _ _) = [l]
+  successors Update       = []
+  successors Stop         = []
   successors (CondBranch _ _ _ _ tl fl) = [fl, tl]
   successors (Case _ _ targets) = map (\(_,_,t) -> t) targets
   successors (Call mb_l _ _) = maybeToList (snd3 `fmap` mb_l)
-  successors (Ret1 _) = []
-  successors (RetN _) = []
-  successors (Eval l _ _) = [l]
 
 instance HooplNode BcIns where
   mkBranchNode l = Goto l
@@ -270,6 +278,10 @@ instance Pretty b => Pretty (BcIns' b e x) where
     text "eval" <+> ppr r <+> pprLives lives
   ppr (Store base offs val) =
     text "Mem[" <> ppr base <+> char '+' <+> int offs <> text "] = " <> ppr val
+  ppr (StoreBA array offs val valSize) =
+    text "Mem[" <> ppr array <+> char '+' <+> ppr offs <> char '*' <>
+      int valSize <> text "] = " <> ppr val <+> char '(' <> int valSize <>
+      text " bytes)"
   ppr (Goto bid) = text "goto" <+> ppr bid
   ppr (CondBranch cmp ty r1 r2 true false) =
     text "if" <+> ppr r1 <+> ppr cmp <+> ppr r2 <+>
@@ -300,6 +312,9 @@ instance Pretty BcRhs where
     ppr src1 <+> ppr op <+> ppr src2 <+> char '<' <> (ppr ty) <> char '>'
   ppr (Fetch r offs) =
     text "Mem[" <> ppr r <+> char '+' <+> int offs <> char ']'
+  ppr (FetchBA array offs valSize) =
+    text "Mem[" <> ppr array <+> char '+' <+> ppr offs <> char '*' <>
+      int valSize <> text "] (" <> int valSize <> text " bytes)"
   ppr (Alloc ctor args lives) =
     text "alloc(" <> hsep (commaSep (map ppr (ctor:args))) <> char ')'
       <+> pprLives lives
@@ -323,6 +338,7 @@ instance Pretty PrimOp where
   ppr OpShiftRightLogical = text "shiftRightLogical#"
   ppr OpShiftRightArith = text "shiftRightArith#"
   ppr OpRaise = text "raise#"
+  ppr OpNewByteArray = text "newByteArray#"
   ppr OpNop = text "nop"
 
 instance Pretty OpTy where
@@ -362,19 +378,19 @@ tst1 = do
 
 mapLabels :: (l1 -> l2) -> BcIns' l1 e x -> BcIns' l2 e x
 mapLabels f ins = case ins of
-  Label l      -> Label (f l)
-  Assign x rhs -> Assign x rhs
-  Eval l lv x     -> Eval (f l) lv x
-  Store x n y  -> Store x n y
-  Ret1 x       -> Ret1 x
-  RetN xs      -> RetN xs
-  Goto l       -> Goto (f l)
-  CondBranch op ty x y l1 l2 ->
-    CondBranch op ty x y (f l1) (f l2)
-  Case cty x targets ->
-    Case cty x (map (\(x,y,z) -> (x, y, f z)) targets)
-  Call next fn args ->
-    Call (fmap (\(x,y,z) -> (x, f y, z)) next) fn args
+  Label l            -> Label (f l)
+  Assign x rhs       -> Assign x rhs
+  Eval l lv x        -> Eval (f l) lv x
+  Store x n y        -> Store x n y
+  StoreBA a o v n    -> StoreBA a o v n
+  Ret1 x             -> Ret1 x
+  RetN xs            -> RetN xs
+  Goto l             -> Goto (f l)
+  Update             -> Update
+  Stop               -> Stop
+  Case cty x targets -> Case cty x (map (\(x,y,z) -> (x, y, f z)) targets)
+  Call next fn args  -> Call (fmap (\(x,y,z) -> (x, f y, z)) next) fn args
+  CondBranch op ty x y l1 l2 -> CondBranch op ty x y (f l1) (f l2)
 
 type NodePpr n = forall e x . n e x -> PDoc
 type LabelPpr = Label -> PDoc
@@ -436,6 +452,14 @@ insBinOp op ty rslt src1 src2 =
 insPrimOp :: PrimOp -> OpTy -> BcVar -> [BcVar] -> BcGraph O O
 insPrimOp op ty rslt args =
   mkMiddle $ Assign rslt (PrimOp op ty args)
+
+insFetchBA :: BcVar -> BcVar -> BcVar -> Int -> BcGraph O O
+insFetchBA rslt arr offs valSize =
+  mkMiddle $ Assign rslt (FetchBA arr offs valSize)
+
+insStoreBA :: BcVar -> BcVar -> BcVar -> Int -> BcGraph O O
+insStoreBA arr offs val valSize =
+  mkMiddle $ StoreBA arr offs val valSize
 
 insLoadLit :: BcVar -> BcConst -> BcGraph O O
 insLoadLit r lit = mkMiddle $ Assign r (Load (LoadLit lit))
@@ -721,20 +745,22 @@ tst3 = universeBi $ Assign (BcReg 1) (BinOp OpAdd IntTy (BcReg 1) (BcReg 0))
 instance Uniplate BcVar where uniplate p = plate p
 
 instance Biplate (BcIns' b e x) BcVar where
-  biplate (Assign r rhs) = plate Assign |* r |+ rhs
-  biplate (Eval l lv r) = plate (Eval l) |+ lv |* r
-  biplate (Store r n r') = plate Store |* r |- n |* r'
-  biplate (CondBranch c t r1 r2 l1 l2) =
-    plate (CondBranch c t) |* r1 |* r2 |- l1 |- l2
-  biplate (Case ty r targets) =
-    plate (Case ty) |* r ||+ targets
-  biplate (Call Nothing f args) =
-    plate (Call Nothing) |* f ||* args
+  biplate (Assign r rhs)        = plate Assign |* r |+ rhs
+  biplate (Eval l lv r)         = plate (Eval l) |+ lv |* r
+  biplate (Store r n r')        = plate Store |* r |- n |* r'
+  biplate (StoreBA ra ro rv w)  = plate StoreBA |* ra |* ro |* rv |- w
+  biplate (Case ty r targets)   = plate (Case ty) |* r ||+ targets
+  biplate (Call Nothing f args) = plate (Call Nothing) |* f ||* args
+  biplate (Ret1 r)              = plate Ret1 |* r
+  biplate (RetN rs)             = plate RetN ||* rs
+  biplate i@(Label _)           = plate i
+  biplate i@(Goto _)            = plate i
+  biplate i@Update              = plate i
+  biplate i@Stop                = plate i
   biplate (Call (Just (x,y,lives)) f args) =
     plate (\x' lives' -> Call (Just (x', y, lives'))) |* x |+ lives |* f ||* args
-  biplate (Ret1 r) = plate Ret1 |* r
-  biplate (RetN rs) = plate RetN ||* rs
-  biplate l = plate l
+  biplate (CondBranch c t r1 r2 l1 l2) =
+    plate (CondBranch c t) |* r1 |* r2 |- l1 |- l2
 
 instance Biplate (S.Set BcVar) BcVar where
   biplate vars = plate S.fromList ||* S.toList vars
@@ -744,14 +770,15 @@ instance Biplate (BcTag, S.Set BcVar, b) BcVar where
     plate (\vars' -> (t, S.fromList vars', b)) ||* S.toList vars
 
 instance Biplate BcRhs BcVar where
-  biplate (Move r) = plate Move |* r
+  biplate (Move r)            = plate Move |* r
   biplate (BinOp op ty r1 r2) = plate (BinOp op ty) |* r1 |* r2
-  biplate (Fetch r n) = plate Fetch |* r |- n
-  biplate (Alloc rt rs lv) = plate Alloc |* rt ||* rs |+ lv
-  biplate (AllocAp rs lv) = plate AllocAp ||* rs |+ lv
+  biplate (Fetch r n)         = plate Fetch |* r |- n
+  biplate (FetchBA ra ro n)   = plate FetchBA |* ra |* ro |- n
+  biplate (Alloc rt rs lv)    = plate Alloc |* rt ||* rs |+ lv
+  biplate (AllocAp rs lv)     = plate AllocAp ||* rs |+ lv
   biplate (PrimOp op ty vars) = plate (PrimOp op ty) ||* vars
-  biplate rhs@(Load _) = plate rhs
-  biplate rhs@(HiResult _) = plate rhs
+  biplate rhs@(Load _)        = plate rhs
+  biplate rhs@(HiResult _)    = plate rhs
 
 invertCondition :: CmpOp -> CmpOp
 invertCondition cond = case cond of

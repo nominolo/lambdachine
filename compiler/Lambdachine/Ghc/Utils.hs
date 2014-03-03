@@ -163,6 +163,8 @@ transType env ty0 = case Ghc.repType ty0 of
               | tycon == Ghc.wordPrimTyCon  -> WordTy
               | tycon == Ghc.statePrimTyCon -> VoidTy
               | tycon == Ghc.voidPrimTyCon  -> VoidTy
+              | tycon == Ghc.byteArrayPrimTyCon -> PtrTy
+              | tycon == Ghc.mutableByteArrayPrimTyCon -> PtrTy
               | otherwise ->
                   error $ "Unknown primitive type: " ++ showPpr env tycon
 
