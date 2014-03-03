@@ -384,6 +384,26 @@ private:
   friend class AllocInfoTableHandle;
 };
 
+// Utility to avoid lots of system calls during load time.
+//
+// When loading a program we allocate a lot of info tables.  Once we
+// are done loading, however, we want to mark memory used by info
+// tables as read-only.  This helps detect memory corruption, for
+// example.
+//
+// The private functions beginAllocInfoTable and endAllocInfoTable
+// take care of lifting and setting these memory protections and must
+// always be called in pairs.  This class ensures that we always make
+// both calls.  To allocate an info table we must simply construct a
+// handle on the stack.  When the handle goes out of scope, the
+// destructor takes care of making a matching call.
+//
+//     {
+//        AllocInfoTableHandle hdl(mm);
+//        itbl = mm.allocInfoTable(hdl, size);
+//        ...
+//     }
+//
 class AllocInfoTableHandle {
 public:
   AllocInfoTableHandle(MemoryManager &mm) : mm_(mm) {  mm_.beginAllocInfoTable(); }
