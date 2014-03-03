@@ -79,6 +79,16 @@ _START_LAMBDACHINE_NAMESPACE
   _(CASE_S,  ___) \
   /* Exception stuff */ \
   _(RAISE,   R) \
+  /* Arrays */ \
+  _(NEWBYTEA, RRN) \
+  _(GETA1, RRR) /* u1 x = arr[offs] */ \
+  _(GETA2, RRR) /* u2 x = arr[offs] */ \
+  _(GETA4, RRR) /* u4 x = arr[offs] */ \
+  _(GETA8, RRR) /* u8 x = arr[offs] */ \
+  _(SETA1, RRR) /* arr[offs] = (u1)x */ \
+  _(SETA2, RRR) /* arr[offs] = (u2)x */ \
+  _(SETA4, RRR) /* arr[offs] = (u4)x */ \
+  _(SETA8, RRR) /* arr[offs] = (u8)x */ \
   /* Function headers */ \
   _(FUNC,    R) \
   _(IFUNC,   R) \

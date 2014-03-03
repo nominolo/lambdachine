@@ -133,6 +133,10 @@ static inline int32_t byteOffset32(void *from, void *to) {
 #define is_word_aligned(x) \
   ((((Word)(x)) & (sizeof(Word) - 1)) == 0)
 
+static inline Word roundUpBytesToWords(Word bytes) {
+  return (bytes + (sizeof(Word) - 1)) >> LC_ARCH_BYTES_LOG2;
+}
+
 #if __GNUC__ >= 3
 /* Assume that a flexible array member at the end of a struct
  * can be defined thus: T arr[]; */

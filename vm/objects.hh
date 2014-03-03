@@ -185,6 +185,12 @@ public:
   inline Word payload(u4 i) const { return payload_[i]; }
 } PapClosure;
 
+typedef struct {
+  ClosureHeader header_;
+  Word bytes_;
+  Word payload_[];
+} ByteArrayClosure;
+
 #define PAP_PAYLOAD_OFFSET   (offsetof(PapClosure, payload_))
 #define PAP_FUNCTION_OFFSET  (offsetof(PapClosure, fun_))
 #define PAP_INFO_OFFSET      (offsetof(PapClosure, info_))

@@ -160,6 +160,10 @@ public:
 
   inline const char *regionId() const { return (const char*)this; }
 
+  static inline Word maxLargeObjectSize() {
+    return kRegionSize - sizeof(LargeObjectRegionData) - sizeof(LargeObject);
+  }
+
 private:
   Region() {}  // Hidden
 
@@ -183,6 +187,10 @@ private:
 
   inline bool isSmallObjectRegion() const {
     return meta_.region_info_ == kSmallObjectRegion;
+  }
+
+  inline bool isLargeObjectRegion() const {
+    return meta_.region_info_ == kLargeObjectRegion;
   }
 
   static void initBlocks(SmallObjectRegionData *);
@@ -329,6 +337,7 @@ private:
   void scavengeLarge();
   void sweepLargeObjects();
 
+  Closure *allocLarge(Word nbytes);
   void evacuate(Closure **);
   void evacuateLarge(Closure *);
 
@@ -348,6 +357,7 @@ private:
   void endAllocInfoTable();
 
   Region *region_;
+  Region *largeObjectRegion_;
   Block *free_;
   Block *info_tables_;
   Block *static_closures_;

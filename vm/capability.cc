@@ -1050,6 +1050,66 @@ op_CASE_S:
     DISPATCH_NEXT;
   }
 
+ op_NEWBYTEA:
+  // rA = result
+  // rB = size
+  // rC = flags  (unused for now, could be used for alignment requirements)
+  //
+  // FIXME: We need pointer info as this is an allocation instruction
+  // and may fail.
+  {
+    DECODE_BC;
+    Word payloadSizeBytes = base[opB];
+    // Word flags = opC;
+    Word payloadSizeWords = roundUpBytesToWords(payloadSizeBytes);
+
+    ByteArrayClosure *cl = (ByteArrayClosure*)mm_->allocLarge
+      (sizeof(ByteArrayClosure) + payloadSizeWords * sizeof(Word));
+    cl->header_.info_ = MiscClosures::stg_BYTEARR_info;
+    cl->bytes_ = payloadSizeBytes;
+
+    base[opA] = (Word)cl;
+    DISPATCH_NEXT;
+  }
+
+#define GETA(n, t) \
+  op_GETA##n: { \
+    DECODE_BC; \
+    ByteArrayClosure *arr = (ByteArrayClosure *)base[opB]; \
+    Word offset = base[opC]; \
+    LC_ASSERT(arr); \
+    LC_ASSERT(offset * sizeof(t) < arr->bytes_); \
+    const t *data = (const t *)arr->payload_; \
+    base[opA] = (Word)data[offset]; \
+    DISPATCH_NEXT; \
+  }
+
+  GETA(1, u1)
+  GETA(2, u2)
+  GETA(4, u4)
+  GETA(8, u8)
+
+#undef GETA
+
+#define SETA(n, t) \
+  op_SETA##n: { \
+    DECODE_BC; \
+    ByteArrayClosure *arr = (ByteArrayClosure *)base[opB]; \
+    Word offset = base[opC]; \
+    LC_ASSERT(arr); \
+    LC_ASSERT(offset * sizeof(t) < arr->bytes_); \
+    t *data = (t *)arr->payload_; \
+    data[offset] = (t)base[opA]; \
+    DISPATCH_NEXT; \
+  }
+
+  SETA(1, u1)
+  SETA(2, u2)
+  SETA(4, u4)
+  SETA(8, u8)
+
+#undef SETA
+
 op_KINT:
 op_NEW_INT:
 op_JRET:

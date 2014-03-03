@@ -19,6 +19,7 @@ InfoTable *MiscClosures::stg_PAP_info = NULL;
 InfoTable **MiscClosures::smallApInfos = NULL;
 APMAP *MiscClosures::otherApInfos = NULL;
 Closure *MiscClosures::stg_BLACKHOLE_closure_addr = NULL;
+InfoTable *MiscClosures::stg_BYTEARR_info = NULL;
 
 void MiscClosures::initStopClosure(MemoryManager &mm) {
   AllocInfoTableHandle hdl(mm);
@@ -126,6 +127,20 @@ void MiscClosures::initUpdateClosure(MemoryManager &mm) {
   Closure *stg_UPD_closure = mm.allocStaticClosure(0);
   stg_UPD_closure->setInfo((InfoTable *)info);
   MiscClosures::stg_UPD_closure_addr = stg_UPD_closure;
+}
+
+void MiscClosures::initByteArrInfo(MemoryManager &mm)
+{
+  AllocInfoTableHandle hdl(mm);
+  InfoTable *info = static_cast<InfoTable*>
+    (mm.allocInfoTable(hdl, wordsof(InfoTable)));
+  info->type_ = LARGE;
+  info->size_ = 0;
+  info->tagOrBitmap_ = 0;
+  info->layout_.bitmap = 0;
+  info->name_ = "stg_BYTEARR";
+
+  MiscClosures::stg_BYTEARR_info = info;
 }
 
 void MiscClosures::initIndirectionItbl(MemoryManager &mm) {
@@ -389,6 +404,7 @@ void MiscClosures::init(MemoryManager *mm) {
   AllocInfoTableHandle h(*mm); // Prevent lots of mprotect calls
   MiscClosures::initStopClosure(*mm);
   MiscClosures::initBlackholeClosure(*mm);
+  MiscClosures::initByteArrInfo(*mm);
   MiscClosures::initUpdateClosure(*mm);
   MiscClosures::initIndirectionItbl(*mm);
   MiscClosures::initApConts(mm);

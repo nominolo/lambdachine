@@ -38,6 +38,8 @@ public:
   static InfoTable *stg_IND_info;
   static InfoTable *stg_PAP_info;
 
+  static InfoTable *stg_BYTEARR_info;
+
 private:
   typedef struct {
     Closure *closure;
@@ -62,6 +64,7 @@ private:
   static void initBlackholeClosure(MemoryManager &mm);
   static void initUpdateClosure(MemoryManager &mm);
   static void initIndirectionItbl(MemoryManager &mm);
+  static void initByteArrInfo(MemoryManager &mm);
   static void initPapItbl(MemoryManager *mm);
   static void initApConts(MemoryManager *mm);
   static void initApInfos(MemoryManager *mm);

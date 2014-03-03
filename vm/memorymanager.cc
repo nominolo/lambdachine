@@ -123,8 +123,22 @@ Region *Region::newRegion(RegionType regionType) {
   region->meta_.region_info_ = regionType;
   region->meta_.region_link_ = NULL;
 
-  SmallObjectRegionData *r = region->smallSelf();
-  region->initBlocks(r);
+  switch (regionType) {
+  case kSmallObjectRegion: {
+    SmallObjectRegionData *r = region->smallSelf();
+    region->initBlocks(r);
+    break;
+  }
+  case kLargeObjectRegion: {
+    LargeObjectRegionData *r = region->largeSelf();
+    r->free_ = ((char *)region) + sizeof(LargeObjectRegionData);
+    r->end_ = r->free_ + kRegionSize;
+    break;
+  }
+  default:
+    fprintf(stderr, "FATAL: Unknown region type: %d.\n", (int)regionType);
+    exit(1);
+  }
 
   return region;
 }
@@ -133,7 +147,7 @@ void Region::initBlocks(SmallObjectRegionData *r) {
   // Mark all blocks as free.
 
   // Block data starts after region meta data.
-  char *ptr = reinterpret_cast<char *>(r) + sizeof(Region);
+  char *ptr = reinterpret_cast<char *>(r) + sizeof(SmallObjectRegionData);
 
   // If the block size is very small, the first few blocks may not be
   // available since that is where the meta data is stored.  We simply
@@ -188,7 +202,8 @@ Block *Region::grabFreeBlock() {
 Time gc_time = 0;
 
 MemoryManager::MemoryManager()
-  : free_(NULL), old_heap_(NULL), topOfStackMask_(kNoMask),
+  : largeObjectRegion_(NULL),
+    free_(NULL), old_heap_(NULL), topOfStackMask_(kNoMask),
     beginAllocInfoTableLevel_(0),
     largeObjects_(NULL),
     evacuatedLargeObjects_(NULL),
@@ -352,6 +367,72 @@ void MemoryManager::bumpAllocatorFull(char **heap, char **heaplim,
        << endl;
 }
 
+// TODO: We really want binning.  E.g., bin sizes: 512, 576, 640, ...
+
+Closure *
+MemoryManager::allocLarge(Word nbytes)
+{
+  Word maxObjectSize = Region::maxLargeObjectSize();
+  if (nbytes > maxObjectSize) {
+    fprintf(stderr,
+            "NYI: Cannot allocate objects larger than %" FMT_Word " bytes",
+            maxObjectSize);
+    exit(1);
+  }
+
+  char *result = NULL;
+  Word nbytesWithMeta = sizeof(LargeObject) + nbytes;
+
+  // 1. Try to find a free'd large object using best-fit with bounded
+  // look-ahead.
+  // if (freeLargeRegions_) { ... }
+
+  Region *large = largeObjectRegion_;
+
+  // 2. Try to fit into existing large regions (using first fit).
+  while (large) {
+    char *start = large->largeSelf()->free_;
+    char *end = start + nbytesWithMeta;
+
+    if (end <= largeObjectRegion_->largeSelf()->end_) {
+      largeObjectRegion_->largeSelf()->free_ = end;
+      // TODO: If remaining space is less than minimum large objects
+      // size, mark whole object as full?  Or keep as large object gap
+      // and try to merge later when the adjacent region gets free'd.
+
+      result = start;
+      goto found;
+    }
+
+    large = large->largeSelf()->header_.region_link_;
+  }
+
+  LC_ASSERT(large == NULL);
+
+  // 3. We couldn't find any space in the existing regions.  Allocate
+  // a new region.
+  large = Region::newRegion(Region::kLargeObjectRegion);
+  result = large->largeSelf()->free_;
+  large->largeSelf()->free_ += nbytesWithMeta;
+  large->largeSelf()->header_.region_link_ = largeObjectRegion_;
+
+  largeObjectRegion_ = large;
+
+ found:
+  LC_ASSERT(result != NULL);
+
+  // Initialise and link onto large object list.
+  LargeObject *obj = (LargeObject*)result;
+  obj->prev_ = NULL;
+  obj->next_ = largeObjects_;
+  obj->flags_ = 0;
+  obj->payloadSize_ = nbytes;
+  largeObjects_ = obj;
+
+  return closureFromLargeObject(obj);
+}
+
+
 unsigned int MemoryManager::infoTables() {
   Block *b = info_tables_;
   unsigned int n = 0;
@@ -372,10 +453,15 @@ void MemoryManager::debugPrint() {
 }
 
 bool MemoryManager::looksLikeClosure(void *p) {
+  Region *r = Region::regionFromPointer(p);
+  if (r->isLargeObjectRegion())
+    return true;
+
   Block *block = Region::blockFromPointer(p);
   if (!(block->contents() == Block::kStaticClosures ||
         block->contents() == Block::kClosures))
     return false;
+
   Closure *cl = (Closure *)p;
   return cl->info() != NULL && looksLikeInfoTable(cl->info());
 }
@@ -1043,6 +1129,14 @@ MemoryManager::inRegions(void *p)
       return true;
     r = r->meta_.region_link_;
   }
+
+  r = largeObjectRegion_;
+  while (r) {
+    if (r->inRegion(p))
+      return true;
+    r = r->meta_.region_link_;
+  }
+
   return false;
 }
 
