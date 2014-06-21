@@ -6,8 +6,8 @@
 #include "objects.hh"
 #include <iostream>
 #include <string.h>
-// TODO: Add autoconf check for module name
-#include <tr1/unordered_set>
+
+#include HASH_SET_H
 
 _START_LAMBDACHINE_NAMESPACE
 
@@ -341,8 +341,7 @@ private:
   void evacuate(Closure **);
   void evacuateLarge(Closure *);
 
-  // Sanity check stuff
-# define SEEN_SET_TYPE std::tr1::unordered_set<void*>
+# define SEEN_SET_TYPE HASH_NAMESPACE::HASH_SET_CLASS<void*>
 
   bool sanityCheckClosure(SEEN_SET_TYPE &seen, Closure *cl);
   bool sanityCheckFrame(SEEN_SET_TYPE &seen, Word *base, Word *top,
