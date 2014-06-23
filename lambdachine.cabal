@@ -36,4 +36,4 @@ Executable lcc
   Hs-Source-Dirs:   compiler
   Main-Is:          Main.hs
   Default-Language: Haskell2010
-  Ghc-Options:    -rtsopts
+  Ghc-Options:    -rtsopts -Wall
