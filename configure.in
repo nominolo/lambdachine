@@ -12,37 +12,29 @@ AC_LANG([C++])
 AC_ARG_WITH([ghc],
 [AC_HELP_STRING([--with-ghc=ARG],
   [Use ARG as the path to GHC  [default=autodetect]])],
-  [WithGhc="$withval"]
+  [HC="$withval"]
   [if test "$HC" = ""; then
-    AC_PATH_PROG([HC], [ghc])
-  fi
-  WithGhc="$HC"])
+    AC_CHECK_PROGS([HC], [ghc-7.8.3 ghc-7.8.2 ghc-7.8.1], no)
+    if test x"${HC}" == x"no" ; then
+      AC_MSG_ERROR([Lambdachine requires ghc-7.8])
+    fi
+  fi])
 
 AC_ARG_WITH([ghc-pkg],
 [AC_HELP_STRING([--with-ghc-pkg=ARG],
   [Use ARG as the path to ghc-pkg [default=autodetect]])],
-  [WithGhcPkg="$withval"]
+  [HC_PKG="$withval"]
   [if test "$HC_PKG" = ""; then
-    AC_PATH_PROG([HC], [ghc-pkg])
-  fi
-  WithGhcPkg="$HC_PKG"])
+    AC_CHECK_PROGS([HC_PKG], [ghc-pkg-7.8.3 ghc-pkg-7.8.2 ghc-pkg-7.8.1], no)
+  fi])
 
 # Figure out where hash_map lives and also hash_fun.h (or stl_hash_fun.h).
 # This also tells us what namespace hash code lives in.
 AC_CXX_STL_HASH
 # AC_CXX_STL_HASH_FUN
 
-if test "$WithGhc" == ""; then
-  AC_CHECK_PROGS([HC], [ghc-7.8.3 ghc-7.8.2 ghc-7.8.1], no)
-  if test x"${HC}" == x"no" ; then
-    AC_MSG_ERROR([Lambdachine requires ghc-7.8])
-  fi
-fi
-
-if test "$WithGhcPkg" == ""; then
-  AC_CHECK_PROGS([HC_PKG], [ghc-pkg-7.8.3 ghc-pkg-7.8.2 ghc-pkg-7.8.1], no)
-  AC_SUBST(HC)
-fi
+AC_SUBST(HC)
+AC_SUBST(HC_PKG)
 
 AC_CHECK_LIB(rt, clock_gettime)
 AC_CHECK_FUNCS(clock_gettime)
