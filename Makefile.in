@@ -97,7 +97,7 @@ echo:
 # === GoogleTest =======================================================
 #
 
-GTEST_VERSION=1.6.0
+GTEST_VERSION=1.7.0
 UNZIP=unzip
 AT=@
 GTEST_DEFS=-DGTEST_HAS_PTHREAD=0
