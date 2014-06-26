@@ -22,17 +22,29 @@ concurrency primitives are supported.
 You need:
 
   - GHC 7.8 compiled with `integer-simple` for integers
-  - A C compiler, either `gcc` or `clang`
+  - A C++ compiler, either `g++` or `clang`
 
 All dependencies are on Hackage and can be installed via `cabal`,
   
 Installation steps:
 
-    $ ./boot
-    $ ./configure
-    $ make install-deps
-    $ make boot
-    $ make
+ 1. Configuring
+
+        $ ./boot   # Creates ./configure script
+        $ ./configure   # Autodetect ghc, ghc-pkg, g++, etc.
+
+    This will only find binaries in your `$PATH`.  You can specify a
+    specific version of `ghc` and a matching `ghc-pkg` by passing them
+    as arguments to the configure script, e.g.,
+
+        $ ./configure --with-ghc=${HOME}/code/ghc/head/inplace/bin/ghc-stage2 \
+                      --with-ghc-pkg=${HOME}/code/ghc/head/inplace/bin/ghc-pkg
+
+ 2. Building
+
+        $ make install-deps
+        $ make boot
+        $ make
 
 This should build the bytecode compiler `lcc`, the test suite and the
 actual VM, called `lcvm`.  To run the test suite use:
