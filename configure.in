@@ -13,20 +13,34 @@ AC_ARG_WITH([ghc],
 [AC_HELP_STRING([--with-ghc=ARG],
   [Use ARG as the path to GHC  [default=autodetect]])],
   [HC="$withval"]
-  [if test "$HC" = ""; then
-    AC_CHECK_PROGS([HC], [ghc-7.8.3 ghc-7.8.2 ghc-7.8.1], no)
-    if test x"${HC}" == x"no" ; then
-      AC_MSG_ERROR([Lambdachine requires ghc-7.8])
-    fi
-  fi])
+  [])
 
 AC_ARG_WITH([ghc-pkg],
 [AC_HELP_STRING([--with-ghc-pkg=ARG],
   [Use ARG as the path to ghc-pkg [default=autodetect]])],
   [HC_PKG="$withval"]
-  [if test "$HC_PKG" = ""; then
-    AC_CHECK_PROGS([HC_PKG], [ghc-pkg-7.8.3 ghc-pkg-7.8.2 ghc-pkg-7.8.1], no)
-  fi])
+  [])
+
+AC_MSG_CHECKING([for ghc])
+# TODO: If the user specifies --with-ghc, we should check that it has
+# a compatible version, by parsing the output of "ghc
+# --numeric-version"
+if test "$HC" = ""; then
+  AC_CHECK_PROGS([HC], [ghc-7.8.3 ghc-7.8.2 ghc-7.8.1], no)
+  if test x"${HC}" == x"no" ; then
+    AC_MSG_ERROR([Lambdachine requires ghc-7.8])
+  fi
+fi
+AC_MSG_RESULT([$HC])
+
+AC_MSG_CHECKING([for ghc-pkg])
+if test "$HC_PKG" = ""; then
+  AC_CHECK_PROGS([HC_PKG], [ghc-pkg-7.8.3 ghc-pkg-7.8.2 ghc-pkg-7.8.1], no)
+  if test x"${HC_PKG}" == x"no" ; then
+    AC_MSG_ERROR([Lambdachine requires ghc-pkg-7.8])
+  fi
+fi
+AC_MSG_RESULT([$HC_PKG])
 
 # Figure out where hash_map lives and also hash_fun.h (or stl_hash_fun.h).
 # This also tells us what namespace hash code lives in.
