@@ -324,6 +324,7 @@ unzip3   :: [(a,b,c)] -> ([a],[b],[c])
 {-# INLINE unzip3 #-}
 unzip3   =  foldr (\(a,b,c) ~(as,bs,cs) -> (a:as,b:bs,c:cs))
                   ([],[],[])
+
 {-# NOINLINE errorEmptyList #-}
 errorEmptyList :: String -> a
 errorEmptyList fun = errorEmptyList fun
