@@ -5,7 +5,7 @@ module Control.Exception.Base where
 import GHC.Prim
 
 irrefutPatError :: Addr# -> a
-irrefutPatError = irrefutPatError
+irrefutPatError = raise# patError
 
 patError :: Addr# -> a
-patError = patError
+patError = raise# patError

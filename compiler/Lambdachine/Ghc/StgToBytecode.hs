@@ -32,7 +32,7 @@ import qualified TysPrim as Ghc
 import qualified TyCon as Ghc
 import qualified TypeRep as Ghc
 import qualified Outputable as Ghc
-import qualified MkId as Ghc ( realWorldPrimId )
+import qualified MkId as Ghc ( realWorldPrimId, voidPrimId )
 import qualified CoreUtils as Ghc
 import qualified Coercion as Ghc
 import TyCon ( TyCon )
@@ -292,7 +292,9 @@ noLocs = KnownLocs Ghc.emptyVarEnv Ghc.emptyVarEnv
 -- The local environment always includes `realWorld#`.  It doesn't
 -- actually have a runtime representation.
 mkLocs :: [(Ghc.Id, ValueLocation)] -> KnownLocs
-mkLocs l = KnownLocs (Ghc.extendVarEnv (Ghc.mkVarEnv l) Ghc.realWorldPrimId Void)
+mkLocs l = KnownLocs (Ghc.extendVarEnvList (Ghc.mkVarEnv l)
+                           [(Ghc.realWorldPrimId, Void)
+                           ,(Ghc.voidPrimId, Void)])
                      Ghc.emptyVarEnv
 
 instance Monoid KnownLocs where
