@@ -13,6 +13,7 @@ module GHC.Err
 import GHC.Types
 -- import GHC.Exception
 
+{-# NOINLINE error #-}
 error :: [Char] -> a
 error s = error s -- throw (ErrorCall s)
 
