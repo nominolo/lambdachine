@@ -66,27 +66,28 @@ TEST(LoaderTest, DefaultBasePath) {
 TEST(LoaderTest, Load1) {
   MemoryManager mm;
   Loader l(&mm, "libraries");
-  ASSERT_TRUE(l.loadModule("GHC.Bool"));
-  const Module *m = l.module("GHC.Bool");
+  const char *moduleName = "GHC.Types";
+  ASSERT_TRUE(l.loadModule(moduleName));
+  const Module *m = l.module(moduleName);
   ASSERT_TRUE(m != NULL);
-  ASSERT_STREQ("GHC.Bool", m->name());
+  ASSERT_STREQ(moduleName, m->name());
 }
 
 TEST(LoaderTest, LoadIdempotent) {
   MemoryManager mm;
   Loader l(&mm, "libraries");
-  const char *modname = "GHC.Bool";
-  ASSERT_TRUE(l.loadModule(modname));
-  const Module *m = l.module(modname);
+  const char *moduleName = "GHC.Types";
+  ASSERT_TRUE(l.loadModule(moduleName));
+  const Module *m = l.module(moduleName);
 
   // Try loading the same module again.  Make sure the requested
   // module name is not pointer identical.
-  char *modname2 = new char[strlen(modname) + 1];
-  strcpy(modname2, modname);
-  ASSERT_TRUE(modname != modname2);
+  char *moduleName2 = new char[strlen(moduleName) + 1];
+  strcpy(moduleName2, moduleName);
+  ASSERT_TRUE(moduleName != moduleName2);
 
-  ASSERT_TRUE(l.loadModule(modname2));
-  const Module *m2 = l.module(modname2);
+  ASSERT_TRUE(l.loadModule(moduleName2));
+  const Module *m2 = l.module(moduleName2);
 
   ASSERT_TRUE(m == m2);         // pointer identity!
 }
@@ -945,7 +946,7 @@ protected:
     ASSERT_TRUE(result != NULL);
     stringstream out;
     printClosure(out, result, true);
-    EXPECT_EQ(string("IND -> GHC.Bool.True`con_info "), out.str());
+    EXPECT_EQ(string("IND -> GHC.Types.True`con_info "), out.str());
   }
 
 protected:
