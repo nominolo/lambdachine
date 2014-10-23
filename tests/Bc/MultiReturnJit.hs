@@ -17,7 +17,7 @@ sumlen (I# x : xs) =
 {-# NOINLINE enumFromTo #-}
 enumFromTo :: Int -> Int -> [Int]
 enumFromTo from@(I# m) to@(I# n) =
-  if m ># n then [] else
+  if isTrue# (m ># n) then [] else
     from : enumFromTo (I# (m +# 1#)) to
 
 test = case sumlen (enumFromTo 1 100) of

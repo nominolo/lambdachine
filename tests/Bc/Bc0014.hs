@@ -4,7 +4,7 @@
 module Bc.Bc0014 where
 
 import GHC.Prim
-import GHC.Bool
+import GHC.Types
 import GHC.Base
 
 data D = A | B | C

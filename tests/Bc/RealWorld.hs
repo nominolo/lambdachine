@@ -9,4 +9,4 @@ f :: State# RealWorld -> Int
 f _s = 42
 
 test = case f realWorld# of
-         I# n -> n ==# 42#
+         I# n -> isTrue# (n ==# 42#)

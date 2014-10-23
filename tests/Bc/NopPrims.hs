@@ -2,7 +2,7 @@
 module Bc.NopPrims where
 
 import GHC.Prim
-import GHC.Bool
+import GHC.Types( Bool(..) )
 
 test = case ord# (chr# 42#) of
          42# ->

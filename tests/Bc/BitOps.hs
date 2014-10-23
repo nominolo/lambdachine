@@ -15,4 +15,4 @@ loop n acc =
   in loop (n -# 1#) (acc +# n')
 
 test = case loop 101# 0# of
-         res@(I# res') -> res' ==# 9192643473#
+         res@(I# res') -> isTrue# (res' ==# 9192643473#)

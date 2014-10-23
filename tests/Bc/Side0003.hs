@@ -15,7 +15,7 @@ import GHC.Types
 g :: Int# -> Int# -> Int# -> Int# -> Int# -> Int# -> Int# -> Int#
 --g a b c d e f | trace (show (I# a, I# b)) False = 0#
 g a b c d e f x =
-  let !n = if b ># 50# then 5# else 9# in
+  let !n = if isTrue# (b ># 50#) then 5# else 9# in
   a +# b +# c +# d +# e +# f +# n +# x
 
 h :: Int# -> Int# -> Int# -> Int# -> Int# -> Int# -> Int# -> Int#
@@ -27,9 +27,9 @@ h a b0 c0 d0 e0 f0 y0 =
   let !f = f0 *# 3# in
   let !y = y0 -# 1# in
   let !x = g (b +# 1#) (a +# 5#) (c +# 7#) (d +# 9#) (e +# 43#) (f +# 50#) (y *# 2#) in
-  if a <=# 0# then a +# b +# c +# d +# e +# f +# x else
+  if isTrue# (a <=# 0#) then a +# b +# c +# d +# e +# f +# x else
     h (a -# 1#) (b +# 1#) d e f y c
 
 test = case h 100# 3# 1# 2# 3# 4# 0# of
 --         n -> I# n
-         n -> n ==# 89210265937536150#
+         n -> isTrue# (n ==# 89210265937536150#)

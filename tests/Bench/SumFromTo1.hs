@@ -8,7 +8,6 @@ module Bench.SumFromTo1 where
 #endif
 
 import GHC.Prim
-import GHC.Bool
 import GHC.Types
 
 #ifdef USE_NOINLINE
@@ -19,7 +18,7 @@ import GHC.Types
 
 enumFromTo :: Int -> Int -> [Int]
 enumFromTo from@(I# m) to@(I# n) =
-  if m ># n then [] else
+  if isTrue# (m ># n) then [] else
     from : enumFromTo (I# (m +# 1#)) to
 
 zero :: Int
@@ -45,7 +44,7 @@ succInt :: Int -> Int
 succInt (I# m) = I# (m +# 1#)
 
 eqInt :: Int -> Int -> Bool
-eqInt (I# m) (I# n) = m ==# n
+eqInt (I# m) (I# n) = isTrue# (m ==# n)
 
 root upper =
   let !l = sum (enumFromTo one upper) in

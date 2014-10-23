@@ -4,7 +4,6 @@
 module Bench.SumFromTo4 where
 
 import GHC.Prim
-import GHC.Bool
 import GHC.Types
 
 -- Strictly allocates the list.
@@ -14,7 +13,7 @@ import GHC.Types
 {-# NOINLINE upto #-}
 upto :: Int -> Int -> [Int] -> [Int]
 upto from@(I# m) to@(I# n) acc =
-  if m ># n then acc else
+  if isTrue# (m ># n) then acc else
     upto (I# (m +# 1#)) to (from : acc)
 
 zero :: Int
@@ -41,7 +40,7 @@ succInt :: Int -> Int
 succInt (I# m) = I# (m +# 1#)
 
 eqInt :: Int -> Int -> Bool
-eqInt (I# m) (I# n) = m ==# n
+eqInt (I# m) (I# n) = isTrue# (m ==# n)
 
 {-# NOINLINE root #-}
 root upper =

@@ -3,7 +3,6 @@
 -- CHECK: @Result@ IND -> GHC.Bool.True`con_info
 module Bc.Paps where
 
-import GHC.Bool
 import GHC.Prim
 import GHC.Types
 
@@ -21,4 +20,4 @@ g :: Int# -> Int -> (Int# -> Int -> Int# -> Int -> Int -> Int#)
 g a b f' = Box (f' a b)
 
 test = case g 4# (I# 5#) f of
-         Box h -> case h 5# 7 8 of n -> n ==# 304#
+         Box h -> case h 5# 7 8 of n -> isTrue# (n ==# 304#)

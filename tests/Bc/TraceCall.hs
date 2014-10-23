@@ -3,7 +3,6 @@
 -- CHECK: @Result@ IND -> GHC.Bool.True`con_info
 module Bc.TraceCall where
 
-import GHC.Bool
 import GHC.Prim
 import GHC.Types
 
@@ -17,4 +16,4 @@ loop n acc =
   let !acc' = f (n +# 5#) acc in
   loop (n -# 1#) acc'
 
-test = loop 123# 1# ==# 7873#
+test = isTrue# (loop 123# 1# ==# 7873#)

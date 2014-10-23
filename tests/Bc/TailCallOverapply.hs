@@ -3,7 +3,6 @@
 -- CHECK: @Result@ IND -> GHC.Bool.True`con_info
 module Bc.TailCallOverapply where
 
-import GHC.Bool
 import GHC.Prim
 import GHC.Types
 

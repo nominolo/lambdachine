@@ -4,7 +4,7 @@
 module Bc.Bc0017 where
 
 import GHC.Prim
-import GHC.Bool
+import GHC.Types (isTrue#)
 
 data Int = CInt Int#
 
@@ -16,7 +16,5 @@ f x = Box (CInt x)
 
 test =
   case f 5# of
-    Box (CInt n) -> n ==# 5#
-  
-     
-     
+    Box (CInt n) -> isTrue# (n ==# 5#)
+

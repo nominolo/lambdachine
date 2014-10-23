@@ -1,9 +1,8 @@
-{-# LANGUAGE NoImplicitPrelude, MagicHash #-}
+{-# LANGUAGE NoImplicitPrelude, MagicHash, BangPatterns #-}
 -- RUN: %bc_vm_chk
 -- CHECK: @Result@ IND -> GHC.Bool.True`con_info
 module Bc.QuotRem where
 
-import GHC.Bool
 import GHC.Prim
 import GHC.Types
 
@@ -25,13 +24,13 @@ mylcm x y = (x `quotInt#` mygcd x y) *# y
 loop :: Int# -> Int# -> Int
 loop acc s =
 --  trace (show (I# acc, I# s)) $
-  if s <=# 0# then I# acc else
+  if isTrue# (s <=# 0#) then I# acc else
     let !g = mygcd acc s in
 --    trace (show (I# g)) $
     loop (acc +# mygcd acc s) (s -# 3#)
 
 test = case loop 0# 100# of
-         x@(I# r) -> r ==# 133#
+         x@(I# r) -> isTrue# (r ==# 133#)
 
 
 test1 = I# (mygcd 12# 15#) -- 3

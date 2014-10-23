@@ -1,9 +1,8 @@
-{-# LANGUAGE NoImplicitPrelude, MagicHash #-}
+{-# LANGUAGE NoImplicitPrelude, MagicHash, BangPatterns #-}
 -- RUN: %bc_vm_chk
 -- CHECK: @Result@ IND -> GHC.Bool.True`con_info
 module Bc.SumCall1 where
 
-import GHC.Bool
 import GHC.Prim
 import GHC.Types
 import GHC.Base
@@ -20,4 +19,4 @@ loop n acc =
   in loop n' acc'
 
 test = case loop 50 0 of
-         I# n -> n ==# 3825#
+         I# n -> isTrue# (n ==# 3825#)

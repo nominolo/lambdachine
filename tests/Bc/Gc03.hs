@@ -3,7 +3,6 @@
 -- CHECK: @Result@ IND -> GHC.Bool.True`con_info
 module Bc.Gc03 where
 
-import GHC.Bool
 import GHC.Prim
 import GHC.List
 import GHC.Types
@@ -30,9 +29,9 @@ silly :: Int -> Int# -> Int -> Int#
 silly (I# z) x (I# y) = z +# x *# y
 
 check :: Int# -> Int# -> [Box] -> Bool
-check len n [] = n ==# (len +# 1#)
+check len n [] = isTrue# (n ==# (len +# 1#))
 check len n (Box f:xs) =
-  if f (I# 1#) ==# (n +# n) then check len (n +# 1#) xs else False
+  if isTrue# (f (I# 1#) ==# (n +# n)) then check len (n +# 1#) xs else False
 
 test =
   let !n = 3000# in check n 1# (f n [])

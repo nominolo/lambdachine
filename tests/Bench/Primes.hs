@@ -8,7 +8,6 @@ module Bench.Primes where
 #endif
 
 import GHC.Prim
-import GHC.Bool
 import GHC.Types
 import GHC.Base
 import GHC.Num

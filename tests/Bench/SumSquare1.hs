@@ -20,7 +20,7 @@ import GHC.Num
 
 enumFromTo'Int :: Int -> Int -> [Int]
 enumFromTo'Int from@(I# m) to@(I# n) =
-  if m ># n then [] else
+  if isTrue# (m ># n) then [] else
     from : enumFromTo'Int (I# (m +# 1#)) to
 
 sum :: [Int] -> Int

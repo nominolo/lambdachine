@@ -245,12 +245,12 @@ undef = undef
 
 myidx :: [a] -> Int -> a
 xs `myidx` (I# n0)
-  | n0 <# 0# = undef
+  | isTrue# (n0 <# 0#) = undef
   | otherwise = sub xs n0
      where
        sub :: [a] -> Int# -> a
        sub []     _ = undef
-       sub (y:ys) n = if n ==# 0#
+       sub (y:ys) n = if isTrue# (n ==# 0#)
                       then y
                       else sub ys (n -# 1#)
 

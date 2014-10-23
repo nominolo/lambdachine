@@ -7,7 +7,6 @@ import Prelude ( print )
 module Bench.SumFromTo2 where
 #endif
 import GHC.Prim
-import GHC.Bool
 import GHC.Types
 import GHC.Base
 import GHC.Num
@@ -19,7 +18,7 @@ import GHC.Num
 
 enumFromTo :: Int -> Int -> [Int]
 enumFromTo from@(I# m) to@(I# n) =
-  if m ># n then [] else
+  if isTrue# (m ># n) then [] else
     from : enumFromTo (I# (m +# 1#)) to
 
 -- We keep this NOINLINE, because otherwise GHC specializes this

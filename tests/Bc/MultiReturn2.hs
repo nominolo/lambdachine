@@ -12,4 +12,4 @@ g :: Int# -> State# RealWorld -> (# State# RealWorld, Int #)
 g n s = (# s, I# (n +# 1#) #)
 
 test = case g 5# realWorld# of
-         (# s', I# m #) -> m ==# 6#
+         (# s', I# m #) -> isTrue# (m ==# 6#)

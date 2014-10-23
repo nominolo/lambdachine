@@ -3,8 +3,8 @@
 -- CHECK: @Result@ IND -> GHC.Bool.True`con_info
 module Bc.TailCallExact where
 
-import GHC.Bool
 import GHC.Prim
+import GHC.Types
 
 --import GHC.Base
 
@@ -16,4 +16,4 @@ f n = g (n +# 3#) (n +# 4#)
 g :: Int# -> Int# -> Int#
 g x y = x *# y
 
-test = f 5# ==# 72#
+test = isTrue# (f 5# ==# 72#)

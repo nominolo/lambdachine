@@ -4,6 +4,6 @@
 module Bc.Bc0016 where
 
 import GHC.Prim
-import GHC.Bool
+import GHC.Types
 
 test = True

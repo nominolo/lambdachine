@@ -4,14 +4,13 @@
 module Bench.SumFromTo3 where
 
 import GHC.Prim
-import GHC.Bool
 import GHC.Types
 import GHC.Base hiding (plusInt, eqInt, timesInt)
 
 {-# NOINLINE enumFromTo #-}
 enumFromTo :: Int -> Int -> [Int]
 enumFromTo from@(I# m) to@(I# n) =
-  if m ># n then [] else
+  if isTrue# (m ># n) then [] else
     from : enumFromTo (I# (m +# 1#)) to
 
 sum :: [Int] -> Int
@@ -33,7 +32,7 @@ succInt :: Int -> Int
 succInt (I# m) = I# (m +# 1#)
 
 eqInt :: Int -> Int -> Bool
-eqInt (I# m) (I# n) = m ==# n
+eqInt (I# m) (I# n) = isTrue# (m ==# n)
 
 zero :: Int
 zero = I# 0#

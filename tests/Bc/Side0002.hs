@@ -10,8 +10,8 @@ import GHC.Base
 loop :: Int# -> Int# -> Int# -> Int#
 loop a b c =
   let !a' = a +# c in
-  let !b' = if b ># 0# then b -# a' else b +# a' in
-  if c ># 0# then loop a' b' (c -# 1#) else (a' -# b')
+  let !b' = if isTrue# (b ># 0#) then b -# a' else b +# a' in
+  if isTrue# (c ># 0#) then loop a' b' (c -# 1#) else (a' -# b')
 
 test = case loop 7345# 123# 23# of
-         n -> n ==# 7366#
+         n -> isTrue# (n ==# 7366#)
