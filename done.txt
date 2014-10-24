@@ -1,0 +1,24 @@
+Megapatch: fix bugs in byte array alloc; better large object handling
+
+Large objects are now collected via mark/sweep.  Free'd large objects
+are linked into free lists.  For objects < 8 KiBytes there is one free
+list per multiple of 256 bytes.
+
+Other changes and fixes:
+
+ - We now keep track of bytes allocated to trigger next
+   GC. (Previously we used blocks, but that doesn't work for large
+   objects.)
+ 
+ - Fix: add pointer map to NEWBYTEA instruction.
+
+ - Small byte arrays are now allocated inline, only larger ones
+   go to the large object space.
+
+ - Closure type for byte arrays changed from LARGE to BYTEARR due to
+   the above point.
+
+ - Move some inline definitions out of class definition.
+
+ - Add 'lazy' function to ghc-prim:GHC/Magic; needed for byte array
+   tests.

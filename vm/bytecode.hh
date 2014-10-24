@@ -89,6 +89,16 @@ _START_LAMBDACHINE_NAMESPACE
   _(SETA2, RRR) /* arr[offs] = (u2)x */ \
   _(SETA4, RRR) /* arr[offs] = (u4)x */ \
   _(SETA8, RRR) /* arr[offs] = (u8)x */ \
+  _(BASIZE, RR) /* dst = arr->size */ \
+  _(BADATA, RR) /* dst = &arr->bytes */ \
+  _(BAUNDATA, RR) /* dst = ptr - sizeof(ByteArr) */ \
+  /* C Structs and C arrays */ \
+  _(SCRATCH, RRN) /* dst = &base[idx] + offset */ \
+  _(ADDPTR, RRR) \
+  _(GETCS4, RRR) /* u4 dst = *((u4 *)(ptr + offs)) */ \
+  _(GETCS8, RRR) /* u8 dst = *((u8 *)(ptr + offs)) */ \
+  _(SETCS4, RRR) /* *((u4 *)(ptr + offs)) = src */ \
+  _(SETCS8, RRR) /* *((u8 *)(ptr + offs)) = src */ \
   /* Function headers */ \
   _(FUNC,    R) \
   _(IFUNC,   R) \

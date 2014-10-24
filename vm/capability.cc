@@ -1101,14 +1101,97 @@ op_CASE_S:
     t *data = (t *)arr->payload_; \
     data[offset] = (t)base[opA]; \
     DISPATCH_NEXT; \
-  }
+  };
 
-  SETA(1, u1)
-  SETA(2, u2)
-  SETA(4, u4)
-  SETA(8, u8)
+  SETA(1, u1);
+  SETA(2, u2);
+  SETA(4, u4);
+  SETA(8, u8);
 
 #undef SETA
+
+ op_BASIZE: 
+  // rA = result
+  // rD = byte array
+  {
+    DECODE_AD;
+    ByteArrayClosure *ba = (ByteArrayClosure *)base[opC];
+    base[opA] = ba->bytes_;
+    DISPATCH_NEXT;
+  }
+
+ op_BADATA:
+  // rA = result
+  // rD = byte array
+  {
+    DECODE_AD;
+    ByteArrayClosure *ba = (ByteArrayClosure *)base[opC];
+    base[opA] = (Word)&ba->payload_;
+    DISPATCH_NEXT;
+  }
+
+ op_BAUNDATA: {
+    DECODE_AD;
+    char *ba_payload = (char *)base[opC];
+    base[opA] = (Word)(ba_payload - sizeof(ByteArrayClosure));
+    DISPATCH_NEXT;
+  }
+
+ op_SCRATCH:
+  // rA = result
+  // rB = register index where region starts
+  // C = byte offset
+  {
+    DECODE_BC;
+    base[opA] = (Word)(((char *)&base[opB]) + (Word)opC);
+    DISPATCH_NEXT;
+  }
+
+ op_ADDPTR:
+  // rA = result
+  // rB = ptr
+  // rC = offset
+  {
+    DECODE_BC;
+    base[opA] = (Word)((char *)base[opB] + (Word)base[opC]);
+    DISPATCH_NEXT;
+  }
+
+  // rA = result
+  // rB = ptr
+  // rC = offset
+#define GETCS(n, t) \
+  op_GETCS##n: {                                             \
+    DECODE_BC;                                               \
+    t *ptr = (t *)((char *)base[opB] + (Word)base[opC]);     \
+    base[opA] = (Word)(*ptr);                                \
+    DISPATCH_NEXT;                                           \
+  }
+
+  // GETCS(1, u1);
+  // GETCS(2, u2);
+  GETCS(4, u4);
+  GETCS(8, u8);
+
+#undef GETCS
+
+  // rA = ptr
+  // rB = offset
+  // rC = value to write
+#define SETCS(n, t) \
+  op_SETCS##n: {                                             \
+    DECODE_BC;                                               \
+    t *ptr = (t *)(((char *)base[opA]) + (Word)base[opB]);   \
+    *ptr = (t)base[opC];                                     \
+    DISPATCH_NEXT;                                           \
+  }
+
+  // SETCS(1, u1);
+  // SETCS(2, u2);
+  SETCS(4, u4);
+  SETCS(8, u8);
+
+#undef SETCS
 
 op_KINT:
 op_NEW_INT:

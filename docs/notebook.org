@@ -1,0 +1,107 @@
+* Cleanups
+** TODO Merge Alloc instructions
+** TODO Clean up Bytecode.hs
+** TODO Make serialization format independent of in-memory bytecode format
+
+There could be a separate preprocessing step to turn it into a
+platform-optimized binary.  Otherwise, the loader is responsible for
+translating from the external to the internal format.
+
+* TODO PC-relative addressing of constants
+
+Get rid of KBASE register and address constants relative to the
+bytecode.  Constant values may be put between basic blocks of the
+bytecode to reduce the require offset range.
+
+This will allow us to blackhole thunks (needed for parallel Haskell).
+
+* Apply / Function calls
+
+** TODO Enumerate argument representation types.
+
+GHC has:
+
+| Kind | Description              | Size                   |
+|------+--------------------------+------------------------|
+| P    | GC Pointer               | 4/8 bytes              |
+| N    | word-sized non-ptr       | 4/8 bytes              |
+| L    | 64-bit non-ptr           | 8 bytes                |
+| V    | void (e.g., state token) | 0 bytes                |
+| F    | float                    | 4 bytes                |
+| D    | double                   | 8 bytes / arch specifc |
+| V16  | 16-byte vector           | 16 bytes               |
+| V32  | 32-byte vector           | 32 bytes               |
+| V64  | 64-byte vector           | 64 bytes               |
+
+Note that vectors may be interpreted as vectors of
+Float/Double/Int8/Word32/etc.
+
+It might make sense to introduce explicitly-sized non-pointer
+quantities, i.e., N4 and N8 since for a VM we don't want to leave
+things architecture specific.
+
+** Get rid of dummy registers for void
+
+Currently void-sized arguments require that void arguments are still
+passed in registers.  If we represent function types explicitly using
+the rep type we can compute the number of argument registers from
+that. For example, say, a function's argument list is =PPVFDVN= and
+our word size is 4 bytes:
+
+| P  | P  | V | F  | D     | V | N  |
+| r0 | r1 | - | r2 | r3,r4 | - | r5 |
+
+In practice, though, it's not clear whether we want to have
+implementations that use a word size other that 8 bytes.  I.e., on
+ARM32 we'd still have registers use 8 bytes and potentially leave the
+top 32 bits of a register unused.
+
+Note, that this mapping from arg rep type to actual sizes will also
+affect the shapes of partial applications and application
+continuations.
+
+* TODO Distinguish mutable and immutable ByteArrays?
+
+If a mutable byte array is shared we're technically not allowed to do
+store-forwarding if the array may be shared.
+
+
+* Sharing Analysis
+
+Ideas:
+ - Assume all old-gen objects are shared.
+ - Use efficient (delayed) reference counting to restore sharing info
+   (how does this interact with copying GC?)
+ - Do we care about byte arrays?  We mostly care about thunks.
+ - How much would it help implement a thread-local GC.  Can web
+   applications using shared in-memory caches actually take advantage
+   of thread-local GC?
+
+* Garbage Collector
+
+ - Mostly-concurrent GC is probably more useful than thread-local GC
+
+
+* Literature
+ - [[http://llvm.org/devmtg/][Annual LLVM Developers' Meeting notes (slides, videos)]]
+** GC
+ - [[https://android.googlesource.com/platform/art/+/218daa2d876c5989f956e8e54b8f28f33d11b31f/runtime/gc/allocator/rosalloc.cc][Android ART "rosalloc" (row of slots) allocator]]
+ - [[http://community.haskell.org/~simonmar/papers/ExploringBarrierToEntry.pdf][Exploring the Barrier to Entry - Incremental Generational Garbage
+   Collection for Haskell]]
+
+** GMP
+ - http://web.mit.edu/gnu/doc/html/gmp_4.html, old doc, mentions
+   MP_INT type
+ - newer doc https://gmplib.org/manual/Integer-Internals.html
+
+** Scheduling, RTS
+ - [[http://manticore.cs.uchicago.edu/papers/icfp08-sched.pdf][A Scheduling Framework for General-purpose Parallel Languages]] by
+   Matt Fluet, Mike Rainey, John Reppy; from Manticore project
+ - [[http://community.haskell.org/~simonmar/papers/multicore-ghc.pdf][Runtime Support for Multicore Haskell]] by SM, SPJ, Satnam Singh
+
+** Thunks, Exceptions
+ - [[http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.19.411&rep=rep1&type=pdf][Putting the Spine Back in the Spineless Tagless G-Machine: An
+   Implementation of Resumable Black-Holes]], Alastair Reid
+ - [[http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.145.7585&rep=rep1&type=pdf][Asynchronous Exceptions in Haskell]], SM, SPJ, A Moran, John Reppy
+ - [[http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.19.1584&rep=rep1&type=pdf][Handling Exceptions in Haskell]], Alastair Reid
+ - Test case where [[http://www.dcs.gla.ac.uk/mail-www/haskell/msg00947.html][stack squeezing can improve performance]]
