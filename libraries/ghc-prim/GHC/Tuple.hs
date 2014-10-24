@@ -1,6 +1,12 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 module GHC.Tuple where
 
+default () -- Double and Integer aren't available yet
+
+-- | The unit datatype @()@ has one non-undefined member, the nullary
+-- constructor @()@.
+data () = ()
+
 data (,) a b = (,) a b
 data (,,) a b c = (,,) a b c
 data (,,,) a b c d = (,,,) a b c d
