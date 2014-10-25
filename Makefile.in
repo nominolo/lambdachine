@@ -186,12 +186,13 @@ TEST_FILES := tests/Bc/Bc0016.lcbc tests/Bc/Bc0014.lcbc \
 	tests/Bc/Integer.lcbc \
 	tests/Bc/Set1.lcbc tests/Bc/Map1.lcbc \
 	tests/Bench/Nofib/Spectral/Constraints.lcbc \
-	tests/Bench/Nofib/Spectral/Boyer.lcbc \
-	tests/Bench/Nofib/Spectral/Lambda.lcbc \
 	tests/Bench/Nofib/Spectral/Circsim.lcbc \
 	tests/Bench/Fibon/Agum/IntLinEq.lcbc \
 	tests/Bench/Fibon/Agum/UnificationMatching.lcbc \
 	tests/Bench/Fibon/Agum/Main.lcbc
+
+#	tests/Bench/Nofib/Spectral/Boyer.lcbc
+#	tests/Bench/Nofib/Spectral/Lambda.lcbc
 
 
 .PHONY: test-files
@@ -320,11 +321,14 @@ distclean: clean
 	rm -rf autom4te.cache
 	rm -f config.status configure config.log vm/autoconfig.h Makefile
 
+# The impossible constraint on integer-gmp is there to force cabal-install
+# to choose the right configuration for "hashable" and "text"
 .PHONY: install-deps
 install-deps:
 	$(CABAL) install --only-dependencies --with-compiler=$(HC) \
 		--with-hc-pkg=$(HC_PKG) \
-		--disable-library-profiling --disable-documentation
+		--disable-library-profiling --disable-documentation \
+		--constraint='integer-gmp < 0'
 
 # sh install-deps.sh $(HC) $(HC_PKG) $(CABAL)
 
