@@ -20,4 +20,4 @@ g :: Int# -> Int -> (Int# -> Int -> Int# -> Int -> Int -> Int#)
 g a b f' = Box (f' a b)
 
 test = case g 4# (I# 5#) f of
-         Box h -> case h 5# 7 8 of n -> isTrue# (n ==# 304#)
+         Box h -> case h 6# 2 3 of n -> isTrue# (n ==# 28#)
