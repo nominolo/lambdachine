@@ -899,6 +899,18 @@ TEST_F(ArithTest, AllocN_5) {
   ASSERT_EQ((Word)2222, T->slot(1));
 }
 
+testing::AssertionResult
+isTrueResultOutput(string output)
+{
+  if (output == string("IND -> GHC.Types.True`con_info ") ||
+      output == string("GHC.Types.True`con_info ")) {
+    return testing::AssertionSuccess();
+  } else {
+    return testing::AssertionFailure()
+      << output << " is no True-ish result";
+  }
+}
+
 class RunFileTest : public ::testing::Test {
 protected:
   RunFileTest() : mm(NULL), loader(NULL), cap(NULL), T(NULL) { }
@@ -944,9 +956,10 @@ protected:
     ASSERT_EQ(base, T->base());
     Closure *result = (Closure*)T->slot(0);
     ASSERT_TRUE(result != NULL);
-    stringstream out;
-    printClosure(out, result, true);
-    EXPECT_EQ(string("IND -> GHC.Types.True`con_info "), out.str());
+    stringstream testOutput;
+    printClosure(testOutput, result, true);
+    string testOutputString = testOutput.str();
+    ASSERT_PRED1(isTrueResultOutput, testOutputString);
   }
 
 protected:
